@@ -18,7 +18,7 @@ class Model:
 
         return {
             "log_file": log_file,
-            "replica": serve.get_replica_context().replica_tag,
+            "replica": serve.get_replica_context().replica_id.to_full_id_str(),
             "log_level": logger.level,
             "num_handlers": len(logger.handlers),
         }

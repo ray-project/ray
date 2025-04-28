@@ -13,6 +13,12 @@
 // limitations under the License.
 #pragma once
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -30,7 +36,6 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
 class GcsPlacementGroup;
@@ -49,17 +54,19 @@ using raylet_scheduling_policy::SchedulingResultStatus;
 
 using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 
+struct SchedulePgRequest {
+  /// The placement group to be scheduled.
+  std::shared_ptr<GcsPlacementGroup> placement_group;
+  // Called if the pg failed to schedule (prepare or commit).
+  PGSchedulingFailureCallback failure_callback;
+  // Called if the pg is successfully committed.
+  PGSchedulingSuccessfulCallback success_callback;
+};
+
 class GcsPlacementGroupSchedulerInterface {
  public:
   /// Schedule unplaced bundles of the specified placement group.
-  ///
-  /// \param placement_group The placement group to be scheduled.
-  /// \param failure_callback This function is called if the schedule is failed.
-  /// \param success_callback This function is called if the schedule is successful.
-  virtual void ScheduleUnplacedBundles(
-      std::shared_ptr<GcsPlacementGroup> placement_group,
-      PGSchedulingFailureCallback failure_callback,
-      PGSchedulingSuccessfulCallback success_callback) = 0;
+  virtual void ScheduleUnplacedBundles(const SchedulePgRequest &request) = 0;
 
   /// Get and remove bundles belong to the specified node.
   ///
@@ -101,10 +108,12 @@ class GcsPlacementGroupSchedulerInterface {
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
+  /// \param prepared_pgs placement groups in state PREPARED. Need to be committed asap.
   virtual void Initialize(
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
-          &group_to_bundles) = 0;
+          &group_to_bundles,
+      const std::vector<SchedulePgRequest> &prepared_pgs) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
@@ -128,6 +137,11 @@ class LeaseStatusTracker {
       const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles,
       const ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
+
+  // Creates a LeaseStatusTracker that starts with PREPARED status.
+  static std::shared_ptr<LeaseStatusTracker> CreatePrepared(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles);
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
   ///
@@ -211,7 +225,7 @@ class LeaseStatusTracker {
   /// Return the leasing state.
   ///
   /// \return Leasing state.
-  const LeasingState GetLeasingState() const;
+  LeasingState GetLeasingState() const;
 
   /// Mark that this leasing is cancelled.
   void MarkPlacementGroupScheduleCancelled();
@@ -281,12 +295,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param cluster_resource_scheduler The resource scheduler which is used when
   /// scheduling.
   /// \param lease_client_factory Factory to create remote lease client.
-  GcsPlacementGroupScheduler(
-      instrumented_io_context &io_context,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager,
-      ClusterResourceScheduler &cluster_resource_scheduler,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  GcsPlacementGroupScheduler(instrumented_io_context &io_context,
+                             gcs::GcsTableStorage &gcs_table_storage,
+                             const GcsNodeManager &gcs_node_manager,
+                             ClusterResourceScheduler &cluster_resource_scheduler,
+                             rpc::NodeManagerClientPool &raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -298,9 +311,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group to be scheduled.
   /// \param failure_callback This function is called if the schedule is failed.
   /// \param success_callback This function is called if the schedule is successful.
-  void ScheduleUnplacedBundles(std::shared_ptr<GcsPlacementGroup> placement_group,
-                               PGSchedulingFailureCallback failure_handler,
-                               PGSchedulingSuccessfulCallback success_handler) override;
+  void ScheduleUnplacedBundles(const SchedulePgRequest &request) override;
 
   /// Destroy the actual bundle resources or locked resources (for 2PC)
   /// on all nodes associated with this placement group.
@@ -346,10 +357,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
+  /// \param prepared_pgs placement groups in state PREPARED. Need to be committed asap.
   void Initialize(
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
-          &group_to_bundles) override;
+          &group_to_bundles,
+      const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
@@ -367,7 +380,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
   /// Send bundles COMMIT request to a node. This means the placement group creation
@@ -378,7 +391,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback
   void CommitResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.
@@ -391,7 +404,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param retry_cnt The number of times the cancel request is retried.
   void CancelResourceReserve(
       const std::shared_ptr<const BundleSpecification> &bundle_spec,
-      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
       int current_retry_cnt);
 
@@ -455,7 +468,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
                                             rpc::PlacementStrategy strategy,
-                                            double max_cpu_fraction_per_node);
+                                            double max_cpu_fraction_per_node,
+                                            NodeID soft_target_node_id);
 
   /// Try to release bundle resource to cluster resource manager.
   ///
@@ -476,7 +490,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   boost::asio::deadline_timer return_timer_;
 
   /// Used to update placement group information upon creation, deletion, etc.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage &gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
@@ -492,7 +506,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       placement_group_leasing_in_progress_;
 
   /// The cached raylet clients used to communicate with raylets.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool &raylet_client_pool_;
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;

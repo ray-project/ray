@@ -2,7 +2,7 @@ import pytest
 
 from ray import cloudpickle
 from ray._private.pydantic_compat import ValidationError
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
@@ -43,9 +43,9 @@ def test_autoscaling_config_validation():
         # max_replicas must be positive
         AutoscalingConfig(max_replicas=0)
 
+    # target_ongoing_requests must be nonnegative
     with pytest.raises(ValidationError):
-        # max_replicas must be nonnegative
-        AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
+        AutoscalingConfig(target_ongoing_requests=-1)
 
     # max_replicas must be greater than or equal to min_replicas
     with pytest.raises(ValueError):
@@ -85,17 +85,17 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError, match="value_error"):
             DeploymentConfig(num_replicas=-1)
 
-        # Test dynamic default for max_concurrent_queries.
-        assert DeploymentConfig().max_concurrent_queries == 100
+        # Test dynamic default for max_ongoing_requests.
+        assert DeploymentConfig().max_ongoing_requests == 5
 
     def test_deployment_config_update(self):
-        b = DeploymentConfig(num_replicas=1, max_concurrent_queries=1)
+        b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 
         # Test updating a key works.
         b.num_replicas = 2
         assert b.num_replicas == 2
         # Check that not specifying a key doesn't update it.
-        assert b.max_concurrent_queries == 1
+        assert b.max_ongoing_requests == 1
 
         # Check that input is validated.
         with pytest.raises(ValidationError):
@@ -152,7 +152,6 @@ class TestReplicaConfig:
                 "num_gpus": 10,
                 "resources": {"abc": 1.0},
                 "memory": 1000000.0,
-                "object_store_memory": 1000000,
             },
         )
         with pytest.raises(TypeError):
@@ -171,12 +170,6 @@ class TestReplicaConfig:
             ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
             ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
-        with pytest.raises(TypeError):
-            ReplicaConfig.create(
-                Class, ray_actor_options={"object_store_memory": "hello"}
-            )
-        with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class, ray_actor_options={"resources": []})
 
@@ -223,7 +216,7 @@ class TestReplicaConfig:
         # Invalid: not in the range of [1, 100]
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -234,7 +227,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -245,7 +238,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -306,7 +299,7 @@ class TestReplicaConfig:
 
         # Invalid: unsupported placement_group_strategy.
         with pytest.raises(
-            ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
+            ValueError, match="Invalid placement group strategy FAKE_NEWS"
         ):
             ReplicaConfig.create(
                 Class,
@@ -319,16 +312,26 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=(
-                "`placement_group_bundles` must be a non-empty list "
-                "of resource dictionaries."
-            ),
+            match=("Bundles must be a non-empty list of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
                 placement_group_bundles=[{"CPU": "1.0"}],
+            )
+
+        # Invalid: invalid placement_group_bundles.
+        with pytest.raises(
+            ValueError,
+            match="cannot be an empty dictionary or resources with only 0",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"num_cpus": 0, "num_gpus": 0},
+                placement_group_bundles=[{"CPU": 0, "GPU": 0}],
             )
 
         # Invalid: replica actor does not fit in the first bundle (CPU).
@@ -379,6 +382,53 @@ class TestReplicaConfig:
                 placement_group_bundles=[{"CPU": 1}],
             )
 
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1.0}],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            config = ReplicaConfig.create(Class, tuple(), dict())
+            config.update(
+                ray_actor_options={},
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
     def test_replica_config_lazy_deserialization(self):
         def f():
             return "Check this out!"
@@ -403,6 +453,58 @@ class TestReplicaConfig:
         assert config.deployment_def() == "Check this out!"
         assert config.init_args == tuple()
         assert config.init_kwargs == dict()
+
+
+class TestAutoscalingConfig:
+    def test_target_ongoing_requests(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_target_ongoing_requests() == 2
+
+        autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+    def test_scaling_factor(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(upscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(downscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.1
+        assert autoscaling_config.get_downscaling_factor() == 0.01
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
 
 
 def test_config_schemas_forward_compatible():
@@ -442,7 +544,7 @@ def test_http_options():
 
 def test_with_proto():
     # Test roundtrip
-    config = DeploymentConfig(num_replicas=100, max_concurrent_queries=16)
+    config = DeploymentConfig(num_replicas=100, max_ongoing_requests=16)
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
     # Test user_config object
@@ -450,17 +552,22 @@ def test_with_proto():
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
-def test_zero_default_proto():
+@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
     # original value after being serialized and deserialized.
-    config = DeploymentConfig(
-        autoscaling_config={
-            "min_replicas": 1,
-            "max_replicas": 2,
-            "smoothing_factor": 0.123,
-            "downscale_delay_s": 0,
-        }
-    )
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 2,
+        "downscale_delay_s": 0,
+    }
+    if use_deprecated_smoothing_factor:
+        autoscaling_config["smoothing_factor"] = 0.123
+    else:
+        autoscaling_config["upscaling_factor"] = 0.123
+        autoscaling_config["downscaling_factor"] = 0.123
+
+    config = DeploymentConfig(autoscaling_config=autoscaling_config)
     serialized_config = config.to_proto_bytes()
     deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
     new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s
@@ -483,33 +590,37 @@ def test_grpc_options():
     assert default_grpc_options.port == DEFAULT_GRPC_PORT
     assert default_grpc_options.grpc_servicer_functions == []
     assert default_grpc_options.grpc_servicer_func_callable == []
+    assert default_grpc_options.request_timeout_s is None
 
     port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     ]
+    request_timeout_s = 1
     grpc_options = gRPCOptions(
         port=port,
         grpc_servicer_functions=grpc_servicer_functions,
+        request_timeout_s=request_timeout_s,
     )
     assert grpc_options.port == port
     assert grpc_options.grpc_servicer_functions == grpc_servicer_functions
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+    assert grpc_options.request_timeout_s == request_timeout_s
 
     # Import not found should raise ModuleNotFoundError.
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
     with pytest.raises(ModuleNotFoundError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "can't be imported!" in str(exception)
 
     # Not callable should raise ValueError.
     grpc_servicer_functions = ["ray.serve._private.constants.DEFAULT_HTTP_PORT"]
     with pytest.raises(ValueError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
 
 
@@ -576,17 +687,16 @@ def test_autoscaling_policy_serializations(policy):
     """
     autoscaling_config = AutoscalingConfig()
     if policy:
-        autoscaling_config = AutoscalingConfig(policy=policy)
+        autoscaling_config = AutoscalingConfig(_policy=policy)
 
     config = DeploymentConfig.from_default(autoscaling_config=autoscaling_config)
     deserialized_autoscaling_policy = DeploymentConfig.from_proto_bytes(
         config.to_proto_bytes()
     ).autoscaling_config.get_policy()
 
-    if policy is None:
-        assert deserialized_autoscaling_policy == default_autoscaling_policy
-    else:
-        assert deserialized_autoscaling_policy() == fake_policy_return_value
+    # Right now we don't allow modifying the autoscaling policy, so this will always
+    # be the default autoscaling policy
+    assert deserialized_autoscaling_policy == default_autoscaling_policy
 
 
 def test_autoscaling_policy_import_fails_for_non_existing_policy():
@@ -595,9 +705,9 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
     This test will ensure non-existing policy will be caught. It can happen when we
     moved the default policy or when user pass in a non-existing policy.
     """
+    # Right now we don't allow modifying the autoscaling policy, so this will not fail
     policy = "i.dont.exist:fake_policy"
-    with pytest.raises(ModuleNotFoundError):
-        AutoscalingConfig(policy=policy)
+    AutoscalingConfig(_policy=policy)
 
 
 def test_default_autoscaling_policy_import_path():
@@ -615,7 +725,7 @@ class TestProtoToDict:
 
         # Defaults are filled.
         assert result["num_replicas"] == 0
-        assert result["max_concurrent_queries"] == 0
+        assert result["max_ongoing_requests"] == 0
         assert result["user_config"] == b""
         assert result["user_configured_option_names"] == []
 
@@ -625,16 +735,16 @@ class TestProtoToDict:
     def test_non_empty_fields(self):
         """Test _proto_to_dict() to deserialize protobuf with non-empty fields"""
         num_replicas = 111
-        max_concurrent_queries = 222
+        max_ongoing_requests = 222
         proto = DeploymentConfigProto(
             num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
+            max_ongoing_requests=max_ongoing_requests,
         )
         result = _proto_to_dict(proto)
 
         # Fields with non-empty values are filled correctly.
         assert result["num_replicas"] == num_replicas
-        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["max_ongoing_requests"] == max_ongoing_requests
 
         # Empty fields are continue to be filled with default values.
         assert result["user_config"] == b""
@@ -642,11 +752,11 @@ class TestProtoToDict:
     def test_nested_protobufs(self):
         """Test _proto_to_dict() to deserialize protobuf with nested protobufs"""
         num_replicas = 111
-        max_concurrent_queries = 222
+        max_ongoing_requests = 222
         min_replicas = 333
         proto = DeploymentConfigProto(
             num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
+            max_ongoing_requests=max_ongoing_requests,
             autoscaling_config=AutoscalingConfigProto(
                 min_replicas=min_replicas,
             ),
@@ -655,7 +765,7 @@ class TestProtoToDict:
 
         # Non-empty field is filled correctly.
         assert result["num_replicas"] == num_replicas
-        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["max_ongoing_requests"] == max_ongoing_requests
 
         # Nested protobuf is filled correctly.
         assert result["autoscaling_config"]["min_replicas"] == min_replicas
@@ -663,13 +773,17 @@ class TestProtoToDict:
     def test_repeated_field(self):
         """Test _proto_to_dict() to deserialize protobuf with repeated field"""
         user_configured_option_names = ["foo", "bar"]
-        proto = DeploymentConfigProto(
+        config = DeploymentConfig.from_default(
             user_configured_option_names=user_configured_option_names,
         )
+        proto_bytes = config.to_proto_bytes()
+        proto = DeploymentConfigProto.FromString(proto_bytes)
         result = _proto_to_dict(proto)
-
         # Repeated field is filled correctly as list.
-        assert result["user_configured_option_names"] == user_configured_option_names
+        assert set(result["user_configured_option_names"]) == set(
+            user_configured_option_names
+        )
+        assert isinstance(result["user_configured_option_names"], list)
 
     def test_enum_field(self):
         """Test _proto_to_dict() to deserialize protobuf with enum field"""

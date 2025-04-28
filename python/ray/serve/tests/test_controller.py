@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     SERVE_DEFAULT_APP_NAME,
@@ -15,7 +14,8 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
+from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 
 
 def test_redeploy_start_time(serve_instance):
@@ -65,7 +65,7 @@ def test_deploy_app_custom_exception(serve_instance):
         ]
     }
 
-    ray.get(controller.deploy_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -87,10 +87,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "policy": policy,
+        "_policy": policy,
     }
     if policy is None:
-        autoscaling_config.pop("policy")
+        autoscaling_config.pop("_policy")
 
     @serve.deployment(autoscaling_config=autoscaling_config)
     def autoscaling_app():
@@ -110,12 +110,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-    policy_path = "ray.serve.autoscaling_policy:default_autoscaling_policy"
-    if policy == default_autoscaling_policy:
-        policy_path = (
-            "ray.serve.autoscaling_policy.replica_queue_length_autoscaling_policy"
-        )
-
     expected_json = json.dumps(
         {
             "controller_info": {
@@ -128,7 +122,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
             },
             "proxy_location": "HeadOnly",
             "http_options": {"host": "0.0.0.0"},
-            "grpc_options": {},
+            "grpc_options": {
+                "port": 9000,
+                "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
+            },
             "proxies": {
                 node_id: {
                     "node_id": node_id,
@@ -149,6 +146,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                     "message": "",
                     "last_deployed_time_s": deployment_timestamp,
                     "deployed_app_config": None,
+                    "source": "imperative",
                     "deployments": {
                         "autoscaling_app": {
                             "name": "autoscaling_app",
@@ -157,31 +155,34 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "message": "",
                             "deployment_config": {
                                 "name": "autoscaling_app",
-                                "max_concurrent_queries": 100,
+                                "max_ongoing_requests": 5,
+                                "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
                                     "initial_replicas": None,
                                     "max_replicas": 10,
-                                    "target_num_ongoing_requests_per_replica": 1.0,
+                                    "target_ongoing_requests": 2.0,
                                     "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,
                                     "smoothing_factor": 1.0,
                                     "upscale_smoothing_factor": None,
                                     "downscale_smoothing_factor": None,
+                                    "upscaling_factor": None,
+                                    "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
-                                    "policy": policy_path,
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
-                                    "runtime_env": {},
                                     "num_cpus": 1.0,
                                 },
                             },
+                            "target_num_replicas": 1,
+                            "required_resources": {"CPU": 1},
                             "replicas": [
                                 {
                                     "node_id": node_id,
@@ -201,6 +202,18 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 }
             },
             "target_capacity": None,
+            "target_groups": [
+                {
+                    "targets": [{"ip": node_ip, "port": 8000}],
+                    "route_prefix": "/",
+                    "protocol": "HTTP",
+                },
+                {
+                    "targets": [{"ip": node_ip, "port": 9000}],
+                    "route_prefix": "/",
+                    "protocol": "gRPC",
+                },
+            ],
         }
     )
     assert details_json == expected_json
@@ -209,7 +222,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     application = details["applications"]["default"]
     deployment = application["deployments"]["autoscaling_app"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

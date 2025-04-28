@@ -14,12 +14,14 @@
 
 #include "ray/gcs/gcs_client/accessor.h"
 
+#include <utility>
+
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-using namespace ray::gcs;
-using namespace ray::rpc;
+using namespace ray::gcs;  // NOLINT
+using namespace ray::rpc;  // NOLINT
 
 TEST(NodeInfoAccessorTest, TestHandleNotification) {
   NodeInfoAccessor accessor;
@@ -27,7 +29,7 @@ TEST(NodeInfoAccessorTest, TestHandleNotification) {
   node_info.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   NodeID node_id = NodeID::FromRandom();
   node_info.set_node_id(node_id.Binary());
-  accessor.HandleNotification(node_info);
+  accessor.HandleNotification(std::move(node_info));
   ASSERT_EQ(accessor.Get(node_id, false)->node_id(), node_id.Binary());
 }
 

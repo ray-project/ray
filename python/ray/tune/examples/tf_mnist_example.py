@@ -11,15 +11,21 @@
 
 import argparse
 import os
+import sys
 
 from filelock import FileLock
-from tensorflow.keras.layers import Dense, Flatten, Conv2D
-from tensorflow.keras import Model
-from tensorflow.keras.datasets.mnist import load_data
 
-from ray import train, tune
+from ray import tune
 
 MAX_TRAIN_BATCH = 10
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    from tensorflow.keras import Model
+    from tensorflow.keras.datasets.mnist import load_data
+    from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 
 class MyModel(Model):
@@ -135,7 +141,7 @@ if __name__ == "__main__":
             metric="test_loss",
             mode="min",
         ),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={"training_iteration": 5 if args.smoke_test else 50},
             verbose=1,
         ),

@@ -146,7 +146,9 @@ class TorchTrainer(DataParallelTrainer):
             :ref:`Ray Train Loop utilities <train-loop-api>`.
         train_loop_config: A configuration ``Dict`` to pass in as an argument to
             ``train_loop_per_worker``.
-            This is typically used for specifying hyperparameters.
+            This is typically used for specifying hyperparameters. Passing large
+            datasets via `train_loop_config` is not recommended and may introduce
+            large overhead and unknown issues with serialization and deserialization.
         torch_config: The configuration for setting up the PyTorch Distributed backend.
             If set to None, a default configuration will be used in which
             GPU training uses NCCL and CPU training uses Gloo.

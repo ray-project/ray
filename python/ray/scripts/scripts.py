@@ -7,7 +7,6 @@ import signal
 import subprocess
 import sys
 import time
-import traceback
 import urllib
 import urllib.parse
 import warnings
@@ -15,21 +14,28 @@ import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.util.check_open_ports import check_open_ports
+import requests
 
 import click
+import colorama
 import psutil
 import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._private.label_utils import (
+    parse_node_labels_json,
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_string,
+)
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
+    load_class,
     parse_resources_json,
-    parse_node_labels_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
@@ -50,9 +56,23 @@ from ray.autoscaler._private.commands import (
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
+from ray.core.generated import autoscaler_pb2
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 
 logger = logging.getLogger(__name__)
+
+
+def _check_ray_version(gcs_client):
+    import ray._private.usage.usage_lib as ray_usage_lib
+
+    cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
+    if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
+        raise RuntimeError(
+            "Ray version mismatch: cluster has Ray version "
+            f'{cluster_metadata["ray_version"]} '
+            f"but local Ray version is {ray.__version__}"
+        )
 
 
 @click.group()
@@ -185,6 +205,12 @@ def continue_debug_session(live_jobs: Set[str]):
                 time.sleep(1.0)
 
 
+def none_to_empty(s):
+    if s is None:
+        return ""
+    return s
+
+
 def format_table(table):
     """Format a table as a list of lines with aligned columns."""
     result = []
@@ -200,11 +226,27 @@ def format_table(table):
 @click.option(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
-def debug(address):
+@click.option(
+    "-v",
+    "--verbose",
+    required=False,
+    is_flag=True,
+    help="Shows additional fields in breakpoint selection page.",
+)
+def debug(address: str, verbose: bool):
     """Show all active breakpoints and exceptions in the Ray debugger."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
+    if os.environ.get("RAY_DEBUG", "1") != "legacy":
+        print(
+            f"{colorama.Fore.YELLOW}NOTE: The distributed debugger "
+            "https://docs.ray.io/en/latest/ray-observability"
+            "/ray-distributed-debugger.html is now the default "
+            "due to better interactive debugging support. If you want "
+            "to keep using 'ray debug' please set RAY_DEBUG=legacy "
+            f"in your cluster (e.g. via runtime environment).{colorama.Fore.RESET}"
+        )
     while True:
         # Used to filter out and clean up entries from dead jobs.
         live_jobs = {
@@ -233,19 +275,50 @@ def debug(address):
         sessions_data = sorted(
             sessions_data, key=lambda data: data["timestamp"], reverse=True
         )
-        table = [["index", "timestamp", "Ray task", "filename:lineno"]]
-        for i, data in enumerate(sessions_data):
-            date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            table.append(
+        if verbose:
+            table = [
                 [
-                    str(i),
-                    date,
-                    data["proctitle"],
-                    data["filename"] + ":" + str(data["lineno"]),
+                    "index",
+                    "timestamp",
+                    "Ray task",
+                    "filename:lineno",
+                    "Task ID",
+                    "Worker ID",
+                    "Actor ID",
+                    "Node ID",
                 ]
-            )
+            ]
+            for i, data in enumerate(sessions_data):
+                date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                table.append(
+                    [
+                        str(i),
+                        date,
+                        data["proctitle"],
+                        data["filename"] + ":" + str(data["lineno"]),
+                        data["task_id"],
+                        data["worker_id"],
+                        none_to_empty(data["actor_id"]),
+                        data["node_id"],
+                    ]
+                )
+        else:
+            # Non verbose mode: no IDs.
+            table = [["index", "timestamp", "Ray task", "filename:lineno"]]
+            for i, data in enumerate(sessions_data):
+                date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                table.append(
+                    [
+                        str(i),
+                        date,
+                        data["proctitle"],
+                        data["filename"] + ":" + str(data["lineno"]),
+                    ]
+                )
         for i, line in enumerate(format_table(table)):
             print(line)
             if i >= 1 and not sessions_data[i - 1]["traceback"].startswith(
@@ -287,6 +360,14 @@ def debug(address):
     type=str,
     help="the user-provided identifier or name for this node. "
     "Defaults to the node's ip_address",
+)
+@click.option(
+    "--redis-username",
+    required=False,
+    hidden=True,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_USERNAME,
+    help="If provided, secure Redis ports with this username",
 )
 @click.option(
     "--redis-password",
@@ -365,17 +446,8 @@ def debug(address):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is capped at 20GB but can be set higher.",
-)
-@click.option(
-    "--redis-max-memory",
-    required=False,
-    hidden=True,
-    type=int,
-    help="The max amount of memory (in bytes) to allow redis to use. Once the "
-    "limit is exceeded, redis will start LRU eviction of entries. This only "
-    "applies to the sharded redis tables (task, object, and profile tables). "
-    "By default this is capped at 10GB but can be set higher.",
+    "By default, this is 30% of available system memory capped by "
+    "the shm size and 200G but can be set higher.",
 )
 @click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
@@ -451,7 +523,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -470,6 +542,12 @@ Windows powershell users need additional escaping:
     required=False,
     type=str,
     help="object store directory for memory mapped files",
+)
+@click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
 )
 @click.option(
     "--autoscaling-config",
@@ -502,7 +580,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--storage",
     default=None,
-    help="the persistent storage URI for the cluster. Experimental.",
+    help=(
+        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
+        "future version of Ray."
+    ),
 )
 @click.option(
     "--system-config",
@@ -557,9 +638,68 @@ Windows powershell users need additional escaping:
     "--labels",
     required=False,
     hidden=True,
-    default="{}",
+    default="",
     type=str,
-    help="a JSON serialized dictionary mapping label name to label value.",
+    help="a string list of key-value pairs mapping label name to label value."
+    "These values take precedence over conflicting keys passed in from --labels-file."
+    'Ex: --labels "key1=val1,key2=val2"',
+)
+@click.option(
+    "--labels-file",
+    required=False,
+    hidden=True,
+    default="",
+    type=str,
+    help="a path to a YAML file containing a dictionary mapping of label keys to values.",
+)
+@click.option(
+    "--include-log-monitor",
+    default=None,
+    type=bool,
+    help="If set to True or left unset, a log monitor will start monitoring "
+    "the log files of all processes on this node and push their contents to GCS. "
+    "Only one log monitor should be started per physical host to avoid log "
+    "duplication on the driver process.",
+)
+@click.option(
+    "--enable-resource-isolation",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Enable resource isolation through cgroupv2 by reserving memory and cpu "
+    "resources for ray system processes. To use, only cgroupv2 (not cgroupv1) must "
+    "be enabled with read and write permissions for the raylet. Cgroup memory and "
+    "cpu controllers must also be enabled.",
+)
+@click.option(
+    "--system-reserved-cpu",
+    required=False,
+    type=float,
+    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
+    "fractional i.e. 0.5 means half a cpu core. "
+    "By default, the min of 20% and 1 core will be reserved."
+    "Must be >= 0.5 and < total number of available cores. "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--system-reserved-memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to reserve for ray system processes. "
+    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
+    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--cgroup-path",
+    required=False,
+    hidden=True,
+    type=str,
+    help="The path for the cgroup the raylet should use to enforce resource isolation. "
+    "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
+    "The raylet must have read/write permissions to this path. "
+    "Cgroup memory and cpu controllers be enabled for this cgroup. "
+    "This option only works if --enable-resource-isolation is set.",
 )
 @add_click_logging_options
 @PublicAPI
@@ -568,6 +708,7 @@ def start(
     address,
     port,
     node_name,
+    redis_username,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -579,7 +720,6 @@ def start(
     ray_client_server_port,
     memory,
     object_store_memory,
-    redis_max_memory,
     num_cpus,
     num_gpus,
     resources,
@@ -588,11 +728,12 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -607,6 +748,12 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    labels_file,
+    include_log_monitor,
+    enable_resource_isolation,
+    system_reserved_cpu,
+    system_reserved_memory,
+    cgroup_path,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -624,7 +771,42 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
-    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
+
+    # Compose labels passed in with `--labels` and `--labels-file`.
+    # In the case of duplicate keys, the values from `--labels` take precedence.
+    try:
+        labels_from_file = parse_node_labels_from_yaml_file(labels_file)
+    except Exception as e:
+        cli_logger.abort(
+            "The file at `{}` is not a valid YAML file, detailed error: {} "
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels-file={labels_file}"),
+            str(e),
+            cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
+        )
+    try:
+        # Attempt to parse labels from new string format first.
+        labels_from_string = parse_node_labels_string(labels)
+    except Exception as e:
+        try:
+            # Fall back to JSON format if parsing from string fails.
+            labels_from_string = parse_node_labels_json(labels)
+            warnings.warn(
+                "passing node labels with `--labels` in JSON format is "
+                "deprecated and will be removed in a future version of Ray.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        except Exception:
+            # If parsing labels from both formats fails, return the original error message.
+            cli_logger.abort(
+                "`{}` is not a valid string of key-value pairs, detailed error: {} "
+                "Valid values look like this: `{}`",
+                cf.bold(f"--labels={labels}"),
+                str(e),
+                cf.bold('--labels="key1=val1,key2=val2"'),
+            )
+    labels_dict = {**labels_from_file, **labels_from_string}
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -649,6 +831,13 @@ def start(
         )
         temp_dir = None
 
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
+
     redirect_output = None if not no_redirect_output else True
 
     # no  client, no  port -> ok
@@ -659,6 +848,15 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
+    if storage is not None:
+        warnings.warn(
+            "--storage is deprecated and will be removed in a future version of Ray.",
+        )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -670,6 +868,7 @@ def start(
         node_manager_port=node_manager_port,
         memory=memory,
         object_store_memory=object_store_memory,
+        redis_username=redis_username,
         redis_password=redis_password,
         redirect_output=redirect_output,
         num_cpus=num_cpus,
@@ -678,6 +877,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
@@ -688,7 +888,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -696,10 +895,12 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        include_log_monitor=include_log_monitor,
+        resource_isolation_config=resource_isolation_config,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
-        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+        load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 
     if head:
         # Start head node.
@@ -748,6 +949,14 @@ def start(
 
             ray_params.update_if_absent(external_addresses=external_addresses)
             num_redis_shards = len(external_addresses) - 1
+            if redis_username == ray_constants.REDIS_DEFAULT_USERNAME:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external Redis server(s) `{}` points to requires "
+                    "username.",
+                    cf.bold("--redis-username"),
+                    cf.bold("--address"),
+                )
             if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                 cli_logger.warning(
                     "`{}` should not be specified as empty string if "
@@ -764,7 +973,6 @@ def start(
         # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_shard_ports=redis_shard_ports,
-            redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
         )
@@ -947,6 +1155,9 @@ def start(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
+
+        # TODO(hjiang): Validate whether specified resource is true for physical
+        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1160,7 +1371,7 @@ def stop(force: bool, grace_period: int):
     # they are still alive, send sigkill.
     processes_to_kill = RAY_PROCESSES
     # Raylet should exit before all other processes exit.
-    # Otherwise, fate-sharing agents will complain and suicide.
+    # Otherwise, fate-sharing agents will complain and exit.
     assert processes_to_kill[0][0] == "raylet"
 
     # GCS should exit after all other processes exit.
@@ -1891,13 +2102,6 @@ def timeline(address):
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--group-by",
     type=click.Choice(["NODE_ADDRESS", "STACK_TRACE"]),
     default="NODE_ADDRESS",
@@ -1938,7 +2142,6 @@ terminal width is less than 137 characters.",
 )
 def memory(
     address,
-    redis_password,
     group_by,
     sort_by,
     units,
@@ -1948,14 +2151,12 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
+    gcs_client = ray._raylet.GcsClient(address=address)
+    _check_ray_version(gcs_client)
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
         address,
-        redis_password,
         group_by,
         sort_by,
         units,
@@ -1971,13 +2172,6 @@ def memory(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "-v",
     "--verbose",
     required=False,
@@ -1986,20 +2180,14 @@ def memory(
     help="Experimental: Display additional debuggging information.",
 )
 @PublicAPI
-def status(address: str, redis_password: str, verbose: bool):
+def status(address: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
     gcs_client = ray._raylet.GcsClient(address=address)
+    _check_ray_version(gcs_client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    status = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.DEBUG_AUTOSCALING_STATUS
-    )
-    error = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.DEBUG_AUTOSCALING_ERROR
-    )
+    status = gcs_client.internal_kv_get(ray_constants.DEBUG_AUTOSCALING_STATUS.encode())
+    error = gcs_client.internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR.encode())
     print(debug_status(status, error, verbose=verbose, address=address))
 
 
@@ -2223,6 +2411,92 @@ def global_gc(address):
     print("Triggered gc.collect() on all workers.")
 
 
+@cli.command(hidden=True)
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--node-id",
+    required=False,
+    type=str,
+    help="Hex ID of the worker node to be drained. Will default to current node if not provided.",
+)
+@click.option(
+    "--reason",
+    required=True,
+    type=click.Choice(
+        [
+            item[0]
+            for item in autoscaler_pb2.DrainNodeReason.items()
+            if item[1] != autoscaler_pb2.DRAIN_NODE_REASON_UNSPECIFIED
+        ]
+    ),
+    help="The reason why the node will be drained.",
+)
+@click.option(
+    "--reason-message",
+    required=True,
+    type=str,
+    help="The detailed drain reason message.",
+)
+@click.option(
+    "--deadline-remaining-seconds",
+    required=False,
+    type=int,
+    default=None,
+    help="Inform GCS that the node to be drained will be force killed "
+    "after this many of seconds. "
+    "Default is None which means there is no deadline. "
+    "Note: This command doesn't actually force kill the node after the deadline, "
+    "it's the caller's responsibility to do that.",
+)
+def drain_node(
+    address: str,
+    node_id: str,
+    reason: str,
+    reason_message: str,
+    deadline_remaining_seconds: int,
+):
+    """
+    This is NOT a public API.
+
+    Manually drain a worker node.
+    """
+    # This should be before get_runtime_context() so get_runtime_context()
+    # doesn't start a new worker here.
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    if node_id is None:
+        node_id = ray.get_runtime_context().get_node_id()
+    deadline_timestamp_ms = 0
+    if deadline_remaining_seconds is not None:
+        if deadline_remaining_seconds < 0:
+            raise click.BadParameter(
+                "--deadline-remaining-seconds cannot be negative, "
+                f"got {deadline_remaining_seconds}"
+            )
+        deadline_timestamp_ms = (time.time_ns() // 1000000) + (
+            deadline_remaining_seconds * 1000
+        )
+
+    if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
+        raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
+
+    gcs_client = ray._raylet.GcsClient(address=address)
+    _check_ray_version(gcs_client)
+    is_accepted, rejection_error_message = gcs_client.drain_node(
+        node_id,
+        autoscaler_pb2.DrainNodeReason.Value(reason),
+        reason_message,
+        deadline_timestamp_ms,
+    )
+
+    if not is_accepted:
+        raise click.ClickException(
+            f"The drain request is not accepted: {rejection_error_message}"
+        )
+
+
 @cli.command(name="kuberay-autoscaler", hidden=True)
 @click.option(
     "--cluster-name",
@@ -2257,13 +2531,6 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--component",
     required=False,
     type=str,
@@ -2276,28 +2543,23 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     default=False,
     help="Skip comparison of GCS version with local Ray version.",
 )
-def healthcheck(address, redis_password, component, skip_version_check):
+def healthcheck(address, component, skip_version_check):
     """
-    This is NOT a public api.
+    This is NOT a public API.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
 
     address = services.canonicalize_bootstrap_address_or_die(address)
+    gcs_client = ray._raylet.GcsClient(address=address)
+    if not skip_version_check:
+        _check_ray_version(gcs_client)
 
     if not component:
-        try:
-            if ray._raylet.check_health(address, skip_version_check=skip_version_check):
-                sys.exit(0)
-        except Exception:
-            traceback.print_exc()
-            pass
-        sys.exit(1)
+        sys.exit(0)
 
-    gcs_client = ray._raylet.GcsClient(address=address)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    report_str = ray.experimental.internal_kv._internal_kv_get(
-        component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
+    report_str = gcs_client.internal_kv_get(
+        component.encode(), namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
     )
     if not report_str:
         # Status was never updated
@@ -2454,6 +2716,15 @@ def launch_prometheus():
     install_and_start_prometheus.main()
 
 
+@metrics_group.command(name="shutdown-prometheus")
+def shutdown_prometheus():
+    try:
+        requests.post("http://localhost:9090/-/quit")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -2490,6 +2761,8 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
+cli.add_command(drain_node)
+cli.add_command(check_open_ports)
 
 try:
     from ray.util.state.state_cli import (
@@ -2510,7 +2783,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=True)
+    add_command_alias(job_cli_group, name="job", hidden=False)
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

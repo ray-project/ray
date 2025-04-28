@@ -10,18 +10,22 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
+    Coroutine,
     Dict,
+    Generic,
     Iterable,
     List,
+    Literal,
     Optional,
+    Protocol,
     Tuple,
-    Type,
     TypeVar,
     overload,
 )
 
+from ray import serve
 from ray._private.signature import extract_signature, flatten_args, recover_args
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
@@ -112,6 +116,28 @@ class _BatchQueue:
             self._handle_batch_task = self._loop.create_task(
                 self._process_batches(handle_batch_func)
             )
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+
+    def _warn_if_max_batch_size_exceeds_max_ongoing_requests(self):
+        """Helper to check whether the max_batch_size is bounded.
+
+        Log a warning to configure `max_ongoing_requests` if it's bounded.
+        """
+        max_ongoing_requests = (
+            serve.get_replica_context()._deployment_config.max_ongoing_requests
+        )
+        if max_ongoing_requests < self.max_batch_size:
+            logger.warning(
+                f"`max_batch_size` ({self.max_batch_size}) is larger than "
+                f"`max_ongoing_requests` ({max_ongoing_requests}). This means "
+                "the replica will never receive a full batch. Please update "
+                "`max_ongoing_requests` to be >= `max_batch_size`."
+            )
+
+    def set_max_batch_size(self, new_max_batch_size: int) -> None:
+        """Updates queue's max_batch_size."""
+        self.max_batch_size = new_max_batch_size
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -264,7 +290,13 @@ class _BatchQueue:
         """Processes queued request batch."""
 
         batch: List[_SingleRequest] = await self.wait_for_batch()
-        assert len(batch) > 0
+        # Remove requests that have been cancelled from the batch. If
+        # all requests have been cancelled, simply return and wait for
+        # the next batch.
+        batch = [req for req in batch if not req.future.cancelled()]
+        if len(batch) == 0:
+            return
+
         futures = [item.future for item in batch]
 
         # Most of the logic in the function should be wrapped in this try-
@@ -320,22 +352,20 @@ class _LazyBatchQueueWrapper:
         max_batch_size: int = 10,
         batch_wait_timeout_s: float = 0.0,
         handle_batch_func: Optional[Callable] = None,
-        batch_queue_cls: Type[_BatchQueue] = _BatchQueue,
     ):
-        self._queue: Type[_BatchQueue] = None
+        self._queue: Optional[_BatchQueue] = None
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.handle_batch_func = handle_batch_func
-        self.batch_queue_cls = batch_queue_cls
 
     @property
-    def queue(self) -> Type[_BatchQueue]:
+    def queue(self) -> _BatchQueue:
         """Returns _BatchQueue.
 
         Initializes queue when called for the first time.
         """
         if self._queue is None:
-            self._queue = self.batch_queue_cls(
+            self._queue = _BatchQueue(
                 self.max_batch_size,
                 self.batch_wait_timeout_s,
                 self.handle_batch_func,
@@ -348,7 +378,7 @@ class _LazyBatchQueueWrapper:
         self.max_batch_size = new_max_batch_size
 
         if self._queue is not None:
-            self._queue.max_batch_size = new_max_batch_size
+            self._queue.set_max_batch_size(new_max_batch_size)
 
     def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
         self.batch_wait_timeout_s = new_batch_wait_timeout_s
@@ -425,35 +455,90 @@ def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
         )
 
 
+SelfType = TypeVar("SelfType", contravariant=True)
 T = TypeVar("T")
 R = TypeVar("R")
-F = TypeVar("F", bound=Callable[[List[T]], List[R]])
-G = TypeVar("G", bound=Callable[[T], R])
 
 
-# Normal decorator use case (called with no arguments).
-@overload
-def batch(func: F) -> G:
-    pass
+class _SyncBatchingMethod(Protocol, Generic[SelfType, T, R]):
+    def __call__(self, self_: SelfType, __batch: List[T], /) -> List[R]:
+        ...
 
 
-# "Decorator factory" use case (called with arguments).
-@overload
+class _AsyncBatchingMethod(Protocol, Generic[SelfType, T, R]):
+    async def __call__(self, self_: SelfType, __batch: List[T], /) -> List[R]:
+        ...
+
+
+@overload  # Sync function for `batch` called WITHOUT arguments
+def batch(_sync_func: Callable[[List[T]], List[R]], /) -> Callable[[T], R]:
+    ...
+
+
+@overload  # Async function for `batch` called WITHOUT arguments
 def batch(
+    _async_func: Callable[[List[T]], Coroutine[Any, Any, List[R]]], /
+) -> Callable[[T], Coroutine[Any, Any, R]]:
+    ...
+
+
+@overload  # Sync method for `batch` called WITHOUT arguments
+def batch(
+    _sync_meth: _SyncBatchingMethod[SelfType, T, R], /
+) -> Callable[[SelfType, T], R]:
+    ...
+
+
+@overload  # Async method for `batch` called WITHOUT arguments
+def batch(
+    _async_meth: _AsyncBatchingMethod[SelfType, T, R], /
+) -> Callable[[SelfType, T], Coroutine[Any, Any, R]]:
+    ...
+
+
+@overload  # `batch` called WITH arguments
+def batch(
+    _: Literal[None] = None,
+    /,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
-) -> Callable[[F], G]:
-    pass
+) -> "_BatchDecorator":
+    ...
+
+
+class _BatchDecorator(Protocol):
+    """Descibes behaviour of decorator produced by calling `batch` with arguments"""
+
+    @overload  # Sync function
+    def __call__(self, _sync_func: Callable[[List[T]], List[R]], /) -> Callable[[T], R]:
+        ...
+
+    @overload  # Async function
+    def __call__(
+        self, _async_func: Callable[[List[T]], Coroutine[Any, Any, List[R]]], /
+    ) -> Callable[[T], Coroutine[Any, Any, R]]:
+        ...
+
+    @overload  # Sync method
+    def __call__(
+        self, _sync_meth: _SyncBatchingMethod[SelfType, T, R], /
+    ) -> Callable[[SelfType, T], R]:
+        ...
+
+    @overload  # Async method
+    def __call__(
+        self, _async_meth: _AsyncBatchingMethod[SelfType, T, R], /
+    ) -> Callable[[SelfType, T], Coroutine[Any, Any, R]]:
+        ...
 
 
 @PublicAPI(stability="stable")
 def batch(
     _func: Optional[Callable] = None,
+    /,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
-    *,
-    batch_queue_cls: Type[_BatchQueue] = _BatchQueue,
-):
+) -> Callable:
     """Converts a function to asynchronously handle batches.
 
     The function can be a standalone function or a class method. In both
@@ -500,7 +585,6 @@ def batch(
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
             `max_batch_size` elements before running the current batch.
-        batch_queue_cls: the class to use for the underlying batch queue.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
@@ -521,7 +605,6 @@ def batch(
             max_batch_size,
             batch_wait_timeout_s,
             _func,
-            batch_queue_cls,
         )
 
         async def batch_handler_generator(
@@ -539,47 +622,19 @@ def batch(
                     break
 
         def enqueue_request(args, kwargs) -> asyncio.Future:
-            self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
-            if self is None:
-                # For functions, inject the batch queue as an
-                # attribute of the function.
-                batch_queue_object = _func
-            else:
-                # For methods, inject the batch queue as an
-                # attribute of the object.
-                batch_queue_object = self
-                # Trim the self argument from methods
+            # If the function is a method, remove self as an argument.
+            self = extract_self_if_method_call(args, _func)
+            if self is not None:
                 flattened_args = flattened_args[2:]
 
             batch_queue = lazy_batch_queue_wrapper.queue
-
-            # Magic batch_queue_object attributes that can be used to change the
-            # batch queue attributes on the fly.
-            # This is purposefully undocumented for now while we figure out
-            # the best API.
-            if hasattr(batch_queue_object, "_ray_serve_max_batch_size"):
-                new_max_batch_size = getattr(
-                    batch_queue_object, "_ray_serve_max_batch_size"
-                )
-                _validate_max_batch_size(new_max_batch_size)
-                batch_queue.max_batch_size = new_max_batch_size
-
-            if hasattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s"):
-                new_batch_wait_timeout_s = getattr(
-                    batch_queue_object, "_ray_serve_batch_wait_timeout_s"
-                )
-                _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
-                batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
             return future
 
-        # TODO (shrekris-anyscale): deprecate batch_queue_cls argument and
-        # convert batch_wrapper into a class once `self` argument is no
-        # longer needed in `enqueue_request`.
         @wraps(_func)
         def generator_batch_wrapper(*args, **kwargs):
             first_future = enqueue_request(args, kwargs)

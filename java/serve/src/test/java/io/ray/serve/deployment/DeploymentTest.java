@@ -31,7 +31,7 @@ public class DeploymentTest extends BaseServeTest2 {
             .setNumReplicas(1)
             .setUserConfig("_test")
             .bind("echo_");
-    DeploymentHandle handle = Serve.run(deployment).get();
+    DeploymentHandle handle = Serve.run(deployment);
     Assert.assertEquals(handle.method("call").remote("6").result(), "echo_6_test");
     Assert.assertTrue((boolean) handle.method("checkHealth").remote().result());
   }
@@ -82,9 +82,6 @@ public class DeploymentTest extends BaseServeTest2 {
 
     Deployment deployed = Serve.getDeployment(deploymentName);
     Serve.run(deployed.options().setNumReplicas(2).bind("echo_"));
-    DeploymentRoute deploymentInfo = Serve.getGlobalClient().getDeploymentInfo(deploymentName);
-    Assert.assertEquals(
-        deploymentInfo.getDeploymentInfo().getDeploymentConfig().getNumReplicas().intValue(), 2);
   }
 
   @Test
@@ -93,7 +90,7 @@ public class DeploymentTest extends BaseServeTest2 {
     AutoscalingConfig autoscalingConfig = new AutoscalingConfig();
     autoscalingConfig.setMinReplicas(1);
     autoscalingConfig.setMaxReplicas(3);
-    autoscalingConfig.setTargetNumOngoingRequestsPerReplica(10);
+    autoscalingConfig.setTargetOngoingRequests(10);
     Application deployment =
         Serve.deployment()
             .setName(deploymentName)
@@ -103,7 +100,7 @@ public class DeploymentTest extends BaseServeTest2 {
             .setVersion("v1")
             .bind("echo_");
 
-    DeploymentHandle handle = Serve.run(deployment).get();
+    DeploymentHandle handle = Serve.run(deployment);
     Assert.assertEquals(handle.method("call").remote("6").result(), "echo_6_test");
   }
 

@@ -8,7 +8,6 @@ import pytest
 import ray
 from ray._private import ray_constants
 from ray._private.test_utils import (
-    RayTestTimeoutException,
     get_error_message,
     init_error_pubsub,
     object_memory_usage,
@@ -90,9 +89,8 @@ print("success")
 
 
 def test_error_isolation(call_ray_start):
-    address = call_ray_start
     # Connect a driver to the Ray cluster.
-    ray.init(address=address)
+    ray.init()
 
     # If a GRPC call exceeds timeout, the calls is cancelled at client side but
     # server may still reply to it, leading to missed message. Using a sequence
@@ -107,56 +105,49 @@ def test_error_isolation(call_ray_start):
     errors = get_error_message(subscribers[0], 1, timeout=2)
     assert len(errors) == 0
 
-    error_string1 = "error_string1"
-    error_string2 = "error_string2"
-
-    @ray.remote
+    @ray.remote(max_retries=0)
     def f():
-        raise Exception(error_string1)
+        os._exit(1)
 
-    # Run a remote function that throws an error.
     with pytest.raises(Exception):
         ray.get(f.remote())
 
-    # Wait for the error to appear in Redis.
+    # Wait for the error to appear in GCS.
     errors = get_error_message(subscribers[1], 1)
 
     # Make sure we got the error.
     assert len(errors) == 1
-    assert error_string1 in errors[0]["error_message"]
+    assert errors[0]["type"] == ray_constants.WORKER_DIED_PUSH_ERROR
 
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
     # receives that error.
     driver_script = """
+import os
 import ray
 import time
 from ray._private.test_utils import init_error_pubsub, get_error_message
 
-ray.init(address="{}")
+ray.init()
 subscribers = [init_error_pubsub() for _ in range(2)]
 time.sleep(1)
 errors = get_error_message(subscribers[0], 1, timeout=2)
 assert len(errors) == 0
 
-@ray.remote
-def f():
-    raise Exception("{}")
+@ray.remote(max_retries=0)
+def g():
+    os._exit(1)
 
 try:
-    ray.get(f.remote())
+    ray.get(g.remote())
 except Exception as e:
     pass
 
 errors = get_error_message(subscribers[1], 1)
 assert len(errors) == 1
 
-assert "{}" in errors[0]["error_message"]
-
 print("success")
-""".format(
-        address, error_string2, error_string2
-    )
+"""
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
@@ -410,7 +401,7 @@ print("success")
             if output_line == "success":
                 return
             time.sleep(1)
-        raise RayTestTimeoutException("Timed out waiting for process to print success.")
+        raise TimeoutError("Timed out waiting for process to print success.")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.

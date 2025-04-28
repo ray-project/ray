@@ -8,11 +8,10 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -30,11 +29,12 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 logger = logging.getLogger(__name__)
 
 
+@OldAPIStack
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
 
@@ -110,7 +110,7 @@ class _PolicyCollectorGroup:
         self.agent_steps = 0
 
 
-@PublicAPI
+@OldAPIStack
 class SimpleListCollector(SampleCollector):
     """Util to build SampleBatches for each policy in a multi-agent env.
 
@@ -124,7 +124,7 @@ class SimpleListCollector(SampleCollector):
         self,
         policy_map: PolicyMap,
         clip_rewards: Union[bool, float],
-        callbacks: "DefaultCallbacks",
+        callbacks: "RLlibCallback",
         multiple_episodes_in_batch: bool = True,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
@@ -165,10 +165,10 @@ class SimpleListCollector(SampleCollector):
         # episode.
         self.agent_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
         # Maps episode ID to Episode.
-        self.episodes: Dict[EpisodeID, Episode] = {}
+        self.episodes = {}
 
     @override(SampleCollector)
-    def episode_step(self, episode: Episode) -> None:
+    def episode_step(self, episode) -> None:
         episode_id = episode.episode_id
         # In the rase case that an "empty" step is taken at the beginning of
         # the episode (none of the agents has an observation in the obs-dict
@@ -218,7 +218,7 @@ class SimpleListCollector(SampleCollector):
     def add_init_obs(
         self,
         *,
-        episode: Episode,
+        episode,
         agent_id: AgentID,
         env_id: EnvID,
         policy_id: PolicyID,
@@ -418,7 +418,7 @@ class SimpleListCollector(SampleCollector):
     @override(SampleCollector)
     def postprocess_episode(
         self,
-        episode: Episode,
+        episode,
         is_done: bool = False,
         check_dones: bool = False,
         build: bool = False,
@@ -587,9 +587,7 @@ class SimpleListCollector(SampleCollector):
         if build:
             return self._build_multi_agent_batch(episode)
 
-    def _build_multi_agent_batch(
-        self, episode: Episode
-    ) -> Union[MultiAgentBatch, SampleBatch]:
+    def _build_multi_agent_batch(self, episode) -> Union[MultiAgentBatch, SampleBatch]:
 
         ma_batch = {}
         for pid, collector in episode.batch_builder.policy_collectors.items():

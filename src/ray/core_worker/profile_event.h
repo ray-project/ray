@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/task_event_buffer.h"
 
@@ -32,6 +35,9 @@ class ProfileEvent {
                WorkerContext &worker_context,
                const std::string &node_ip_address,
                const std::string &event_type);
+
+  ProfileEvent(const ProfileEvent &) = delete;
+  ProfileEvent &operator=(const ProfileEvent &) = delete;
 
   // Set the end time for the event and add it to the profiler.
   ~ProfileEvent();

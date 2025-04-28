@@ -8,10 +8,12 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.tests.conftest import *  # noqa
 
+# Auto-use `restore_data_context` for each test.
+pytestmark = pytest.mark.usefixtures("restore_data_context")
+
 
 def test_context_saved_when_dataset_created(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     ctx = DataContext.get_current()
     ctx.set_config("foo", 1)
@@ -41,77 +43,99 @@ def test_context_saved_when_dataset_created(
     assert d1.context.get_config("foo") == 2
     assert d2.context.get_config("foo") == 1
 
-    # The global context has changed.
-    # Applying new operators to the existing datasets should use the new
-    # global context.
-    d2 = d2.map_batches(lambda batch: batch)
-    assert d2.context.get_config("foo") == 1
+
+def test_context_inheritance(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    ds.context.set_config("foo", 1)
+    assert DataContext.get_current().get_config("foo", None) is None
+
+    # Test that applying a new operator to an existing dataset
+    # inherits the context.
+    ds2 = ds.map_batches(lambda batch: batch)
+    assert ds2.context.get_config("foo") == 1
+
+    # Test that materializing a dataset also inherits the context.
+    mds = ds.materialize()
+    assert mds.context.get_config("foo") == 1
+
+    # Test that the iterator also inherits the context.
+    iter = ds.iterator()
+    assert iter.get_context().get_config("foo") == 1
+    assert iter.materialize().context.get_config("foo") == 1
+
+
+def _test_updating_context_after_dataset_creation(gen_ds):
+    context = DataContext.get_current()
+    context.set_config("foo", 1)
+    ds = gen_ds()
+    assert ds.take_all()[0]["id"] == 1
+    # DataContext is supposed to be sealed when a Dataset is created.
+    # Test that updating the current DataContext doesn't affect existing Datasets.
+    context.set_config("foo", 2)
+    assert ds.take_all()[0]["id"] == 1
 
 
 def test_read(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
-            value = DataContext.get_current().foo
+            def read_fn():
+                value = DataContext.get_current().get_config("foo")
+                return [pd.DataFrame({"id": [value]})]
+
             meta = BlockMetadata(
                 num_rows=1, size_bytes=8, schema=None, input_files=None, exec_stats=None
             )
-            return [ReadTask(lambda: [pd.DataFrame({"id": [value]})], meta)]
+            return [ReadTask(read_fn, meta)]
 
-    context = DataContext.get_current()
-    context.foo = 12345
-    assert ray.data.read_datasource(CustomDatasource()).take_all()[0]["id"] == 12345
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.read_datasource(CustomDatasource()),
+    )
 
 
 def test_map(
     ray_start_regular_shared,
-    restore_data_context,
 ):
-    context = DataContext.get_current()
-    context.foo = 70001
-    ds = ray.data.range(1).map(lambda x: {"id": DataContext.get_current().foo})
-    assert ds.take_all()[0]["id"] == 70001
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.range(1).map(
+            lambda _: {"id": DataContext.get_current().get_config("foo")}
+        )
+    )
 
 
 def test_flat_map(
     ray_start_regular_shared,
-    restore_data_context,
 ):
-    context = DataContext.get_current()
-    context.foo = 70002
-    ds = ray.data.range(1).flat_map(lambda x: [{"id": DataContext.get_current().foo}])
-    assert ds.take_all()[0]["id"] == 70002
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.range(1).flat_map(
+            lambda _: [{"id": DataContext.get_current().get_config("foo")}]
+        )
+    )
 
 
 def test_map_batches(
     ray_start_regular_shared,
-    restore_data_context,
 ):
-    context = DataContext.get_current()
-    context.foo = 70003
-    ds = ray.data.range(1).map_batches(
-        lambda x: {"id": [DataContext.get_current().foo]}
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.range(1).map_batches(
+            lambda x: {"id": [DataContext.get_current().get_config("foo")]}
+        )
     )
-    assert ds.take_all()[0]["id"] == 70003
 
 
 def test_filter(
     ray_start_regular_shared,
-    restore_data_context,
 ):
-    context = DataContext.get_current()
-    context.foo = 70004
-    ds = ray.data.from_items([70004]).filter(
-        lambda x: x["item"] == DataContext.get_current().foo
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.from_items([1])
+        .filter(lambda x: x["item"] == DataContext.get_current().get_config("foo"))
+        .rename_columns({"item": "id"})
     )
-    assert ds.take_all()[0]["item"] == 70004
 
 
 def test_streaming_split(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     # Tests that custom DataContext can be properly propagated
     # when using `streaming_split()`.
@@ -126,7 +150,9 @@ def test_streaming_split(
         return x
 
     num_splits = 2
-    splits = ray.data.range(10, parallelism=10).map(f).streaming_split(num_splits)
+    splits = (
+        ray.data.range(10, override_num_blocks=10).map(f).streaming_split(num_splits)
+    )
 
     @ray.remote(num_cpus=0)
     def consume(split):
@@ -156,7 +182,7 @@ placement_group = ray.util.placement_group(
 )
 ray.get(placement_group.ready())
 context.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-ds = ray.data.range(100, parallelism=2).map(lambda x: {"id": x["id"] + 1})
+ds = ray.data.range(100, override_num_blocks=2).map(lambda x: {"id": x["id"] + 1})
 assert ds.take_all() == [{"id": x} for x in range(1, 101)]
 placement_group_assert_no_leak([placement_group])
 ray.shutdown()

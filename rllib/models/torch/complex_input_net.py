@@ -2,8 +2,6 @@ from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
-# TODO (sven): add IMPALA-style option.
-# from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
 from ray.rllib.models.torch.misc import (
     normc_initializer as torch_normc_initializer,
     SlimFC,
@@ -13,7 +11,7 @@ from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.torch_utils import one_hot
@@ -21,6 +19,7 @@ from ray.rllib.utils.torch_utils import one_hot
 torch, nn = try_import_torch()
 
 
+@OldAPIStack
 class ComplexInputNetwork(TorchModelV2, nn.Module):
     """TorchModelV2 concat'ing CNN outputs to flat input(s), followed by FC(s).
 
@@ -119,7 +118,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 self.add_module("one_hot_{}".format(i), self.one_hot[i])
             # Everything else (1D Box).
             else:
-                size = int(np.product(component.shape))
+                size = int(np.prod(component.shape))
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

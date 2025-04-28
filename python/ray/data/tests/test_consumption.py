@@ -12,15 +12,18 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
-from ray.data.datasource.csv_datasink import _CSVDatasink
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
@@ -36,7 +39,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 def test_schema(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
-    ds2 = ray.data.range(10, parallelism=10)
+    ds2 = ray.data.range(10, override_num_blocks=10)
     ds3 = ds2.repartition(5)
     ds3 = ds3.materialize()
     last_snapshot = assert_core_execution_metrics_equals(
@@ -44,7 +47,6 @@ def test_schema(ray_start_regular):
             task_count={
                 "ReadRange": 10,
                 "reduce": 5,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot,
@@ -63,7 +65,7 @@ def test_schema(ray_start_regular):
         last_snapshot,
     )
 
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert str(ds2) == "Dataset(num_rows=10, schema={id: int64})"
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
@@ -85,13 +87,13 @@ def test_schema(ray_start_regular):
 
 def test_schema_no_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
-    ds = ray.data.range(100, parallelism=10)
+    ds = ray.data.range(100, override_num_blocks=10)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot,
     )
     # We do not kick off the read task by default.
-    assert ds._plan._in_blocks._num_computed() == 0
+    assert not ds._plan.has_started_execution
     schema = ds.schema()
     assert schema.names == ["id"]
 
@@ -100,9 +102,8 @@ def test_schema_no_execution(ray_start_regular):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
-    assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
 
 
 def test_schema_cached(ray_start_regular):
@@ -121,7 +122,7 @@ def test_schema_cached(ray_start_regular):
         return last_snapshot
 
     last_snapshot = get_initial_core_execution_metrics_snapshot()
-    ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
+    ds = ray.data.from_items([{"a": i} for i in range(100)], override_num_blocks=10)
     last_snapshot = check_schema_cached(ds, {}, last_snapshot)
 
     # Add a map_batches operator so that we are forced to compute the schema.
@@ -137,23 +138,46 @@ def test_schema_cached(ray_start_regular):
 
 
 def test_count(ray_start_regular):
-    ds = ray.data.range(100, parallelism=10)
+    ds = ray.data.range(100, override_num_blocks=10)
     # We do not kick off the read task by default.
-    assert ds._plan._in_blocks._num_computed() == 0
+    assert not ds._plan.has_started_execution
     assert ds.count() == 100
     # Getting number of rows should not trigger execution of any read tasks
     # for ray.data.range(), as the number of rows is known beforehand.
-    assert ds._plan._in_blocks._num_computed() == 0
+    assert not ds._plan.has_started_execution
 
-    assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
-    )
+    assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
+
+
+def test_count_edge_case(ray_start_regular):
+    # Test this edge case: https://github.com/ray-project/ray/issues/44509.
+    ds = ray.data.range(10)
+    ds.count()
+
+    actual_count = ds.filter(lambda row: row["id"] % 2 == 0).count()
+
+    assert actual_count == 5
+
+
+def test_count_after_caching_after_execution(ray_start_regular):
+    SCALE_FACTOR = 5
+    FILE_ROW_COUNT = 150
+    DS_ROW_COUNT = FILE_ROW_COUNT * SCALE_FACTOR
+    paths = ["example://iris.csv"] * SCALE_FACTOR
+    ds = ray.data.read_csv(paths)
+    # Row count should be unknown before execution.
+    assert "num_rows=?" in str(ds)
+    # After iterating over bundles and completing execution, row count should be known.
+    list(ds.iter_internal_ref_bundles())
+    assert f"num_rows={DS_ROW_COUNT}" in str(ds)
+    assert ds.count() == DS_ROW_COUNT
+    assert ds._plan._snapshot_metadata.num_rows == DS_ROW_COUNT
 
 
 def test_limit_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
-    parallelism = 20
-    ds = ray.data.range(100, parallelism=parallelism)
+    override_num_blocks = 20
+    ds = ray.data.range(100, override_num_blocks=override_num_blocks)
 
     # Add some delay to the output to prevent all tasks from finishing
     # immediately.
@@ -163,11 +187,7 @@ def test_limit_execution(ray_start_regular):
 
     ds = ds.map(delay)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot=last_snapshot,
     )
 
@@ -178,7 +198,8 @@ def test_limit_execution(ray_start_regular):
         last_snapshot = assert_core_execution_metrics_equals(
             CoreExecutionMetrics(
                 task_count={
-                    "ReadRange->Map(delay)": lambda count: count < parallelism / 2,
+                    "ReadRange->Map(delay)": lambda count: count
+                    < override_num_blocks / 2,
                     "slice_fn": lambda count: count <= 1,
                 }
             ),
@@ -186,12 +207,11 @@ def test_limit_execution(ray_start_regular):
         )
 
     # .materialize().limit() should only trigger execution once.
-    ds = ray.data.range(100, parallelism=20).materialize()
+    ds = ray.data.range(100, override_num_blocks=20).materialize()
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_execute_read_task_split": 20,
-                "_get_datasource_or_legacy_reader": 1,
+                "ReadRange": 20,
             }
         ),
         last_snapshot=last_snapshot,
@@ -226,6 +246,34 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
+@pytest.fixture
+def remove_named_placement_groups():
+    yield
+    for info in ray.util.placement_group_table().values():
+        if info["name"]:
+            pg = ray.util.get_placement_group(info["name"])
+            ray.util.remove_placement_group(pg)
+
+
+def test_ray_remote_args_fn(shutdown_only, remove_named_placement_groups):
+    ray.init()
+
+    pg = ray.util.placement_group([{"CPU": 1}], name="test_pg")
+
+    def ray_remote_args_fn():
+        scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group=pg)
+        return {"scheduling_strategy": scheduling_strategy}
+
+    class ActorClass:
+        def __call__(self, batch):
+            assert ray.util.get_current_placement_group() == pg
+            return batch
+
+    ray.data.range(1).map_batches(
+        ActorClass, concurrency=1, ray_remote_args_fn=ray_remote_args_fn
+    ).take_all()
+
+
 def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
@@ -236,12 +284,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     plan_uuid = ds._plan._dataset_uuid
 
     serialized_ds = ds.serialize_lineage()
-    # Confirm that the original Dataset was properly copied before clearing/mutating.
-    in_blocks = ds._plan._in_blocks
-    # Should not raise.
-    in_blocks._check_if_cleared()
-    assert isinstance(in_blocks, LazyBlockList)
-    assert in_blocks._block_partition_refs[0] is None
 
     ray.shutdown()
     ray.init()
@@ -268,14 +310,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))
     ds1 = ray.data.from_items(list(range(10, 20)))
-    ds2 = ds.union(ds1)
-
-    with pytest.raises(ValueError):
-        ds2.serialize_lineage()
-
-    # Post-lazy-read unions not supported.
-    ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
-    ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
     ds2 = ds.union(ds1)
 
     with pytest.raises(ValueError):
@@ -311,13 +345,13 @@ def test_basic(ray_start_regular_shared):
 
 
 def test_range(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=10)
-    assert ds.num_blocks() == 10
+    ds = ray.data.range(10, override_num_blocks=10)
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
-    ds = ray.data.range(10, parallelism=2)
-    assert ds.num_blocks() == 2
+    ds = ray.data.range(10, override_num_blocks=2)
+    assert ds._plan.initial_num_blocks() == 2
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
@@ -421,11 +455,11 @@ def test_schema_repr(ray_start_regular_shared):
 def _check_none_computed(ds):
     # In streaming executor, ds.take() will not invoke partial execution
     # in LazyBlocklist.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
-    ds = ray.data.range(100, parallelism=20)
+    ds = ray.data.range(100, override_num_blocks=20)
     _check_none_computed(ds)
     assert extract_values("id", ds.take(10)) == list(range(10))
     _check_none_computed(ds)
@@ -440,25 +474,24 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
 
 
 def test_dataset_repr(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    ds = ray.data.range(10, override_num_blocks=10)
+    assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
         "Filter(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "   +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "      +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.materialize()
     assert (
@@ -467,8 +500,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
 
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -479,34 +511,33 @@ def test_dataset_repr(ray_start_regular_shared):
         repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
-    ds3 = ds1.union(ds2)
+
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
-    assert repr(ds3) == (
-        "Union\n+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
-    )
-    ds = ds.zip(ds3)
-    assert repr(ds) == (
-        "Zip\n"
-        "+- MapBatches(<lambda>)\n"
-        "+- Union\n"
-        "   +- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
-    )
+    # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
+    # ds3 = ds1.union(ds2)
+    # assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
+    # ds = ds.zip(ds3)
+    # assert repr(ds) == (
+    #     "Zip\n"
+    #     "+- MapBatches(<lambda>)\n"
+    #     "+- Union\n"
+    #     "   +- Dataset(num_rows=9, schema={id: int64})"
+    # )
 
     def my_dummy_fn(x):
         return x
 
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
 
 
 @pytest.mark.parametrize("lazy", [False, True])
 def test_limit(ray_start_regular_shared, lazy):
-    ds = ray.data.range(100, parallelism=20)
+    ds = ray.data.range(100, override_num_blocks=20)
     if not lazy:
         ds = ds.materialize()
     for i in range(100):
@@ -515,8 +546,11 @@ def test_limit(ray_start_regular_shared, lazy):
 
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
-@pytest.mark.parametrize("limit,min_read_tasks", [(10, 1), (20, 2), (30, 3), (60, 6)])
-def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks):
+@pytest.mark.parametrize("limit", [10, 20, 30, 60])
+def test_limit_no_redundant_read(
+    ray_start_regular_shared,
+    limit,
+):
     # Test that dataset truncation eliminates redundant reads.
     @ray.remote
     class Counter:
@@ -562,12 +596,12 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
 
     source = CountingRangeDatasource()
 
-    total_rows = 100
-    parallelism = 10
+    total_rows = 1000
+    override_num_blocks = 100
     ds = ray.data.read_datasource(
         source,
-        parallelism=parallelism,
-        n=total_rows // parallelism,
+        override_num_blocks=override_num_blocks,
+        n=total_rows // override_num_blocks,
     )
     # Apply multiple limit ops.
     # Once the smallest limit is reached, the entire dataset should stop execution.
@@ -575,13 +609,14 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
     ds = ds.limit(limit)
     ds = ds.limit(total_rows)
     # Check content.
-    assert extract_values("id", ds.take(limit)) == list(range(limit))
+    assert len(ds.take(limit)) == limit
     # Check number of read tasks launched.
     # min_read_tasks is the minimum number of read tasks needed for the limit.
     # We may launch more tasks than this number, in order to to maximize throughput.
     # But the actual number of read tasks should be less than the parallelism.
     count = ray.get(source.counter.get.remote())
-    assert min_read_tasks <= count < parallelism
+    min_read_tasks = limit // (total_rows // override_num_blocks)
+    assert min_read_tasks <= count < override_num_blocks
 
 
 def test_limit_no_num_row_info(ray_start_regular_shared):
@@ -602,7 +637,7 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
                 )
             ]
 
-    ds = ray.data.read_datasource(DumbOnesDatasource(), parallelism=10, n=10)
+    ds = ray.data.read_datasource(DumbOnesDatasource(), override_num_blocks=10, n=10)
     for i in range(1, 100):
         assert extract_values("id", ds.limit(i).take(100)) == [1] * i
 
@@ -620,6 +655,28 @@ def test_convert_types(ray_start_regular_shared):
     assert arrow_ds.map(lambda x: {"a": (x["id"],)}).take() == [{"a": [0]}]
 
 
+@pytest.mark.parametrize(
+    "input_blocks",
+    [
+        [pd.DataFrame({"column": ["spam"]}), pd.DataFrame({"column": ["ham", "eggs"]})],
+        [
+            pa.Table.from_pydict({"column": ["spam"]}),
+            pa.Table.from_pydict({"column": ["ham", "eggs"]}),
+        ],
+    ],
+)
+def test_from_blocks(input_blocks, ray_start_regular_shared):
+    ds = ray.data.from_blocks(input_blocks)
+
+    bundles = ds.iter_internal_ref_bundles()
+    output_blocks = ray.get(_ref_bundles_iterator_to_block_refs_list(bundles))
+    assert len(input_blocks) == len(output_blocks)
+    assert all(
+        input_block.equals(output_block)
+        for input_block, output_block in zip(input_blocks, output_blocks)
+    )
+
+
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
@@ -631,10 +688,10 @@ def test_from_items_parallelism(ray_start_regular_shared, parallelism):
     # Test that specifying parallelism yields the expected number of blocks.
     n = 20
     records = [{"a": i} for i in range(n)]
-    ds = ray.data.from_items(records, parallelism=parallelism)
+    ds = ray.data.from_items(records, override_num_blocks=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == parallelism
+    assert ds._plan.initial_num_blocks() == parallelism
 
 
 def test_from_items_parallelism_truncated(ray_start_regular_shared):
@@ -643,21 +700,21 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     n = 10
     parallelism = 20
     records = [{"a": i} for i in range(n)]
-    ds = ray.data.from_items(records, parallelism=parallelism)
+    ds = ray.data.from_items(records, override_num_blocks=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == n
+    assert ds._plan.initial_num_blocks() == n
 
 
 def test_take_batch(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     assert ds.take_batch(3)["id"].tolist() == [0, 1, 2]
     assert ds.take_batch(6)["id"].tolist() == [0, 1, 2, 3, 4, 5]
     assert ds.take_batch(100)["id"].tolist() == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
     assert isinstance(ds.take_batch(3, batch_format="numpy"), dict)
 
-    ds = ray.data.range_tensor(10, parallelism=2)
+    ds = ray.data.range_tensor(10, override_num_blocks=2)
     assert np.all(ds.take_batch(3)["data"] == np.array([[0], [1], [2]]))
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
     assert isinstance(ds.take_batch(3, batch_format="numpy"), dict)
@@ -710,11 +767,6 @@ def test_iter_rows(ray_start_regular_shared):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
-    # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
-        assert isinstance(row, dict)
-        assert row == t_row
-
 
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -722,7 +774,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
     df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
     dfs = [df1, df2, df3, df4]
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     # Default.
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
@@ -884,9 +936,9 @@ def test_iter_batches_local_shuffle(shutdown_only, ds_format):
 
     def range(n, parallelism=200):
         if ds_format == "arrow":
-            ds = ray.data.range(n, parallelism=parallelism)
+            ds = ray.data.range(n, override_num_blocks=parallelism)
         elif ds_format == "pandas":
-            ds = ray.data.range(n, parallelism=parallelism).map_batches(
+            ds = ray.data.range(n, override_num_blocks=parallelism).map_batches(
                 lambda df: df, batch_size=None, batch_format="pandas"
             )
         return ds
@@ -1120,7 +1172,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 )
                 running_size += block_size
             num_rows = running_size
-            ds = ray.data.from_pandas(dfs)
+            ds = ray.data.from_blocks(dfs)
             for batch_size in np.random.randint(
                 1, num_rows + 1, size=batch_size_samples
             ):
@@ -1158,21 +1210,12 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         assert len(batches[-1]) == num_rows % batch_size
 
 
-def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
-    ds = ray.data.range(32, parallelism=8)
-    expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        # In streaming execution of ds.iter_batches(), there is no partial
-        # execution so _num_computed() in LazyBlocklist is 0.
-        _check_none_computed(ds)
-
-
 def test_union(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
+    ds = ray.data.range(20, override_num_blocks=10)
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_blocks() == 50
+    assert ds._plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 
@@ -1189,6 +1232,17 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
+def test_iter_tf_batches_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iter_tf_batches()
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches(ray_start_regular_shared):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
@@ -1211,6 +1265,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
@@ -1273,7 +1330,7 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     # Test empty dataset
     # Note: we explicitly set parallelism here to ensure there are no empty
     # input blocks.
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).min("id") is None
@@ -1286,13 +1343,13 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.min("A") == 0
     # Test ignore_nulls=False
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.min("A") is None
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A"))
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1316,7 +1373,7 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     # Test empty dataset
     # Note: we explicitly set parallelism here to ensure there are no empty
     # input blocks.
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).max("id") is None
@@ -1329,13 +1386,13 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.max("A") == 99
     # Test ignore_nulls=False
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.max("A") is None
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A"))
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1359,7 +1416,7 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     # Test empty dataset
     # Note: we explicitly set parallelism here to ensure there are no empty
     # input blocks.
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).mean("id") is None
@@ -1372,20 +1429,21 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.mean("A") == 49.5
     # Test ignore_nulls=False
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.mean("A") is None
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A"))
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_global_arrow_std with: {seed}")
+    # NOTE: Do not change the seed
+    seed = 1740035705
+
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1408,12 +1466,12 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     ds = ray.data.from_pandas(pd.DataFrame({"A": []}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") is None
+    assert pd.isnull(ds.std("A"))
     # Test edge cases
     ds = ray.data.from_pandas(pd.DataFrame({"A": [3]}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") == 0
+    assert np.isnan(ds.std("A"))
 
     # Test built-in global std aggregation with nans
     nan_df = pd.DataFrame({"A": xs + [None]})
@@ -1422,23 +1480,21 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_arrow(nan_ds)
     assert math.isclose(nan_ds.std("A"), nan_df["A"].std())
     # Test ignore_nulls=False
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.std("A") is None
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A"))
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
 
 
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "MaterializedDataset(num_blocks=1, num_rows=10, "
-        "schema={1: float64, a: float64})"
-    )
-    assert str(ds) == expected_str, str(ds)
+    assert ds.schema() == Schema(pa.schema([("1", pa.float64()), ("a", pa.float64())]))
+    assert ds.count() == 10
+
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)
@@ -1468,6 +1524,9 @@ def test_pandas_block_select():
 # tests should only be carefully reordered to retain this invariant!
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     ray.shutdown()
 
@@ -1483,6 +1542,9 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
         ray.get(should_error.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
     unsupported_pyarrow_version,
@@ -1532,11 +1594,14 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
         ds.write_parquet("local://" + data_path).materialize()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
-        ray.data.range(5000, parallelism=5000).materialize()
+        ray.data.range(5000, override_num_blocks=5000).materialize()
     assert (
-        "The requested parallelism of 5000 is "
+        "The requested number of read blocks of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
     ), caplog.text
 
@@ -1570,11 +1635,12 @@ def test_read_write_local_node(ray_start_cluster):
     ctx.read_write_local_node = True
 
     def check_dataset_is_local(ds):
-        blocks = ds.get_internal_block_refs()
-        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-        location_data = ray.experimental.get_object_locations(blocks)
+        bundles = ds.iter_internal_ref_bundles()
+        block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+        ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(block_refs)
         locations = []
-        for block in blocks:
+        for block in block_refs:
             locations.extend(location_data[block]["node_ids"])
         assert set(locations) == {ray.get_runtime_context().get_node_id()}
 
@@ -1590,7 +1656,11 @@ def test_read_write_local_node(ray_start_cluster):
     check_dataset_is_local(ds)
 
     # With fusion.
-    ds = ray.data.read_parquet(local_path, parallelism=1).map(lambda x: x).materialize()
+    ds = (
+        ray.data.read_parquet(local_path, override_num_blocks=1)
+        .map(lambda x: x)
+        .materialize()
+    )
     check_dataset_is_local(ds)
 
     # Write back to local scheme.
@@ -1639,7 +1709,7 @@ class FlakyCSVDatasource(CSVDatasource):
                 yield block
 
 
-class FlakyCSVDatasink(_CSVDatasink):
+class FlakyCSVDatasink(CSVDatasink):
     def __init__(self, path, **csv_datasink_kwargs):
         super().__init__(path, **csv_datasink_kwargs)
 
@@ -1654,9 +1724,9 @@ class FlakyCSVDatasink(_CSVDatasink):
 
 
 def test_datasource(ray_start_regular):
-    source = ray.data.datasource.RandomIntRowDatasource()
-    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
-    source = ray.data.datasource.RangeDatasource(n=10)
+    source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
+    assert len(ray.data.read_datasource(source).take()) == 10
+    source = RangeDatasource(n=10)
     assert extract_values(
         "value",
         ray.data.read_datasource(source).take(),
@@ -1685,7 +1755,7 @@ def test_polars_lazy_import(shutdown_only):
             return polars_imported == should_import_polars
 
         # We should not use polars for non-Arrow sort.
-        _ = ray.data.range(num_items, parallelism=parallelism).sort()
+        _ = ray.data.range(num_items, override_num_blocks=parallelism).sort()
         assert all(ray.get([f.remote(False) for _ in range(parallelism)]))
 
         a = range(100)
@@ -1746,10 +1816,9 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 
 def test_dataset_plan_as_string(ray_start_cluster):
-    ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
-    assert ds._plan.get_plan_as_string("Dataset") == (
+    ds = ray.data.read_parquet("example://iris.parquet", override_num_blocks=8)
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "Dataset(\n"
-        "   num_blocks=8,\n"
         "   num_rows=150,\n"
         "   schema={\n"
         "      sepal.length: double,\n"
@@ -1762,14 +1831,13 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
         "            +- Dataset(\n"
-        "                  num_blocks=8,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"
@@ -1814,7 +1882,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = logging.getLogger("ray.data._internal.plan")
     with patch.object(
         logger,
         "warning",

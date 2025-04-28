@@ -1,9 +1,16 @@
 :orphan:
 
-.. _torch_fashion_mnist_ex:
+.. _train-pytorch-fashion-mnist:
 
-Train a PyTorch Model on Fashion MNIST
+Train a PyTorch model on Fashion MNIST
 ======================================
+
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-torch_fashion_mnist_example" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=torch_fashion_mnist_example">
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
 
 This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train.
 
@@ -15,6 +22,6 @@ Code example
 See also
 --------
 
-* :ref:`Get Started with PyTorch <train-pytorch>` for a tutorial on using Ray Train and PyTorch 
+* :ref:`Get Started with PyTorch <train-pytorch>` for a tutorial on using Ray Train and PyTorch
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases
+* :doc:`Ray Train Examples <../../examples>` for more use cases

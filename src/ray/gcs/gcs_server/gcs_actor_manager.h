@@ -15,21 +15,27 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <list>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
+#include "ray/util/event.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -50,6 +56,7 @@ class GcsActor {
           counter)
       : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -68,6 +75,7 @@ class GcsActor {
         counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by TaskSpec.
@@ -87,9 +95,7 @@ class GcsActor {
     actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
-
-    auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
-    actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
+    actor_table_data_.set_num_restarts_due_to_lineage_reconstruction(0);
 
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
@@ -129,14 +135,18 @@ class GcsActor {
           function_descriptor.python_function_descriptor().class_name());
       break;
     default:
-      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // TODO(Alex): Handle the C++ case, which we currently don't have an
       // easy equivalent to class_name for.
       break;
     }
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    if (task_spec.call_site().size() > 0) {
+      actor_table_data_.set_call_site(task_spec.call_site());
+    }
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   ~GcsActor() {
@@ -190,6 +200,16 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
   rpc::TaskSpec *GetMutableTaskSpec();
+  /// Write an event containing this actor's ActorTableData
+  /// to file for the Export API.
+  void WriteActorExportEvent() const;
+  // Verify if export events should be written for EXPORT_ACTOR source types
+  bool IsExportAPIEnabledActor() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_ACTOR",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   const ResourceRequest &GetAcquiredResources() const;
   void SetAcquiredResources(ResourceRequest &&resource_request);
@@ -216,6 +236,27 @@ class GcsActor {
     last_metric_state_ = cur_state;
   }
 
+  rpc::ExportActorData::ActorState ConvertActorStateToExport(
+      rpc::ActorTableData::ActorState actor_state) const {
+    switch (actor_state) {
+    case rpc::ActorTableData::DEPENDENCIES_UNREADY:
+      return rpc::ExportActorData::DEPENDENCIES_UNREADY;
+    case rpc::ActorTableData::PENDING_CREATION:
+      return rpc::ExportActorData::PENDING_CREATION;
+    case rpc::ActorTableData::ALIVE:
+      return rpc::ExportActorData::ALIVE;
+    case rpc::ActorTableData::RESTARTING:
+      return rpc::ExportActorData::RESTARTING;
+    case rpc::ActorTableData::DEAD:
+      return rpc::ExportActorData::DEAD;
+    default:
+      // Unknown rpc::ActorTableData::ActorState value
+      RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
+                     << rpc::ActorTableData::ActorState_Name(actor_state);
+      return rpc::ExportActorData::DEAD;
+    }
+  }
+
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
@@ -229,9 +270,13 @@ class GcsActor {
   bool grant_or_reject_ = false;
   /// The last recorded metric state.
   std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
+  /// If true, actor events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
-using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using RegisterActorCallback =
+    std::function<void(std::shared_ptr<GcsActor>, const Status &status)>;
+using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
@@ -241,10 +286,11 @@ using CreateActorCallback = std::function<void(
 ///                                                        3
 ///  0                       1                   2        --->
 /// --->DEPENDENCIES_UNREADY--->PENDING_CREATION--->ALIVE      RESTARTING
-///             |                      |              |   <---      |
-///           8 |                    7 |            6 |     4       | 5
+///             |                      |              |   <---      ^
+///           8 |                    7 |            6 |     4       | 9
 ///             |                      v              |             |
 ///              ------------------> DEAD <-------------------------
+///                                          5
 ///
 /// 0: When GCS receives a `RegisterActor` request from core worker, it will add an actor
 /// to `registered_actors_` and `unresolved_actors_`.
@@ -278,6 +324,7 @@ using CreateActorCallback = std::function<void(
 /// be created. If the actor is non-detached, when GCS detects that its owner is dead, it
 /// will update its state to `DEAD` and remove it from `registered_actors_` and
 /// `created_actors_`.
+/// 9: A dead actor caused by out-of-scope is lineage reconstructed.
 class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager
@@ -286,19 +333,24 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-      std::shared_ptr<GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<GcsPublisher> gcs_publisher,
+      std::unique_ptr<GcsActorSchedulerInterface> scheduler,
+      GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
+      GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
-      std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      const rpc::ClientFactoryFn &worker_client_factory = nullptr);
+      std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
 
-  ~GcsActorManager() = default;
+  ~GcsActorManager() override = default;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRestartActor(rpc::RestartActorRequest request,
+                          rpc::RestartActorReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleCreateActor(rpc::CreateActorRequest request,
                          rpc::CreateActorReply *reply,
@@ -324,13 +376,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleReportActorOutOfScope(rpc::ReportActorOutOfScopeRequest request,
+                                   rpc::ReportActorOutOfScopeReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
   /// \param success_callback Will be invoked after the actor is created successfully or
   /// be invoked immediately if the actor is already registered to `registered_actors_`
   /// and its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an
+  /// \return Status::AlreadyExists if this is a named actor and an
   /// actor with the specified name already exists. The callback will not be called in
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
@@ -462,12 +518,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
-      const ray::gcs::GcsActor *actor,
-      const std::string ip_address,
-      std::shared_ptr<rpc::GcsNodeInfo> node);
+      const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
+    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
         : client(std::move(client)) {}
     /// A client that can be used to contact the owner.
     std::shared_ptr<rpc::CoreWorkerClientInterface> client;
@@ -476,9 +530,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   };
 
   /// Poll an actor's owner so that we will receive a notification when the
-  /// actor has gone out of scope, or the owner has died. This should not be
+  /// actor has no references, or the owner has died. This should not be
   /// called for detached actors.
-  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+  void PollOwnerForActorRefDeleted(const std::shared_ptr<GcsActor> &actor);
 
   /// Destroy an actor that has gone out of scope. This cleans up all local
   /// state associated with the actor and marks the actor as dead. For owned
@@ -490,9 +544,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
+  /// \param[in] done_callback Called when destroy finishes.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
-                    bool force_kill = true);
+                    bool force_kill = true,
+                    std::function<void()> done_callback = nullptr);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -510,9 +566,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
-  void ReconstructActor(const ActorID &actor_id,
-                        bool need_reschedule,
-                        const rpc::ActorDeathCause &death_cause);
+  void RestartActor(const ActorID &actor_id,
+                    bool need_reschedule,
+                    const rpc::ActorDeathCause &death_cause,
+                    std::function<void()> done_callback = nullptr);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -528,19 +585,16 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor_id ID of the actor to kill.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  void KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Notify CoreWorker to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                    const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true,
-                                   bool no_restart = true);
+                                   bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
@@ -548,25 +602,25 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
 
-  std::shared_ptr<rpc::ActorTableData> GenActorDataOnlyWithStates(
-      const rpc::ActorTableData &actor) {
-    auto actor_delta = std::make_shared<rpc::ActorTableData>();
-    actor_delta->set_state(actor.state());
-    actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
-    actor_delta->mutable_address()->CopyFrom(actor.address());
-    actor_delta->set_num_restarts(actor.num_restarts());
-    actor_delta->set_timestamp(actor.timestamp());
-    actor_delta->set_pid(actor.pid());
-    actor_delta->set_start_time(actor.start_time());
-    actor_delta->set_end_time(actor.end_time());
-    actor_delta->set_repr_name(actor.repr_name());
-    actor_delta->set_preempted(actor.preempted());
+  rpc::ActorTableData GenActorDataOnlyWithStates(const rpc::ActorTableData &actor) {
+    rpc::ActorTableData actor_delta;
+    actor_delta.set_state(actor.state());
+    actor_delta.mutable_death_cause()->CopyFrom(actor.death_cause());
+    actor_delta.mutable_address()->CopyFrom(actor.address());
+    actor_delta.set_num_restarts(actor.num_restarts());
+    actor_delta.set_max_restarts(actor.max_restarts());
+    actor_delta.set_timestamp(actor.timestamp());
+    actor_delta.set_pid(actor.pid());
+    actor_delta.set_start_time(actor.start_time());
+    actor_delta.set_end_time(actor.end_time());
+    actor_delta.set_repr_name(actor.repr_name());
+    actor_delta.set_preempted(actor.preempted());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
-      actor_delta->set_ray_namespace(actor.ray_namespace());
+      actor_delta.set_ray_namespace(actor.ray_namespace());
     }
     if (!actor.name().empty()) {
-      actor_delta->set_name(actor.name());
+      actor_delta.set_name(actor.name());
     }
     return actor_delta;
   }
@@ -613,12 +667,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
+  /// Callbacks of pending `RestartActor` requests.
+  /// Maps actor ID to actor restart callbacks, which is used to filter duplicated
+  /// messages from a driver/worker caused by some network problems.
+  absl::flat_hash_map<ActorID, std::vector<RestartActorCallback>>
+      actor_to_restart_callbacks_;
   /// Callbacks of actor creation requests.
   /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
   /// messages come from a Driver/Worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<CreateActorCallback>>
       actor_to_create_callbacks_;
-  /// All registered actors (unresoved and pending actors are also included).
+  /// All registered actors (unresolved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// All destroyed actors.
@@ -647,14 +706,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
-  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
+  GcsTableStorage *gcs_table_storage_;
+  instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
-  rpc::ClientFactoryFn worker_client_factory_;
+  rpc::CoreWorkerClientFactoryFn worker_client_factory_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
@@ -676,6 +736,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
+
+  // Make sure our unprotected maps are accessed from the same thread.
+  // Currently protects actor_to_register_callbacks_.
+  ThreadChecker thread_checker_;
 
   // Debug info.
   enum CountType {

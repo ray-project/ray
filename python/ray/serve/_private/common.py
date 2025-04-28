@@ -1,48 +1,94 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, NamedTuple, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from starlette.types import Scope
+
+import ray
 from ray.actor import ActorHandle
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
-from ray.serve.generated.serve_pb2 import (
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import (
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
+REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
-class DeploymentID(NamedTuple):
+
+@dataclass(frozen=True)
+class DeploymentID:
     name: str
-    app: str
-
-    def __str__(self):
-        # TODO(zcin): remove this once we no longer use the concatenated
-        # string for metrics
-        if self.app:
-            return f"{self.app}_{self.name}"
-        else:
-            return self.name
+    app_name: str = SERVE_DEFAULT_APP_NAME
 
     def to_replica_actor_class_name(self):
-        if self.app:
-            return f"ServeReplica:{self.app}:{self.name}"
+        return f"ServeReplica:{self.app_name}:{self.name}"
+
+    def __str__(self):
+        return f"Deployment(name='{self.name}', app='{self.app_name}')"
+
+    def __repr__(self):
+        return str(self)
+
+
+@dataclass(frozen=True)
+class ReplicaID:
+    unique_id: str
+    deployment_id: DeploymentID
+
+    def to_full_id_str(self) -> str:
+        s = f"{self.deployment_id.name}#{self.unique_id}"
+        if self.deployment_id.app_name:
+            s = f"{self.deployment_id.app_name}#{s}"
+
+        return f"{REPLICA_ID_FULL_ID_STR_PREFIX}{s}"
+
+    @staticmethod
+    def is_full_id_str(s: str) -> bool:
+        return s.startswith(REPLICA_ID_FULL_ID_STR_PREFIX)
+
+    @classmethod
+    def from_full_id_str(cls, s: str):
+        assert cls.is_full_id_str(s)
+
+        parsed = s[len(REPLICA_ID_FULL_ID_STR_PREFIX) :].split("#")
+        if len(parsed) == 3:
+            app_name, deployment_name, unique_id = parsed
+        elif len(parsed) == 2:
+            app_name = ""
+            deployment_name, unique_id = parsed
         else:
-            return f"ServeReplica:{self.name}"
+            raise ValueError(
+                f"Given replica ID string {s} didn't match expected pattern, "
+                "ensure it has either two or three fields with delimiter '#'."
+            )
+
+        return cls(
+            unique_id,
+            deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
+        )
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
+        """Returns a human-readable string.
+
+        This is used in user-facing log messages, so take care when updating it.
+        """
+        return (
+            f"Replica("
+            f"id='{self.unique_id}', "
+            f"deployment='{self.deployment_id.name}', "
+            f"app='{self.deployment_id.app_name}'"
+            ")"
+        )
 
 
-EndpointTag = DeploymentID
-ReplicaTag = str
 NodeId = str
 Duration = float
 ApplicationName = str
@@ -61,47 +107,14 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
-
-
-class ApplicationStatus(str, Enum):
-    NOT_STARTED = "NOT_STARTED"
-    DEPLOYING = "DEPLOYING"
-    DEPLOY_FAILED = "DEPLOY_FAILED"
-    RUNNING = "RUNNING"
-    UNHEALTHY = "UNHEALTHY"
-    DELETING = "DELETING"
-
-
-@dataclass(eq=True)
-class ApplicationStatusInfo:
-    status: ApplicationStatus
-    message: str = ""
-    deployment_timestamp: float = 0
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def to_proto(self):
-        return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status.name}",
-            message=self.message,
-            deployment_timestamp=self.deployment_timestamp,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: ApplicationStatusInfoProto):
-        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
-        return cls(
-            status=ApplicationStatus(status),
-            message=proto.message,
-            deployment_timestamp=proto.deployment_timestamp,
-        )
+    PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
 class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
 
@@ -142,19 +155,21 @@ class DeploymentStatusInternalTrigger(str, Enum):
 #     representing a state with that status and status trigger.
 DEPLOYMENT_STATUS_RANKING_ORDER = {
     # Status ranking order is defined in a following fashion:
-    #   1. (Highest) State signalling any failures in the system
-    (DeploymentStatus.UNHEALTHY,): 0,
+    #   0. (Highest) State signaling a deploy failure.
+    (DeploymentStatus.DEPLOY_FAILED,): 0,
+    #   1. State signaling any non-deploy failures in the system.
+    (DeploymentStatus.UNHEALTHY,): 1,
     #   2. States signaling the user updated the configuration.
-    (DeploymentStatus.UPDATING,): 1,
-    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 1,
+    (DeploymentStatus.UPDATING,): 2,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 2,
     (
         DeploymentStatus.DOWNSCALING,
         DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-    ): 1,
+    ): 2,
     #   3. Steady state or autoscaling.
-    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
-    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
-    (DeploymentStatus.HEALTHY,): 2,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 3,
+    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 3,
+    (DeploymentStatus.HEALTHY,): 3,
 }
 
 
@@ -274,16 +289,16 @@ class DeploymentStatusInfo:
             }:
                 return self
 
-            # Failures occurred
+            # Failures occurred while a deployment was being updated
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
@@ -333,17 +348,17 @@ class DeploymentStatusInfo:
                     status=DeploymentStatus.DOWNSCALING, message=message
                 )
 
-            # Failures occurred
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
+            # Failures occurred while upscaling/downscaling
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
 
@@ -431,6 +446,37 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
+        elif self.status == DeploymentStatus.DEPLOY_FAILED:
+            # The deployment recovered
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+                    message=message,
+                )
+
+            # A new configuration is being deployed.
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Old failures keep getting triggered, or new failures occurred.
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+
         # If it's any other transition, ignore it.
         return self
 
@@ -456,137 +502,17 @@ class DeploymentStatusInfo:
         )
 
 
-@dataclass(eq=True)
-class StatusOverview:
-    app_status: ApplicationStatusInfo
-    name: str = ""
-    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
-        """Get a deployment's status by name.
-
-        Args:
-            name: Deployment's name.
-
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
-        """
-
-        for deployment_status in self.deployment_statuses:
-            if name == deployment_status.name:
-                return deployment_status
-
-        return None
-
-    def to_proto(self):
-        # Create a protobuf for the Serve Application info
-        app_status_proto = self.app_status.to_proto()
-
-        # Create protobufs for all individual deployment statuses
-        deployment_status_protos = map(
-            lambda status: status.to_proto(), self.deployment_statuses
-        )
-
-        # Create a protobuf list containing all the deployment status protobufs
-        deployment_status_proto_list = DeploymentStatusInfoListProto()
-        deployment_status_proto_list.deployment_status_infos.extend(
-            deployment_status_protos
-        )
-
-        # Return protobuf encapsulating application and deployment protos
-        return StatusOverviewProto(
-            name=self.name,
-            app_status=app_status_proto,
-            deployment_statuses=deployment_status_proto_list,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
-        # Recreate Serve Application info
-        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
-
-        # Recreate deployment statuses
-        deployment_statuses = []
-        for info_proto in proto.deployment_statuses.deployment_status_infos:
-            deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
-
-        # Recreate StatusInfo
-        return cls(
-            app_status=app_status,
-            deployment_statuses=deployment_statuses,
-            name=proto.name,
-        )
-
-
-@dataclass
-class ReplicaName:
-    app_name: str
-    deployment_name: str
-    replica_suffix: str
-    replica_tag: ReplicaTag = ""
-    delimiter: str = "#"
-    prefix: str = "SERVE_REPLICA::"
-
-    def __init__(self, app_name: str, deployment_name: str, replica_suffix: str):
-        self.app_name = app_name
-        self.deployment_name = deployment_name
-        self.replica_suffix = replica_suffix
-        if app_name:
-            self.replica_tag = self.delimiter.join(
-                [app_name, deployment_name, replica_suffix]
-            )
-        else:
-            self.replica_tag = self.delimiter.join([deployment_name, replica_suffix])
-
-    @property
-    def deployment_id(self):
-        return DeploymentID(self.deployment_name, self.app_name)
-
-    @staticmethod
-    def is_replica_name(actor_name: str) -> bool:
-        return actor_name.startswith(ReplicaName.prefix)
-
-    @classmethod
-    def from_str(cls, actor_name):
-        assert ReplicaName.is_replica_name(actor_name)
-        # TODO(simon): this currently conforms the tag and suffix logic. We
-        # can try to keep the internal name always hard coded with the prefix.
-        replica_tag = actor_name.replace(cls.prefix, "")
-        return ReplicaName.from_replica_tag(replica_tag)
-
-    @classmethod
-    def from_replica_tag(cls, tag):
-        parsed = tag.split(cls.delimiter)
-        if len(parsed) == 3:
-            return cls(
-                app_name=parsed[0], deployment_name=parsed[1], replica_suffix=parsed[2]
-            )
-        elif len(parsed) == 2:
-            return cls("", deployment_name=parsed[0], replica_suffix=parsed[1])
-        else:
-            raise ValueError(
-                f"Given replica tag {tag} didn't match pattern, please "
-                "ensure it has either two or three fields with delimiter "
-                f"{cls.delimiter}"
-            )
-
-    def __str__(self):
-        return self.replica_tag
-
-
 @dataclass(frozen=True)
 class RunningReplicaInfo:
-    deployment_name: str
-    replica_tag: ReplicaTag
+    replica_id: ReplicaID
     node_id: Optional[str]
+    node_ip: Optional[str]
     availability_zone: Optional[str]
     actor_handle: ActorHandle
-    max_concurrent_queries: int
+    max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
+    port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -598,11 +524,10 @@ class RunningReplicaInfo:
         hash_val = hash(
             " ".join(
                 [
-                    self.deployment_name,
-                    self.replica_tag,
+                    self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
-                    str(self.max_concurrent_queries),
+                    str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                 ]
@@ -625,21 +550,14 @@ class RunningReplicaInfo:
         )
 
 
+@dataclass(frozen=True)
+class DeploymentTargetInfo:
+    is_available: bool
+    running_replicas: List[RunningReplicaInfo]
+
+
 class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
-
-
-# Keep in sync with ServeSystemActorStatus in
-# python/ray/dashboard/client/src/type/serve.ts
-class ProxyStatus(str, Enum):
-    STARTING = "STARTING"
-    HEALTHY = "HEALTHY"
-    UNHEALTHY = "UNHEALTHY"
-    DRAINING = "DRAINING"
-    # The DRAINED status is a momentary state
-    # just before the proxy is removed
-    # so this status won't show up on the dashboard.
-    DRAINED = "DRAINED"
 
 
 class ServeComponentType(str, Enum):
@@ -648,8 +566,7 @@ class ServeComponentType(str, Enum):
 
 @dataclass
 class MultiplexedReplicaInfo:
-    deployment_id: DeploymentID
-    replica_tag: str
+    replica_id: ReplicaID
     model_ids: List[str]
 
 
@@ -657,16 +574,7 @@ class MultiplexedReplicaInfo:
 class gRPCRequest:
     """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
 
-    grpc_user_request: bytes
-
-
-@dataclass
-class StreamingHTTPRequest:
-    """Sent from the HTTP proxy to replicas on the streaming codepath."""
-
-    pickled_asgi_scope: bytes
-    # Takes request_id, returns a pickled list of ASGI messages.
-    receive_asgi_messages: Callable[[str], Awaitable[bytes]]
+    user_request_proto: Any
 
 
 class RequestProtocol(str, Enum):
@@ -675,10 +583,23 @@ class RequestProtocol(str, Enum):
     GRPC = "gRPC"
 
 
+class DeploymentHandleSource(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    PROXY = "PROXY"
+    REPLICA = "REPLICA"
+
+
 @dataclass
 class RequestMetadata:
+    # request_id can be passed by the client and is only generated by the proxy if the
+    # client did not pass it in the headers. It is used for logging across different
+    # system. We can not guarantee the uniqueness of its value.
     request_id: str
-    endpoint: str
+    # internal_request_id is always generated by the proxy and is used for tracking
+    # request objects. We can assume this is always unique between requests.
+    internal_request_id: str
+
+    # Method of the user callable to execute.
     call_method: str = "__call__"
 
     # HTTP route path of the request.
@@ -699,6 +620,8 @@ class RequestMetadata:
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
+    _by_reference: bool = True
+
     @property
     def is_http_request(self) -> bool:
         return self._request_protocol == RequestProtocol.HTTP
@@ -706,6 +629,52 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    def __init__(
+        self,
+        asgi_scope: Scope,
+        *,
+        proxy_actor_name: Optional[str] = None,
+        receive_asgi_messages: Optional[
+            Callable[[RequestMetadata], Awaitable[bytes]]
+        ] = None,
+    ):
+        self._asgi_scope: Scope = asgi_scope
+
+        if proxy_actor_name is None and receive_asgi_messages is None:
+            raise ValueError(
+                "Either proxy_actor_name or receive_asgi_messages must be provided."
+            )
+
+        # If receive_asgi_messages is passed, it'll be called directly.
+        # If proxy_actor_name is passed, the actor will be fetched and its
+        # `receive_asgi_messages` method will be called.
+        self._proxy_actor_name: Optional[str] = proxy_actor_name
+        # Need to keep the actor handle cached to avoid "lost reference to actor" error.
+        self._cached_proxy_actor: Optional[ActorHandle] = None
+        self._receive_asgi_messages: Optional[
+            Callable[[RequestMetadata], Awaitable[bytes]]
+        ] = receive_asgi_messages
+
+    @property
+    def asgi_scope(self) -> Scope:
+        return self._asgi_scope
+
+    @property
+    def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
+        if self._receive_asgi_messages is None:
+            self._cached_proxy_actor = ray.get_actor(
+                self._proxy_actor_name, namespace=SERVE_NAMESPACE
+            )
+            self._receive_asgi_messages = (
+                self._cached_proxy_actor.receive_asgi_messages.remote
+            )
+
+        return self._receive_asgi_messages
 
 
 class TargetCapacityDirection(str, Enum):
@@ -719,3 +688,12 @@ class TargetCapacityDirection(str, Enum):
 class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
+
+
+@dataclass(frozen=True)
+class CreatePlacementGroupRequest:
+    bundles: List[Dict[str, float]]
+    strategy: str
+    target_node_id: str
+    name: str
+    runtime_env: Optional[str] = None

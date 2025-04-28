@@ -81,7 +81,6 @@ def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]
         filter[predicate_index[0] : predicate_index[1]],
         filter[predicate_index[1] :],
     )
-
     assert predicate == "=" or predicate == "!="
     if len(key) == 0 or len(value) == 0:
         raise ValueError(
@@ -353,6 +352,7 @@ address_option = click.option(
 @click.argument(
     "id",
     type=str,
+    required=False,
 )
 @address_option
 @timeout_option
@@ -398,6 +398,11 @@ def ray_get(
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
+    if not id:
+        raise click.BadParameter(
+            f"Missing argument 'ID'. Do you mean 'ray list {resource}'?"
+        )
+
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
 

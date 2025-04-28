@@ -4,11 +4,6 @@
 Experiment Tracking
 ===================
 
-.. note::
-    This guide is relevant for all trainers in which you define a custom training loop.
-    This includes :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and
-    :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`.
-
 Most experiment tracking libraries work out-of-the-box with Ray Train.
 This guide provides instructions on how to set up the code so that your favorite experiment tracking libraries
 can work for distributed training with Ray Train. The end of the guide has common errors to aid in debugging
@@ -23,7 +18,7 @@ inside of Ray Train:
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    def train_func(config):
+    def train_func():
         # Training code and native experiment tracking library calls go here.
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -56,7 +51,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
             # This ensures that all ray worker processes have `WANDB_API_KEY` set.
             ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": "your_api_key"}})
 
-            def train_func(config):
+            def train_func():
                 # Step 1 and 2
                 if train.get_context().get_world_rank() == 0:
                     wandb.init(
@@ -91,7 +86,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
             # Run the following on the head node:
             # $ databricks configure --token
             # mv ~/.databrickscfg YOUR_SHARED_STORAGE_PATH
-            # This function assumes `databricks_config_file` in config
+            # This function assumes `databricks_config_file` is specified in the Trainer's `train_loop_config`.
             def train_func(config):
                 # Step 1 and 2
                 os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
@@ -123,7 +118,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
         :skipif: True
 
         from ray import train
-        def train_func(config):
+        def train_func():
             ...
             if train.get_context().get_world_rank() == 0:
                 # Add your logging logic only for rank0 worker.
@@ -245,7 +240,7 @@ Refer to the tracking libraries' documentation for semantics.
 ..
     .. testcode::
 
-       def train_func(config):
+       def train_func():
             if ray.train.get_context().get_world_rank() == 0:
                    wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
 
@@ -253,27 +248,6 @@ Refer to the tracking libraries' documentation for semantics.
 
     When performing **fault-tolerant training** with auto-restoration, use a
     consistent ID to configure all tracking runs that logically belong to the same training run.
-    One way to acquire an unique ID is with the following method:
-    :meth:`ray.train.get_context().get_trial_id() <ray.train.context.TrainContext.get_trial_id>`.
-
-    .. testcode::
-        :skipif: True
-
-        import ray
-        from ray.train import ScalingConfig, RunConfig, FailureConfig
-        from ray.train.torch import TorchTrainer
-
-        def train_func(config):
-            if ray.train.get_context().get_world_rank() == 0:
-                wandb.init(id=ray.train.get_context().get_trial_id())
-            ...
-
-        trainer = TorchTrainer(
-            train_func,
-            run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
-        )
-
-        trainer.fit()
 
 
 Step 3: Log metrics

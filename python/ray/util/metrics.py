@@ -1,4 +1,6 @@
 import logging
+import re
+import warnings
 
 from typing import Dict, Any, List, Optional, Tuple, Union
 
@@ -13,6 +15,26 @@ from ray._raylet import (
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# Copied from Prometheus Python Client. While the regex is not part of the public API
+# for Prometheus, it's not expected to change.
+# https://github.com/prometheus/client_python/blob/46eae7bae88f76951f7246d9f359f2dd5eeff110/prometheus_client/validation.py#L4
+_VALID_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+
+
+def _is_invalid_metric_name(name: str) -> bool:
+    if len(name) == 0:
+        raise ValueError("Empty name is not allowed. Please provide a metric name.")
+    if not _VALID_METRIC_NAME_RE.match(name):
+        warnings.warn(
+            f"Invalid metric name: {name}. Metric will be discarded "
+            "and data will not be collected or published. "
+            "Metric names can only contain letters, numbers, _, and :. "
+            "Metric names cannot start with numbers.",
+            UserWarning,
+        )
+        return True
+    return False
 
 
 @DeveloperAPI
@@ -29,8 +51,9 @@ class Metric:
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
-        if len(name) == 0:
-            raise ValueError("Empty name is not allowed. Please provide a metric name.")
+        # Metrics with invalid names will be discarded and will not be collected
+        # by Prometheus.
+        self._discard_metric = _is_invalid_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -77,11 +100,10 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(
+    def _record(
         self,
         value: Union[int, float],
         tags: Optional[Dict[str, str]] = None,
-        _internal=False,
     ) -> None:
         """Record the metric point of the metric.
 
@@ -90,28 +112,10 @@ class Metric:
         Args:
             value: The value to be recorded as a metric point.
         """
+        if self._discard_metric:
+            return
+
         assert self._metric is not None
-        if isinstance(self._metric, CythonCount) and not _internal:
-            logger.warning(
-                "Counter.record() is deprecated in favor of "
-                "Counter.inc() and will be removed in a future "
-                "release. Please use Counter.inc() instead."
-            )
-
-        if isinstance(self._metric, CythonGauge) and not _internal:
-            logger.warning(
-                "Gauge.record() is deprecated in favor of "
-                "Gauge.set() and will be removed in a future "
-                "release. Please use Gauge.set() instead."
-            )
-
-        if isinstance(self._metric, CythonHistogram) and not _internal:
-            logger.warning(
-                "Histogram.record() is deprecated in favor of "
-                "Histogram.observe() and will be removed in a "
-                "future release. Please use Histogram.observe() "
-                "instead."
-            )
 
         final_tags = self._get_final_tags(tags)
         self._validate_tags(final_tags)
@@ -162,6 +166,12 @@ class Counter(Metric):
     This corresponds to Prometheus' counter metric:
     https://prometheus.io/docs/concepts/metric_types/#counter
 
+    Before Ray 2.10, this exports a Prometheus gauge metric instead of
+    a counter metric, which is wrong.
+    Since 2.10, this exports both counter (with a suffix "_total") and
+    gauge metrics (for bug compatibility).
+    Use `RAY_EXPORT_COUNTER_AS_GAUGE=0` to disable exporting the gauge metric.
+
     Args:
         name: Name of the metric.
         description: Description of the metric.
@@ -175,7 +185,10 @@ class Counter(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonCount(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonCount(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__
@@ -196,34 +209,7 @@ class Counter(Metric):
         if value <= 0:
             raise ValueError(f"value must be >0, got {value}")
 
-        self.record(value, tags=tags, _internal=True)
-
-
-@DeveloperAPI
-class Count(Counter):
-    """The count of the number of metric points.
-
-    This corresponds to Prometheus' 'Count' metric.
-
-    This class is DEPRECATED, please use ray.util.metrics.Counter instead.
-
-    Args:
-        name: Name of the metric.
-        description: Description of the metric.
-        tag_keys: Tag keys of the metric.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        description: str = "",
-        tag_keys: Optional[Tuple[str, ...]] = None,
-    ):
-        logger.warning(
-            "`metrics.Count` has been renamed to `metrics.Counter`. "
-            "`metrics.Count` will be removed in a future release."
-        )
-        super().__init__(name, description, tag_keys)
+        self._record(value, tags=tags)
 
 
 @DeveloperAPI
@@ -265,9 +251,12 @@ class Histogram(Metric):
                 )
 
         self.boundaries = boundaries
-        self._metric = CythonHistogram(
-            self._name, self._description, self.boundaries, self._tag_keys
-        )
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonHistogram(
+                self._name, self._description, self.boundaries, self._tag_keys
+            )
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
@@ -281,7 +270,7 @@ class Histogram(Metric):
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
-        self.record(value, tags, _internal=True)
+        self._record(value, tags)
 
     def __reduce__(self):
         deserializer = Histogram
@@ -323,21 +312,28 @@ class Gauge(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonGauge(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
-    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+    def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
 
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to.
+            value(int, float): Value to set the gauge to. If `None`, this method is a
+                no-op.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
+        if value is None:
+            return
+
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
-        self.record(value, tags, _internal=True)
+        self._record(value, tags)
 
     def __reduce__(self):
         deserializer = Gauge

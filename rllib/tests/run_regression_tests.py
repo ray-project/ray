@@ -1,35 +1,27 @@
 #!/usr/bin/env python
-# Runs one or more regression tests. Retries tests up to 3 times.
-#
-# Example usage:
-# $ python run_regression_tests.py regression-tests/cartpole-es-[tf|torch].yaml
-#
-# When using in BAZEL (with py_test), e.g. see in ray/rllib/BUILD:
-# py_test(
-#     name = "run_regression_tests",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["learning_tests"],
-#     size = "medium",  # 5min timeout
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = glob(["tuned_examples/regression_tests/*.yaml"]),
-#     # Pass `BAZEL` option and the path to look for yaml regression files.
-#     args = ["BAZEL", "tuned_examples/regression_tests"]
-# )
+
+# @OldAPIStack
 
 import argparse
+import importlib
+import json
 import os
 from pathlib import Path
 import sys
 import re
+import uuid
 import yaml
 
 import ray
 from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
-from ray.rllib.common import SupportedFileType
-from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
@@ -99,15 +91,6 @@ parser.add_argument(
     default=None,
     help="The WandB run name to use.",
 )
-# parser.add_argument(
-#    "--wandb-from-checkpoint",
-#    type=str,
-#    default=None,
-#    help=(
-#        "The WandB checkpoint location (e.g. `[team name]/[project name]/checkpoint_"
-#        "[run name]:v[version]`) from which to resume an experiment."
-#    ),
-# )
 parser.add_argument(
     "--checkpoint-freq",
     type=int,
@@ -121,6 +104,61 @@ parser.add_argument(
 
 # Obsoleted arg, use --dir instead.
 parser.add_argument("--yaml-dir", type=str, default="")
+
+
+def _load_experiments_from_file(
+    config_file: str,
+    file_type: str,
+    stop=None,
+    checkpoint_config=None,
+) -> dict:
+    # Yaml file.
+    if file_type == "yaml":
+        with open(config_file) as f:
+            experiments = yaml.safe_load(f)
+            if stop is not None and stop != "{}":
+                raise ValueError("`stop` criteria only supported for python files.")
+        # Make sure yaml experiments are always old API stack.
+        for experiment in experiments.values():
+            experiment["config"]["enable_rl_module_and_learner"] = False
+            experiment["config"]["enable_env_runner_and_connector_v2"] = False
+    # Python file case (ensured by file type enum)
+    else:
+        module_name = os.path.basename(config_file).replace(".py", "")
+        spec = importlib.util.spec_from_file_location(module_name, config_file)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+        if not hasattr(module, "config"):
+            raise ValueError(
+                "Your Python file must contain a 'config' variable "
+                "that is an AlgorithmConfig object."
+            )
+        algo_config = module.config
+        if stop is None:
+            stop = getattr(module, "stop", {})
+        else:
+            stop = json.loads(stop)
+
+        # Note: we do this gymnastics to support the old format that
+        # "_run_rllib_experiments" expects. Ideally, we'd just build the config and
+        # run the algo.
+        config = algo_config.to_dict()
+        experiments = {
+            f"default_{uuid.uuid4().hex}": {
+                "run": algo_config.algo_class,
+                "env": config.get("env"),
+                "config": config,
+                "stop": stop,
+            }
+        }
+
+    for key, val in experiments.items():
+        experiments[key]["checkpoint_config"] = checkpoint_config or {}
+
+    return experiments
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -155,14 +193,14 @@ if __name__ == "__main__":
     for file in files:
         config_is_python = False
         # For python files, need to make sure, we only deliver the module name into the
-        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
+        # `_load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
             if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
                 continue
-            experiments = load_experiments_from_file(file, SupportedFileType.python)
+            experiments = _load_experiments_from_file(file, "py")
             config_is_python = True
         else:
-            experiments = load_experiments_from_file(file, SupportedFileType.yaml)
+            experiments = _load_experiments_from_file(file, "yaml")
 
         assert (
             len(experiments) == 1
@@ -193,7 +231,7 @@ if __name__ == "__main__":
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
             exp["stop"][
-                "sampler_results/episode_reward_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             ] = args.override_mean_reward
 
         # Checkpoint settings.
@@ -201,11 +239,6 @@ if __name__ == "__main__":
             checkpoint_frequency=args.checkpoint_freq,
             checkpoint_at_end=args.checkpoint_freq > 0,
         )
-
-        # QMIX does not support tf yet -> skip.
-        if exp["run"] == "QMIX" and args.framework != "torch":
-            print(f"Skipping framework='{args.framework}' for QMIX.")
-            continue
 
         # Always run with eager-tracing when framework=tf2, if not in local-mode
         # and unless the yaml explicitly tells us to disable eager tracing.
@@ -269,33 +302,36 @@ if __name__ == "__main__":
                 # If we have evaluation workers, use their rewards.
                 # This is useful for offline learning tests, where
                 # we evaluate against an actual environment.
-                check_eval = exp["config"].get("evaluation_interval", None) is not None
+                check_eval = bool(exp["config"].get("evaluation_interval"))
                 reward_mean = (
-                    t.last_result["evaluation"]["sampler_results"][
-                        "episode_reward_mean"
+                    t.last_result[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
+                        EPISODE_RETURN_MEAN
                     ]
                     if check_eval
                     else (
-                        # Some algos don't store sampler results under `sampler_results`
+                        # Some algos don't store sampler results under `env_runners`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.last_result["sampler_results"]["episode_reward_mean"]
-                        if "sampler_results" in t.last_result
-                        else t.last_result["episode_reward_mean"]
+                        t.last_result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                        if ENV_RUNNER_RESULTS in t.last_result
+                        else t.last_result[EPISODE_RETURN_MEAN]
                     )
                 )
 
                 # If we are using evaluation workers, we may have
                 # a stopping criterion under the "evaluation/" scope. If
-                # not, use `episode_reward_mean`.
+                # not, use `episode_return_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        "evaluation/sampler_results/episode_reward_mean",
-                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}",
+                        t.stopping_criterion.get(
+                            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                        ),
                     )
-                # Otherwise, expect `episode_reward_mean` to be set.
+                # Otherwise, expect `env_runners/episode_return_mean` to be set.
                 else:
                     min_reward = t.stopping_criterion.get(
-                        "sampler_results/episode_reward_mean"
+                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                     )
 
                 # If min reward not defined, always pass.

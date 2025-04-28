@@ -5,11 +5,10 @@ from typing import Dict, Union
 import pytest
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.train._internal.storage import StorageContext
-from ray.tune.trainable import wrap_function
-
 from ray.train.tests.util import create_dict_checkpoint
+from ray.tune.trainable import wrap_function
 
 
 @pytest.fixture
@@ -77,7 +76,7 @@ class SavingTrainable(tune.Trainable):
 
 def function_trainable(config):
     with create_dict_checkpoint({"checkpoint_data": 5}) as checkpoint:
-        train.report({"metric": 4}, checkpoint=checkpoint)
+        tune.report({"metric": 4}, checkpoint=checkpoint)
 
 
 @pytest.mark.parametrize("return_type", ["object", "root"])

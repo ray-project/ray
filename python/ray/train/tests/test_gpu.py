@@ -64,6 +64,8 @@ def test_torch_get_device(
     ray.init(num_cpus=4, num_gpus=2)
 
     def train_fn():
+        # Confirm that the TorchConfig Prologue is effective
+        assert torch.cuda.current_device() == train.torch.get_device().index
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
@@ -102,6 +104,8 @@ def test_torch_get_device(
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
+        # Confirm that the TorchConfig Prologue is effective
+        assert torch.cuda.current_device() == train.torch.get_device().index
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 

@@ -4,25 +4,25 @@ import warnings
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 import gymnasium as gym
-import numpy as np
-import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+import numpy as np
 from packaging import version
+import tree  # pip install dm_tree
 
-import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI, OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
+    NetworkType,
     SpaceStruct,
     TensorStructType,
     TensorType,
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.core.learner.learner import ParamDict
+    from ray.rllib.core.learner.learner import ParamDict, ParamList
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -38,13 +38,11 @@ if torch:
     TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
 else:
     TORCH_COMPILE_REQUIRED_VERSION = ValueError(
-        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+        "torch is not installed. TORCH_COMPILE_REQUIRED_VERSION is not defined."
     )
 
 
-# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
-#  Replaced with `clip_gradients()`.
-@PublicAPI
+@OldAPIStack
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
@@ -95,18 +93,13 @@ def apply_grad_clipping(
     return {"grad_gnorm": grad_gnorm}
 
 
-@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
-def atanh(x: TensorType) -> TensorType:
-    pass
-
-
 @PublicAPI
 def clip_gradients(
     gradients_dict: "ParamDict",
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-) -> Optional[float]:
+) -> TensorType:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
     Changes the provided gradient dict in place.
@@ -125,55 +118,86 @@ def clip_gradients(
     if grad_clip is None:
         return
 
+    if grad_clip_by not in ["value", "norm", "global_norm"]:
+        raise ValueError(
+            f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
+        )
+
     # Clip by value (each gradient individually).
     if grad_clip_by == "value":
-        for k, v in gradients_dict.copy().items():
+        for k, v in gradients_dict.items():
             gradients_dict[k] = (
                 None if v is None else torch.clip(v, -grad_clip, grad_clip)
             )
 
     # Clip by L2-norm (per gradient tensor).
     elif grad_clip_by == "norm":
-        for k, v in gradients_dict.copy().items():
+        for k, v in gradients_dict.items():
             if v is not None:
                 # Compute the L2-norm of the gradient tensor.
-                norm = v.norm(2)
+                norm = v.norm(2).nan_to_num(neginf=-10e8, posinf=10e8)
                 # Clip all the gradients.
                 if norm > grad_clip:
                     v.mul_(grad_clip / norm)
 
     # Clip by global L2-norm (across all gradient tensors).
     else:
-        assert (
-            grad_clip_by == "global_norm"
-        ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
-
-        grads = [g for g in gradients_dict.values() if g is not None]
-        norm_type = 2.0
-        if len(grads) == 0:
-            return torch.tensor(0.0)
-        device = grads[0].device
-
-        total_norm = torch.norm(
-            torch.stack([torch.norm(g.detach(), norm_type).to(device) for g in grads]),
-            norm_type,
-        )
-        if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
-            raise RuntimeError(
-                f"The total norm of order {norm_type} for gradients from "
-                "`parameters` is non-finite, so it cannot be clipped. "
-            )
-        clip_coef = grad_clip / (total_norm + 1e-6)
-        # Note: multiplying by the clamped coef is redundant when the coef is clamped to
-        # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
-        # CPU <=> device synchronization when the gradients do not reside in CPU memory.
-        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
-        for g in grads:
-            g.detach().mul_(clip_coef_clamped.to(g.device))
+        gradients_list = list(gradients_dict.values())
+        total_norm = compute_global_norm(gradients_list)
+        if len(gradients_list) == 0:
+            return total_norm
+        # We do want the coefficient to be in between 0.0 and 1.0, therefore
+        # if the global_norm is smaller than the clip value, we use the clip value
+        # as normalization constant.
+        clip_coeff = grad_clip / torch.clamp(total_norm + 1e-6, min=grad_clip)
+        # Note: multiplying by the clamped coefficient is redundant when the coefficient
+        # is clamped to 1, but doing so avoids a `if clip_coeff < 1:` conditional which
+        # can require a CPU <=> device synchronization when the gradients reside in GPU
+        # memory.
+        clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
+        for g in gradients_list:
+            if g is not None:
+                g.detach().mul_(clip_coeff_clamped.to(g.device))
         return total_norm
 
 
 @PublicAPI
+def compute_global_norm(gradients_list: "ParamList") -> TensorType:
+    """Computes the global norm for a gradients dict.
+
+    Args:
+        gradients_list: The gradients list containing parameters.
+
+    Returns:
+        Returns the global norm of all tensors in `gradients_list`.
+    """
+    # Define the norm type to be L2.
+    norm_type = 2.0
+    # If we have no grads, return zero.
+    if len(gradients_list) == 0:
+        return torch.tensor(0.0)
+
+    # Compute the global norm.
+    total_norm = torch.norm(
+        torch.stack(
+            [
+                torch.norm(g.detach(), norm_type)
+                # Note, we want to avoid overflow in the norm computation, this does
+                # not affect the gradients themselves as we clamp by multiplying and
+                # not by overriding tensor values.
+                .nan_to_num(neginf=-10e8, posinf=10e8)
+                for g in gradients_list
+                if g is not None
+            ]
+        ),
+        norm_type,
+    ).nan_to_num(neginf=-10e8, posinf=10e8)
+
+    # Return the global norm.
+    return total_norm
+
+
+@OldAPIStack
 def concat_multi_gpu_td_errors(
     policy: Union["TorchPolicy", "TorchPolicyV2"]
 ) -> Dict[str, TensorType]:
@@ -202,62 +226,99 @@ def concat_multi_gpu_td_errors(
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
-def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    pass
-
-
 @PublicAPI
-def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
-    """Converts any struct to torch.Tensors.
+def convert_to_torch_tensor(
+    x,
+    device: Optional[str] = None,
+    pin_memory: bool = False,
+    use_stream: bool = False,
+    stream: Optional[Union["torch.cuda.Stream", "torch.cuda.classes.Stream"]] = None,
+):
+    """
+    Converts any (possibly nested) structure to torch.Tensors.
 
-    x: Any (possibly nested) struct, the values in which will be
-        converted and returned as a new struct with all leaves converted
-        to torch tensors.
+    Args:
+        x: The input structure whose leaves will be converted.
+        device: The device to create the tensor on (e.g. "cuda:0" or "cpu").
+        pin_memory: If True, calls `pin_memory()` on the created tensors.
+        use_stream: If True, uses a separate CUDA stream for `Tensor.to()`.
+        stream: An optional CUDA stream for the host-to-device copy in `Tensor.to()`.
 
     Returns:
-        Any: A new struct with the same structure as `x`, but with all
-        values converted to torch Tensor types. This does not convert possibly
-        nested elements that are None because torch has no representation for that.
+        A new structure with the same layout as `x` but with all leaves converted
+        to torch.Tensors. Leaves that are None are left unchanged.
     """
 
+    # Convert the provided device (if any) to a torch.device; default to CPU.
+    device = torch.device(device) if device is not None else torch.device("cpu")
+    is_cuda = (device.type == "cuda") and torch.cuda.is_available()
+
+    # Determine the appropriate stream.
+    if is_cuda:
+        if use_stream:
+            if stream is not None:
+                # Ensure the provided stream is of an acceptable type.
+                assert isinstance(
+                    stream, (torch.cuda.Stream, torch.cuda.classes.Stream)
+                ), f"`stream` must be a torch.cuda.Stream but got {type(stream)}."
+            else:
+                stream = torch.cuda.Stream()
+        else:
+            stream = torch.cuda.default_stream(device=device)
+    else:
+        stream = None
+
     def mapping(item):
+        # Pass through None values.
         if item is None:
-            # Torch has no representation for `None`, so we return None
             return item
 
-        # Special handling of "Repeated" values.
+        # Special handling for "RepeatedValues" types.
         if isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values), item.lengths, item.max_len
+                tree.map_structure(mapping, item.values),
+                item.lengths,
+                item.max_len,
             )
 
-        # Already torch tensor -> make sure it's on right device.
+        # Convert to a tensor if not already one.
         if torch.is_tensor(item):
             tensor = item
-        # Numpy arrays.
         elif isinstance(item, np.ndarray):
-            # Object type (e.g. info dicts in train batch): leave as-is.
-            # str type (e.g. agent_id in train batch): leave as-is.
+            # Leave object or string arrays as is.
             if item.dtype == object or item.dtype.type is np.str_:
                 return item
-            # Non-writable numpy-arrays will cause PyTorch warning.
-            elif item.flags.writeable is False:
+            # If the numpy array is not writable, suppress warnings.
+            if not item.flags.writeable:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     tensor = torch.from_numpy(item)
-            # Already numpy: Wrap as torch tensor.
             else:
                 tensor = torch.from_numpy(item)
-        # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
 
-        # Floatify all float64 tensors.
-        if tensor.is_floating_point():
+        # Convert floating-point tensors from float64 to float32 (unless they are float16).
+        if tensor.is_floating_point() and tensor.dtype != torch.float16:
             tensor = tensor.float()
 
-        return tensor if device is None else tensor.to(device)
+        # Optionally pin memory for faster host-to-GPU copies.
+        if pin_memory and is_cuda:
+            tensor = tensor.pin_memory()
+
+        # Move the tensor to the desired device.
+        # For CUDA devices, use the provided stream context if available.
+        if is_cuda:
+            if stream is not None:
+                with torch.cuda.stream(stream):
+                    tensor = tensor.to(device, non_blocking=True)
+            else:
+                tensor = tensor.to(device, non_blocking=True)
+        else:
+            # For CPU (or non-CUDA), this is a no-op if already on the target device.
+            tensor = tensor.to(device)
+
+        return tensor
 
     return tree.map_structure(mapping, x)
 
@@ -310,7 +371,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
+    return torch.max(min_, 1 - (diff_var / (y_var + SMALL_NUMBER)))[0]
 
 
 @PublicAPI
@@ -429,50 +490,6 @@ def flatten_inputs_to_1d_tensor(
 
 
 @PublicAPI
-def get_device(config):
-    """Returns a torch device edepending on a config and current worker index."""
-
-    # Figure out the number of GPUs to use on the local side (index=0) or on
-    # the remote workers (index > 0).
-    worker_idx = config.get("worker_index", 0)
-    if (
-        not config["_fake_gpus"]
-        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-    ):
-        num_gpus = 0
-    elif worker_idx == 0:
-        num_gpus = config["num_gpus"]
-    else:
-        num_gpus = config["num_gpus_per_worker"]
-    # All GPU IDs, if any.
-    gpu_ids = list(range(torch.cuda.device_count()))
-
-    # Place on one or more CPU(s) when either:
-    # - Fake GPU mode.
-    # - num_gpus=0 (either set by user or we are in local_mode=True).
-    # - No GPUs available.
-    if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-        return torch.device("cpu")
-    # Place on one or more actual GPU(s), when:
-    # - num_gpus > 0 (set by user) AND
-    # - local_mode=False AND
-    # - actual GPUs available AND
-    # - non-fake GPU mode.
-    else:
-        # We are a remote worker (WORKER_MODE=1):
-        # GPUs should be assigned to us by ray.
-        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-            gpu_ids = ray.get_gpu_ids()
-
-        if len(gpu_ids) < num_gpus:
-            raise ValueError(
-                "TorchPolicy was not able to find enough GPU IDs! Found "
-                f"{gpu_ids}, but num_gpus={num_gpus}."
-            )
-        return torch.device("cuda")
-
-
-@PublicAPI
 def global_norm(tensors: List[TensorType]) -> TensorType:
     """Returns the global L2 norm over a list of tensors.
 
@@ -491,7 +508,7 @@ def global_norm(tensors: List[TensorType]) -> TensorType:
     return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
 
 
-@PublicAPI
+@OldAPIStack
 def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """Computes the huber loss for a given term and delta parameter.
 
@@ -516,7 +533,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
-@PublicAPI
+@OldAPIStack
 def l2_loss(x: TensorType) -> TensorType:
     """Computes half the L2 norm over a tensor's values without the sqrt.
 
@@ -529,27 +546,6 @@ def l2_loss(x: TensorType) -> TensorType:
         0.5 times the L2 norm over the given tensor's values (w/o sqrt).
     """
     return 0.5 * torch.sum(torch.pow(x, 2.0))
-
-
-@PublicAPI
-def minimize_and_clip(
-    optimizer: "torch.optim.Optimizer", clip_val: float = 10.0
-) -> None:
-    """Clips grads found in `optimizer.param_groups` to given value in place.
-
-    Ensures the norm of the gradients for each variable is clipped to
-    `clip_val`.
-
-    Args:
-        optimizer: The torch.optim.Optimizer to get the variables from.
-        clip_val: The global norm clip value. Will clip around -clip_val and
-            +clip_val.
-    """
-    # Loop through optimizer's variables and norm per variable.
-    for param_group in optimizer.param_groups:
-        for p in param_group["params"]:
-            if p.grad is not None:
-                torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
 @PublicAPI
@@ -660,6 +656,36 @@ def sequence_mask(
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+@PublicAPI
+def update_target_network(
+    main_net: NetworkType,
+    target_net: NetworkType,
+    tau: float,
+) -> None:
+    """Updates a torch.nn.Module target network using Polyak averaging.
+
+    .. code-block:: text
+
+        new_target_net_weight = (
+            tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+        )
+
+    Args:
+        main_net: The nn.Module to update from.
+        target_net: The target network to update.
+        tau: The tau value to use in the Polyak averaging formula.
+    """
+    # Get the current parameters from the Q network.
+    state_dict = main_net.state_dict()
+    # Use here Polyak averaging.
+    new_state_dict = {
+        k: tau * state_dict[k] + (1 - tau) * v
+        for k, v in target_net.state_dict().items()
+    }
+    # Apply the new parameters to the target Q network.
+    target_net.load_state_dict(new_state_dict)
 
 
 @DeveloperAPI

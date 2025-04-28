@@ -22,20 +22,17 @@ from ray._private.test_utils import (
 )
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
@@ -118,8 +115,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_alive)
 
     serve.shutdown()
-    with pytest.raises(RayServeException):
-        _private_api.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
@@ -399,6 +394,12 @@ def test_middleware(ray_shutdown):
             ],
         )
     )
+
+    @serve.deployment
+    class Dummy:
+        pass
+
+    serve.run(Dummy.bind())
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
@@ -417,40 +418,6 @@ def test_middleware(ray_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_http_root_url(ray_shutdown):
-    @serve.deployment
-    def f(_):
-        pass
-
-    root_url = "https://my.domain.dev/prefix"
-
-    port = new_port()
-    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-    del os.environ[SERVE_ROOT_URL_ENV_KEY]
-
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url != root_url + "/f"
-    assert f.url == f"http://127.0.0.1:{port}/f"
-    serve.shutdown()
-    ray.shutdown()
-
-    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_root_path(ray_shutdown):
     @serve.deployment
     def hello():
@@ -461,11 +428,8 @@ def test_http_root_path(ray_shutdown):
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
 
-    # check whether url is prefixed correctly
-    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
-
     # check routing works as expected
-    resp = requests.get(hello.url)
+    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/hello")
     assert resp.status_code == 200
     assert resp.text == "hello"
 
@@ -478,7 +442,7 @@ def test_http_root_path(ray_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         serve.start(http_options={"host": "bad.ip.address"})
 
 
@@ -532,16 +496,14 @@ def test_http_head_only(ray_cluster):
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"]
-        for r in ray._private.state.state._available_resources_per_node().values()
+        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
     }
-    assert cpu_per_nodes == {4, 4}
+    assert cpu_per_nodes == {4}
 
 
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
     serve.start()
-    client = _get_global_client()
 
     @serve.deployment
     class A:
@@ -550,17 +512,16 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(client.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
     serve.shutdown()
     serve.start()
-    client = _get_global_client()
 
-    assert len(client.list_deployments()) == 0
+    assert len(serve.status().applications) == 0
 
     serve.run(A.bind())
 
-    assert len(client.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
@@ -670,7 +631,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def f(*args):
         pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     def updating_message():
         deployment_status = (
@@ -699,14 +660,14 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         def __call__(self, request):
             pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     wait_for_condition(
         lambda: serve.status()
         .applications[SERVE_DEFAULT_APP_NAME]
         .deployments["f"]
         .status
-        == "UNHEALTHY",
+        == "DEPLOY_FAILED",
         timeout=20,
     )
 

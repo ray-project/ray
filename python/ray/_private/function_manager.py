@@ -13,6 +13,7 @@ from collections import defaultdict, namedtuple
 from typing import Optional, Callable
 
 import ray
+from ray.remote_function import RemoteFunction
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -54,11 +55,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode(), key])
 
 
-def make_export_key(pos: int, job_id: JobID) -> bytes:
-    # big-endian for ordering in binary
-    return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
-
-
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
     Attributes:
@@ -92,12 +88,10 @@ class FunctionActorManager:
         # Deserialize an ActorHandle will call load_actor_class(). If a
         # function closure captured an ActorHandle, the deserialization of the
         # function will be:
-        #     import_thread.py
         #         -> fetch_and_register_remote_function (acquire lock)
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -150,29 +144,6 @@ class FunctionActorManager:
             return object
         except Exception:
             return None
-
-    def export_key(self, key):
-        """Export a key so it can be imported by other workers"""
-
-        # It's going to check all the keys until if reserve one key not
-        # existing in the cluster.
-        # One optimization is that we can use importer counter since
-        # it's sure keys before this counter has been allocated.
-        with self._export_lock:
-            while True:
-                self._num_exported += 1
-                holder = make_export_key(
-                    self._num_exported, self._worker.current_job_id
-                )
-                # This step is atomic since internal kv is a single thread
-                # atomic db.
-                if (
-                    self._worker.gcs_client.internal_kv_put(
-                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE
-                    )
-                    > 0
-                ):
-                    break
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
@@ -318,7 +289,6 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
-
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.
@@ -412,7 +382,12 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            function = object._function
+            # Directly importing from local may break function with dynamic ray.remote,
+            # such as the _start_controller function utilized for the Ray service.
+            if isinstance(object, RemoteFunction):
+                function = object._function
+            else:
+                function = object
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,
@@ -475,9 +450,6 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
-            # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
-            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def export_actor_class(
@@ -596,9 +568,7 @@ class FunctionActorManager:
                     )
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
-                    actor_method_name,
-                    actor_method,
-                    actor_imported=True,
+                    actor_method_name, actor_method
                 )
                 self._function_execution_info[method_id] = FunctionExecutionInfo(
                     function=executor,
@@ -693,9 +663,7 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(
-        self, method_name: str, method, actor_imported: bool
-    ):
+    def _make_actor_method_executor(self, method_name: str, method):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
@@ -704,9 +672,6 @@ class FunctionActorManager:
             method: The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
                 instance of the actor as the first argument.
-            actor_imported: Whether the actor has been imported.
-                Checkpointing operations will not be run if this is set to
-                False.
         Returns:
             A function that executes the given actor method on the worker's
                 stored instance of the actor. The function also updates the

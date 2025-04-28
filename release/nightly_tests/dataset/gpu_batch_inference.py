@@ -1,12 +1,12 @@
-from typing import Dict
 import argparse
 import time
+from typing import Dict
 
 import numpy as np
 import torch
-from torchvision.models import resnet50, ResNet50_Weights
-
 from benchmark import Benchmark, BenchmarkMetric
+from torchvision.models import ResNet50_Weights, resnet50
+
 import ray
 from ray.data import ActorPoolStrategy
 
@@ -31,6 +31,11 @@ def parse_args():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--chaos-test",
+        action="store_true",
+        default=False,
+    )
     return parser.parse_args()
 
 
@@ -38,12 +43,18 @@ def main(args):
     data_directory: str = args.data_directory
     data_format: str = args.data_format
     smoke_test: bool = args.smoke_test
+    chaos_test: bool = args.chaos_test
     data_url = f"s3://anonymous@air-example-data-2/{data_directory}"
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
+    # The preprocessing UDF converts images from uint8 to float64, which increases
+    # memory usage 8x. Each processed image is about 1.5 MiB (256×256×3×8 bytes). Since
+    # our target block size is 128 MiB, we set the batch size to around 90 images (128
+    # MiB / 1.5) to avoid running out of memory.
+    PREPROCESS_BATCH_SIZE = 90
     # Largest batch that can fit on a T4.
-    BATCH_SIZE = 1000
+    INFERENCE_BATCH_SIZE = 900
 
     device = "cpu" if smoke_test else "cuda"
 
@@ -88,16 +99,16 @@ def main(args):
     start_time_without_metadata_fetching = time.time()
 
     if smoke_test:
-        actor_pool_size = 4
+        compute = ActorPoolStrategy(size=4)
         num_gpus = 0
     else:
-        actor_pool_size = int(ray.cluster_resources().get("GPU"))
+        compute = ActorPoolStrategy(min_size=1, max_size=10)
         num_gpus = 1
-    ds = ds.map_batches(preprocess)
+    ds = ds.map_batches(preprocess, batch_size=PREPROCESS_BATCH_SIZE)
     ds = ds.map_batches(
         Predictor,
-        batch_size=BATCH_SIZE,
-        compute=ActorPoolStrategy(size=actor_pool_size),
+        batch_size=INFERENCE_BATCH_SIZE,
+        compute=compute,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
         max_concurrency=2,
@@ -123,6 +134,10 @@ def main(args):
         "Throughput w/o metadata fetching (img/sec): ",
         throughput_without_metadata_fetch,
     )
+    if chaos_test:
+        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+        assert dead_nodes
+        print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
     results = {
@@ -140,6 +155,6 @@ def main(args):
 if __name__ == "__main__":
     args = parse_args()
 
-    benchmark = Benchmark("gpu-batch-inference")
+    benchmark = Benchmark()
     benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()

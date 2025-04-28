@@ -25,7 +25,6 @@
 #include "opencensus/stats/stats.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
-#include "ray/stats/metric_exporter_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
@@ -40,121 +39,9 @@ using opencensus::stats::ViewDescriptor;
 using opencensus::tags::TagKey;
 using ::testing::UnorderedPointwise;
 
-struct ExpectedPoint {
-  std::string metric_name;
-  // Not recording timestamp because we don't have a way to expect it.
-  double value;
-  std::unordered_map<std::string, std::string> tags;
-
-  constexpr static double epsilion = 0.00001;
-  bool operator==(const ExpectedPoint &rhs) const {
-    return metric_name == rhs.metric_name && fabs(value - rhs.value) < epsilion &&
-           tags == rhs.tags;
-  }
-};
-
-std::ostream &operator<<(std::ostream &os, const ExpectedPoint &point) {
-  os << "{.metric_name=\"" << point.metric_name << "\",.value=" << point.value
-     << ",.tags={";
-  for (const auto &[k, v] : point.tags) {
-    os << "{\"" << k << "\",\"" << v << "\"},";
-  }
-  os << "}";
-  return os;
-}
-
-class MockExporterClientKeepsAll : public MetricExporterClient {
- public:
-  MockExporterClientKeepsAll() {}
-
-  void ReportMetrics(const std::vector<MetricPoint> &points) override {
-    for (const auto &point : points) {
-      points_.push_back({
-          point.metric_name,
-          point.value,
-          point.tags,
-      });
-      RAY_LOG(INFO) << "received metrics " << point.metric_name << ", " << point.timestamp
-                    << ", " << point.value << ", ";
-      for (const auto &[k, v] : point.tags) {
-        RAY_LOG(INFO) << "tag" << k << " = " << v;
-      }
-    }
-  }
-
-  const std::vector<ExpectedPoint> &ReportedMetrics() const { return points_; }
-
- private:
-  std::vector<ExpectedPoint> points_;
-};
-
-const auto method_tag_key = TagKey::Register("grpc_client_method");
-const auto status_tag_key = TagKey::Register("grpc_client_status");
-
-TEST(MetricPointExporterTest, adds_global_tags_to_grpc) {
-  const int MetricsAgentPort = 10054;
-
-  auto measure = MeasureInt64::Register(
-      "grpc.io/client/sent_messages_per_rpc", "Number of messages received per RPC", "1");
-
-  const opencensus::stats::ViewDescriptor view_descriptor =
-      ViewDescriptor()
-          .set_name("grpc.io/client/received_messages_per_rpc/cumulative")
-          .set_measure(measure.GetDescriptor().name())
-          .set_aggregation(Aggregation::Distribution(
-              opencensus::stats::BucketBoundaries::Exponential(17, 1.0, 2.0)))
-          .add_column(method_tag_key);
-
-  view_descriptor.RegisterForExport();
-
-  auto exporter = std::make_shared<MockExporterClientKeepsAll>();
-
-  const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                       {stats::WorkerPidKey, "1000"}};
-  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter, 10);
-
-  opencensus::stats::Record(
-      {{measure, 1}}, {{method_tag_key, "MyService.myMethod"}, {status_tag_key, "OK"}});
-
-  opencensus::stats::DeltaProducer::Get()->Flush();
-  opencensus::stats::StatsExporterImpl::Get()->Export();
-
-  const auto &out_data = exporter->ReportedMetrics();
-
-  // Expected tags:
-  // - "grpc_client_method" as registered in the ViewDescriptor
-  // - NO "grpc_client_status" although it's recorded
-  // - global tags "tagWorkerPid" and "tagLanguage".
-  std::unordered_map<std::string, std::string> expected_tags{
-      {"grpc_client_method", "MyService.myMethod"},
-      {"WorkerPid", "1000"},
-      {"Language", "CPP"}};
-
-  ASSERT_THAT(
-      out_data,
-      testing::UnorderedElementsAre(
-          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.mean",
-                        /*.value=*/1.0,
-                        /*.tags=*/expected_tags},
-          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.min",
-                        /*.value=*/1.0,
-                        /*.tags=*/expected_tags},
-          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.max",
-                        /*.value=*/1.0,
-                        /*.tags=*/expected_tags}));
-  ray::stats::Shutdown();
-}
-
 class MockMetricsAgentClient : public rpc::MetricsAgentClient {
  public:
   MockMetricsAgentClient() {}
-
-  void ReportMetrics(
-      const rpc::ReportMetricsRequest &request,
-      const rpc::ClientCallback<rpc::ReportMetricsReply> &callback) override {
-    reportMetricsRequests_.push_back(request);
-    callback(Status::OK(), {});
-  }
 
   void ReportOCMetrics(
       const rpc::ReportOCMetricsRequest &request,
@@ -163,19 +50,64 @@ class MockMetricsAgentClient : public rpc::MetricsAgentClient {
     callback(Status::OK(), {});
   }
 
-  const std::vector<rpc::ReportMetricsRequest> &CollectedReportMetricsRequests() const {
-    return reportMetricsRequests_;
-  }
-
   const std::vector<rpc::ReportOCMetricsRequest> &CollectedReportOCMetricsRequests()
       const {
     return reportOCMetricsRequests_;
   }
 
  private:
-  std::vector<rpc::ReportMetricsRequest> reportMetricsRequests_;
   std::vector<rpc::ReportOCMetricsRequest> reportOCMetricsRequests_;
 };
+
+const auto method_tag_key = TagKey::Register("grpc_client_method");
+const auto status_tag_key = TagKey::Register("grpc_client_status");
+
+TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
+  const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
+                                       {stats::WorkerPidKey, "1000"}};
+  StatsConfig::instance().SetGlobalTags(global_tags);
+
+  auto measure = MeasureInt64::Register(
+      "grpc.io/client/sent_messages_per_rpc", "Number of messages received per RPC", "1");
+
+  const opencensus::stats::ViewDescriptor view_descriptor =
+      ViewDescriptor()
+          .set_name("grpc.io/client/sent_messages_per_rpc")
+          .set_measure(measure.GetDescriptor().name())
+          .set_aggregation(opencensus::stats::Aggregation::Count())
+          .add_column(method_tag_key);
+
+  view_descriptor.RegisterForExport();
+  opencensus::stats::View view(view_descriptor);
+
+  opencensus::stats::Record({{measure, 1}}, {{method_tag_key, "MyService.myMethod"}});
+
+  opencensus::stats::DeltaProducer::Get()->Flush();
+  opencensus::stats::StatsExporterImpl::Get()->Export();
+
+  const auto view_data = view.GetData();
+  auto mockClient = std::make_shared<MockMetricsAgentClient>();
+  OpenCensusProtoExporter ocProtoExporter(mockClient, WorkerID::Nil(), 1000, 10000);
+
+  rpc::ReportOCMetricsRequest proto;
+
+  ocProtoExporter.ExportViewData({
+      {view_descriptor, view_data},
+  });
+
+  ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
+  std::unordered_map<std::string, std::string> labels;
+  auto metric = mockClient->CollectedReportOCMetricsRequests()[0].metrics()[0];
+  for (int i = 0; i < metric.metric_descriptor().label_keys_size(); i++) {
+    labels.emplace(metric.metric_descriptor().label_keys(i).key(),
+                   metric.timeseries(0).label_values(i).value());
+  }
+  std::unordered_map<std::string, std::string> expected_labels = {
+      {method_tag_key.name(), "MyService.myMethod"},
+      {stats::LanguageKey.name(), "CPP"},
+      {stats::WorkerPidKey.name(), "1000"}};
+  ASSERT_EQ(labels, expected_labels);
+}
 
 // Register view
 auto measure =
@@ -218,8 +150,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     //   - Exporting 4 time-series
     //   - Only 1 RPC payload should be sent
     //
-    RAY_LOG(INFO) << "Test #1";
-
     size_t kBatchSize = 4;
     // Initialize the exporter
     auto mockClient = std::make_shared<MockMetricsAgentClient>();
@@ -233,7 +163,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     });
 
     ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
   }
 
   {
@@ -243,8 +172,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     //   - Exporting 4 time-series
     //   - 2 RPC payloads should be sent
     //
-    RAY_LOG(INFO) << "Test #2";
-
     size_t kBatchSize = 2;
     // Initialize the exporter
     auto mockClient = std::make_shared<MockMetricsAgentClient>();
@@ -256,7 +183,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     ocProtoExporter.ExportViewData({{view_descriptor, view_data}});
 
     ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 2);
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
   }
 }
 
@@ -289,13 +215,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
   opencensus::stats::StatsExporterImpl::Get()->Export();
 
   const auto view_data = view.GetData();
-
-  /*
-  for (auto &[vd, value] : view_data.int_data()) {
-    RAY_LOG(INFO) << "Metric: " << absl::StrJoin(vd, ",") << ", value: " << value;
-  }
-  */
-
   {
     //
     // Test #1: Splitting time-series across 2 batches (overflows payload size)
@@ -304,8 +223,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     //   - 2 RPC payloads should be sent (1 payload will be taking ~180 bytes, it'll be
     //   split in 2)
     //
-    RAY_LOG(INFO) << "Test #1";
-
     size_t kBatchSize = 4;
     size_t maxPayloadSize = 250;
     // Initialize the exporter
@@ -319,12 +236,7 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
         {view_descriptor, view_data},
     });
 
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
-
     auto requests = mockClient->CollectedReportOCMetricsRequests();
-
-    RAY_LOG(INFO) << "Request payload: " << requests[0].DebugString();
-
     ASSERT_THAT(requests.size(), 2);
     for (int i = 0; i < 2; ++i) {
       // Both batches have to have 1 metric with 2 time-series each
@@ -342,8 +254,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     //   - 6 RPC payloads should be sent (since 1 payload will be taking ~250 bytes, it'll
     //   be split in 6)
     //
-    RAY_LOG(INFO) << "Test #2";
-
     size_t kBatchSize = 6;
     size_t maxPayloadSize = 250;  // 50% of the expected target payload size
     // Initialize the exporter
@@ -359,14 +269,7 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
                                     {view_descriptor, view_data},
                                     {view_descriptor, view_data}});
 
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
-
     auto requests = mockClient->CollectedReportOCMetricsRequests();
-
-    RAY_LOG(INFO) << "Request payload: " << requests[0].DebugString();
-    RAY_LOG(INFO) << "Request payload: " << requests[1].DebugString();
-    RAY_LOG(INFO) << "Request payload: " << requests[2].DebugString();
-
     ASSERT_THAT(requests.size(), 6);
     for (int i = 0; i < 6; ++i) {
       // Each of the batches have to have 1 metric with 2 time-series each
@@ -384,8 +287,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     //   - 1 RPC payloads should be sent (since 1 payload will be taking ~180 bytes, it'll
     //   be split in 6)
     //
-    RAY_LOG(INFO) << "Test #3";
-
     size_t kBatchSize = 12;
     size_t maxPayloadSize = 1000;  // 50% of the expected target payload size
     // Initialize the exporter
@@ -400,13 +301,7 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     ocProtoExporter.ExportViewData({{view_descriptor, view_data},
                                     {view_descriptor, view_data},
                                     {view_descriptor, view_data}});
-
-    RAY_LOG(INFO) << mockClient->CollectedReportOCMetricsRequests()[0].ByteSizeLong();
-
     auto requests = mockClient->CollectedReportOCMetricsRequests();
-
-    RAY_LOG(INFO) << "Payload: " << requests[0].DebugString();
-
     ASSERT_THAT(requests.size(), 1);
     ASSERT_THAT(requests[0].metrics().size(), 3);
     // Batch have to have 3 metric with 4 time-series each

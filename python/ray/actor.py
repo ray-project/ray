@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -9,7 +9,7 @@ import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
-from ray._private.async_compat import is_async_func
+from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
@@ -75,6 +75,7 @@ def method(*args, **kwargs):
         "max_task_retries",
         "retry_exceptions",
         "_generator_backpressure_num_objects",
+        "enable_task_events",
     ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
@@ -102,6 +103,8 @@ def method(*args, **kwargs):
             method.__ray_generator_backpressure_num_objects__ = kwargs[
                 "_generator_backpressure_num_objects"
             ]
+        if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
+            method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         return method
 
     return annotate_method
@@ -130,6 +133,10 @@ class ActorMethod:
         _generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
+        enable_task_events: True if task events is enabled, i.e., task events from
+            the actor should be reported. Defaults to True.
+        _signature: The signature of the actor method. It is None only when cross
+            language feature is used.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
@@ -143,12 +150,14 @@ class ActorMethod:
         self,
         actor,
         method_name,
-        num_returns: Optional[Union[int, str]],
+        num_returns: Optional[Union[int, Literal["streaming"]]],
         max_task_retries: int,
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
         generator_backpressure_num_objects: int,
+        enable_task_events: bool,
         decorator=None,
+        signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
     ):
         self._actor_ref = weakref.ref(actor)
@@ -166,6 +175,8 @@ class ActorMethod:
         self._retry_exceptions = retry_exceptions
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
+        self._enable_task_events = enable_task_events
+        self._signature = signature
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -189,6 +200,16 @@ class ActorMethod:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
+        """
+        Bind arguments to the actor method for Ray DAG building.
+
+        This method generates and returns an intermediate representation (IR)
+        node that indicates the actor method will be called with the given
+        arguments at execution time.
+
+        This method is used in both :ref:`Ray DAG <ray-dag-guide>` and
+        :ref:`Ray Compiled Graph <ray-compiled-graph>` for building a DAG.
+        """
         return self._bind(args, kwargs)
 
     def remote(self, *args, **kwargs):
@@ -228,8 +249,10 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ):
+    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodNode", ...]]:
         from ray.dag.class_node import (
+            BIND_INDEX_KEY,
+            IS_CLASS_METHOD_OUTPUT_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
@@ -252,7 +275,26 @@ class ActorMethod:
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: actor,
             PREV_CLASS_METHOD_CALL_KEY: None,
+            BIND_INDEX_KEY: actor._ray_dag_bind_index,
         }
+        actor._ray_dag_bind_index += 1
+
+        assert (
+            self._signature is not None
+        ), "self._signature should be set for .bind API."
+        try:
+            signature.validate_args(self._signature, args, kwargs)
+        except TypeError as e:
+            signature_copy = self._signature.copy()
+            if len(signature_copy) > 0 and signature_copy[-1].name == "_ray_trace_ctx":
+                # Remove the trace context arg for readability.
+                signature_copy.pop(-1)
+            signature_copy = inspect.Signature(parameters=signature_copy)
+            raise TypeError(
+                f"{str(e)}. The function `{self._method_name}` has a signature "
+                f"`{signature_copy}`, but the given arguments to `bind` doesn't "
+                f"match. args: {args}. kwargs: {kwargs}."
+            ) from None
 
         node = ClassMethodNode(
             self._method_name,
@@ -261,7 +303,21 @@ class ActorMethod:
             options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        return node
+
+        if node.num_returns > 1:
+            output_nodes: List[ClassMethodNode] = []
+            for i in range(node.num_returns):
+                output_node = ClassMethodNode(
+                    f"return_idx_{i}",
+                    (node, i),
+                    dict(),
+                    dict(),
+                    {IS_CLASS_METHOD_OUTPUT_KEY: True, PARENT_CLASS_NODE_KEY: actor},
+                )
+                output_nodes.append(output_node)
+            return tuple(output_nodes)
+        else:
+            return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -275,6 +331,7 @@ class ActorMethod:
         retry_exceptions=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
+        enable_task_events=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -284,6 +341,8 @@ class ActorMethod:
             max_task_retries = 0
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
+        if enable_task_events is None:
+            enable_task_events = self._enable_task_events
         if _generator_backpressure_num_objects is None:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
@@ -307,6 +366,7 @@ class ActorMethod:
                 generator_backpressure_num_objects=(
                     _generator_backpressure_num_objects
                 ),
+                enable_task_events=enable_task_events,
             )
 
         # Apply the decorator if there is one.
@@ -325,6 +385,7 @@ class ActorMethod:
             "decorator": self._decorator,
             "is_generator": self._is_generator,
             "generator_backpressure_num_objects": self._generator_backpressure_num_objects,  # noqa
+            "enable_task_events": self._enable_task_events,
         }
 
     def __setstate__(self, state):
@@ -336,6 +397,7 @@ class ActorMethod:
             state["retry_exceptions"],
             state["is_generator"],
             state["generator_backpressure_num_objects"],
+            state["enable_task_events"],
             state["decorator"],
             hardref=True,
         )
@@ -356,6 +418,8 @@ class _ActorClassMethodMetadata(object):
         max_task_retries: Number of retries on method failure.
         retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry, for each method.
+        enable_task_events: True if tracing is enabled, i.e., task events from
+            the actor should be reported. Defaults to True.
     """
 
     _cache = {}  # This cache will be cleared in ray._private.worker.disconnect()
@@ -394,6 +458,7 @@ class _ActorClassMethodMetadata(object):
         self.max_task_retries = {}
         self.retry_exceptions = {}
         self.method_is_generator = {}
+        self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
 
@@ -438,6 +503,9 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_concurrency_group__
 
+            if hasattr(method, "__ray_enable_task_events__"):
+                self.enable_task_events[method_name] = method.__ray_enable_task_events__
+
             is_generator = inspect.isgeneratorfunction(
                 method
             ) or inspect.isasyncgenfunction(method)
@@ -470,12 +538,15 @@ class _ActorClassMetadata:
             task.
         memory: The heap memory quota for this actor.
         resources: The default resources required by the actor creation task.
+        label_selector: The labels required for the node on which this actor
+            can be scheduled on. The label selector consist of key-value pairs, where the keys
+            are label names and the value are expressions consisting of an operator with label values or just a value to indicate equality.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
-        last_export_session_and_job: A pair of the last exported session
+        last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -497,6 +568,7 @@ class _ActorClassMetadata:
         memory,
         object_store_memory,
         resources,
+        label_selector,
         accelerator_type,
         runtime_env,
         concurrency_groups,
@@ -515,11 +587,12 @@ class _ActorClassMetadata:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.label_selector = label_selector
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
-        self.last_export_session_and_job = None
+        self.last_export_cluster_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
@@ -709,6 +782,8 @@ class ActorClass:
             resources (Dict[str, float]): The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
+            label_selector (Dict[str, str]): If specified, requires that the actor run
+                on a node which meets the specified label conditions (equals, in, not in, etc.).
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -772,6 +847,8 @@ class ActorClass:
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
+            enable_task_events: True if tracing is enabled, i.e., task events from
+                the actor should be reported. Defaults to True.
 
         Examples:
 
@@ -883,6 +960,9 @@ class ActorClass:
                 Note that this limit is counted per handle. -1 means that the
                 number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
+            enable_task_events: True if tracing is enabled, i.e., task events from
+                the actor should be reported. Defaults to True.
+            _labels: The key-value labels of the actor.
 
         Returns:
             A handle to the newly created actor.
@@ -921,13 +1001,14 @@ class ActorClass:
         if kwargs is None:
             kwargs = {}
         meta = self.__ray_metadata__
-        actor_has_async_methods = (
-            len(inspect.getmembers(meta.modified_class, predicate=is_async_func)) > 0
-        )
-        is_asyncio = actor_has_async_methods
+        is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
-            actor_options["max_concurrency"] = 1000 if is_asyncio else 1
+            actor_options["max_concurrency"] = (
+                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                if is_asyncio
+                else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
+            )
 
         if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
@@ -953,6 +1034,9 @@ class ActorClass:
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
 
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = actor_options.get("enable_task_events")
+
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
@@ -960,6 +1044,11 @@ class ActorClass:
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
+
+        if worker.mode != ray._private.worker.WORKER_MODE:
+            from ray._private.usage import usage_lib
+
+            usage_lib.record_library_usage("core")
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -999,12 +1088,12 @@ class ActorClass:
 
         # Export the actor.
         if not meta.is_cross_language and (
-            meta.last_export_session_and_job != worker.current_session_and_job
+            meta.last_export_cluster_and_job != worker.current_cluster_and_job
         ):
-            # If this actor class was not exported in this session and job,
+            # If this actor class was not exported in this cluster and job,
             # we need to export this function again, because current GCS
             # doesn't have it.
-            meta.last_export_session_and_job = worker.current_session_and_job
+
             # After serialize / deserialize modified class, the __module__
             # of modified class will be ray.cloudpickle.cloudpickle.
             # So, here pass actor_creation_function_descriptor to make
@@ -1014,6 +1103,7 @@ class ActorClass:
                 meta.actor_creation_function_descriptor,
                 meta.method_meta.methods.keys(),
             )
+            meta.last_export_cluster_and_job = worker.current_cluster_and_job
 
         resources = ray._private.utils.resources_from_ray_options(actor_options)
         # Set the actor's default resources if not already set. First three
@@ -1150,6 +1240,8 @@ class ActorClass:
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
+            enable_task_events=enable_task_events,
+            labels=actor_options.get("_labels"),
         )
 
         if _actor_launch_hook:
@@ -1161,6 +1253,7 @@ class ActorClass:
             meta.language,
             actor_id,
             max_task_retries,
+            enable_task_events,
             meta.method_meta.method_is_generator,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
@@ -1168,9 +1261,10 @@ class ActorClass:
             meta.method_meta.max_task_retries,
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
+            meta.method_meta.enable_task_events,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
-            worker.current_session_and_job,
+            worker.current_cluster_and_job,
             original_handle=True,
         )
 
@@ -1204,6 +1298,8 @@ class ActorHandle:
     Attributes:
         _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
+        _ray_enable_task_events: The default value of whether task events is
+            enabled, i.e., task events from the actor should be reported.
         _ray_method_is_generator: Map of method name -> if it is a generator
             method.
         _ray_method_decorators: Optional decorators for the function
@@ -1220,10 +1316,20 @@ class ActorHandle:
         _ray_method_generator_backpressure_num_objects: Generator-only
             config. The max number of objects to generate before it
             starts pausing a generator.
+        _ray_method_enable_task_events: The value of whether task
+            tracing is enabled for the actor methods. This overrides the
+            actor's default value (`_ray_enable_task_events`).
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
             this handle goes out of scope.
+        _ray_weak_ref: True means that this handle does not count towards the
+            distributed ref count for the actor, i.e. the actor may be GCed
+            while this handle is still in scope. This is set to True if the
+            handle was created by getting an actor by name or by getting the
+            self handle. It is set to False if this is the original handle or
+            if it was created by passing the original handle through task args
+            and returns.
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
@@ -1234,22 +1340,28 @@ class ActorHandle:
         language,
         actor_id,
         max_task_retries: Optional[int],
+        enable_task_events: bool,
         method_is_generator: Dict[str, bool],
         method_decorators,
         method_signatures,
-        method_num_returns: Dict[str, int],
+        method_num_returns: Dict[str, Union[int, Literal["streaming"]]],
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
+        method_enable_task_events: Dict[str, bool],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
-        session_and_job,
+        cluster_and_job,
         original_handle=False,
+        weak_ref: bool = False,
     ):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_max_task_retries = max_task_retries
         self._ray_original_handle = original_handle
+        self._ray_weak_ref = weak_ref
+        self._ray_enable_task_events = enable_task_events
+
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
@@ -1259,13 +1371,19 @@ class ActorHandle:
         self._ray_method_generator_backpressure_num_objects = (
             method_generator_backpressure_num_objects
         )
+        self._ray_method_enable_task_events = method_enable_task_events
         self._ray_actor_method_cpus = actor_method_cpus
-        self._ray_session_and_job = session_and_job
+        self._ray_cluster_and_job = cluster_and_job
         self._ray_is_cross_language = language != Language.PYTHON
         self._ray_actor_creation_function_descriptor = (
             actor_creation_function_descriptor
         )
         self._ray_function_descriptor = {}
+        # This is incremented each time `bind()` is called on an actor handle
+        # (in Ray DAGs), therefore capturing the bind order of the actor methods.
+        # TODO: this does not work properly if the caller has two copies of the
+        # same actor handle, and needs to be fixed.
+        self._ray_dag_bind_index = 0
 
         if not self._ray_is_cross_language:
             assert isinstance(
@@ -1291,11 +1409,21 @@ class ActorHandle:
                     self._ray_method_generator_backpressure_num_objects.get(
                         method_name
                     ),  # noqa
+                    self._ray_method_enable_task_events.get(
+                        method_name,
+                        self._ray_enable_task_events,  # Use actor's default value
+                    ),
                     decorator=self._ray_method_decorators.get(method_name),
+                    signature=self._ray_method_signatures[method_name],
                 )
                 setattr(self, method_name, method)
 
     def __del__(self):
+        # Weak references don't count towards the distributed ref count, so no
+        # need to decrement the ref count.
+        if self._ray_weak_ref:
+            return
+
         try:
             # Mark that this actor handle has gone out of scope. Once all actor
             # handles are out of scope, the actor will exit.
@@ -1304,7 +1432,7 @@ class ActorHandle:
                 if worker.connected and hasattr(worker, "core_worker"):
                     worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
         except AttributeError:
-            # Suppress the attribtue error which is caused by
+            # Suppress the attribute error which is caused by
             # python destruction ordering issue.
             # It only happen when python exits.
             pass
@@ -1315,11 +1443,12 @@ class ActorHandle:
         args: List[Any] = None,
         kwargs: Dict[str, Any] = None,
         name: str = "",
-        num_returns: Optional[int] = None,
+        num_returns: Optional[Union[int, Literal["streaming"]]] = None,
         max_task_retries: int = None,
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
+        enable_task_events: Optional[bool] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1337,6 +1466,8 @@ class ActorHandle:
             max_task_retries: Number of retries when method fails.
             retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
+            enable_task_events: True if tracing is enabled, i.e., task events from
+                the actor should be reported.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -1404,6 +1535,7 @@ class ActorHandle:
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
+            enable_task_events,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
@@ -1450,8 +1582,10 @@ class ActorHandle:
             False,  # retry_exceptions
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
+            self._ray_enable_task_events,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
+            signature=None,
         )
 
     # Make tab completion work.
@@ -1475,6 +1609,20 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
+    def _get_local_state(self):
+        """Get the local actor state.
+
+        NOTE: this method only returns accurate actor state
+        after a first actor method call is made against
+        this actor handle due to https://github.com/ray-project/ray/pull/24600.
+
+        Returns:
+           ActorTableData.ActorState or None if the state is unknown.
+        """
+        worker = ray._private.worker.global_worker
+        worker.check_connected()
+        return worker.core_worker.get_local_actor_state(self._ray_actor_id)
+
     def _serialization_helper(self):
         """This is defined in order to make pickling work.
 
@@ -1494,6 +1642,7 @@ class ActorHandle:
                     "actor_language": self._ray_actor_language,
                     "actor_id": self._ray_actor_id,
                     "max_task_retries": self._ray_max_task_retries,
+                    "enable_task_events": self._enable_task_events,
                     "method_is_generator": self._ray_method_is_generator,
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
@@ -1503,16 +1652,17 @@ class ActorHandle:
                     "method_generator_backpressure_num_objects": (
                         self._ray_method_generator_backpressure_num_objects
                     ),
+                    "method_enable_task_events": self._ray_method_enable_task_events,
                     "actor_method_cpus": self._ray_actor_method_cpus,
                     "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
                 None,
             )
 
-        return state
+        return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state, outer_object_ref=None):
+    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref=None):
         """This is defined in order to make pickling work.
 
         Args:
@@ -1520,6 +1670,8 @@ class ActorHandle:
             outer_object_ref: The ObjectRef that the serialized actor handle
                 was contained in, if any. This is used for counting references
                 to the actor handle.
+            weak_ref: Whether this was serialized from an actor handle with a
+                weak ref to the actor.
 
         """
         worker = ray._private.worker.global_worker
@@ -1528,16 +1680,20 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state, outer_object_ref
+                state,
+                outer_object_ref,
+                weak_ref,
             )
         else:
             # Local mode
+            assert worker.current_cluster_and_job == state["current_cluster_and_job"]
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
                 # thread-safe.
                 state["actor_language"],
                 state["actor_id"],
                 state["max_task_retries"],
+                state["enable_task_events"],
                 state["method_is_generator"],
                 state["method_decorators"],
                 state["method_signatures"],
@@ -1545,17 +1701,18 @@ class ActorHandle:
                 state["method_max_task_retries"],
                 state["method_retry_exceptions"],
                 state["method_generator_backpressure_num_objects"],
+                state["method_enable_task_events"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
-                worker.current_session_and_job,
+                state["current_cluster_and_job"],
             )
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        (serialized, _) = self._serialization_helper()
+        (serialized, _, weak_ref) = self._serialization_helper()
         # There is no outer object ref when the actor handle is
         # deserialized out-of-band using pickle.
-        return ActorHandle._deserialization_helper, (serialized, None)
+        return ActorHandle._deserialization_helper, (serialized, weak_ref, None)
 
 
 def _modify_class(cls):
@@ -1628,7 +1785,10 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When the API is called, the actor raises an exception and exits.
+    When this API is called, an exception is raised and the actor
+    will exit immediately. For asyncio actors, there may be a short
+    delay before the actor exits if the API is called from a background
+    task.
     Any queued methods will fail. Any ``atexit``
     handlers installed in the actor will be run.
 
@@ -1638,6 +1798,7 @@ def exit_actor():
     """
     worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
+        worker.core_worker.set_current_actor_should_exit()
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
         # raise a custom error to the main thread to tell it to exit.

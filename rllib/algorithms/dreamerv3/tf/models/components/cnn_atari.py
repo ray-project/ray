@@ -23,7 +23,7 @@ class CNNAtari(tf.keras.Model):
         """Initializes a CNNAtari instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendix B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN layer. Starting with

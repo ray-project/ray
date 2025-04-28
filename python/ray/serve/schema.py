@@ -1,7 +1,5 @@
 import logging
 from collections import Counter
-from contextlib import contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
@@ -11,21 +9,24 @@ from ray._private.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
+    NonNegativeInt,
     PositiveInt,
+    StrictInt,
     root_validator,
     validator,
 )
+from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ProxyStatus,
     ReplicaState,
+    RequestProtocol,
     ServeDeployMode,
 )
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
+    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
@@ -34,25 +35,6 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
-
-# Allows selectively toggling validation of runtime_env URIs.
-# This is used by the `serve publish` CLI command to pass through local URIs to
-# publish providers.
-VALIDATE_RUNTIME_ENV_URIS = ContextVar("VALIDATE_RUNTIME_ENV_URIS", default=True)
-
-
-@contextmanager
-def _skip_validating_runtime_env_uris():
-    """Temporarily disable validation of runtime_env URIs across all schema models.
-
-    This uses a contextvar.ContextVar so has the same asyncio and threading properties.
-    """
-    try:
-        VALIDATE_RUNTIME_ENV_URIS.set(False)
-        yield
-    finally:
-        VALIDATE_RUNTIME_ENV_URIS.set(True)
-
 
 # Shared amongst multiple schemas.
 TARGET_CAPACITY_FIELD = Field(
@@ -117,12 +99,12 @@ class LoggingConfig(BaseModel):
             from ray import serve
             from ray.serve.schema import LoggingConfig
             # Set log level for the deployment.
-            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            @serve.deployment(LoggingConfig(log_level="DEBUG"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
             # Set log directory for the deployment.
-            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
@@ -160,6 +142,15 @@ class LoggingConfig(BaseModel):
             "Whether to enable access logs for each request. Default to True."
         ),
     )
+    additional_log_standard_attrs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Default attributes from the Python standard logger that will be "
+            "added to all log records. "
+            "See https://docs.python.org/3/library/logging.html#logrecord-attributes "
+            "for a list of available attributes."
+        ),
+    )
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
@@ -187,6 +178,16 @@ class LoggingConfig(BaseModel):
                 f"{list(logging._nameToLevel.keys())}."
             )
         return v
+
+    @validator("additional_log_standard_attrs")
+    def valid_additional_log_standard_attrs(cls, v):
+        for attr in v:
+            if attr not in LOGRECORD_STANDARD_ATTRS:
+                raise ValueError(
+                    f"Unknown attribute '{attr}'. "
+                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                )
+        return list(set(v))
 
     def _compute_hash(self) -> int:
         return crc32(
@@ -240,14 +241,6 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
-    object_store_memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the object store memory used per replica when "
-            "creating objects. Uses a default if null."
-        ),
-        ge=0,
-    )
     resources: Dict = Field(
         default={},
         description=("The custom resources required by each replica."),
@@ -266,9 +259,6 @@ class RayActorOptionsSchema(BaseModel):
 
         if v is None:
             return
-
-        if not VALIDATE_RUNTIME_ENV_URIS.get():
-            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v and v["working_dir"] not in uris:
@@ -308,20 +298,22 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "(experimental)."
         ),
     )
-    # route_prefix of None means the deployment is not exposed over HTTP.
-    route_prefix: Union[str, None] = Field(
+    max_ongoing_requests: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
-        ),
-    )
-    max_concurrent_queries: int = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "The max number of pending queries in a single replica. "
-            "Uses a default if null."
+            "Maximum number of requests that are sent in parallel "
+            "to each replica of this deployment. The limit is enforced across all "
+            "callers (HTTP requests or DeploymentHandles). Defaults to "
+            f"{DEFAULT_MAX_ONGOING_REQUESTS}."
         ),
         gt=0,
+    )
+    max_queued_requests: StrictInt = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "[DEPRECATED] The max number of requests that will be executed at once in "
+            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
+        ),
     )
     user_config: Optional[Dict] = Field(
         default=DEFAULT.VALUE,
@@ -404,10 +396,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[EXPERIMENTAL] The max number of deployment replicas can "
-            "run on a single node. Valid values are None (no limitation) "
-            "or an integer in the range of [1, 100]. "
-            "Defaults to no limitation."
+            "The max number of replicas of this deployment that can run on a single "
+            "Valid values are None (default, no limit) or an integer in the range of "
+            "[1, 100]. "
         ),
     )
     logging_config: LoggingConfig = Field(
@@ -416,7 +407,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     )
 
     @root_validator
-    def num_replicas_and_autoscaling_config(cls, values):
+    def validate_num_replicas_and_autoscaling_config(cls, values):
         num_replicas = values.get("num_replicas", None)
         autoscaling_config = values.get("autoscaling_config", None)
 
@@ -437,11 +428,36 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         return values
 
-    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
-        _route_prefix_format
-    )
+    @root_validator
+    def validate_max_replicas_per_node_and_placement_group_bundles(cls, values):
+        max_replicas_per_node = values.get("max_replicas_per_node", None)
+        placement_group_bundles = values.get("placement_group_bundles", None)
 
-    def get_user_configured_option_names(self) -> Set[str]:
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and placement_group_bundles not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            )
+
+        return values
+
+    @root_validator
+    def validate_max_queued_requests(cls, values):
+        max_queued_requests = values.get("max_queued_requests", None)
+        if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
+            return values
+
+        if max_queued_requests < 1 and max_queued_requests != -1:
+            raise ValueError(
+                "max_queued_requests must be -1 (no limit) or a positive integer."
+            )
+
+        return values
+
+    def _get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
 
         Any field not set to DEFAULT.VALUE is considered a user-configured option.
@@ -453,16 +469,12 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
 
 def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
-    """Converts a DeploymentInfo object to DeploymentSchema.
-
-    Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
-    route_prefix is an application-level concept. (This should only be used on the 2.x
-    codepath)
-    """
+    """Converts a DeploymentInfo object to DeploymentSchema."""
 
     schema = DeploymentSchema(
         name=name,
-        max_concurrent_queries=info.deployment_config.max_concurrent_queries,
+        max_ongoing_requests=info.deployment_config.max_ongoing_requests,
+        max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
@@ -562,9 +574,6 @@ class ServeApplicationSchema(BaseModel):
         if v is None:
             return
 
-        if not VALIDATE_RUNTIME_ENV_URIS.get():
-            return v
-
         uris = v.get("py_modules", [])
         if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
@@ -649,6 +658,10 @@ class gRPCOptionsSchema(BaseModel):
             "will be added and no gRPC server will be started. The servicer functions "
             "need to be importable from the context of where Serve is running."
         ),
+    )
+    request_timeout_s: float = Field(
+        default=None,
+        description="The timeout for gRPC requests. Defaults to no timeout.",
     )
 
 
@@ -799,6 +812,22 @@ class ServeDeploySchema(BaseModel):
         return {"applications": []}
 
 
+# Keep in sync with ServeSystemActorStatus in
+# python/ray/dashboard/client/src/type/serve.ts
+@PublicAPI(stability="stable")
+class ProxyStatus(str, Enum):
+    """The current status of the proxy."""
+
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
+
+
 @PublicAPI(stability="alpha")
 @dataclass
 class DeploymentStatusOverview:
@@ -816,6 +845,18 @@ class DeploymentStatusOverview:
     status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
+
+
+@PublicAPI(stability="stable")
+class ApplicationStatus(str, Enum):
+    """The current status of the application."""
+
+    NOT_STARTED = "NOT_STARTED"
+    DEPLOYING = "DEPLOYING"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    UNHEALTHY = "UNHEALTHY"
+    DELETING = "DELETING"
 
 
 @PublicAPI(stability="alpha")
@@ -858,6 +899,18 @@ class ServeStatus:
 
 @PublicAPI(stability="stable")
 class ServeActorDetails(BaseModel, frozen=True):
+    """Detailed info about a Ray Serve actor.
+
+    Attributes:
+        node_id: ID of the node that the actor is running on.
+        node_ip: IP address of the node that the actor is running on.
+        actor_id: Actor ID.
+        actor_name: Actor name.
+        worker_id: Worker ID.
+        log_file_path: The relative path to the Serve actor's log file from the ray logs
+            directory.
+    """
+
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
     )
@@ -879,13 +932,7 @@ class ServeActorDetails(BaseModel, frozen=True):
 class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
-    replica_id: str = Field(
-        description=(
-            "Unique ID for the replica. By default, this will be "
-            '"<deployment name>#<replica suffix>", where the replica suffix is a '
-            "randomly generated unique string."
-        )
-    )
+    replica_id: str = Field(description="Unique ID for the replica.")
     state: ReplicaState = Field(description="Current state of the replica.")
     pid: Optional[int] = Field(description="PID of the replica actor process.")
     start_time_s: float = Field(
@@ -923,22 +970,28 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "options, or Serve default values."
         )
     )
+    target_num_replicas: NonNegativeInt = Field(
+        description=(
+            "The current target number of replicas for this deployment. This can "
+            "change over time for autoscaling deployments, but will remain a constant "
+            "number for other deployments."
+        )
+    )
+    required_resources: Dict = Field(
+        description="The resources required per replica of this deployment."
+    )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
 
-    @validator("deployment_config")
-    def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
-        # Route prefix should not be set at the deployment level. Deployment-level route
-        # prefix is outdated, there should be one route prefix per application
-        if "route_prefix" in v.dict(exclude_unset=True):
-            raise ValueError(
-                "Unexpectedly found a deployment-level route_prefix in the "
-                f'deployment_config for deployment "{cls.name}". The route_prefix in '
-                "deployment_config within DeploymentDetails should not be set; please "
-                "set it at the application level."
-            )
-        return v
+
+@PublicAPI(stability="alpha")
+class APIType(str, Enum):
+    """Tracks the type of API that an application originates from."""
+
+    UNKNOWN = "unknown"
+    IMPERATIVE = "imperative"
+    DECLARATIVE = "declarative"
 
 
 @PublicAPI(stability="stable")
@@ -990,6 +1043,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "for readability."
         )
     )
+    source: APIType = Field(
+        description=(
+            "The type of API that the application originates from. "
+            "This is a Developer API that is subject to change."
+        ),
+    )
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
     )
@@ -1001,7 +1060,26 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="stable")
 class ProxyDetails(ServeActorDetails, frozen=True):
+    """Detailed info about a Ray Serve ProxyActor.
+
+    Attributes:
+        status: The current status of the proxy.
+    """
+
     status: ProxyStatus = Field(description="Current status of the proxy.")
+
+
+@PublicAPI(stability="alpha")
+class Target(BaseModel, frozen=True):
+    ip: str = Field(description="IP address of the target.")
+    port: int = Field(description="Port of the target.")
+
+
+@PublicAPI(stability="alpha")
+class TargetGroup(BaseModel, frozen=True):
+    targets: List[Target] = Field(description="List of targets for the given route.")
+    route_prefix: str = Field(description="Prefix route of the targets.")
+    protocol: RequestProtocol = Field(description="Protocol of the targets.")
 
 
 @PublicAPI(stability="stable")
@@ -1042,6 +1120,14 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         description="Details about all live applications running on the cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+
+    target_groups: List[TargetGroup] = Field(
+        default_factory=list,
+        description=(
+            "List of target groups, each containing target info for a given route and "
+            "protocol."
+        ),
+    )
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -1099,7 +1185,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     and "autoscaling_config" in deployment["deployment_config"]
                 ):
                     deployment["deployment_config"]["autoscaling_config"].pop(
-                        "serialized_policy_def", None
+                        "_serialized_policy_def", None
                     )
 
         return values

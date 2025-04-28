@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 (serve-ml-models-tutorial)=
 
 # Serve ML Models (Tensorflow, PyTorch, Scikit-Learn, others)
@@ -21,7 +25,7 @@ Ray Serve is framework-agnostic--you can use any version of TensorFlow.
 This tutorial uses TensorFlow 2 and Keras. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install TensorFlow 2 and requests by running:
 
 ```console
-$ pip install "tensorflow>=2.0" requests
+$ pip install "tensorflow>=2.0" requests "ray[serve]"
 ```
 
 Open a new Python file called `tutorial_tensorflow.py`. First, import Ray Serve and some other helpers.
@@ -99,7 +103,7 @@ In particular, it shows:
 This tutorial requires PyTorch and Torchvision. Ray Serve is framework agnostic and works with any version of PyTorch. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install them by running:
 
 ```console
-$ pip install torch torchvision requests
+$ pip install torch torchvision requests  "ray[serve]"
 ```
 
 Open a new Python file called `tutorial_pytorch.py`. First, import Ray Serve and some other helpers.
@@ -168,7 +172,7 @@ In particular, it shows:
 Ray Serve is framework-agnostic. You can use any version of sklearn. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install scikit-learn and requests by running:
 
 ```console
-$ pip install scikit-learn requests
+$ pip install scikit-learn requests "ray[serve]"
 ```
 
 Open a new Python file called `tutorial_sklearn.py`. Import Ray Serve and some other helpers.

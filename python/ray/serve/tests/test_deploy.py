@@ -10,7 +10,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
@@ -91,194 +91,144 @@ def test_reconfigure_with_exception(serve_instance):
         def __call__(self, *args):
             return self.config
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(RuntimeError):
         serve.run(A.options(user_config="hi").bind())
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
-    # Tests that redeploying a deployment with a single replica waits for the
-    # replica to completely shut down before starting a new one.
-    client = serve_instance
+    """Tests redeploying a deployment with a single replica.
+
+    The new replica should should start without waiting for the
+    old version replica to completely shut down.
+    """
 
     name = "test"
 
     @ray.remote
-    def call(block=False):
+    def call():
         if use_handle:
             handle = serve.get_deployment_handle(name, "app")
-            ret = handle.handler.remote(block).result()
+            return handle.handler.remote().result()
         else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={"block": block}
-            ).text
-
-        return ret.split("|")[0], ret.split("|")[1]
+            return requests.get("http://localhost:8000/").json()
 
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
-    @serve.deployment(name=name, version="1")
+    # V1 blocks on signal
+    @serve.deployment(name=name)
     class V1:
-        async def handler(self, block: bool):
-            if block:
-                signal = ray.get_actor(signal_name)
-                await signal.wait.remote()
+        async def handler(self):
+            await signal.wait.remote()
+            return 1, os.getpid()
 
-            return f"1|{os.getpid()}"
+        async def __call__(self):
+            return await self.handler()
 
-        async def __call__(self, request):
-            return await self.handler(request.query_params["block"] == "True")
-
+    # V2 doesn't block on signal
+    @serve.deployment(name=name)
     class V2:
-        async def handler(self, *args):
-            return f"2|{os.getpid()}"
+        async def handler(self):
+            return 2, os.getpid()
 
-        async def __call__(self, request):
+        async def __call__(self):
             return await self.handler()
 
     serve.run(V1.bind(), name="app")
-    ref1 = call.remote(block=False)
-    val1, pid1 = ray.get(ref1)
-    assert val1 == "1"
 
-    # ref2 will block until the signal is sent.
-    ref2 = call.remote(block=True)
-    assert len(ray.wait([ref2], timeout=2.1)[0]) == 0
+    # Send unblocked signal first to get pid of running replica
+    signal.send.remote()
+    val1, pid1 = ray.get(call.remote())
+    assert val1 == 1
 
-    # Redeploy new version. This should not go through until the old version
-    # replica completely stops.
-    V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=0.1)
+    # blocked_ref will block until the signal is sent.
+    signal.send.remote(clear=True)
+    blocked_ref = call.remote()
+    assert len(ray.wait([blocked_ref], timeout=2.1)[0]) == 0
 
-    # It may take some time for the handle change to propagate and requests
-    # to get sent to the new version. Repeatedly send requests until they
-    # start blocking
+    # Redeploy new version.
+    serve._run(V2.bind(), _blocking=False, name="app")
+
     start = time.time()
-    new_version_ref = None
     while time.time() - start < 30:
-        ready, not_ready = ray.wait([call.remote(block=False)], timeout=5)
+        ready, _ = ray.wait([call.remote()], timeout=2)
+        # If the request doesn't block, it must be V2 which doesn't wait
+        # for signal. Otherwise, it must have been sent to V1 which
+        # waits on signal The request might have been sent to V1 if the
+        # long poll broadcast was delayed
         if len(ready) == 1:
-            # If the request doesn't block, it must have been the old version.
             val, pid = ray.get(ready[0])
-            assert val == "1"
-            assert pid == pid1
-        elif len(not_ready) == 1:
-            # If the request blocks, it must have been the new version.
-            new_version_ref = not_ready[0]
+            assert val == 2
+            assert pid != pid1
             break
     else:
         assert False, "Timed out waiting for new version to be called."
 
-    # Signal the original call to exit.
+    # Unblock blocked_ref
     ray.get(signal.send.remote())
-    val2, pid2 = ray.get(ref2)
-    assert val2 == "1"
+    val2, pid2 = ray.get(blocked_ref)
+    assert val2 == 1
     assert pid2 == pid1
-
-    # Now the goal and request to the new version should complete.
-    client._wait_for_application_running("app")
-    new_version_val, new_version_pid = ray.get(new_version_ref)
-    assert new_version_val == "2"
-    assert new_version_pid != pid2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("use_handle", [True, False])
-def test_redeploy_multiple_replicas(serve_instance, use_handle):
-    # Tests that redeploying a deployment with multiple replicas performs
-    # a rolling update.
+def test_redeploy_multiple_replicas(serve_instance):
+    """
+    This test demonstrates zero downtime when redeploying a deployment with
+    multiple replicas. The inflight requests to the old version are allowed to
+    complete, it also shows that the old version stops accepting new requests.
+    The new requests are routed to the new version.
+    """
     client = serve_instance
-
     name = "test"
+    signal = SignalActor.remote()
 
-    @ray.remote(num_cpus=0)
-    def call(block=False):
-        if use_handle:
-            handle = serve.get_deployment_handle(name, "app")
-            ret = handle.handler.remote(block).result()
-        else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={"block": block}
-            ).text
-
-        return ret.split("|")[0], ret.split("|")[1]
-
-    signal_name = f"signal-{get_random_string()}"
-    signal = SignalActor.options(name=signal_name).remote()
-
-    @serve.deployment(name=name, version="1", num_replicas=2)
+    @serve.deployment(name=name, num_replicas=2)
     class V1:
-        async def handler(self, block: bool):
+        async def __call__(self, block: bool):
             if block:
-                signal = ray.get_actor(signal_name)
                 await signal.wait.remote()
 
-            return f"1|{os.getpid()}"
+            return "v1", os.getpid()
 
-        async def __call__(self, request):
-            return await self.handler(request.query_params["block"] == "True")
-
+    @serve.deployment(name=name, num_replicas=2)
     class V2:
-        async def handler(self, *args):
-            return f"2|{os.getpid()}"
+        async def __call__(self, **kwargs):
+            return "v2", os.getpid()
 
-        async def __call__(self, request):
-            return await self.handler()
+    h = serve.run(V1.bind(), name="app")
+    vals1, pids1 = zip(*[h.remote(block=False).result() for _ in range(10)])
+    assert set(vals1) == {"v1"}
+    assert len(set(pids1)) == 2
 
-    def make_nonblocking_calls(expected, expect_blocking=False):
-        # Returns dict[val, set(pid)].
-        blocking = []
-        responses = defaultdict(set)
-        start = time.time()
-        while time.time() - start < 30:
-            refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=5)
-            for ref in ready:
-                val, pid = ray.get(ref)
-                responses[val].add(pid)
-            for ref in not_ready:
-                blocking.extend(not_ready)
-
-            if all(len(responses[val]) == num for val, num in expected.items()) and (
-                expect_blocking is False or len(blocking) > 0
-            ):
-                break
-        else:
-            assert False, f"Timed out, responses: {responses}."
-
-        return responses, blocking
-
-    serve.run(V1.bind(), name="app")
-    responses1, _ = make_nonblocking_calls({"1": 2})
-    pids1 = responses1["1"]
-
-    # ref2 will block a single replica until the signal is sent. Check that
-    # some requests are now blocking.
-    ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
-    assert list(responses2["1"])[0] in pids1
-
-    # Redeploy new version. Since there is one replica blocking, only one new
-    # replica should be started up.
-    V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
+    # ref2 will block a single replica until the signal is sent.
+    ref2 = h.remote(block=True)
     with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=0.1)
-    responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
+        ref2.result(timeout_s=1)
+
+    # Redeploy new version.
+    serve._run(V2.bind(), _blocking=False, name="app")
+
+    while True:
+        # Wait for the new version to be started and ready to handle requests.
+        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
+        if set(vals2) == {"v2"}:
+            break
+        time.sleep(1)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
-    val, pid = ray.get(ref2)
-    assert val == "1"
-    assert pid in responses1["1"]
+    val, pid = ref2.result()
+    assert val == "v1"
+    assert pid in pids1
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
     client._wait_for_application_running("app")
-    make_nonblocking_calls({"2": 2})
+    vals3, pids3 = zip(*[h.remote(block=False).result() for _ in range(10)])
+    assert set(vals3) == {"v2"}
+    assert len(set(pids3)) == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -351,7 +301,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    serve.run(V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False)
+    serve._run(
+        V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
+    )
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
@@ -362,10 +314,16 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     make_nonblocking_calls({"2": 2})
 
 
-def test_reconfigure_with_queries(serve_instance):
+def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance):
+    """
+    This tests checks that reconfigure can't trigger while there are active requests,
+    so that the actor's state is not mutated mid-request.
+
+    https://github.com/ray-project/ray/pull/20315
+    """
     signal = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=10, num_replicas=3)
+    @serve.deployment(max_ongoing_requests=10, num_replicas=1)
     class A:
         def __init__(self):
             self.state = None
@@ -378,17 +336,38 @@ def test_reconfigure_with_queries(serve_instance):
             return self.state["a"]
 
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
-    responses = [handle.remote() for _ in range(30)]
+    responses = [handle.remote() for _ in range(10)]
+
+    # Give the queries time to get to the replicas before the reconfigure.
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == len(responses)
+    )
 
     @ray.remote(num_cpus=0)
     def reconfigure():
         serve.run(A.options(version="1", user_config={"a": 2}).bind())
 
+    # Start the reconfigure;
+    # this will not complete until the signal is released
+    # to allow the queries to complete.
     reconfigure_ref = reconfigure.remote()
+
+    # Release the signal to allow the queries to complete.
     signal.send.remote()
+
+    # Wait for the reconfigure to complete.
     ray.get(reconfigure_ref)
 
-    assert all([r.result() == 1 for r in responses])
+    # These should all be 1 because the queries were sent before the reconfigure,
+    # the reconfigure blocks until they complete,
+    # and we just waited for the reconfigure to finish.
+    results = [r.result() for r in responses]
+    print(results)
+    assert all([r == 1 for r in results])
+
+    # If we query again, it should be 2,
+    # because the reconfigure will have gone through after the
+    # original queries completed.
     assert handle.remote().result() == 2
 
 
@@ -612,30 +591,30 @@ def test_input_validation():
 
     with pytest.raises(ValidationError):
 
-        @serve.deployment(max_concurrent_queries="hi")
+        @serve.deployment(max_ongoing_requests="hi")
         class BadMaxQueries:
             pass
 
     with pytest.raises(ValidationError):
-        Base.options(max_concurrent_queries=[1])
+        Base.options(max_ongoing_requests=[1])
 
     with pytest.raises(ValueError):
 
-        @serve.deployment(max_concurrent_queries=0)
+        @serve.deployment(max_ongoing_requests=0)
         class ZeroMaxQueries:
             pass
 
     with pytest.raises(ValueError):
-        Base.options(max_concurrent_queries=0)
+        Base.options(max_ongoing_requests=0)
 
     with pytest.raises(ValueError):
 
-        @serve.deployment(max_concurrent_queries=-1)
+        @serve.deployment(max_ongoing_requests=-1)
         class NegativeMaxQueries:
             pass
 
     with pytest.raises(ValueError):
-        Base.options(max_concurrent_queries=-1)
+        Base.options(max_ongoing_requests=-1)
 
 
 def test_deployment_properties():
@@ -647,8 +626,7 @@ def test_deployment_properties():
         version="version",
         num_replicas=2,
         user_config="hi",
-        max_concurrent_queries=100,
-        route_prefix="/hello",
+        max_ongoing_requests=100,
         ray_actor_options={"num_cpus": 2},
     )(DClass)
 
@@ -656,16 +634,87 @@ def test_deployment_properties():
     assert D.version == "version"
     assert D.num_replicas == 2
     assert D.user_config == "hi"
-    assert D.max_concurrent_queries == 100
-    assert D.route_prefix == "/hello"
+    assert D.max_ongoing_requests == 100
     assert D.ray_actor_options == {"num_cpus": 2}
 
     D = serve.deployment(
         version=None,
-        route_prefix=None,
     )(DClass)
     assert D.version is None
-    assert D.route_prefix is None
+
+
+def test_deploy_multiple_apps_batched(serve_instance):
+    @serve.deployment
+    class A:
+        def __call__(self):
+            return "a"
+
+    @serve.deployment
+    class B:
+        def __call__(self):
+            return "b"
+
+    serve.run_many(
+        [
+            serve.RunTarget(A.bind(), name="a", route_prefix="/a"),
+            serve.RunTarget(B.bind(), name="b", route_prefix="/b"),
+        ]
+    )
+
+    assert serve.get_app_handle("a").remote().result() == "a"
+    assert serve.get_app_handle("b").remote().result() == "b"
+
+    assert requests.get("http://localhost:8000/a").text == "a"
+    assert requests.get("http://localhost:8000/b").text == "b"
+
+
+def test_redeploy_multiple_apps_batched(serve_instance):
+    @serve.deployment
+    class A:
+        def __call__(self):
+            return "a", os.getpid()
+
+    @serve.deployment
+    class V1:
+        def __call__(self):
+            return "version 1", os.getpid()
+
+    @serve.deployment
+    class V2:
+        def __call__(self):
+            return "version 2", os.getpid()
+
+    serve.run_many(
+        [
+            serve.RunTarget(A.bind(), name="a", route_prefix="/a"),
+            serve.RunTarget(V1.bind(), name="v", route_prefix="/v"),
+        ]
+    )
+
+    a1, pida1 = serve.get_app_handle("a").remote().result()
+
+    assert a1 == "a"
+
+    v1, pid1 = serve.get_app_handle("v").remote().result()
+
+    assert v1 == "version 1"
+
+    serve.run_many(
+        [
+            serve.RunTarget(V2.bind(), name="v", route_prefix="/v"),
+        ]
+    )
+
+    v2, pid2 = serve.get_app_handle("v").remote().result()
+
+    assert v2 == "version 2"
+    assert pid1 != pid2
+
+    # Redeploying "v" should not have affected "a"
+    a2, pida2 = serve.get_app_handle("a").remote().result()
+
+    assert a1 == a2
+    assert pida1 == pida2
 
 
 if __name__ == "__main__":

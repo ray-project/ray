@@ -98,10 +98,13 @@ deployments:
 * `message`: Provides context on the current status.
 * `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
 * `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
-    * `status`: A Serve deployment has three possible statuses:
+    * `status`: A Serve deployment has six possible statuses:
         * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
-        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
-        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+        * `"HEALTHY"`: The deployment is healthy and running at the target replica count.
+        * `"UNHEALTHY"`: The deployment has updated and has become unhealthy afterwards. This condition may be due to replicas failing to upscale, replicas failing health checks, or a general system or machine error.
+        * `"DEPLOY_FAILED"`: The deployment failed to start or update. This condition is likely due to an error in the deployment's constructor.
+        * `"UPSCALING"`: The deployment (with autoscaling enabled) is upscaling the number of replicas.
+        * `"DOWNSCALING"`: The deployment (with autoscaling enabled) is downscaling the number of replicas.
     * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
         * `STARTING`: The replica is starting and not yet ready to serve requests.
         * `UPDATING`: The replica is undergoing a `reconfigure` update.
@@ -179,7 +182,7 @@ Run this deployment using the `serve run` CLI command:
 $ serve run monitoring:say_hello
 
 2023-04-10 15:57:32,100	INFO scripts.py:380 -- Deploying from import path: "monitoring:say_hello".
-[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,822 controller 63503 deployment_state.py:1168 - Deploying new version of deployment SayHello.
 (ProxyActor pid=63513) INFO:     Started server process [63513]
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,882 controller 63503 deployment_state.py:1386 - Adding 1 replica to deployment SayHello.
@@ -234,22 +237,49 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
 ### Configure Serve logging
-From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure logging for Ray Serve. Pass a dictionary of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) or object of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) to the `logging_config` argument of `serve.run` or `@serve.deployment`.
+From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure
+logging for Ray Serve. Pass a dictionary or object of [LoggingConfig](../serve/api/doc/ray.serve.schema.LoggingConfig.rst)
+to the `logging_config` argument of `serve.run` or `@serve.deployment`.
 
 #### Configure logging format
-You can configure the JSON logging format by passing `encoding=JSON` to `logging_config` argument of `@serve.deployment`. For example:
+You can configure the JSON logging format by passing `encoding=JSON` to `logging_config`
+argument in `serve.run` or `@serve.deployment`
 
+::::{tab-set}
+
+:::{tab-item} serve.run
 ```{literalinclude} doc_code/monitoring/logging_config.py
-:start-after: __json_start__
-:end-before: __json_end__
+:start-after: __serve_run_json_start__
+:end-before: __serve_run_json_end__
 :language: python
 ```
-In the `Model` log file, you should see the following:
+:::
+
+:::{tab-item} @serve.deployment
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __deployment_json_start__
+:end-before: __deployment_json_end__
+:language: python
+```
+:::
+
+::::
+
+In the replica `Model` log file, you should see the following:
 
 ```
-{"levelname": "INFO", "asctime": "2023-12-07 12:59:45,271", "deployment": "Model", "replica": "default#Model#PUGBSJ", "request_id": "8d316c3b-4c9f-4769-8080-b6867ca46d1e", "route": "/", "application": "default", "message": "replica.py:719 - Started executing request 8d316c3b-4c9f-4769-8080-b6867ca46d1e"}
-{"levelname": "INFO", "asctime": "2023-12-07 12:59:45,271", "deployment": "Model", "replica": "default#Model#PUGBSJ", "request_id": "8d316c3b-4c9f-4769-8080-b6867ca46d1e", "route": "/", "application": "default", "message": "replica.py:745 - __CALL__ OK 0.1ms"}
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:08,908", "deployment": "default_Model", "replica": "rdofcrh4", "message": "replica.py:855 - Started initializing replica."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:08,908", "deployment": "default_Model", "replica": "rdofcrh4", "message": "replica.py:877 - Finished initializing replica."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:1068 - Started executing request to method '__call__'."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
 ```
+
+:::{note}
+The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
+next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
+:::
 
 #### Disable access log
 
@@ -268,7 +298,11 @@ You can also disable the access log by passing `disable_access_log=True` to `log
 The `Model` replica log file doesn't include the Serve traffic log, you should only see the application log in the log file.
 
 ```
-INFO 2023-12-07 13:15:07,979 Model default#Model#LhNrRV 8c5fcdb2-87a0-46ed-b2f8-9336280c9c3d / default logging_config.py:50 - hello world
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+INFO 2024-02-27 15:43:12,983 default_Model 4guj63jr replica.py:855 - Started initializing replica.
+INFO 2024-02-27 15:43:12,984 default_Model 4guj63jr replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 15:43:13,492 default_Model 4guj63jr 2246c4bb-73dc-4524-bf37-c7746a6b3bba / <stdin>:5 - hello world
 ```
 
 #### Configure logging in different deployments and applications
@@ -283,16 +317,28 @@ You can also configure logging at the application level by passing `logging_conf
 In the Router log file, you should see the following:
 
 ```
-INFO 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:719 - Started executing request 6fe398fa-17d6-4abe-8264-d69c12aa9884
-DEBUG 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:68 - This debug message is from the router.
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Router_*`
+
+INFO 2024-02-27 16:05:10,738 default_Router cwnihe65 replica.py:855 - Started initializing replica.
+INFO 2024-02-27 16:05:10,739 default_Router cwnihe65 replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 16:05:11,233 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:1068 - Started executing request to method '__call__'.
+DEBUG 2024-02-27 16:05:11,234 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / <stdin>:7 - This debug message is from the router.
+INFO 2024-02-27 16:05:11,238 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / router.py:308 - Using router <class 'ray.serve._private.replica_scheduler.pow_2_scheduler.PowerOfTwoChoicesReplicaScheduler'>.
+DEBUG 2024-02-27 16:05:11,240 default_Router cwnihe65 long_poll.py:157 - LongPollClient <ray.serve._private.long_poll.LongPollClient object at 0x10daa5a80> received updates for keys: [(LongPollNamespace.DEPLOYMENT_CONFIG, DeploymentID(name='Model', app='default')), (LongPollNamespace.RUNNING_REPLICAS, DeploymentID(name='Model', app='default'))].
+INFO 2024-02-27 16:05:11,241 default_Router cwnihe65 pow_2_scheduler.py:255 - Got updated replicas for deployment 'Model' in application 'default': {'default#Model#256v3hq4'}.
+DEBUG 2024-02-27 16:05:11,241 default_Router cwnihe65 long_poll.py:157 - LongPollClient <ray.serve._private.long_poll.LongPollClient object at 0x10daa5900> received updates for keys: [(LongPollNamespace.DEPLOYMENT_CONFIG, DeploymentID(name='Model', app='default')), (LongPollNamespace.RUNNING_REPLICAS, DeploymentID(name='Model', app='default'))].
+INFO 2024-02-27 16:05:11,245 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 12.2ms
 ```
 
 In the Model log file, you should see the following:
 
 ```
-INFO 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:719 - Started executing request 6fe398fa-17d6-4abe-8264-d69c12aa9884
-DEBUG 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:75 - This debug message is from the model.
-INFO 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:745 - __CALL__ OK 0.1ms
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+INFO 2024-02-27 16:05:10,735 default_Model 256v3hq4 replica.py:855 - Started initializing replica.
+INFO 2024-02-27 16:05:10,735 default_Model 256v3hq4 replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:1068 - Started executing request to method '__call__'.
+INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 0.6ms
 ```
 
 When you set `logging_config` at the application level, Ray Serve applies to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration will overrides the application level configuration.
@@ -323,6 +369,11 @@ Deployment log file:
 ```
 (ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
 ```
+
+:::{note}
+The request ID is used to associate logs across the system. Avoid sending
+duplicate request IDs, which may lead to confusion when debugging.
+:::
 
 (serve-logging-loki)=
 ### Filtering logs with Loki
@@ -437,19 +488,19 @@ The following metrics are exposed by Ray Serve:
    * - Name
      - Fields
      - Description
-   * - ``ray_serve_deployment_request_counter`` [**]
+   * - ``ray_serve_deployment_request_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of queries that have been processed in this replica.
-   * - ``ray_serve_deployment_error_counter`` [**]
+   * - ``ray_serve_deployment_error_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of exceptions that have occurred in the deployment.
-   * - ``ray_serve_deployment_replica_starts`` [**]
+   * - ``ray_serve_deployment_replica_starts_total`` [**]
      - * deployment
        * replica
        * application
@@ -470,25 +521,25 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The current number of queries being processed.
-   * - ``ray_serve_num_http_requests`` [*]
+   * - ``ray_serve_num_http_requests_total`` [*]
      - * route
        * method
        * application
        * status_code
      - The number of HTTP requests processed.
-   * - ``ray_serve_num_grpc_requests`` [*]
+   * - ``ray_serve_num_grpc_requests_total`` [*]
      - * route
        * method
        * application
        * status_code
      - The number of gRPC requests processed.
-   * - ``ray_serve_num_http_error_requests`` [*]
+   * - ``ray_serve_num_http_error_requests_total`` [*]
      - * route
        * error_code
        * method
        * application
      - The number of non-200 HTTP responses.
-   * - ``ray_serve_num_grpc_error_requests`` [*]
+   * - ``ray_serve_num_grpc_error_requests_total`` [*]
      - * route
        * error_code
        * method
@@ -501,10 +552,12 @@ The following metrics are exposed by Ray Serve:
      - * node_id
        * node_ip_address
      - The number of ongoing requests in the gRPC Proxy.
-   * - ``ray_serve_num_router_requests`` [*]
+   * - ``ray_serve_num_router_requests_total`` [*]
      - * deployment
        * route
        * application
+       * handle
+       * actor_id
      - The number of requests processed by the router.
    * - ``ray_serve_num_scheduling_tasks`` [*][†]
      - * deployment
@@ -514,7 +567,7 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * actor_id
      - The number of request scheduling tasks in the router that are undergoing backoff.
-   * - ``ray_serve_handle_request_counter`` [**]
+   * - ``ray_serve_handle_request_counter_total`` [**]
      - * handle
        * deployment
        * route
@@ -522,16 +575,24 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
-       * route
-     - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``ray_serve_num_deployment_http_error_requests`` [*]
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that have been submitted to a replica.
+   * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
+     - * deployment
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that's been assigned and sent to execute on a replica.
+   * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``ray_serve_num_deployment_grpc_error_requests`` [*]
+   * - ``ray_serve_num_deployment_grpc_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
@@ -565,12 +626,12 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The number of models loaded on the current replica.
-   * - ``ray_serve_multiplexed_models_unload_counter``
+   * - ``ray_serve_multiplexed_models_unload_counter_total``
      - * deployment
        * replica
        * application
      - The number of times models unloaded on the current replica.
-   * - ``ray_serve_multiplexed_models_load_counter``
+   * - ``ray_serve_multiplexed_models_load_counter_total``
      - * deployment
        * replica
        * application
@@ -580,8 +641,8 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
        * model_id
-     - The mutlplexed model ID registered on the current replica.
-   * - ``ray_serve_multiplexed_get_model_requests_counter``
+     - The mutliplexed model ID registered on the current replica.
+   * - ``ray_serve_multiplexed_get_model_requests_counter_total``
      - * deployment
        * replica
        * application
@@ -610,7 +671,13 @@ The requests loop until canceled with `Control-C`.
 
 While this script is running, go to `localhost:8080` in your web browser.
 In the output there, you can search for `serve_` to locate the metrics above.
-The metrics are updated once every ten seconds, so you need to refresh the page to see new values.
+The metrics are updated once every ten seconds by default, so you need to refresh the page to see new values. The metrics report interval rate can be modified using the following configuration option (note that this is not a stable public API and is subject to change without warning):
+
+```console
+
+ray start --head --system-config='{"metrics_report_interval_ms": 1000}'
+
+```
 
 For example, after running the script for some time and refreshing `localhost:8080` you should find metrics similar to the following:
 
@@ -632,9 +699,9 @@ Here's an example:
 The emitted logs include:
 
 ```
-# HELP ray_my_counter The number of odd-numbered requests to this deployment.
-# TYPE ray_my_counter gauge
-ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
+# HELP ray_my_counter_total The number of odd-numbered requests to this deployment.
+# TYPE ray_my_counter_total counter
+ray_my_counter_total{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
 ```
 
 See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.

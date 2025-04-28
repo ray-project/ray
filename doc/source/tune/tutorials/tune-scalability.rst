@@ -63,13 +63,6 @@ description.
      - 16
      - 86,400
      - 88687.41
-   * - `XGBoost parameter sweep <https://github.com/ray-project/ray/blob/master/release/tune_tests/scalability_tests/workloads/test_xgboost_sweep.py>`_
-     - 16
-     - ?
-     - 16
-     - 64
-     - ?
-     - 3903
    * - `Durable trainable <https://github.com/ray-project/ray/blob/master/release/tune_tests/scalability_tests/workloads/test_durable_trainable.py>`_
      - 16
      - | 10/60
@@ -180,7 +173,7 @@ Network overhead in Ray Tune
 
 Running Ray Tune on a distributed setup leads to network communication overhead. This is mostly due to
 trial synchronization, where results and checkpoints are periodically synchronized and sent via the network.
-Per default this happens via SSH, where connnection initialization can take between 1 and 2 seconds each time.
+Per default this happens via SSH, where connection initialization can take between 1 and 2 seconds each time.
 Since this is a blocking operation that happens on a per-trial basis, running many concurrent trials
 quickly becomes bottlenecked by this synchronization.
 

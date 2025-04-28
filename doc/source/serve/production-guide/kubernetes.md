@@ -8,9 +8,10 @@ This section should help you:
 - understand how to deploy a Ray Serve application using a [RayService].
 - understand how to monitor and update your application.
 
-The recommended way to deploy Ray Serve is on Kubernetes, providing the best of both worlds: the user experience and scalable compute of Ray Serve and operational benefits of Kubernetes.
-This also allows you to integrate with existing applications that may be running on Kubernetes.
-The recommended practice when running on Kubernetes is to use the [RayService] controller that's provided as part of [KubeRay]. The RayService controller automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
+Deploying Ray Serve on Kubernetes provides the scalable compute of Ray Serve and operational benefits of Kubernetes.
+This combination also allows you to integrate with existing applications that may be running on Kubernetes. When running on Kubernetes, use the [RayService] controller from [KubeRay].
+
+> NOTE: [Anyscale](https://www.anyscale.com/get-started) is a managed Ray solution that provides high-availability, high-performance autoscaling, multi-cloud clusters, spot instance support, and more out of the box.
 
 A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest.
 Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.
@@ -30,18 +31,12 @@ Once the KubeRay controller is running, manage your Ray Serve application by cre
 
 Under the `spec` section in the `RayService` CR, set the following fields:
 
-**`serviceUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when a service is considered unhealthy (application status is not RUNNING status). The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
-
-**`deploymentUnhealthySecondThreshold`**: Represents the number of seconds that the Serve application status can be unavailable before the service is considered unhealthy. The Serve application status is unavailable whenever the Ray dashboard is unavailable. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
-
 **`serveConfigV2`**: Represents the configuration that Ray Serve uses to deploy the application. Using `serve build` to print the Serve configuration and copy-paste it directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
 
 **`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
-To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart. 
-
-Alternatively, include the dependencies in your image's Dockerfile, so the dependencies are available as soon as the pods start.
+To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider including the dependencies in your image's Dockerfile, so the dependencies are available as soon as the pods start.
 :::
 
 (serve-deploy-app-on-kuberay)=
@@ -77,7 +72,7 @@ rayservice-sample   7s
 
 $ kubectl get pods
 NAME                                                      READY   STATUS    RESTARTS   AGE
-ervice-sample-raycluster-454c4-worker-small-group-b6mmg   1/1     Running   0          XXs
+service-sample-raycluster-454c4-worker-small-group-b6mmg  1/1     Running   0          XXs
 kuberay-operator-7fbdbf8c89-4lrnr                         1/1     Running   0          XXs
 rayservice-sample-raycluster-454c4-head-krk9d             1/1     Running   0          XXs
 
@@ -243,7 +238,7 @@ Monitor your Serve application using the Ray Dashboard.
 - Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
 - Learn about the Ray Serve Dashboard [here](serve-monitoring).
 - Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for Dashboard.
-- Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](kuberay-logging) on Kubernetes.
+- Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](persist-kuberay-custom-resource-logs) on Kubernetes.
 
 :::{note}
 - To troubleshoot application deployment failures in Serve, you can check the KubeRay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The KubeRay operator logs contain information about the Serve application deployment event and Serve application health checks.

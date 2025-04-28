@@ -1,17 +1,14 @@
 import logging
-import numpy as np
-
 from typing import TYPE_CHECKING, Dict
+
+import numpy as np
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
-from ray.util.debug import log_once
-from ray.tune.result import (
-    TIME_TOTAL_S,
-    TIMESTEPS_TOTAL,
-)
+from ray.tune.result import TIME_TOTAL_S, TIMESTEPS_TOTAL
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -71,6 +68,24 @@ class TBXLogger(Logger):
                 isinstance(value, np.ndarray) and value.size > 0
             ):
                 valid_result[full_attr] = value
+
+                # Must be a single image.
+                if isinstance(value, np.ndarray) and value.ndim == 3:
+                    self._file_writer.add_image(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
+
+                # Must be a batch of images.
+                if isinstance(value, np.ndarray) and value.ndim == 4:
+                    self._file_writer.add_images(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
@@ -213,6 +228,24 @@ class TBXLoggerCallback(LoggerCallback):
                 isinstance(value, np.ndarray) and value.size > 0
             ):
                 valid_result[full_attr] = value
+
+                # Must be a single image.
+                if isinstance(value, np.ndarray) and value.ndim == 3:
+                    self._trial_writer[trial].add_image(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
+
+                # Must be a batch of images.
+                if isinstance(value, np.ndarray) and value.ndim == 4:
+                    self._trial_writer[trial].add_images(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:

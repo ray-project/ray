@@ -9,12 +9,15 @@ import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.buildkite.step import get_step
+from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import read_and_validate_release_test_collection
+from ray_release.config import (
+    read_and_validate_release_test_collection,
+    RELEASE_TEST_CONFIG_FILES,
+)
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -92,7 +95,7 @@ def main(
 
     try:
         test_collection = read_and_validate_release_test_collection(
-            test_collection_file or ["release/release_tests.yaml"]
+            test_collection_file or RELEASE_TEST_CONFIG_FILES
         )
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(
@@ -146,33 +149,15 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
-    steps = []
-    for group in sorted(grouped_tests):
-        tests = grouped_tests[group]
-        group_steps = []
-        for test, smoke_test in tests:
-            for run_id in range(run_per_test):
-                step = get_step(
-                    test,
-                    test_collection_file,
-                    run_id=run_id,
-                    # Always report performance data to databrick. Since the data is
-                    # indexed by branch and commit hash, we can always filter data later
-                    report=True,
-                    smoke_test=smoke_test,
-                    env=env,
-                    priority_val=priority.value,
-                    global_config=global_config,
-                )
-
-                if no_concurrency_limit:
-                    step.pop("concurrency", None)
-                    step.pop("concurrency_group", None)
-
-                group_steps.append(step)
-
-        group_step = {"group": group, "steps": group_steps}
-        steps.append(group_step)
+    steps = get_step_for_test_group(
+        grouped_tests,
+        minimum_run_per_test=run_per_test,
+        test_collection_file=test_collection_file,
+        env=env,
+        priority=priority.value,
+        global_config=global_config,
+        is_concurrency_limit=not no_concurrency_limit,
+    )
 
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):

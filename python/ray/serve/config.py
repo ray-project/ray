@@ -6,18 +6,21 @@ from typing import Any, Callable, List, Optional, Union
 from ray import cloudpickle
 from ray._private.pydantic_compat import (
     BaseModel,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    PrivateAttr,
     validator,
 )
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -37,23 +40,29 @@ class AutoscalingConfig(BaseModel):
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
-    target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
 
-    # Private options below.
-
-    # Metrics scraping options
+    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
     # Time window to average over for metrics.
     look_back_period_s: PositiveFloat = 30.0
 
-    # Internal autoscaling configuration options
+    # DEPRECATED
+    smoothing_factor: PositiveFloat = 1.0
+    # DEPRECATED: replaced by `downscaling_factor`
+    upscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
+    )
+    # DEPRECATED: replaced by `upscaling_factor`
+    downscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description="[DEPRECATED] Please use `downscaling_factor` instead.",
+    )
 
     # Multiplicative "gain" factor to limit scaling decisions
-    smoothing_factor: PositiveFloat = 1.0
-    upscale_smoothing_factor: Optional[PositiveFloat] = None
-    downscale_smoothing_factor: Optional[PositiveFloat] = None
+    upscaling_factor: Optional[PositiveFloat] = None
+    downscaling_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -63,10 +72,10 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = 30.0
 
     # Cloudpickled policy definition.
-    serialized_policy_def: bytes = b""
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
     # Custom autoscaling config. Defaults to the request-based autoscaler.
-    policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -92,13 +101,18 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    @validator("policy", always=True)
-    def serialize_policy(cls, policy, values) -> str:
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.serialize_policy()
+
+    def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
 
         Import the policy if it's passed in as a string import path. Then cloudpickle
         the policy and set `serialized_policy_def` if it's empty.
         """
+        values = self.dict()
+        policy = values.get("_policy")
         if isinstance(policy, Callable):
             policy = f"{policy.__module__}.{policy.__name__}"
 
@@ -108,33 +122,36 @@ class AutoscalingConfig(BaseModel):
         policy_path = policy
         policy = import_attr(policy)
 
-        if not values.get("serialized_policy_def"):
-            values["serialized_policy_def"] = cloudpickle.dumps(policy)
-
-        return policy_path
+        if not values.get("_serialized_policy_def"):
+            self._serialized_policy_def = cloudpickle.dumps(policy)
+        self._policy = policy_path
 
     @classmethod
     def default(cls):
         return cls(
-            min_replicas=1, max_replicas=100, target_num_ongoing_requests_per_replica=2
+            target_ongoing_requests=DEFAULT_TARGET_ONGOING_REQUESTS,
+            min_replicas=1,
+            max_replicas=100,
         )
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self.serialized_policy_def)
+        return cloudpickle.loads(self._serialized_policy_def)
 
-    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+    def get_upscaling_factor(self) -> PositiveFloat:
+        if self.upscaling_factor:
+            return self.upscaling_factor
+
         return self.upscale_smoothing_factor or self.smoothing_factor
 
-    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+    def get_downscaling_factor(self) -> PositiveFloat:
+        if self.downscaling_factor:
+            return self.downscaling_factor
+
         return self.downscale_smoothing_factor or self.smoothing_factor
 
-    # TODO(architkulkarni): implement below
-    # The num_ongoing_requests_per_replica error ratio (desired / current)
-    # threshold for overriding `upscale_delay_s`
-    # panic_mode_threshold: float = 2.0
-
-    # TODO(architkulkarni): Add reasonable defaults
+    def get_target_ongoing_requests(self) -> PositiveFloat:
+        return self.target_ongoing_requests
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
@@ -287,10 +304,12 @@ class gRPCOptions(BaseModel):
             Serve's gRPC proxy. Default to empty list, which means no gRPC methods will
             be added and no gRPC server will be started. The servicer functions need to
             be importable from the context of where Serve is running.
+        request_timeout_s: End-to-end timeout for gRPC requests.
     """
 
     port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
+    request_timeout_s: Optional[float] = None
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:

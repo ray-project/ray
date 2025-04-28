@@ -1,17 +1,24 @@
-import functools
 from collections import defaultdict
+import copy
+import functools
 import numpy as np
+import time
 import uuid
 
 import gymnasium as gym
 from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import AgentID, ModuleID
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SingleAgentEpisode:
     """A class representing RL environment episodes for individual agents.
 
@@ -45,6 +52,7 @@ class SingleAgentEpisode:
     .. testcode::
 
         import gymnasium as gym
+        import numpy as np
 
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
@@ -79,17 +87,17 @@ class SingleAgentEpisode:
 
         # Get the most recent action (single item, not batched).
         # This works regardless of the action space or whether the episode has
-        # been finalized or not (see below).
+        # been numpy'ized or not (see below).
         episode.get_actions(-1)  # same as episode.actions[-1]
 
         # Looking back from ts=1, get the previous 4 rewards AND fill with 0.0
         # in case we go over the beginning (ts=0). So we would expect
         # [0.0, 0.0, 0.0, r0] to be returned here, where r0 is the very first received
         # reward in the episode:
-        episode.get_rewards(slice(-4, 0), neg_indices_left_of_zero=True, fill=0.0)
+        episode.get_rewards(slice(-4, 0), neg_index_as_lookback=True, fill=0.0)
 
         # Note the use of fill=0.0 here (fill everything that's out of range with this
-        # value) AND the argument `neg_indices_left_of_zero=True`, which interprets
+        # value) AND the argument `neg_index_as_lookback=True`, which interprets
         # negative indices as being left of ts=0 (e.g. -1 being the timestep before
         # ts=0).
 
@@ -127,7 +135,7 @@ class SingleAgentEpisode:
                     indices=slice(ts - 4, ts),
                     # Make sure negative indices are interpreted as
                     # "into lookback buffer"
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                     # Zero-out everything even further before the lookback buffer.
                     fill=0.0,
                     # Take care of discrete components (get ready as NN input).
@@ -143,21 +151,26 @@ class SingleAgentEpisode:
     """
 
     __slots__ = (
-        "id_",
-        "agent_id",
-        "module_id",
-        "_observation_space",
-        "_action_space",
-        "observations",
-        "infos",
         "actions",
-        "rewards",
+        "agent_id",
         "extra_model_outputs",
+        "id_",
+        "infos",
         "is_terminated",
         "is_truncated",
-        "render_images",
-        "t_started",
+        "module_id",
+        "multi_agent_episode_id",
+        "observations",
+        "rewards",
         "t",
+        "t_started",
+        "_action_space",
+        "_last_added_observation",
+        "_last_added_infos",
+        "_last_step_time",
+        "_observation_space",
+        "_start_time",
+        "_custom_data",
     )
 
     def __init__(
@@ -173,11 +186,11 @@ class SingleAgentEpisode:
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
-        render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
         len_lookback_buffer: Union[int, str] = "auto",
         agent_id: Optional[AgentID] = None,
         module_id: Optional[ModuleID] = None,
+        multi_agent_episode_id: Optional[int] = None,
     ):
         """Initializes a SingleAgentEpisode instance.
 
@@ -192,8 +205,8 @@ class SingleAgentEpisode:
                 with observation data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             observation_space: An optional gym.Space, which all individual observations
-                should abide to. If not None and this SingleAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this SingleAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: Either a list of individual info dicts from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
@@ -204,8 +217,8 @@ class SingleAgentEpisode:
                 with info dict] data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             action_space: An optional gym.Space, which all individual actions
-                should abide to. If not None and this SingleAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this SingleAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: Either a list of individual rewards from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
@@ -217,13 +230,11 @@ class SingleAgentEpisode:
                 `InfiniteLookbackBuffer` object (possibly with extra model output data
                 in it). If mapping is to lists, will construct the buffers automatically
                 (given the data and the `len_lookback_buffer` argument).
-            render_images: An optional list of RGB uint8 images from rendering
-                the environment.
             terminated: A boolean indicating, if the episode is already terminated.
             truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
                 is zero. If data is provided, the starting point is from the last
-                observation onwards (i.e. `t_started = len(observations) - 1). If
+                observation onwards (i.e. `t_started = len(observations) - 1`). If
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of the (optional) lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
@@ -245,18 +256,20 @@ class SingleAgentEpisode:
                 belongs to. Normally, this information is obtained by querying an
                 `agent_to_module_mapping_fn` with a given agent ID. This information
                 is stored under `self.module_id` and only serves reference purposes.
+            multi_agent_episode_id: An optional EpisodeID of the encapsulating
+                `MultiAgentEpisode` that this `SingleAgentEpisode` belongs to.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
         self.agent_id = agent_id
         self.module_id = module_id
+        self.multi_agent_episode_id = multi_agent_episode_id
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
-        if len_lookback_buffer == "auto":
-            len_lookback_buffer = len(rewards or [])
-        elif len_lookback_buffer > len(rewards or []):
-            len_lookback_buffer = len(rewards or [])
+        len_rewards = len(rewards) if rewards is not None else 0
+        if len_lookback_buffer == "auto" or len_lookback_buffer > len_rewards:
+            len_lookback_buffer = len_rewards
 
         infos = infos or [{} for _ in range(len(observations or []))]
 
@@ -305,17 +318,12 @@ class SingleAgentEpisode:
         self.is_truncated = truncated
 
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = defaultdict(
-            functools.partial(
-                InfiniteLookbackBuffer,
-                lookback=len_lookback_buffer,
-            ),
-        )
+        self.extra_model_outputs = {}
         for k, v in (extra_model_outputs or {}).items():
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
             else:
-                # We cannot use the defaultdict's own constructore here as this would
+                # We cannot use the defaultdict's own constructor here as this would
                 # auto-set the lookback buffer to 0 (there is no data passed to that
                 # constructor). Then, when we manually have to set the data property,
                 # the lookback buffer would still be (incorrectly) 0.
@@ -323,91 +331,40 @@ class SingleAgentEpisode:
                     data=v, lookback=len_lookback_buffer
                 )
 
-        # RGB uint8 images from rendering the env; the images include the corresponding
-        # rewards.
-        assert render_images is None or observations is not None
-        self.render_images = render_images or []
-
         # The (global) timestep when this episode (possibly an episode chunk) started,
         # excluding a possible lookback buffer.
         self.t_started = t_started or 0
         # The current (global) timestep in the episode (possibly an episode chunk).
         self.t = len(self.rewards) + self.t_started
 
+        # Cache for custom data. May be used to store custom metrics from within a
+        # callback for the ongoing episode (e.g. render images).
+        self._custom_data = {}
+
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
+
+        self._last_added_observation = None
+        self._last_added_infos = None
+
         # Validate the episode data thus far.
-        self.validate()
-
-    def concat_episode(self, episode_chunk: "SingleAgentEpisode") -> None:
-        """Adds the given `episode_chunk` to the right side of self.
-
-        In order for this to work, both chunks (`self` and `episode_chunk`) must fit
-        together. This is checked by the IDs (must be identical), the time step counters
-        (`self.t` must be the same as `episode_chunk.t_started`), as well as the
-        observations/infos at the concatenation boundaries (`self.observations[-1]`
-        must match `episode_chunk.observations[0]`). Also, `self.is_done` must not be
-        True, meaning `self.is_terminated` and `self.is_truncated` are both False.
-
-        Args:
-            episode_chunk: Another `SingleAgentEpisode` to be concatenated.
-
-        Returns: A `SingleAegntEpisode` instance containing the concatenated
-            from both episodes.
-        """
-        assert episode_chunk.id_ == self.id_
-        # NOTE (sven): This is what we agreed on. As the replay buffers must be
-        # able to concatenate.
-        assert not self.is_done
-        # Make sure the timesteps match.
-        assert self.t == episode_chunk.t_started
-
-        episode_chunk.validate()
-
-        # Make sure, end matches other episode chunk's beginning.
-        assert np.all(episode_chunk.observations[0] == self.observations[-1])
-        # Pop out our last observations and infos (as these are identical
-        # to the first obs and infos in the next episode).
-        self.observations.pop()
-        self.infos.pop()
-
-        # Extend ourselves. In case, episode_chunk is already terminated (and numpyfied)
-        # we need to convert to lists (as we are ourselves still filling up lists).
-        self.observations.extend(episode_chunk.get_observations())
-        self.actions.extend(episode_chunk.get_actions())
-        self.rewards.extend(episode_chunk.get_rewards())
-        self.infos.extend(episode_chunk.get_infos())
-        self.t = episode_chunk.t
-
-        if episode_chunk.is_terminated:
-            self.is_terminated = True
-        elif episode_chunk.is_truncated:
-            self.is_truncated = True
-
-        for model_out_key in episode_chunk.extra_model_outputs.keys():
-            self.extra_model_outputs[model_out_key].extend(
-                episode_chunk.get_extra_model_outputs(model_out_key)
-            )
-
-        # Validate.
         self.validate()
 
     def add_env_reset(
         self,
         observation: ObsType,
         infos: Optional[Dict] = None,
-        *,
-        render_image: Optional[np.ndarray] = None,
     ) -> None:
         """Adds the initial data (after an `env.reset()`) to the episode.
 
-        This data consists of initial observations and initial infos, as well as
-        - optionally - a render image.
+        This data consists of initial observations and initial infos.
 
         Args:
             observation: The initial observation returned by `env.reset()`.
             infos: An (optional) info dict returned by `env.reset()`.
-            render_image: Optional. An RGB uint8 image from rendering
-                the environment right after the reset.
         """
+        assert not self.is_reset
         assert not self.is_done
         assert len(self.observations) == 0
         # Assume that this episode is completely empty and has not stepped yet.
@@ -424,11 +381,15 @@ class SingleAgentEpisode:
 
         self.observations.append(observation)
         self.infos.append(infos)
-        if render_image is not None:
-            self.render_images.append(render_image)
+
+        self._last_added_observation = observation
+        self._last_added_infos = infos
 
         # Validate our data.
         self.validate()
+
+        # Start the timer for this episode.
+        self._start_time = time.perf_counter()
 
     def add_env_step(
         self,
@@ -439,14 +400,13 @@ class SingleAgentEpisode:
         *,
         terminated: bool = False,
         truncated: bool = False,
-        render_image: Optional[np.ndarray] = None,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Adds results of an `env.step()` call (including the action) to this episode.
 
         This data consists of an observation and info dict, an action, a reward,
-        terminated/truncated flags, extra model outputs (e.g. action probabilities or
-        RNN internal state outputs), and - optionally - a render image.
+        terminated/truncated flags, and extra model outputs (e.g. action probabilities
+        or RNN internal state outputs).
 
         Args:
             observation: The next observation received from the environment after(!)
@@ -458,8 +418,6 @@ class SingleAgentEpisode:
                 terminated (after taking `action`).
             truncated: A boolean indicating, if the environment has been
                 truncated (after taking `action`).
-            render_image: Optional. An RGB uint8 image from rendering
-                the environment (after taking `action`).
             extra_model_outputs: The last timestep's specific model outputs.
                 These are normally outputs of an RLModule that were computed along with
                 `action`, e.g. `action_logp` or `action_dist_inputs`.
@@ -475,23 +433,25 @@ class SingleAgentEpisode:
         infos = infos or {}
         self.infos.append(infos)
         self.t += 1
-        if render_image is not None:
-            self.render_images.append(render_image)
         if extra_model_outputs is not None:
             for k, v in extra_model_outputs.items():
-                self.extra_model_outputs[k].append(v)
+                if k not in self.extra_model_outputs:
+                    self.extra_model_outputs[k] = InfiniteLookbackBuffer([v])
+                else:
+                    self.extra_model_outputs[k].append(v)
         self.is_terminated = terminated
         self.is_truncated = truncated
 
-        # Only check spaces if finalized AND every n timesteps.
-        if self.is_finalized and self.t % 50:
+        self._last_added_observation = observation
+        self._last_added_infos = infos
+
+        # Only check spaces if numpy'ized AND every n timesteps.
+        if self.is_numpy and self.t % 100:
             if self.observation_space is not None:
                 assert self.observation_space.contains(observation), (
                     f"`observation` {observation} does NOT fit SingleAgentEpisode's "
                     f"observation_space: {self.observation_space}!"
                 )
-            # TODO: This check will fail unless we add action clipping to
-            #  default module-to-env connector piece.
             if self.action_space is not None:
                 assert self.action_space.contains(action), (
                     f"`action` {action} does NOT fit SingleAgentEpisode's "
@@ -499,10 +459,12 @@ class SingleAgentEpisode:
                 )
 
         # Validate our data.
-        try:  # TODO
-            self.validate()
-        except Exception as e:
-            raise e
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.perf_counter()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -534,7 +496,16 @@ class SingleAgentEpisode:
                 assert len(v) == len(self.observations) - 1
 
     @property
-    def is_finalized(self) -> bool:
+    def custom_data(self):
+        return self._custom_data
+
+    @property
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return len(self.observations) > 0
+
+    @property
+    def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
         # If rewards are still a list, return False.
         # Otherwise, rewards should already be a (1D) numpy array.
@@ -550,7 +521,7 @@ class SingleAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def finalize(self) -> "SingleAgentEpisode":
+    def to_numpy(self) -> "SingleAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         This means in particular that this episodes' lists of (possibly complex)
@@ -558,10 +529,10 @@ class SingleAgentEpisode:
         structs, whose leafs are now numpy arrays. Each of these leaf numpy arrays will
         have the same length (batch dimension) as the length of the original lists.
 
-        Note that SampleBatch.INFOS are NEVER numpy'ized and will remain a list
-        (normally, a list of the original, env-returned dicts). This is due to the
-        herterogenous nature of INFOS returned by envs, which would make it unwieldy to
-        convert this information to numpy arrays.
+        Note that the data under the Columns.INFOS are NEVER numpy'ized and will remain
+        a list (normally, a list of the original, env-returned dicts). This is due to
+        the herterogenous nature of INFOS returned by envs, which would make it unwieldy
+        to convert this information to numpy arrays.
 
         After calling this method, no further data may be added to this episode via
         the `self.add_env_step()` method.
@@ -579,12 +550,12 @@ class SingleAgentEpisode:
                 actions=[1, 2, 3],
                 rewards=[1, 2, 3],
                 # Note: terminated/truncated have nothing to do with an episode
-                # being `finalized` or not (via the `self.finalize()` method)!
+                # being numpy'ized or not (via the `self.to_numpy()` method)!
                 terminated=False,
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
-            # Episode has not been finalized (numpy'ized) yet.
-            assert not episode.is_finalized
+            # Episode has not been numpy'ized yet.
+            assert not episode.is_numpy
             # We are still operating on lists.
             assert episode.get_observations([1]) == [1]
             assert episode.get_observations(slice(None, 2)) == [0, 1]
@@ -595,12 +566,12 @@ class SingleAgentEpisode:
                 reward=4,
                 terminated=True,
             )
-            # Still NOT finalized.
-            assert not episode.is_finalized
+            # Still NOT numpy'ized.
+            assert not episode.is_numpy
 
-            # Let's finalize the episode.
-            episode.finalize()
-            assert episode.is_finalized
+            # Numpy'ized the episode.
+            episode.to_numpy()
+            assert episode.is_numpy
 
             # We cannot add data anymore. The following would crash.
             # episode.add_env_step(observation=5, action=5, reward=5)
@@ -616,13 +587,70 @@ class SingleAgentEpisode:
         """
 
         self.observations.finalize()
-        self.actions.finalize()
-        self.rewards.finalize()
-        self.render_images = np.array(self.render_images, dtype=np.uint8)
-        for k, v in self.extra_model_outputs.items():
-            self.extra_model_outputs[k].finalize()
+        if len(self) > 0:
+            self.actions.finalize()
+            self.rewards.finalize()
+            for k, v in self.extra_model_outputs.items():
+                self.extra_model_outputs[k].finalize()
 
         return self
+
+    def concat_episode(self, other: "SingleAgentEpisode") -> None:
+        """Adds the given `other` SingleAgentEpisode to the right side of `self`.
+
+        In order for this to work, both chunks (`self` and `other`) must fit
+        together. This is checked by the IDs (must be identical), the time step counters
+        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        observations/infos at the concatenation boundaries. Also, `self.is_done` must
+        not be True, meaning `self.is_terminated` and `self.is_truncated` are both
+        False.
+
+        Args:
+            other: The other `SingleAgentEpisode` to be concatenated to this one.
+
+        Returns: A `SingleAgentEpisode` instance containing the concatenated data
+            from both episodes (`self` and `other`).
+        """
+        assert other.id_ == self.id_
+        # NOTE (sven): This is what we agreed on. As the replay buffers must be
+        # able to concatenate.
+        assert not self.is_done
+        # Make sure the timesteps match.
+        assert self.t == other.t_started
+        # Validate `other`.
+        other.validate()
+
+        # Make sure, end matches other episode chunk's beginning.
+        assert np.all(other.observations[0] == self.observations[-1])
+        # Pop out our last observations and infos (as these are identical
+        # to the first obs and infos in the next episode).
+        self.observations.pop()
+        self.infos.pop()
+
+        # Extend ourselves. In case, episode_chunk is already terminated and numpy'ized
+        # we need to convert to lists (as we are ourselves still filling up lists).
+        self.observations.extend(other.get_observations())
+        self.actions.extend(other.get_actions())
+        self.rewards.extend(other.get_rewards())
+        self.infos.extend(other.get_infos())
+        self.t = other.t
+
+        if other.is_terminated:
+            self.is_terminated = True
+        elif other.is_truncated:
+            self.is_truncated = True
+
+        for key in other.extra_model_outputs.keys():
+            assert key in self.extra_model_outputs
+            self.extra_model_outputs[key].extend(other.get_extra_model_outputs(key))
+
+        # Merge with `other`'s custom_data, but give `other` priority b/c we assume
+        # that as a follow-up chunk of `self` other has a more complete version of
+        # `custom_data`.
+        self.custom_data.update(other.custom_data)
+
+        # Validate.
+        self.validate()
 
     def cut(self, len_lookback_buffer: int = 0) -> "SingleAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing from this Episode.
@@ -670,7 +698,7 @@ class SingleAgentEpisode:
             else slice(None, 0)
         )
 
-        return SingleAgentEpisode(
+        sa_episode = SingleAgentEpisode(
             # Same ID.
             id_=self.id_,
             observations=self.get_observations(indices=indices_obs_and_infos),
@@ -688,6 +716,10 @@ class SingleAgentEpisode:
             # Use the length of the provided data as lookback buffer.
             len_lookback_buffer="auto",
         )
+        # Deepcopy all custom data in `self` to be continued in the cut episode.
+        sa_episode._custom_data = copy.deepcopy(self.custom_data)
+
+        return sa_episode
 
     # TODO (sven): Distinguish between:
     #  - global index: This is the absolute, global timestep whose values always
@@ -702,7 +734,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
     ) -> Any:
@@ -715,17 +747,17 @@ class SingleAgentEpisode:
                 individual observations in a batch of size len(indices).
                 A slice object is interpreted as a range of observations to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all observations (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with observations [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get_observations(-1, neg_indices_left_of_zero=True)`
+                respond to `get_observations(-1, neg_index_as_lookback=True)`
                 with `6` and to
-                `get_observations(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `get_observations(slice(-2, 1), neg_index_as_lookback=True)` with
                 `[5, 6,  7]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -747,7 +779,10 @@ class SingleAgentEpisode:
 
         .. testcode::
 
+            import gymnasium as gym
+
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
 
             episode = SingleAgentEpisode(
                 # Discrete(4) observations (ints between 0 and 4 (excl.))
@@ -757,29 +792,29 @@ class SingleAgentEpisode:
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
-            episode.get_observations(-1)  # 3
-            episode.get_observations(0)  # 0
-            episode.get_observations([0, 2])  # [0, 2]
-            episode.get_observations([-1, 0])  # [3, 0]
-            episode.get_observations(slice(None, 2))  # [0, 1]
-            episode.get_observations(slice(-2, None))  # [2, 3]
+            check(episode.get_observations(-1), 3)
+            check(episode.get_observations(0), 0)
+            check(episode.get_observations([0, 2]), [0, 2])
+            check(episode.get_observations([-1, 0]), [3, 0])
+            check(episode.get_observations(slice(None, 2)), [0, 1])
+            check(episode.get_observations(slice(-2, None)), [2, 3])
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_observations(slice(-6, -2), fill=-9)  # [-9, -9, 0, 1]
-            episode.get_observations(slice(2, 5), fill=-7)  # [2, 3, -7]
+            check(episode.get_observations(slice(-6, -2), fill=-9), [-9, -9, 0, 1])
+            check(episode.get_observations(slice(2, 5), fill=-7), [2, 3, -7])
             # Using `one_hot_discrete=True`.
-            episode.get_observations(2, one_hot_discrete=True)  # [0 0 1 0]
-            episode.get_observations(3, one_hot_discrete=True)  # [0 0 0 1]
-            episode.get_observations(
+            check(episode.get_observations(2, one_hot_discrete=True), [0, 0, 1, 0])
+            check(episode.get_observations(3, one_hot_discrete=True), [0, 0, 0, 1])
+            check(episode.get_observations(
                 slice(0, 3),
                 one_hot_discrete=True,
-            )   # [[1 0 0 0], [0 1 0 0], [0 0 1 0]]
+            ), [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
             # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
-            episode.get_observations(
+            check(episode.get_observations(
                 -1,
-                neg_indices_left_of_zero=True,  # -1 means one left of ts=0
+                neg_index_as_lookback=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
-            )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
 
         Returns:
             The collected observations.
@@ -789,7 +824,7 @@ class SingleAgentEpisode:
         """
         return self.observations.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
         )
@@ -798,7 +833,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
     ) -> Any:
         """Returns individual info dicts or list (ranges) thereof from this episode.
@@ -810,18 +845,18 @@ class SingleAgentEpisode:
                 individual info dicts in a list of size len(indices).
                 A slice object is interpreted as a range of info dicts to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all infos (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with infos
                 [{"l":4}, {"l":5}, {"l":6},  {"a":7}, {"b":8}, {"c":9}], where the
                 first 3 items are the lookback buffer (ts=0 item is {"a": 7}), will
-                respond to `get_infos(-1, neg_indices_left_of_zero=True)` with
+                respond to `get_infos(-1, neg_index_as_lookback=True)` with
                 `{"l":6}` and to
-                `get_infos(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `get_infos(slice(-2, 1), neg_index_as_lookback=True)` with
                 `[{"l":5}, {"l":6},  {"a":7}]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -867,7 +902,7 @@ class SingleAgentEpisode:
         """
         return self.infos.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
         )
 
@@ -875,7 +910,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
     ) -> Any:
@@ -888,16 +923,16 @@ class SingleAgentEpisode:
                 individual actions in a batch of size len(indices).
                 A slice object is interpreted as a range of actions to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all actions (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with actions [4, 5, 6,  7, 8, 9], where
                 [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will respond
-                to `get_actions(-1, neg_indices_left_of_zero=True)` with `6` and
-                to `get_actions(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                to `get_actions(-1, neg_index_as_lookback=True)` with `6` and
+                to `get_actions(slice(-2, 1), neg_index_as_lookback=True)` with
                 `[5, 6,  7]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -948,7 +983,7 @@ class SingleAgentEpisode:
             # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
             episode.get_actions(
                 -1,
-                neg_indices_left_of_zero=True,  # -1 means one left of ts=0
+                neg_index_as_lookback=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
             )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
@@ -961,7 +996,7 @@ class SingleAgentEpisode:
         """
         return self.actions.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
         )
@@ -970,7 +1005,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[float] = None,
     ) -> Any:
         """Returns individual rewards or batched ranges thereof from this episode.
@@ -982,16 +1017,16 @@ class SingleAgentEpisode:
                 individual rewards in a batch of size len(indices).
                 A slice object is interpreted as a range of rewards to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all rewards (from ts=0 to the end).
-            neg_indices_left_of_zero: Negative values in `indices` are interpreted as
+            neg_index_as_lookback: Negative values in `indices` are interpreted as
                  as "before ts=0", meaning going back into the lookback buffer.
                  For example, an episode with rewards [4, 5, 6,  7, 8, 9], where
                  [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will respond
-                 to `get_rewards(-1, neg_indices_left_of_zero=True)` with `6` and
-                 to `get_rewards(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                 to `get_rewards(-1, neg_index_as_lookback=True)` with `6` and
+                 to `get_rewards(slice(-2, 1), neg_index_as_lookback=True)` with
                  `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -1033,7 +1068,7 @@ class SingleAgentEpisode:
         """
         return self.rewards.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
         )
 
@@ -1042,7 +1077,7 @@ class SingleAgentEpisode:
         key: str,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
     ) -> Any:
         """Returns extra model outputs (under given key) from this episode.
@@ -1055,18 +1090,18 @@ class SingleAgentEpisode:
                 individual actions in a batch of size len(indices).
                 A slice object is interpreted as a range of extra model outputs to be
                 returned. Thereby, negative indices by default are interpreted as
-                "before the end" unless the `neg_indices_left_of_zero=True` option is
+                "before the end" unless the `neg_index_as_lookback=True` option is
                 used, in which case negative indices are interpreted as "before ts=0",
                 meaning going back into the lookback buffer.
                 If None, will return all extra model outputs (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 extra_model_outputs['a'] = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will respond to
-                `get_extra_model_outputs("a", -1, neg_indices_left_of_zero=True)` with
+                `get_extra_model_outputs("a", -1, neg_index_as_lookback=True)` with
                 `6` and to `get_extra_model_outputs("a", slice(-2, 1),
-                neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1079,7 +1114,7 @@ class SingleAgentEpisode:
                 `get_extra_model_outputs("b", slice(-7, -2), fill=0.0)` with
                 `[0.0, 0.0, 10, 11, 12]`.
                 TODO (sven): This would require a space being provided. Maybe we can
-                 automatically infer the space from existing data?
+                automatically infer the space from existing data?
 
         Examples:
 
@@ -1118,20 +1153,20 @@ class SingleAgentEpisode:
         if isinstance(value, InfiniteLookbackBuffer):
             return value.get(
                 indices=indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=fill,
             )
-        assert False  # TODO(sven)
         # TODO (sven): This does not seem to be solid yet. Users should NOT be able
         #  to just write directly into our buffers. Instead, use:
         #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key
         #  is not known, add a new buffer to the `extra_model_outputs` dict.
+        assert False
         # It might be that the user has added new key/value pairs in their custom
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
         # indices (with the given options) from there.
         return InfiniteLookbackBuffer(value).get(
-            indices, fill=fill, neg_indices_left_of_zero=neg_indices_left_of_zero
+            indices, fill=fill, neg_index_as_lookback=neg_index_as_lookback
         )
 
     def set_observations(
@@ -1139,7 +1174,7 @@ class SingleAgentEpisode:
         *,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's observations with the provided data.
 
@@ -1154,8 +1189,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new observation data to overwrite existing data with.
                 This may be a list of individual observation(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be (possibly complex) struct matching the
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
                 observation space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1167,16 +1202,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 observations = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_observations(individual_observation, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 observations buffer with the provided "individual_observation".
 
         Raises:
@@ -1186,7 +1221,7 @@ class SingleAgentEpisode:
         self.observations.set(
             new_data=new_data,
             at_indices=at_indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
         )
 
     def set_actions(
@@ -1194,7 +1229,7 @@ class SingleAgentEpisode:
         *,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's actions with the provided data.
 
@@ -1209,8 +1244,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new action data to overwrite existing data with.
                 This may be a list of individual action(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be (possibly complex) struct matching the
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
                 action space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1222,16 +1257,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 actions = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_actions(individual_action, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 actions buffer with the provided "individual_action".
 
         Raises:
@@ -1241,7 +1276,7 @@ class SingleAgentEpisode:
         self.actions.set(
             new_data=new_data,
             at_indices=at_indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
         )
 
     def set_rewards(
@@ -1249,7 +1284,7 @@ class SingleAgentEpisode:
         *,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's rewards with the provided data.
 
@@ -1264,8 +1299,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new reward data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be a np.ndarray with a length exactly
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1277,16 +1312,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_rewards(individual_reward, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 rewards buffer with the provided "individual_reward".
 
         Raises:
@@ -1296,7 +1331,7 @@ class SingleAgentEpisode:
         self.rewards.set(
             new_data=new_data,
             at_indices=at_indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
         )
 
     def set_extra_model_outputs(
@@ -1305,7 +1340,7 @@ class SingleAgentEpisode:
         key,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's extra model outputs with `new_data`.
 
@@ -1322,10 +1357,10 @@ class SingleAgentEpisode:
         Args:
             key: The `key` within `self.extra_model_outputs` to override data on or
                 to insert as a new key into `self.extra_model_outputs`.
-            new_data: The new reward data to overwrite existing data with.
+            new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be a np.ndarray with a length exactly
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1337,16 +1372,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_rewards(individual_reward, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 rewards buffer with the provided "individual_reward".
 
         Raises:
@@ -1354,22 +1389,19 @@ class SingleAgentEpisode:
                 `new_data`.
         """
         # Record already exists -> Set existing record's data to new values.
-        if key in self.extra_model_outputs:
-            self.extra_model_outputs[key].set(
-                new_data=new_data,
-                at_indices=at_indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
-            )
-        # Users wants to add a new record -> Create new buffer.
-        else:
-            if at_indices is not None:
-                raise AttributeError(
-                    f"Cannot set non-existing extra_model_outputs[{key}] using the "
-                    "`at_indices` arg! Try leaving `at_indices` None."
-                )
-            self.extra_model_outputs[key] = InfiniteLookbackBuffer(data=new_data)
+        assert key in self.extra_model_outputs
+        self.extra_model_outputs[key].set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_index_as_lookback=neg_index_as_lookback,
+        )
 
-    def slice(self, slice_: slice) -> "SingleAgentEpisode":
+    def slice(
+        self,
+        slice_: slice,
+        *,
+        len_lookback_buffer: Optional[int] = None,
+    ) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
 
         For example, if `self` contains o0 (the reset observation), o1, o2, o3, and o4
@@ -1380,79 +1412,162 @@ class SingleAgentEpisode:
         and extra model outputs) due to the initial observation received after an env
         reset.
 
-        Note that in any case, the lookback buffer will remain (if possible) at the same
-        size as it has been previously set to (during construction) and the
-        provided `slice` arg will NOT have to account for this extra offset at the
-        beginning in order for the returned SingleAgentEpisode to have such a
-        lookback buffer.
+        .. testcode::
+
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
+
+            # Generate a simple multi-agent episode.
+            observations = [0, 1, 2, 3, 4, 5]
+            actions = [1, 2, 3, 4, 5]
+            rewards = [0.1, 0.2, 0.3, 0.4, 0.5]
+            episode = SingleAgentEpisode(
+                observations=observations,
+                actions=actions,
+                rewards=rewards,
+                len_lookback_buffer=0,  # all given data is part of the episode
+            )
+            slice_1 = episode[:1]
+            check(slice_1.observations, [0, 1])
+            check(slice_1.actions, [1])
+            check(slice_1.rewards, [0.1])
+
+            slice_2 = episode[-2:]
+            check(slice_2.observations, [3, 4, 5])
+            check(slice_2.actions, [4, 5])
+            check(slice_2.rewards, [0.4, 0.5])
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
                 slice.
+            len_lookback_buffer: If not None, forces the returned slice to try to have
+                this number of timesteps in its lookback buffer (if available). If None
+                (default), tries to make the returned slice's lookback as large as the
+                current lookback buffer of this episode (`self`).
 
         Returns:
             The new SingleAgentEpisode representing the requested slice.
         """
+        # Translate `slice_` into one that only contains 0-or-positive ints and will
+        # NOT contain any None.
+        start = slice_.start
+        stop = slice_.stop
+
+        # Start is None -> 0.
+        if start is None:
+            start = 0
+        # Start is negative -> Interpret index as counting "from end".
+        elif start < 0:
+            start = len(self) + start
+
+        # Stop is None -> Set stop to our len (one ts past last valid index).
+        if stop is None:
+            stop = len(self)
+        # Stop is negative -> Interpret index as counting "from end".
+        elif stop < 0:
+            stop = len(self) + stop
+
+        step = slice_.step if slice_.step is not None else 1
+
         # Figure out, whether slicing stops at the very end of this episode to know
         # whether `self.is_terminated/is_truncated` should be kept as-is.
-        keep_done = slice_.stop is None or slice_.stop == len(self)
-        start = slice_.start or 0
-        t_started = self.t_started + start + (0 if start >= 0 else len(self))
+        keep_done = stop == len(self)
+        # Provide correct timestep- and pre-buffer information.
+        t_started = self.t_started + start
 
-        neg_indices_left_of_zero = (slice_.start or 0) >= 0
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.observations.lookback
+        )
+        if (
+            start >= 0
+            and start - _lb < 0
+            and self.observations.lookback < (_lb - start)
+        ):
+            _lb = self.observations.lookback + start
+        observations = InfiniteLookbackBuffer(
+            data=self.get_observations(
+                slice(start - _lb, stop + 1, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+            space=self.observation_space,
+        )
 
-        start = slice_.start or 0
-        stop = slice_.stop
-        # Obs and infos need one more step at the end.
-        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
-        step = slice_.step
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.infos.lookback
+        )
+        if start >= 0 and start - _lb < 0 and self.infos.lookback < (_lb - start):
+            _lb = self.infos.lookback + start
+        infos = InfiniteLookbackBuffer(
+            data=self.get_infos(
+                slice(start - _lb, stop + 1, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+        )
+
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.actions.lookback
+        )
+        if start >= 0 and start - _lb < 0 and self.actions.lookback < (_lb - start):
+            _lb = self.actions.lookback + start
+        actions = InfiniteLookbackBuffer(
+            data=self.get_actions(
+                slice(start - _lb, stop, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+            space=self.action_space,
+        )
+
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.rewards.lookback
+        )
+        if start >= 0 and start - _lb < 0 and self.rewards.lookback < (_lb - start):
+            _lb = self.rewards.lookback + start
+        rewards = InfiniteLookbackBuffer(
+            data=self.get_rewards(
+                slice(start - _lb, stop, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+        )
+
+        extra_model_outputs = {}
+        for k, v in self.extra_model_outputs.items():
+            _lb = len_lookback_buffer if len_lookback_buffer is not None else v.lookback
+            if start >= 0 and start - _lb < 0 and v.lookback < (_lb - start):
+                _lb = v.lookback + start
+            extra_model_outputs[k] = InfiniteLookbackBuffer(
+                data=self.get_extra_model_outputs(
+                    key=k,
+                    indices=slice(start - _lb, stop, step),
+                    neg_index_as_lookback=True,
+                ),
+                lookback=_lb,
+            )
+
         return SingleAgentEpisode(
             id_=self.id_,
-            observations=InfiniteLookbackBuffer(
-                data=self.get_observations(
-                    slice(start - self.observations.lookback, stop_obs_infos, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
-                ),
-                lookback=self.observations.lookback,
-                space=self.observation_space,
-            ),
-            infos=InfiniteLookbackBuffer(
-                data=self.get_infos(
-                    slice(start - self.infos.lookback, stop_obs_infos, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
-                ),
-                lookback=self.infos.lookback,
-            ),
-            actions=InfiniteLookbackBuffer(
-                data=self.get_actions(
-                    slice(start - self.actions.lookback, stop, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
-                ),
-                lookback=self.actions.lookback,
-                space=self.action_space,
-            ),
-            rewards=InfiniteLookbackBuffer(
-                data=self.get_rewards(
-                    slice(start - self.rewards.lookback, stop, step),
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
-                ),
-                lookback=self.rewards.lookback,
-            ),
-            extra_model_outputs={
-                k: InfiniteLookbackBuffer(
-                    data=self.get_extra_model_outputs(
-                        k,
-                        slice(start - v.lookback, stop, step),
-                        neg_indices_left_of_zero=neg_indices_left_of_zero,
-                    ),
-                    lookback=v.lookback,
-                )
-                for k, v in self.extra_model_outputs.items()
-            },
+            # In the following, offset `start`s automatically by lookbacks.
+            observations=observations,
+            observation_space=self.observation_space,
+            infos=infos,
+            actions=actions,
+            action_space=self.action_space,
+            rewards=rewards,
+            extra_model_outputs=extra_model_outputs,
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),
-            # Provide correct timestep- and pre-buffer information.
             t_started=t_started,
         )
 
@@ -1460,7 +1575,7 @@ class SingleAgentEpisode:
         """Converts a SingleAgentEpisode into a data dict mapping str keys to data.
 
         The keys used are:
-        SampleBatch.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
+        Columns.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
         and those in `self.extra_model_outputs`.
 
         Returns:
@@ -1471,7 +1586,7 @@ class SingleAgentEpisode:
         truncateds = [False] * (len(self) - 1) + [self.is_truncated]
         eps_id = [self.id_] * len(self)
 
-        if self.is_finalized:
+        if self.is_numpy:
             t = np.array(t)
             terminateds = np.array(terminateds)
             truncateds = np.array(truncateds)
@@ -1480,18 +1595,18 @@ class SingleAgentEpisode:
         return dict(
             {
                 # Trivial 1D data (compiled above).
-                SampleBatch.TERMINATEDS: terminateds,
-                SampleBatch.TRUNCATEDS: truncateds,
-                SampleBatch.T: t,
-                SampleBatch.EPS_ID: eps_id,
+                Columns.TERMINATEDS: terminateds,
+                Columns.TRUNCATEDS: truncateds,
+                Columns.T: t,
+                Columns.EPS_ID: eps_id,
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
                 # buffer!). Slice off last obs and infos to have the same number
                 # of them as we have actions and rewards.
-                SampleBatch.OBS: self.get_observations(slice(None, -1)),
-                SampleBatch.INFOS: self.get_infos(slice(None, -1)),
-                SampleBatch.ACTIONS: self.get_actions(),
-                SampleBatch.REWARDS: self.get_rewards(),
+                Columns.OBS: self.get_observations(slice(None, -1)),
+                Columns.INFOS: self.get_infos(slice(None, -1)),
+                Columns.ACTIONS: self.get_actions(),
+                Columns.REWARDS: self.get_rewards(),
             },
             # All `extra_model_outs`: Same as obs: Use get_... API.
             **{
@@ -1522,6 +1637,137 @@ class SingleAgentEpisode:
             chunk.
         """
         return sum(self.get_rewards())
+
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
+
+    def env_steps(self) -> int:
+        """Returns the number of environment steps.
+
+        Note, this episode instance could be a chunk of an actual episode.
+
+        Returns:
+            An integer that counts the number of environment steps this episode instance
+            has seen.
+        """
+        return len(self)
+
+    def agent_steps(self) -> int:
+        """Returns the number of agent steps.
+
+        Note, these are identical to the environment steps for a single-agent episode.
+
+        Returns:
+            An integer counting the number of agent steps executed during the time this
+            episode instance records.
+        """
+        return self.env_steps()
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the pickable state of an episode.
+
+        The data in the episode is stored into a dictionary. Note that episodes
+        can also be generated from states (see `SingleAgentEpisode.from_state()`).
+
+        Returns:
+            A dict containing all the data from the episode.
+        """
+        infos = self.infos.get_state()
+        infos["data"] = np.array([info if info else None for info in infos["data"]])
+        return {
+            "id_": self.id_,
+            "agent_id": self.agent_id,
+            "module_id": self.module_id,
+            "multi_agent_episode_id": self.multi_agent_episode_id,
+            # Note, all data is stored in `InfiniteLookbackBuffer`s.
+            "observations": self.observations.get_state(),
+            "actions": self.actions.get_state(),
+            "rewards": self.rewards.get_state(),
+            "infos": self.infos.get_state(),
+            "extra_model_outputs": {
+                k: v.get_state() if v else v
+                for k, v in self.extra_model_outputs.items()
+            }
+            if len(self.extra_model_outputs) > 0
+            else None,
+            "is_terminated": self.is_terminated,
+            "is_truncated": self.is_truncated,
+            "t_started": self.t_started,
+            "t": self.t,
+            "_observation_space": gym_space_to_dict(self._observation_space)
+            if self._observation_space
+            else None,
+            "_action_space": gym_space_to_dict(self._action_space)
+            if self._action_space
+            else None,
+            "_start_time": self._start_time,
+            "_last_step_time": self._last_step_time,
+            "custom_data": self.custom_data,
+        }
+
+    @staticmethod
+    def from_state(state: Dict[str, Any]) -> "SingleAgentEpisode":
+        """Creates a new `SingleAgentEpisode` instance from a state dict.
+
+        Args:
+            state: The state dict, as returned by `self.get_state()`.
+
+        Returns:
+            A new `SingleAgentEpisode` instance with the data from the state dict.
+        """
+        # Create an empy episode instance.
+        episode = SingleAgentEpisode(id_=state["id_"])
+        # Load all the data from the state dict into the episode.
+        episode.agent_id = state["agent_id"]
+        episode.module_id = state["module_id"]
+        episode.multi_agent_episode_id = state["multi_agent_episode_id"]
+        # Convert data back to `InfiniteLookbackBuffer`s.
+        episode.observations = InfiniteLookbackBuffer.from_state(state["observations"])
+        episode.actions = InfiniteLookbackBuffer.from_state(state["actions"])
+        episode.rewards = InfiniteLookbackBuffer.from_state(state["rewards"])
+        episode.infos = InfiniteLookbackBuffer.from_state(state["infos"])
+        episode.extra_model_outputs = (
+            defaultdict(
+                functools.partial(
+                    InfiniteLookbackBuffer, lookback=episode.observations.lookback
+                ),
+                {
+                    k: InfiniteLookbackBuffer.from_state(v)
+                    for k, v in state["extra_model_outputs"].items()
+                },
+            )
+            if state["extra_model_outputs"]
+            else defaultdict(
+                functools.partial(
+                    InfiniteLookbackBuffer, lookback=episode.observations.lookback
+                ),
+            )
+        )
+        episode.is_terminated = state["is_terminated"]
+        episode.is_truncated = state["is_truncated"]
+        episode.t_started = state["t_started"]
+        episode.t = state["t"]
+        # We need to convert the spaces to dictionaries for serialization.
+        episode._observation_space = (
+            gym_space_from_dict(state["_observation_space"])
+            if state["_observation_space"]
+            else None
+        )
+        episode._action_space = (
+            gym_space_from_dict(state["_action_space"])
+            if state["_action_space"]
+            else None
+        )
+        episode._start_time = state["_start_time"]
+        episode._last_step_time = state["_last_step_time"]
+        episode._custom_data = state.get("custom_data", {})
+        # Validate the episode.
+        episode.validate()
+
+        return episode
 
     @property
     def observation_space(self):
@@ -1571,3 +1817,11 @@ class SingleAgentEpisode:
                 f"SingleAgentEpisode does not support getting item '{item}'! "
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
+
+    @Deprecated(new="SingleAgentEpisode.custom_data[some-key] = ...", error=True)
+    def add_temporary_timestep_data(self):
+        pass
+
+    @Deprecated(new="SingleAgentEpisode.custom_data[some-key]", error=True)
+    def get_temporary_timestep_data(self):
+        pass

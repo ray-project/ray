@@ -10,9 +10,9 @@ Ray Data API
     dataset.rst
     data_iterator.rst
     execution_options.rst
+    aggregate.rst
     grouped_data.rst
     data_context.rst
-    random_access_dataset.rst
-    utility.rst
     preprocessor.rst
+    llm.rst
     from_other_data_libs.rst

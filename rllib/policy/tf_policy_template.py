@@ -1,5 +1,5 @@
 import gymnasium as gym
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -9,7 +9,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import (
     deprecation_warning,
     DEPRECATED_VALUE,
@@ -17,19 +17,15 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    AgentID,
     ModelGradients,
     TensorType,
     AlgorithmConfigDict,
 )
 
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
-
 tf1, tf, tfv = try_import_tf()
 
 
-@DeveloperAPI
+@OldAPIStack
 def build_tf_policy(
     name: str,
     *,
@@ -38,17 +34,7 @@ def build_tf_policy(
         Union[TensorType, List[TensorType]],
     ],
     get_default_config: Optional[Callable[[None], AlgorithmConfigDict]] = None,
-    postprocess_fn: Optional[
-        Callable[
-            [
-                Policy,
-                SampleBatch,
-                Optional[Dict[AgentID, SampleBatch]],
-                Optional["Episode"],
-            ],
-            SampleBatch,
-        ]
-    ] = None,
+    postprocess_fn=None,
     stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[str, TensorType]]] = None,
     optimizer_fn: Optional[
         Callable[[Policy, AlgorithmConfigDict], "tf.keras.optimizers.Optimizer"]

@@ -1,10 +1,13 @@
+import itertools
 import os
 import uuid
+from typing import Iterable
 
 import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
@@ -82,10 +85,10 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
 
     def gen(name):
         path = os.path.join(tmp_path, name)
-        ray.data.range(1000, parallelism=1).map(
+        ray.data.range(1000, override_num_blocks=1).map(
             lambda _: {"out": LARGE_VALUE}
         ).write_csv(path)
-        return ray.data.read_csv(path, parallelism=1)
+        return ray.data.read_csv(path, override_num_blocks=1)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -109,8 +112,8 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
         assert 80 < x < 120, (x, nrow)
 
     # Disabled.
-    # Setting infinite block size effectively disables block splitting.
-    ctx.target_max_block_size = float("inf")
+    # Setting a huge block size effectively disables block splitting.
+    ctx.target_max_block_size = 2**64
     ds4 = gen("out4")
     assert ds4._block_num_rows() == [1000]
 
@@ -121,16 +124,16 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     def gen(name):
         path = os.path.join(tmp_path, name)
         ds = (
-            ray.data.range(200000, parallelism=1)
+            ray.data.range(200000, override_num_blocks=1)
             .map(lambda _: {"out": uuid.uuid4().hex})
             .materialize()
         )
         # Fully execute the operations prior to write, because with
-        # parallelism=1, there is only one task; so the write operator
+        # override_num_blocks=1, there is only one task; so the write operator
         # will only write to one file, even though there are multiple
         # blocks created by block splitting.
         ds.write_parquet(path)
-        return ray.data.read_parquet(path, parallelism=1)
+        return ray.data.read_parquet(path, override_num_blocks=1)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -185,46 +188,96 @@ def test_split_map(shutdown_only, use_actors):
     # Arrow block
     ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
-    ctx.target_max_block_size = 20_000_000
-    ds2 = ray.data.range(1000, parallelism=1).map(arrow_fn, **kwargs)
-    nblocks = len(ds2.map(identity_fn, **kwargs).get_internal_block_refs())
-    assert nblocks == 1, nblocks
+
+    ds2 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
+    bundles = ds2.map(identity_fn, **kwargs).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert len(blocks) == 1
+    assert num_rows == 1000
+
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.map(identity_fn, **kwargs).get_internal_block_refs())
-    assert 4 < nblocks < 7 or use_actors, nblocks
+    ds3 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
+    bundles = ds3.map(identity_fn, **kwargs).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert 4 < len(blocks) < 7
+    assert num_rows == 1000
 
     # Disabled.
-    # Setting infinite block size effectively disables block splitting.
-    ctx.target_max_block_size = float("inf")
-    ds3 = ray.data.range(1000, parallelism=1).map(arrow_fn, **kwargs)
-    nblocks = len(ds3.map(identity_fn, **kwargs).get_internal_block_refs())
-    assert nblocks == 1, nblocks
+    # Setting a huge block size effectively disables block splitting.
+    ctx.target_max_block_size = 2**64
+
+    ds3 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
+    bundles = ds3.map(identity_fn, **kwargs).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert len(blocks) == 1
+    assert num_rows == 1000
+
+
+def _get_total_rows(blocks):
+    return sum([b.num_rows for b in blocks])
+
+
+def _fetch_blocks(bundles: Iterable[RefBundle]):
+    return ray.get(list(itertools.chain(*[b.block_refs for b in bundles])))
 
 
 def test_split_flat_map(ray_start_regular_shared):
     ctx = ray.data.context.DataContext.get_current()
-    ctx.target_max_block_size = 20_000_000
     # Arrow block
     ctx.target_max_block_size = 20_000_000
-    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
-    nblocks = len(ds2.flat_map(lambda x: [x]).get_internal_block_refs())
-    assert nblocks == 1, nblocks
+
+    ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
+    bundles = ds2.flat_map(lambda x: [x]).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert len(blocks) == 1
+    assert num_rows == 1000
+
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.flat_map(lambda x: [x]).get_internal_block_refs())
-    assert 4 < nblocks < 7, nblocks
+    ds3 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
+    bundles = ds3.flat_map(lambda x: [x]).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert 4 < len(blocks) < 7
+    assert num_rows == 1000
 
 
 def test_split_map_batches(ray_start_regular_shared):
     ctx = ray.data.context.DataContext.get_current()
-    ctx.target_max_block_size = 20_000_000
     # Arrow block
     ctx.target_max_block_size = 20_000_000
-    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
-    nblocks = len(ds2.map_batches(lambda x: x, batch_size=1).get_internal_block_refs())
-    assert nblocks == 1, nblocks
+
+    ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
+    bundles = ds2.map_batches(lambda x: x, batch_size=1).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert len(blocks) == 1
+    assert num_rows == 1000
+
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
-    assert 4 < nblocks < 7, nblocks
+    ds3 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
+    bundles = ds3.map_batches(lambda x: x, batch_size=16).iter_internal_ref_bundles()
+
+    blocks = _fetch_blocks(bundles)
+    num_rows = _get_total_rows(blocks)
+
+    assert 4 < len(blocks) < 7
+    assert num_rows == 1000
 
 
 if __name__ == "__main__":

@@ -14,30 +14,27 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind/bind.hpp>
-#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/status.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/object_directory.h"
-#include "ray/object_manager/ownership_based_object_directory.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
 
 // Identifier for task metrics reporting, which is tuple of the task name
 // (empty string if unknown), and is_retry bool.
-typedef std::pair<std::string, bool> TaskMetricsKey;
+using TaskMetricsKey = std::pair<std::string, bool>;
 
 enum BundlePriority {
   /// Bundle requested by ray.get().
@@ -65,13 +62,13 @@ class PullManager {
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
-      NodeID &self_node_id,
-      const std::function<bool(const ObjectID &)> object_is_local,
-      const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-      const std::function<void(const ObjectID &)> cancel_pull_request,
-      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-      const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time_seconds,
+      NodeID self_node_id,
+      std::function<bool(const ObjectID &)> object_is_local,
+      std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      std::function<void(const ObjectID &)> cancel_pull_request,
+      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<double()> get_time_seconds,
       int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
@@ -181,7 +178,7 @@ class PullManager {
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
-    ObjectPullRequest(double first_retry_time)
+    explicit ObjectPullRequest(double first_retry_time)
         : client_locations(),
           spilled_url(),
           next_pull_time(first_retry_time),

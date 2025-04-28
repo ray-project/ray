@@ -89,6 +89,7 @@ $ nsys --version
 # NVIDIA Nsight Systems version 2022.4.1.21-0db2c85
 ```
 
+(run-nsight-on-ray)=
 #### Run Nsight on Ray
 
 To enable GPU profiling, specify the config in the `runtime_env` as follows:
@@ -150,7 +151,7 @@ ray.get(ray_actor.run.remote())
 
 **Note:**: The default report filename (`-o, --output`) is `worker_process_{pid}.nsys-rep` in the logs dir.
 
-
+(profiling-result)=
 #### Profiling result
 
 Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` directory. This specific directory location may change in the future. You can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.

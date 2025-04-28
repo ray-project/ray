@@ -95,15 +95,15 @@ std::string BundleSpecification::DebugString() const {
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const PlacementGroupID &group_id,
+                                         const std::string &group_id_hex,
                                          int64_t bundle_index) {
   std::stringstream os;
   if (bundle_index >= 0) {
     os << original_resource_name << kGroupKeyword << std::to_string(bundle_index) << "_"
-       << group_id.Hex();
+       << group_id_hex;
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    os << original_resource_name << kGroupKeyword << group_id.Hex();
+    os << original_resource_name << kGroupKeyword << group_id_hex;
   }
   std::string result = os.str();
   RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)
@@ -113,9 +113,10 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const BundleSpecification &bundle_spec) {
+                                         const PlacementGroupID &group_id,
+                                         int64_t bundle_index) {
   return FormatPlacementGroupResource(
-      original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
+      original_resource_name, group_id.Hex(), bundle_index);
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
@@ -137,6 +138,23 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
   }
 }
 
+bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
+  // Check whether the resource is CPU resource or CPU resource inside PG.
+  if (resource_id == ResourceID::CPU()) {
+    return true;
+  }
+
+  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
+                                                       /*for_wildcard_resource*/ true,
+                                                       /*for_indexed_resource*/ true);
+  if (possible_pg_resource.has_value() &&
+      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
+    return true;
+  }
+
+  return false;
+}
+
 std::optional<PgFormattedResourceData> ParsePgFormattedResource(
     const std::string &resource, bool for_wildcard_resource, bool for_indexed_resource) {
   // Check if it is a wildcard pg resource.
@@ -152,6 +170,7 @@ std::optional<PgFormattedResourceData> ParsePgFormattedResource(
         match_groups.size() == 3) {
       data.original_resource = match_groups[1].str();
       data.bundle_index = -1;
+      data.group_id = match_groups[2].str();
       return data;
     }
   }
@@ -163,6 +182,7 @@ std::optional<PgFormattedResourceData> ParsePgFormattedResource(
         match_groups.size() == 4) {
       data.original_resource = match_groups[1].str();
       data.bundle_index = stoi(match_groups[2].str());
+      data.group_id = match_groups[3].str();
       return data;
     }
   }
@@ -184,23 +204,37 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     const PlacementGroupID &placement_group_id,
     int64_t bundle_index) {
-  std::unordered_map<std::string, double> new_resources;
-  if (!placement_group_id.IsNil()) {
-    RAY_CHECK((bundle_index == -1 || bundle_index >= 0))
-        << "Invalid bundle index " << bundle_index;
-    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto wildcard_name =
-          FormatPlacementGroupResource(iter->first, placement_group_id, -1);
-      new_resources[wildcard_name] = iter->second;
-      if (bundle_index >= 0) {
-        auto index_name =
-            FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
-        new_resources[index_name] = iter->second;
-      }
-    }
-    return new_resources;
+  if (placement_group_id.IsNil()) {
+    return resources;
   }
-  return resources;
+
+  std::unordered_map<std::string, double> new_resources;
+  RAY_CHECK((bundle_index == -1 || bundle_index >= 0))
+      << "Invalid bundle index " << bundle_index;
+  for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+    auto wildcard_name =
+        FormatPlacementGroupResource(iter->first, placement_group_id, -1);
+    new_resources[wildcard_name] = iter->second;
+    if (bundle_index >= 0) {
+      auto index_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+      new_resources[index_name] = iter->second;
+    }
+  }
+
+  // Note that all nodes that have placement group have a special
+  // keyword bundle_group_[pg_id].
+  // Always include bundle resource wildcard resources, so that
+  // even when the task doesn't require any resource, it can use the placement group.
+  auto bundle_key =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
+  new_resources[bundle_key] = 0.001;
+  if (bundle_index >= 0) {
+    auto bundle_key_with_index = FormatPlacementGroupResource(
+        kBundle_ResourceLabel, placement_group_id, bundle_index);
+    new_resources[bundle_key_with_index] = 0.001;
+  }
+  return new_resources;
 }
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(

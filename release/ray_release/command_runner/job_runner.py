@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -9,7 +10,6 @@ from ray_release.exception import (
     ClusterNodesWaitTimeout,
     CommandError,
     CommandTimeout,
-    LocalEnvSetupError,
     LogsError,
     FetchResultError,
 )
@@ -17,7 +17,6 @@ from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import format_link, get_anyscale_sdk
-from ray_release.wheels import install_matching_ray_locally
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -42,23 +41,9 @@ class JobRunner(CommandRunner):
 
         self.last_command_scd_id = None
 
-    def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
-        if not os.environ.get("BUILDKITE"):
-            return
-
-        # Install matching Ray for job submission
-        try:
-            install_matching_ray_locally(
-                ray_wheels_url or os.environ.get("RAY_WHEELS", None)
-            )
-        except Exception as e:
-            raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
-
     def _copy_script_to_working_dir(self, script_name):
         script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
-        if os.path.exists(script_name):
-            os.unlink(script_name)
-        os.link(script, script_name)
+        shutil.copy(script, script_name)
 
     def prepare_remote_env(self):
         self._copy_script_to_working_dir("wait_cluster.py")

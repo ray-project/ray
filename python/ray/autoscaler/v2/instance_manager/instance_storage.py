@@ -1,44 +1,24 @@
 import copy
 import logging
-from abc import ABCMeta, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage, StoreStatus
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
+from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
 
 
-class InstanceUpdatedSubscriber(metaclass=ABCMeta):
-    """Subscribers to instance status changes."""
-
-    @abstractmethod
-    def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        pass
-
-
 class InstanceStorage:
-    """Instance storage stores the states of instances in the storage. It also
-    allows users to subscribe to instance status changes to trigger reconciliation
-    with cloud provider."""
+    """Instance storage stores the states of instances in the storage."""
 
     def __init__(
         self,
         cluster_id: str,
         storage: Storage,
-        status_change_subscriber: Optional[InstanceUpdatedSubscriber] = None,
     ) -> None:
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
-        self._status_change_subscribers = []
-        if status_change_subscriber:
-            self._status_change_subscribers.append(status_change_subscriber)
-
-    def add_status_change_subscribers(
-        self, subscribers: List[InstanceUpdatedSubscriber]
-    ):
-        self._status_change_subscribers.extend(subscribers)
 
     def batch_upsert_instances(
         self,
@@ -76,18 +56,6 @@ class InstanceStorage:
         result, version = self._storage.batch_update(
             self._table_name, mutations, {}, expected_storage_version
         )
-
-        if result:
-            for subscriber in self._status_change_subscribers:
-                subscriber.notify(
-                    [
-                        InstanceUpdateEvent(
-                            instance_id=instance.instance_id,
-                            new_instance_status=instance.status,
-                        )
-                        for instance in updates
-                    ],
-                )
 
         return StoreStatus(result, version)
 
@@ -127,17 +95,6 @@ class InstanceStorage:
             expected_storage_version=expected_storage_verison,
             insert_only=False,
         )
-
-        if result:
-            for subscriber in self._status_change_subscribers:
-                subscriber.notify(
-                    [
-                        InstanceUpdateEvent(
-                            instance_id=instance.instance_id,
-                            new_instance_status=instance.status,
-                        )
-                    ],
-                )
 
         return StoreStatus(result, version)
 

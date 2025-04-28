@@ -17,7 +17,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
-    _skip_validating_runtime_env_uris,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -111,7 +110,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
-            "object_store_memory": 64,
             "resources": {"custom_asic": 12},
             "accelerator_type": NVIDIA_TESLA_V100,
         }
@@ -126,7 +124,7 @@ class TestRayActorOptionsSchema:
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
+        ge_zero_fields = ["num_cpus", "num_gpus", "memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
@@ -156,15 +154,6 @@ class TestRayActorOptionsSchema:
         with pytest.raises(ValueError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-        # Inside the context, runtime_envs with local URIs should not be rejected.
-        with _skip_validating_runtime_env_uris():
-            schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-            assert schema.runtime_env == env
-
-        # Check that the validation state is reset outside of the context manager.
-        with pytest.raises(ValueError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
 
@@ -173,7 +162,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": None,
             "num_gpus": None,
             "memory": None,
-            "object_store_memory": None,
             "resources": {},
             "accelerator_type": None,
         }
@@ -208,13 +196,14 @@ class TestDeploymentSchema:
             "name": "shallow",
             "num_replicas": 2,
             "route_prefix": "/shallow",
-            "max_concurrent_queries": 32,
+            "max_queued_requests": 12,
             "user_config": {"threshold": 0.2, "pattern": "rainbow"},
             "autoscaling_config": None,
             "graceful_shutdown_wait_loop_s": 17,
             "graceful_shutdown_timeout_s": 49,
             "health_check_period_s": 11,
             "health_check_timeout_s": 11,
+            "max_ongoing_requests": 32,
             "ray_actor_options": {
                 "runtime_env": {
                     "working_dir": TEST_MODULE_PINNED_URI,
@@ -223,7 +212,6 @@ class TestDeploymentSchema:
                 "num_cpus": 3,
                 "num_gpus": 4.2,
                 "memory": 5,
-                "object_store_memory": 3,
                 "resources": {"custom_asic": 8},
                 "accelerator_type": NVIDIA_TESLA_P4,
             },
@@ -239,7 +227,7 @@ class TestDeploymentSchema:
 
         gt_zero_fields = [
             "num_replicas",
-            "max_concurrent_queries",
+            "max_ongoing_requests",
             "health_check_period_s",
             "health_check_timeout_s",
         ]
@@ -266,38 +254,39 @@ class TestDeploymentSchema:
                 DeploymentSchema.parse_obj(deployment_schema)
             deployment_schema[field] = None
 
-    def test_route_prefix(self):
-        # Ensure that route_prefix is validated
+    def test_validate_max_queued_requests(self):
+        # Ensure ValidationError is raised when max_queued_requests is not -1 or > 1.
 
         deployment_schema = self.get_minimal_deployment_schema()
 
-        # route_prefix must start with a "/"
-        deployment_schema["route_prefix"] = "hello/world"
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # route_prefix must end with a "/"
-        deployment_schema["route_prefix"] = "/hello/world/"
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # route_prefix cannot contain wildcards, meaning it can't have
-        # "{" or "}"
-        deployment_schema["route_prefix"] = "/hello/{adjective}/world/"
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # Ensure a valid route_prefix works
-        deployment_schema["route_prefix"] = "/hello/wonderful/world"
+        deployment_schema["max_queued_requests"] = -1
         DeploymentSchema.parse_obj(deployment_schema)
 
-        # Ensure route_prefix of "/" works
-        deployment_schema["route_prefix"] = "/"
+        deployment_schema["max_queued_requests"] = 1
         DeploymentSchema.parse_obj(deployment_schema)
 
-        # Ensure route_prefix of None works
-        deployment_schema["route_prefix"] = None
+        deployment_schema["max_queued_requests"] = 100
         DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = "hi"
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 1.5
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 0
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = -2
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = -100
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
 
     def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
         # num_replicas and autoscaling_config cannot be set at the same time
@@ -314,6 +303,30 @@ class TestDeploymentSchema:
         deployment_schema["num_replicas"] = 5
         deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
         with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        # max_replicas_per_node and placement_group_bundles
+        # cannot be set at the same time
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["max_replicas_per_node"] = 5
+        deployment_schema.pop("placement_group_bundles", None)
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema.pop("max_replicas_per_node", None)
+        deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_replicas_per_node"] = 5
+        deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
             DeploymentSchema.parse_obj(deployment_schema)
 
     def test_num_replicas_auto(self):
@@ -344,31 +357,32 @@ class TestDeploymentSchema:
         deployment_schema["extra_field"] = None
         DeploymentSchema.parse_obj(deployment_schema)
 
-    @pytest.mark.parametrize(
-        "option",
-        [
-            "num_replicas",
-            "route_prefix",
-            "autoscaling_config",
-            "user_config",
-        ],
-    )
-    def test_nullable_options(self, option: str):
-        """Check that nullable options can be set to None."""
+    def test_user_config_nullable(self):
+        deployment_options = {"name": "test", "user_config": None}
+        DeploymentSchema.parse_obj(deployment_options)
 
-        deployment_options = {"name": "test", option: None}
+    def test_autoscaling_config_nullable(self):
+        deployment_options = {
+            "name": "test",
+            "autoscaling_config": None,
+            "num_replicas": 5,
+        }
+        DeploymentSchema.parse_obj(deployment_options)
 
-        # One of "num_replicas" or "autoscaling_config" must be provided.
-        if option == "num_replicas":
-            deployment_options["autoscaling_config"] = {
+    def test_route_prefix_nullable(self):
+        deployment_options = {"name": "test", "route_prefix": None}
+        DeploymentSchema.parse_obj(deployment_options)
+
+    def test_num_replicas_nullable(self):
+        deployment_options = {
+            "name": "test",
+            "num_replicas": None,
+            "autoscaling_config": {
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 5,
-            }
-        elif option == "autoscaling_config":
-            deployment_options["num_replicas"] = 5
-
-        # Schema should be created without error.
+                "target_ongoing_requests": 5,
+            },
+        }
         DeploymentSchema.parse_obj(deployment_options)
 
 
@@ -382,7 +396,7 @@ class TestServeApplicationSchema:
                     "name": "shallow",
                     "num_replicas": 2,
                     "route_prefix": "/shallow",
-                    "max_concurrent_queries": 32,
+                    "max_ongoing_requests": 32,
                     "user_config": None,
                     "autoscaling_config": None,
                     "graceful_shutdown_wait_loop_s": 17,
@@ -397,7 +411,6 @@ class TestServeApplicationSchema:
                         "num_cpus": 3,
                         "num_gpus": 4.2,
                         "memory": 5,
-                        "object_store_memory": 3,
                         "resources": {"custom_asic": 8},
                         "accelerator_type": NVIDIA_TESLA_P4,
                     },
@@ -450,15 +463,6 @@ class TestServeApplicationSchema:
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
         # By default, runtime_envs with local URIs should be rejected.
-        with pytest.raises(ValueError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        # Inside the context, runtime_envs with local URIs should not be rejected.
-        with _skip_validating_runtime_env_uris():
-            schema = ServeApplicationSchema.parse_obj(serve_application_schema)
-            assert schema.runtime_env == env
-
-        # Check that the validation was reset after the above call.
         with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
@@ -684,6 +688,7 @@ class TestLoggingConfig:
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
         assert schema.enable_access_log
+        assert schema.additional_log_standard_attrs == []
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -710,6 +715,22 @@ class TestLoggingConfig:
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
         assert schema.enable_access_log
+        assert schema.additional_log_standard_attrs == []
+
+    def test_additional_log_standard_attrs_type(self):
+        schema = LoggingConfig.parse_obj({"additional_log_standard_attrs": ["name"]})
+        assert isinstance(schema.additional_log_standard_attrs, list)
+        assert schema.additional_log_standard_attrs == ["name"]
+
+    def test_additional_log_standard_attrs_type_error(self):
+        with pytest.raises(ValidationError):
+            LoggingConfig.parse_obj({"additional_log_standard_attrs": "name"})
+
+    def test_additional_log_standard_attrs_deduplicate(self):
+        schema = LoggingConfig.parse_obj(
+            {"additional_log_standard_attrs": ["name", "name"]}
+        )
+        assert schema.additional_log_standard_attrs == ["name"]
 
 
 # This function is defined globally to be accessible via import path
@@ -720,7 +741,6 @@ def global_f():
 def test_deployment_to_schema_to_deployment():
     @serve.deployment(
         num_replicas=3,
-        route_prefix="/hello",
         ray_actor_options={
             "runtime_env": {
                 "working_dir": TEST_MODULE_PINNED_URI,
@@ -736,10 +756,11 @@ def test_deployment_to_schema_to_deployment():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
+    deployment = deployment.options(
+        func_or_class="ray.serve.tests.test_schema.global_f"
+    )
 
     assert deployment.num_replicas == 3
-    assert deployment.route_prefix == "/hello"
     assert (
         deployment.ray_actor_options["runtime_env"]["working_dir"]
         == TEST_MODULE_PINNED_URI
@@ -755,14 +776,15 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
 
     @serve.deployment(
         num_replicas=3,
-        route_prefix="/hello",
         ray_actor_options={},
     )
     def f():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
+    deployment = deployment.options(
+        func_or_class="ray.serve.tests.test_schema.global_f"
+    )
 
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
@@ -788,6 +810,7 @@ def test_serve_instance_details_is_json_serializable():
                 "status": "RUNNING",
                 "message": "fake_message",
                 "last_deployed_time_s": 123,
+                "source": "imperative",
                 "deployments": {
                     "deployment1": {
                         "name": "deployment1",
@@ -798,9 +821,11 @@ def test_serve_instance_details_is_json_serializable():
                             "name": "deployment1",
                             "autoscaling_config": {
                                 # Byte object will cause json serializable error
-                                "serialized_policy_def": serialized_policy_def
+                                "_serialized_policy_def": serialized_policy_def
                             },
                         },
+                        "target_num_replicas": 0,
+                        "required_resources": {"CPU": 1},
                         "replicas": [],
                     }
                 },
@@ -822,6 +847,7 @@ def test_serve_instance_details_is_json_serializable():
                     "status": "RUNNING",
                     "message": "fake_message",
                     "last_deployed_time_s": 123.0,
+                    "source": "imperative",
                     "deployments": {
                         "deployment1": {
                             "name": "deployment1",
@@ -832,6 +858,8 @@ def test_serve_instance_details_is_json_serializable():
                                 "name": "deployment1",
                                 "autoscaling_config": {},
                             },
+                            "target_num_replicas": 0,
+                            "required_resources": {"CPU": 1},
                             "replicas": [],
                         }
                     },
@@ -845,7 +873,7 @@ def test_serve_instance_details_is_json_serializable():
     application = details["applications"]["app1"]
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

@@ -266,7 +266,7 @@ def test_node_affinity_scheduling_strategy(
 
         @ray.remote
         def get_node_id():
-            return ray.get_runtime_context().node_id
+            return ray.get_runtime_context().get_node_id()
 
         head_node_id = ray.get(
             get_node_id.options(num_cpus=0, resources={"head": 1}).remote()
@@ -345,14 +345,14 @@ def test_node_affinity_scheduling_strategy(
             ),
         )
         def crashed_get_node_id():
-            if ray.get_runtime_context().node_id == crashed_worker_node_id:
+            if ray.get_runtime_context().get_node_id() == crashed_worker_node_id:
                 internal_kv._internal_kv_put(
                     "crashed_get_node_id", "crashed_worker_node_id"
                 )
                 while True:
                     time.sleep(1)
             else:
-                return ray.get_runtime_context().node_id
+                return ray.get_runtime_context().get_node_id()
 
         r = crashed_get_node_id.remote()
         while not internal_kv._internal_kv_exists("crashed_get_node_id"):
@@ -363,7 +363,7 @@ def test_node_affinity_scheduling_strategy(
         @ray.remote(num_cpus=1)
         class Actor:
             def get_node_id(self):
-                return ray.get_runtime_context().node_id
+                return ray.get_runtime_context().get_node_id()
 
         actor = Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
@@ -572,8 +572,9 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_demand_report_for_node_affinity_scheduling_strategy(
-    monkeypatch, shutdown_only
+    autoscaler_v2, monkeypatch, shutdown_only
 ):
     from ray.cluster_utils import AutoscalingCluster
 
@@ -590,6 +591,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     cluster.start()
@@ -651,7 +653,8 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
 @pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
-def test_demand_report_when_scale_up(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
+def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
 
@@ -668,6 +671,9 @@ def test_demand_report_when_scale_up(shutdown_only):
                 "max_workers": 10,
             },
         },
+        autoscaler_v2=autoscaler_v2,
+        max_workers=20,  # default 8
+        upscaling_speed=5,  # greater upscaling speed
     )
 
     cluster.start()
@@ -719,6 +725,7 @@ def test_demand_report_when_scale_up(shutdown_only):
     # Wait for 20s for the cluster to be up
     wait_for_condition(check_backlog_info, 20)
     cluster.shutdown()
+    ray.shutdown()
 
 
 def test_data_locality_spilled_objects(

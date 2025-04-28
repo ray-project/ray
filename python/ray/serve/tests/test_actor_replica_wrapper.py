@@ -1,21 +1,24 @@
+import asyncio
 import pickle
 import sys
-from typing import Tuple, Union
+from typing import Union
 
 import pytest
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
-from ray.actor import ActorHandle
+from ray._private.test_utils import SignalActor
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_scheduler.common import (
-    ActorReplicaWrapper,
-    PendingRequest,
-)
+from ray.serve._private.replica_scheduler.common import PendingRequest
+from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
+from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
 @ray.remote(num_cpus=0)
@@ -59,6 +62,12 @@ class FakeReplicaActor:
         *args,
         **kwargs,
     ):
+        cancelled_signal_actor = kwargs.pop("cancelled_signal_actor", None)
+        if cancelled_signal_actor is not None:
+            executing_signal_actor = kwargs.pop("executing_signal_actor")
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await executing_signal_actor.send.remote()
+
         yield pickle.dumps(self._replica_queue_length_info)
         if not self._replica_queue_length_info.accepted:
             return
@@ -74,47 +83,42 @@ class FakeReplicaActor:
 
 
 @pytest.fixture
-def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
+def setup_fake_replica(ray_instance) -> RunningReplica:
     actor_handle = FakeReplicaActor.remote()
-    return (
-        ActorReplicaWrapper(
-            RunningReplicaInfo(
-                deployment_name="fake_deployment",
-                replica_tag="fake_replica",
-                node_id=None,
-                availability_zone=None,
-                actor_handle=actor_handle,
-                max_concurrent_queries=10,
-                is_cross_language=False,
-            )
-        ),
-        actor_handle,
+    return RunningReplicaInfo(
+        ReplicaID("fake_replica", deployment_id=DeploymentID(name="fake_deployment")),
+        node_id=None,
+        node_ip=None,
+        availability_zone=None,
+        actor_handle=actor_handle,
+        max_ongoing_requests=10,
+        is_cross_language=False,
     )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
-async def test_send_request(setup_fake_replica, is_streaming: bool):
-    replica, _ = setup_fake_replica
+async def test_send_request_without_rejection(setup_fake_replica, is_streaming: bool):
+    replica = RunningReplica(setup_fake_replica)
 
     pr = PendingRequest(
         args=["Hello"],
         kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
-            endpoint="123",
+            internal_request_id="def",
             is_streaming=is_streaming,
         ),
     )
-    obj_ref_or_gen = replica.send_request(pr)
+    replica_result, _ = await replica.send_request(pr, with_rejection=False)
     if is_streaming:
-        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
-            next_obj_ref = await obj_ref_or_gen.__anext__()
-            assert await next_obj_ref == f"Hello-{i}"
+            assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(obj_ref_or_gen, ObjectRef)
-        assert await obj_ref_or_gen == "Hello"
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio
@@ -123,7 +127,8 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
 async def test_send_request_with_rejection(
     setup_fake_replica, accepted: bool, is_streaming: bool
 ):
-    replica, actor_handle = setup_fake_replica
+    actor_handle = setup_fake_replica.actor_handle
+    replica = RunningReplica(setup_fake_replica)
     ray.get(
         actor_handle.set_replica_queue_length_info.remote(
             ReplicaQueueLengthInfo(accepted=accepted, num_ongoing_requests=10),
@@ -135,23 +140,67 @@ async def test_send_request_with_rejection(
         kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
-            endpoint="123",
+            internal_request_id="def",
             is_streaming=is_streaming,
         ),
     )
-    obj_ref_or_gen, info = await replica.send_request_with_rejection(pr)
+    replica_result, info = await replica.send_request(pr, with_rejection=True)
     assert info.accepted == accepted
     assert info.num_ongoing_requests == 10
     if not accepted:
-        assert obj_ref_or_gen is None
+        assert replica_result is None
     elif is_streaming:
-        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
-            next_obj_ref = await obj_ref_or_gen.__anext__()
-            assert await next_obj_ref == f"Hello-{i}"
+            assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(obj_ref_or_gen, ObjectRef)
-        assert await obj_ref_or_gen == "Hello"
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_send_request_with_rejection_cancellation(setup_fake_replica):
+    """
+    Verify that the downstream actor method call is cancelled if the call to send the
+    request to the replica is cancelled.
+    """
+    replica = RunningReplica(setup_fake_replica)
+
+    executing_signal_actor = SignalActor.remote()
+    cancelled_signal_actor = SignalActor.remote()
+
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={
+            "cancelled_signal_actor": cancelled_signal_actor,
+            "executing_signal_actor": executing_signal_actor,
+        },
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+        ),
+    )
+
+    # Send request should hang because the downstream actor method call blocks
+    # before sending the system message.
+    send_request_task = get_or_create_event_loop().create_task(
+        replica.send_request(pr, with_rejection=True)
+    )
+
+    # Check that the downstream actor method call has started.
+    await executing_signal_actor.wait.remote()
+
+    _, pending = await asyncio.wait([send_request_task], timeout=0.001)
+    assert len(pending) == 1
+
+    # Cancel the task. This should cause the downstream actor method call to
+    # be cancelled (verified via signal actor).
+    send_request_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await send_request_task
+
+    await cancelled_signal_actor.wait.remote()
 
 
 if __name__ == "__main__":

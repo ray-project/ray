@@ -2,19 +2,18 @@ import logging
 from typing import Optional
 
 import ray
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class FilterManager:
     """Manages filters and coordination across remote evaluators that expose
     `get_filters` and `sync_filters`.
     """
 
     @staticmethod
-    @DeveloperAPI
     def synchronize(
         local_filters,
         worker_set,
@@ -29,7 +28,7 @@ class FilterManager:
 
         Args:
             local_filters: Filters to be synchronized.
-            worker_set: WorkerSet with remote EnvRunners with filters.
+            worker_set: EnvRunnerGroup with remote EnvRunners with filters.
             update_remote: Whether to push updates from the local filters to the remote
                 workers' filters.
             timeout_seconds: How long to wait for filter to get or set filters
@@ -44,9 +43,9 @@ class FilterManager:
         logger.debug(f"Synchronizing filters: {local_filters}")
 
         # Get the filters from the remote workers.
-        remote_filters = worker_set.foreach_worker(
+        remote_filters = worker_set.foreach_env_runner(
             func=lambda worker: worker.get_filters(flush_after=True),
-            local_worker=False,
+            local_env_runner=False,
             timeout_seconds=timeout_seconds,
         )
         if len(remote_filters) != worker_set.num_healthy_remote_workers():
@@ -70,9 +69,9 @@ class FilterManager:
             remote_copy = ray.put(copies)
 
             logger.debug("Updating remote filters ...")
-            results = worker_set.foreach_worker(
+            results = worker_set.foreach_env_runner(
                 func=lambda worker: worker.sync_filters(ray.get(remote_copy)),
-                local_worker=False,
+                local_env_runner=False,
                 timeout_seconds=timeout_seconds,
             )
             if len(results) != worker_set.num_healthy_remote_workers():

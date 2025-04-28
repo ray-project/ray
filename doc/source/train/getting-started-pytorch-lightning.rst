@@ -23,7 +23,7 @@ For reference, the final code is as follows:
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    def train_func(config):
+    def train_func():
         # Your PyTorch Lightning training code here.
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -76,7 +76,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                     return torch.optim.Adam(self.model.parameters(), lr=0.001)
 
             # Data
-            transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+            transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
             train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
             train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
 
@@ -128,9 +128,9 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                     return torch.optim.Adam(self.model.parameters(), lr=0.001)
 
 
-            def train_func(config):
+            def train_func():
                 # Data
-                transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+                transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
                 data_dir = os.path.join(tempfile.gettempdir(), "data")
                 train_data = FashionMNIST(root=data_dir, train=True, download=True, transform=transform)
                 train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
@@ -179,17 +179,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training.
-Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
-
-.. testcode::
-    :skipif: True
-
-    def train_func(config):
-        # Your PyTorch Lightning training code here.
-
-Each distributed training worker executes this function.
-
+.. include:: ./common/torch-configure-train_func.rst
 
 Ray Train sets up your distributed process group on each worker. You only need to
 make a few changes to your Lightning Trainer definition.
@@ -201,7 +191,7 @@ make a few changes to your Lightning Trainer definition.
     -from pl.plugins.environments import LightningEnvironment
     +import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          model = MyLightningModule(...)
          datamodule = MyLightningDataModule(...)
@@ -240,7 +230,7 @@ sampler arguments.
     -from pl.strategies import DDPStrategy
     +import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -264,7 +254,7 @@ local, global, and node rank and world size.
     -from pl.plugins.environments import LightningEnvironment
     +import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -287,7 +277,7 @@ GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
      import lightning.pytorch as pl
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -312,7 +302,7 @@ To persist your checkpoints and monitor training progress, add a
      import lightning.pytorch as pl
      from ray.train.lightning import RayTrainReportCallback
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -338,7 +328,7 @@ your configurations.
      import lightning.pytorch as pl
      import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(...)
     +    trainer = ray.train.lightning.prepare_trainer(trainer)
@@ -354,7 +344,7 @@ Next steps
 After you have converted your PyTorch Lightning training script to use Ray Train:
 
 * See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
+* Browse the :doc:`Examples <examples>` for end-to-end examples of how to use Ray Train.
 * Consult the :ref:`API Reference <train-api>` for more details on the classes and methods from this tutorial.
 
 Version Compatibility
@@ -458,7 +448,7 @@ control over their native Lightning code.
                 prepare_trainer
             )
 
-            def train_func(config):
+            def train_func():
                 # [1] Create a Lightning model
                 model = MyLightningModule(lr=1e-3, feature_dim=128)
 

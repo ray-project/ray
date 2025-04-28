@@ -7,13 +7,14 @@ Requires the Optuna library to be installed (`pip install optuna`).
 For an example of using a Tune search space, see
 :doc:`/tune/examples/optuna_example`.
 """
+
 import time
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 import ray
-from ray import train, tune
-from ray.tune.search import ConcurrencyLimiter
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.optuna import OptunaSearch
 
 
@@ -30,7 +31,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height, mult)
         # Feed the score back back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 

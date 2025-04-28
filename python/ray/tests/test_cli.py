@@ -24,11 +24,14 @@ import os
 import re
 import sys
 import tempfile
+import threading
+import json
 import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import moto
@@ -43,9 +46,12 @@ import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
+import ray._private.utils as utils
+from ray.util.check_open_ports import check_open_ports
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.util.state import list_nodes
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psutil
 
@@ -331,6 +337,27 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
             ],
         )
     )
+
+
+def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--cgroup-path=/doesnt/matter"],
+    )
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+
+
+def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--enable-resource-isolation"],
+    )
+    # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
+    _die_on_error(result)
 
 
 @pytest.mark.skipif(
@@ -914,7 +941,7 @@ def test_ray_status(shutdown_only, monkeypatch, enable_v2):
 
     def output_ready():
         result = runner.invoke(scripts.status)
-        result.stdout
+        _ = result.stdout
         if not result.exception and "memory" in result.output:
             return True
         raise RuntimeError(
@@ -962,7 +989,7 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
 
     def output_ready():
         result = runner.invoke(scripts.status)
-        result.stdout
+        _ = result.stdout
         if not result.exception and "memory" in result.output:
             return True
         raise RuntimeError(
@@ -976,6 +1003,274 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
         _check_output_via_pattern("test_ray_status_multinode.txt", result)
     else:
         _check_output_via_pattern("test_ray_status_multinode_v1.txt", result)
+
+
+@pytest.fixture
+def start_open_port_check_server():
+    class OpenPortCheckServer(BaseHTTPRequestHandler):
+        request_ports = None
+        response_open_ports = []
+
+        def do_POST(self):
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
+            payload = json.loads(post_data)
+            OpenPortCheckServer.request_ports = payload["ports"]
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "open_ports": OpenPortCheckServer.response_open_ports,
+                        "checked_ports": payload["ports"],
+                    }
+                ).encode("utf-8")
+            )
+
+    server = HTTPServer(("127.0.0.1", 0), OpenPortCheckServer)
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+
+    yield (
+        OpenPortCheckServer,
+        f"http://{server.server_address[0]}:{server.server_address[1]}",
+    )
+
+    server.shutdown()
+    server_thread.join()
+
+
+def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
+    context = ray.init()
+
+    open_port_check_server, url = start_open_port_check_server
+
+    runner = CliRunner()
+    result = runner.invoke(
+        check_open_ports,
+        [
+            "-y",
+            "--service-url",
+            url,
+        ],
+    )
+    assert result.exit_code == 0
+    assert (
+        int(context.address_info["gcs_address"].split(":")[1])
+        in open_port_check_server.request_ports
+    )
+    assert "[🟢] No open ports detected" in result.output
+
+    open_port_check_server.response_open_ports = [
+        context.address_info["metrics_export_port"]
+    ]
+    result = runner.invoke(
+        check_open_ports,
+        [
+            "-y",
+            "--service-url",
+            url,
+        ],
+    )
+    assert result.exit_code == 0
+    assert "[🛑] open ports detected" in result.output
+
+
+def test_ray_drain_node(monkeypatch):
+    monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
+    ray.init()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+            "--deadline-remaining-seconds",
+            "-1",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--deadline-remaining-seconds cannot be negative, got -1" in result.output
+
+    # Test invalid drain reason.
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            "--reason",
+            "DRAIN_NODE_REASON_INVALID",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code != 0
+    assert (
+        "is not one of 'DRAIN_NODE_REASON_IDLE_TERMINATION', "
+        "'DRAIN_NODE_REASON_PREEMPTION'" in result.output
+    )
+
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--address",
+            "127.0.0.2:8888",
+            "--node-id",
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Timed out while waiting for GCS to become available" in str(
+        result.exception
+    )
+
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            "invalid-node-id",
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Invalid hex ID of a Ray node, got invalid-node-id" in result.output
+
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            '{"ray_version": "ray_version_mismatch"}'.encode()
+        )
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Ray version mismatch" in str(result.exception)
+
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            1,
+            "idle termination",
+            0,
+        )
+
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (False, "Node not idle")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "The drain request is not accepted: Node not idle" in result.output
+
+    # Test without node-id
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.01:6543",
+                "--reason",
+                "DRAIN_NODE_REASON_PREEMPTION",
+                "--reason-message",
+                "spot preemption",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
+            ray.get_runtime_context().get_node_id(), 2, "spot preemption", 0
+        )
+
+    with patch("time.time_ns", return_value=1000000000), patch(
+        "ray._raylet.GcsClient"
+    ) as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_PREEMPTION",
+                "--reason-message",
+                "spot preemption",
+                "--deadline-remaining-seconds",
+                "1",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            2,
+            "spot preemption",
+            2000,
+        )
 
 
 @pytest.mark.skipif(

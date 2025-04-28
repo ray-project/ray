@@ -9,12 +9,14 @@ from typing import List, Optional
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    ModuleID,
     PolicyID,
     TensorType,
     SampleBatchType,
@@ -53,7 +55,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         and len(seq_lens) > 0
     ):
         if torch and torch.is_tensor(seq_lens):
-            return seq_lens.sum().item()
+            return int(seq_lens.sum().item())
         else:
             return int(sum(seq_lens))
 
@@ -110,70 +112,43 @@ class SampleBatch(dict):
     # action based on the reset-observation and so on. This scheme is derived from
     # RLlib's sampling logic.
 
-    # Outputs from interacting with the environment:
+    # The following fields have all been moved to `Columns` and are only left here
+    # for backward compatibility.
+    OBS = Columns.OBS
+    ACTIONS = Columns.ACTIONS
+    REWARDS = Columns.REWARDS
+    TERMINATEDS = Columns.TERMINATEDS
+    TRUNCATEDS = Columns.TRUNCATEDS
+    INFOS = Columns.INFOS
+    SEQ_LENS = Columns.SEQ_LENS
+    T = Columns.T
+    ACTION_DIST_INPUTS = Columns.ACTION_DIST_INPUTS
+    ACTION_PROB = Columns.ACTION_PROB
+    ACTION_LOGP = Columns.ACTION_LOGP
+    VF_PREDS = Columns.VF_PREDS
+    VALUES_BOOTSTRAPPED = Columns.VALUES_BOOTSTRAPPED
+    EPS_ID = Columns.EPS_ID
+    NEXT_OBS = Columns.NEXT_OBS
 
-    # Observation that we compute SampleBatch.ACTIONS from.
-    OBS = "obs"
-    # Action computed/sampled by the RLModule.
-    ACTIONS = "actions"
-    # Action actually sent to the (gymnasium) env. Note that we usually do not store
-    # this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
-    # keep the RLModule-computed or connector-sampled actions around.
-    ACTIONS_FOR_ENV = "actions_sent_to_env"
-    # Reward returned after stepping.
-    REWARDS = "rewards"
+    # Action distribution object.
+    ACTION_DIST = "action_dist"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
     # Reward received before SampleBatch.REWARDS.
     PREV_REWARDS = "prev_rewards"
-    # Is the episode finished after stepping via SampleBatch.ACTIONS?
-    TERMINATEDS = "terminateds"
-    # Is the episode truncated (e.g. time limit) after stepping via SampleBatch.ACTIONS?
-    TRUNCATEDS = "truncateds"
-    # Infos returned after stepping with SampleBatch.ACTIONS
-    INFOS = "infos"
-
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-
-    # Additional keys filled by RLlib to manage the data above:
-
-    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
-    T = "t"  # Timestep counter
-    EPS_ID = "eps_id"  # Uniquely identifies an episode
     ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
     AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
-
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Algorithm-specific keys:
-
-    # Extra action fetches keys.
-    ACTION_DIST_INPUTS = "action_dist_inputs"
-    ACTION_PROB = "action_prob"
-    ACTION_LOGP = "action_logp"
-    ACTION_DIST = "action_dist"
-
-    # Value function predictions emitted by the behaviour policy.
-    VF_PREDS = "vf_preds"
-    # Values one ts beyond the last ts taken. These are usually calculated via the value
-    # function network using the final observation (and in case of an RNN: the last
-    # returned internal state).
-    VALUES_BOOTSTRAPPED = "values_bootstrapped"
-
     # RE 3
     # This is only computed and used when RE3 exploration strategy is enabled.
     OBS_EMBEDS = "obs_embeds"
-
     # Decision Transformer
     RETURNS_TO_GO = "returns_to_go"
     ATTENTION_MASKS = "attention_masks"
-
-    # Deprecated keys:
-
     # Do not set this key directly. Instead, the values under this key are
     # auto-computed via the values of the TERMINATEDS and TRUNCATEDS keys.
     DONES = "dones"
@@ -379,7 +354,7 @@ class SampleBatch(dict):
         Returns:
             A deep or shallow copy of this SampleBatch object.
         """
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = dict(self)
         data = tree.map_structure(
             lambda v: (
                 np.array(v, copy=not shallow) if isinstance(v, np.ndarray) else v
@@ -429,11 +404,11 @@ class SampleBatch(dict):
 
         seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
 
         for i in range(self.count):
             yield tree.map_structure_with_path(
-                lambda p, v: v[i] if p[0] != self.SEQ_LENS else seq_lens,
+                lambda p, v, i=i: v[i] if p[0] != self.SEQ_LENS else seq_lens,
                 self_as_dict,
             )
 
@@ -487,23 +462,34 @@ class SampleBatch(dict):
 
             {"a": [4, 1, 3, 2]}
         """
+        has_time_rank = self.get(SampleBatch.SEQ_LENS) is not None
 
         # Shuffling the data when we have `seq_lens` defined is probably
         # a bad idea!
-        if self.get(SampleBatch.SEQ_LENS) is not None:
+        if has_time_rank and not self.zero_padded:
             raise ValueError(
                 "SampleBatch.shuffle not possible when your data has "
-                "`seq_lens` defined!"
+                "`seq_lens` defined AND is not zero-padded yet!"
             )
 
         # Get a permutation over the single items once and use the same
         # permutation for all the data (otherwise, data would become
         # meaningless).
-        permutation = np.random.permutation(self.count)
+        # - Shuffle by individual item.
+        if not has_time_rank:
+            permutation = np.random.permutation(self.count)
+        # - Shuffle along batch axis (leave axis=1/time-axis as-is).
+        else:
+            permutation = np.random.permutation(len(self[SampleBatch.SEQ_LENS]))
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
+        infos = self_as_dict.pop(Columns.INFOS, None)
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        if infos is not None:
+            self_as_dict[Columns.INFOS] = [infos[i] for i in permutation]
+
         self.update(shuffled)
+
         # Flush cache such that intercepted values are recalculated after the
         # shuffling.
         self.intercepted_values = {}
@@ -742,10 +728,17 @@ class SampleBatch(dict):
 
         # Exclude INFOs from regular array slicing as the data under this column might
         # be a list (not good for `tree.map_structure` call).
-        infos = self.get(SampleBatch.INFOS)
+        # Furthermore, slicing does not work when the data in the column is
+        # singular (not a list or array).
+        infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
         if infos is not None:
-            data[SampleBatch.INFOS] = infos[start:stop]
+            # Slice infos according to SEQ_LENS.
+            info_slice_start = int(sum(self[SampleBatch.SEQ_LENS][:start]))
+            info_slice_stop = int(sum(self[SampleBatch.SEQ_LENS][start:stop]))
+            data[SampleBatch.INFOS] = infos[info_slice_start:info_slice_stop]
+            # Put infos back into `self`.
+            self[Columns.INFOS] = infos
 
         return SampleBatch(
             data,
@@ -888,7 +881,7 @@ class SampleBatch(dict):
                     curr[p] = f_pad
                 curr = curr[p]
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
         tree.map_structure_with_path(_zero_pad_in_place, self_as_dict)
 
         # Set flags to indicate, we are now zero-padded (and to what extend).
@@ -898,12 +891,25 @@ class SampleBatch(dict):
         return self
 
     @ExperimentalAPI
-    def to_device(self, device, framework="torch"):
+    def to_device(
+        self,
+        device,
+        framework: str = "torch",
+        pin_memory: bool = False,
+        use_stream: bool = False,
+        stream: Optional[Union["torch.cuda.Stream", "torch.cuda.Stream"]] = None,
+    ):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                self[k] = convert_to_torch_tensor(v, device)
+                self[k] = convert_to_torch_tensor(
+                    v,
+                    device,
+                    pin_memory=pin_memory,
+                    use_stream=use_stream,
+                    stream=stream,
+                )
         else:
             raise NotImplementedError
         return self
@@ -931,14 +937,20 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
-    def as_multi_agent(self) -> "MultiAgentBatch":
-        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+    def as_multi_agent(self, module_id: Optional[ModuleID] = None) -> "MultiAgentBatch":
+        """Returns the respective MultiAgentBatch
+
+        Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
+
+        Args;
+            module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
+                is used.
 
         Returns:
             The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
             to this SampleBatch.
         """
-        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
+        return MultiAgentBatch({module_id or DEFAULT_POLICY_ID: self}, self.count)
 
     @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
@@ -1339,8 +1351,8 @@ class MultiAgentBatch:
     """A batch of experiences from multiple agents in the environment.
 
     Attributes:
-        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-            ids to SampleBatches of experiences.
+        policy_batches (Dict[PolicyID, SampleBatch]): Dict mapping policy IDs to
+            SampleBatches of experiences.
         count: The number of env steps in this batch.
     """
 
@@ -1349,8 +1361,7 @@ class MultiAgentBatch:
         """Initialize a MultiAgentBatch instance.
 
         Args:
-            policy_batches: Mapping from policy
-                ids to SampleBatches of experiences.
+            policy_batches: Dict mapping policy IDs to SampleBatches of experiences.
             env_steps: The number of environment steps in the environment
                 this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
@@ -1492,6 +1503,30 @@ class MultiAgentBatch:
             {k: v.copy() for (k, v) in self.policy_batches.items()}, self.count
         )
 
+    @ExperimentalAPI
+    def to_device(
+        self,
+        device,
+        framework="torch",
+        pin_memory: bool = False,
+        use_stream: bool = False,
+        stream: Optional[Union["torch.cuda.Stream", "torch.cuda.Stream"]] = None,
+    ):
+        """TODO: transfer batch to given device as framework tensor."""
+        if framework == "torch":
+            assert torch is not None
+            for pid, policy_batch in self.policy_batches.items():
+                self.policy_batches[pid] = policy_batch.to_device(
+                    device,
+                    framework=framework,
+                    pin_memory=pin_memory,
+                    use_stream=use_stream,
+                    stream=stream,
+                )
+        else:
+            raise NotImplementedError
+        return self
+
     @PublicAPI
     def size_bytes(self) -> int:
         """
@@ -1629,7 +1664,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
             s.max_seq_len is None or max_seq_len is None
         ) and s.max_seq_len != max_seq_len:
             raise ValueError(
-                "Samples must consistently either provide or omit " "`max_seq_len`!"
+                "Samples must consistently either provide or omit `max_seq_len`!"
             )
         elif zero_padded and s.max_seq_len != max_seq_len:
             raise ValueError(

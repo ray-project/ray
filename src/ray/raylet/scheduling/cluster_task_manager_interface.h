@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -25,7 +28,7 @@ class ClusterTaskManagerInterface {
 
   // Schedule and dispatch tasks.
   virtual void ScheduleAndDispatchTasks() = 0;
-  ;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
@@ -54,25 +57,38 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  /// Attempt to cancel an already queued task that belongs to an owner.
+  /// Attempt to cancel all queued tasks that match the resource shapes.
+  /// This function is intended to be used to cancel the infeasible tasks. To make it a
+  /// more general function, please modify the signature by adding parameters including
+  /// the failure type and the failure message.
   ///
-  /// \param owner_task_id: The id of the parent.
-  /// \param failure_type: The failure type.
-  /// \param scheduling_failure_message: The failure message.
-  virtual void CancelTaskForOwner(
-      const TaskID &owner_task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") = 0;
+  /// \param target_resource_shapes: The resource shapes to cancel.
+  ///
+  /// \return True if any task was successfully removed. This function will return false
+  /// if the task is already running. This shouldn't happen in noremal cases because the
+  /// infeasible tasks shouldn't be able to run due to resource constraints.
+  virtual bool CancelTasksWithResourceShapes(
+      const std::vector<ResourceSet> target_resource_shapes) = 0;
 
-  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  /// Attempt to cancel all queued tasks that match the predicate.
+  ///
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
+  virtual bool CancelTasks(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message) = 0;
+
+  /// Queue task and schedule. This happens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(const RayTask &task,
+  virtual void QueueAndScheduleTask(RayTask task,
                                     bool grant_or_reject,
                                     bool is_selected_based_on_locality,
                                     rpc::RequestWorkerLeaseReply *reply,

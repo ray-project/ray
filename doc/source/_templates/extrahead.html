@@ -39,37 +39,26 @@ both in the usual template (layout.html) as well as (index.html). -->
 <script src="https://deer.ray.io/script.js" data-site="WYYANYOS" defer></script>
 <!-- / Fathom -->
 
+<!-- Google Tag Manager -->
 <script>
-  (function (apiKey) {
-    (function (p, e, n, d, o) {
-      var v, w, x, y, z;
-      o = p[d] = p[d] || {};
-      o._q = o._q || [];
-      v = ['initialize', 'identify', 'updateOptions', 'pageLoad', 'track'];
-      for (w = 0, x = v.length; w < x; ++w)
-        (function (m) {
-          o[m] =
-            o[m] ||
-            function () {
-              o._q[m === v[0] ? 'unshift' : 'push'](
-                [m].concat([].slice.call(arguments, 0)),
-              );
-            };
-        })(v[w]);
-      y = e.createElement(n);
-      y.async = !0;
-      y.src = 'https://cdn.pendo.io/agent/static/' + apiKey + '/pendo.js';
-      z = e.getElementsByTagName(n)[0];
-      z.parentNode.insertBefore(y, z);
-    })(window, document, 'script', 'pendo');
-
-    pendo.initialize({
-      visitor: {
-        id: 'VISITOR-UNIQUE-ID',
-      },
-      account: {
-        id: 'ACCOUNT-UNIQUE-ID',
-      },
+  (function (w, d, s, l, i) {
+    w[l] = w[l] || [];
+    w[l].push({
+      'gtm.start': new Date().getTime(),
+      event: 'gtm.js',
     });
-  })('f89fa48a-6dd7-4d7c-67cf-a8051ed891f2');
+    var f = d.getElementsByTagName(s)[0],
+      j = d.createElement(s),
+      dl = l != 'dataLayer' ? '&l=' + l : '';
+    j.async = true;
+    j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+    f.parentNode.insertBefore(j, f);
+  })(window, document, 'script', 'dataLayer', 'GTM-P8H6KQG');
+</script>
+<!-- End Google Tag Manager -->
+<!-- Data to be shared with JS on every page -->
+<script>
+  window.data = {
+      copyIconSrc: "{{ pathto('_static/copy-button.svg', 1) }}"
+  };
 </script>

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc.autoscaler;
 
@@ -52,12 +51,46 @@ message PlacementConstraint {
   optional AffinityConstraint affinity = 2;
 }
 
+// The type of operator to use for the label constraint.
+enum LabelOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0;
+  // This is to support equality or in semantics.
+  LABEL_OPERATOR_IN = 1;
+  // This is to support not equal or not in semantics.
+  LABEL_OPERATOR_NOT_IN = 2;
+}
+
+// A node label constraint with a key, one or a list of values and an operator.
+message LabelConstraint {
+  // The key of the label
+  string label_key = 1;
+  // The operator to use for the label constraint.
+  LabelOperator operator = 2;
+  // The values to check against.
+  repeated string label_values = 3;
+}
+
+// A list of node label constraints to specify the label requirements in a
+// resource request.
+message LabelSelector {
+  // The list of node label constraints with AND semantics.
+  repeated LabelConstraint label_constraints = 1;
+}
+
 message ResourceRequest {
   // resource requirements for the request.
   map<string, double> resources_bundle = 1;
   // placement constraint for the request. multiple constraints
   // form AND semantics.
   repeated PlacementConstraint placement_constraints = 2;
+  // The node label requirements for the request. Multiple label selectors are for
+  // fallback mechanism. When trying to find a node that satisfies the label
+  // requirements, the first label selector should be tried first, if not found,
+  // the second label selector should be tried, and so on.
+  // Note that When the ResourceRequest is used within a BundleSelector for
+  // GangResourceRequest, the fallback mechanism is done at the BundleSelector level.
+  // So in that case, the label_selectors will only contain a single LabelSelector.
+  repeated LabelSelector label_selectors = 3;
 }
 
 message ResourceRequestByCount {
@@ -65,22 +98,41 @@ message ResourceRequestByCount {
   int64 count = 2;
 }
 
-// All bundles in the same resource request require gang
+// A bundle selector used to specify the resource bundles that should be
+// allocated together. All bundles in the same resource request require gang
 // allocation semantics: they should be allocated all or nothing.
+message BundleSelector {
+  // The list of resource requests that should be allocated together.
+  repeated ResourceRequest resource_requests = 1;
+}
+
 message GangResourceRequest {
   // a map from bundles to the number of bundles requested.
+  // DEPRECATED: bundle_selector should be used instead so that we can support fallback
+  // mechanism.
   repeated ResourceRequest requests = 1;
   // Metadata associated with the request for observability,
   // e.g. placement group's strategy.
   string details = 2;
+  // The bundle requests. Multiple bundle selectors are for fallback mechanism.
+  // When trying to find nodes that satisfies the bundle selector, the first bundle
+  // selector should be tried first, if not found, the second bundle selector should be
+  // tried, and so on.
+  repeated BundleSelector bundle_selectors = 3;
 }
 
-// Cluster resource constraint represents minimial cluster size requirement,
+// Cluster resource constraint represents minimal cluster size requirement,
 // this is issued through ray.autoscaler.sdk.request_resources.
 message ClusterResourceConstraint {
-  // If not emtpy, the cluster should have the capacity (total resource) to fit
-  // the min_bundles.
-  repeated ResourceRequestByCount min_bundles = 1;
+  // Commands the autoscaler to accommodate the specified requests.
+  //
+  // For more context, please check out py-doc for `ray.autoscaler.sdk.request_resources`
+  // method
+  //
+  // NOTE: This call is only a hint to the autoscaler. The actual resulting cluster
+  //       size may be slightly larger or smaller than expected depending on the
+  //       internal bin packing algorithm and max worker count restrictions.
+  repeated ResourceRequestByCount resource_requests = 1;
 }
 
 // Node status for a ray node.
@@ -97,6 +149,8 @@ enum NodeStatus {
   DRAINING = 4;
 }
 
+// TODO:
+// 1. We should add head node info here -> it's available from GcsNodeInfo
 message NodeState {
   // The node id internal to Ray in binary format.
   bytes node_id = 1;
@@ -306,13 +360,41 @@ message DrainNodeReply {
   // Whether the drain request is accepted.
   // If it's accepted, the node will transition into DRAINING status.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
 }
+
+message NodeGroupConfig {
+  map<string, uint64> resources = 1;
+  // The minium number of nodes to launch.
+  uint32 min_count = 2;
+  // The maximum number of nodes to launch.
+  // -1 means unlimited.
+  int32 max_count = 3;
+  string name = 4;
+}
+
+message ClusterConfig {
+  // Min resources for the entire cluster.
+  map<string, uint64> min_resources = 1;
+  // Max resources for the entire cluster.
+  map<string, uint64> max_resources = 2;
+  // Configs for the node groups including head and worker nodes.
+  repeated NodeGroupConfig node_group_configs = 3;
+}
+
+message ReportClusterConfigRequest {
+  ClusterConfig cluster_config = 1;
+}
+
+message ReportClusterConfigReply {}
 
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
   rpc ReportAutoscalingState(ReportAutoscalingStateRequest)
       returns (ReportAutoscalingStateReply);
+  rpc ReportClusterConfig(ReportClusterConfigRequest) returns (ReportClusterConfigReply);
   // Request additional cluster resources constraints. This is the RPC call made
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)

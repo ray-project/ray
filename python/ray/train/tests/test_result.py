@@ -65,11 +65,7 @@ def build_dummy_tuner(configs):
 
 @pytest.mark.parametrize("storage", ["local", "remote"])
 @pytest.mark.parametrize("mode", ["trainer", "tuner"])
-def test_result_restore(
-    ray_start_4_cpus, monkeypatch, tmpdir, mock_s3_bucket_uri, storage, mode
-):
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
-
+def test_result_restore(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri, storage, mode):
     NUM_ITERATIONS = 5
     NUM_CHECKPOINTS = 3
     if storage == "local":

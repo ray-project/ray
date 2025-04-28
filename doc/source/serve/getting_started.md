@@ -101,6 +101,7 @@ parameters in the `@serve.deployment` decorator. The example configures a few co
 * `ray_actor_options`: a dictionary containing configuration options for each replica.
     * `num_cpus`: a float representing the logical number of CPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer CPUs than replicas.
     * `num_gpus`: a float representing the logical number of GPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer GPUs than replicas.
+    * `resources`: a dictionary containing other resource requirements for the replicate, such as non-GPU accelerators like HPUs or TPUs.
 
 All these parameters are optional, so feel free to omit them:
 
@@ -251,7 +252,7 @@ Composed Ray Serve applications let you deploy each part of your machine learnin
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
 - View details about your Serve application in the Ray Dashboard: {ref}`dash-serve-view`.
 - Learn more about how to deploy your Ray Serve application to production: {ref}`serve-in-production`.
-- Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
+- Check more in-depth tutorials for popular machine learning frameworks: {doc}`examples`.
 
 ```{rubric} Footnotes
 ```

@@ -280,14 +280,6 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also use the :class:`~ray.tune.ScalingConfig` to achieve the same results:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __resources_scalingconfig_start__
-    :end-before: __resources_scalingconfig_end__
-
 You can also allocate specific resources to a trial based on a custom rule via lambda functions.
 For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
 
@@ -348,7 +340,7 @@ How can I reproduce experiments?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Reproducing experiments and experiment results means that you get the exact same
 results when running an experiment again and again. To achieve this, the
-conditions have to be exactly the same each time you run the exeriment.
+conditions have to be exactly the same each time you run the experiment.
 In terms of ML training and tuning, this mostly concerns
 the random number generators that are used for sampling in various places of the
 training and tuning lifecycle.
@@ -410,7 +402,7 @@ Here's a blueprint on how to do all this in your training code:
 For instance, if you use schedulers like ASHA or PBT, some trials might finish earlier
 than other trials, affecting the behavior of the schedulers. Which trials finish first
 can however depend on the current system load, network communication, or other factors
-in the envrionment that we cannot control with random seeds. This is also true for search
+in the environment that we cannot control with random seeds. This is also true for search
 algorithms such as Bayesian Optimization, which take previous results into account when
 sampling new configurations. This can be tackled by
 using the **synchronous modes** of PBT and Hyperband, where the schedulers wait for all trials to
@@ -458,7 +450,7 @@ your class trainable or to ``session.report()`` in your function trainable. The 
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
-to do that depending on whether you are using class or functional Trainable API. 
+to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
@@ -505,10 +497,6 @@ Look for issues with "[tune]" in the title.
 .. note::
 
     If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
-
-For project organization, Tune maintains a relatively up-to-date organization of
-issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
-Here, you can track and identify how issues are organized.
 
 
 .. _tune-reproducible:
@@ -578,27 +566,7 @@ be automatically fetched and passed to your trainable as a parameter.
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results from the ``RAY_AIR_LOCAL_CACHE_DIR`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
-`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
-
-Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_1_start__
-    :end-before: __log_1_end__
-
-By default, syncing occurs whenever one of the following conditions are met:
-
-* if you have used a :py:class:`~ray.train.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
-* a ``sync_period`` of seconds (default 300) has passed since last sync.
-
-To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
-
-Note that uploading only happens when global experiment state is collected, and the frequency of this is
-determined by the experiment checkpoint period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+See :ref:`tune-cloud-checkpointing`.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
@@ -606,46 +574,20 @@ For AWS set up, this involves adding an IamInstanceProfile configuration for wor
 Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 
-.. _tune-docker:
-
-How can I use Tune with Docker?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Tune automatically syncs files and checkpoints between different remote
-containers as needed.
-
 .. _tune-kubernetes:
 
 How can I use Tune with Kubernetes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
-This usually happens via the Ray object store, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
-especially when running many trials in parallel.
+You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
-Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
-is necessary. There are two main options.
+.. _tune-docker:
 
-First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
-logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
+How can I use Tune with Docker?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __s3_start__
-    :end-before: __s3_end__
+You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
-Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __sync_config_start__
-    :end-before: __sync_config_end__
-
-
-Please note that we strongly encourage you to use one of these two options, as they will
-result in less overhead and provide naturally durable checkpoint storage.
 
 .. _tune-default-search-space:
 
@@ -665,7 +607,6 @@ To take multiple random samples, add ``num_samples: N`` to the experiment config
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
-    :emphasize-lines: 16
     :language: python
     :start-after: __grid_search_2_start__
     :end-before: __grid_search_2_end__
@@ -688,7 +629,7 @@ You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment var
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_.get_trial_dir>`
+:meth:`tune.get_context().get_trial_dir() <ray.tune.TuneContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

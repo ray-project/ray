@@ -14,18 +14,19 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
+* :ref:`Ordering of rows <ordering_of_rows>`
 * :ref:`Stateful transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
-* :ref:`Shuffle data <shuffling_data>`
-* :ref:`Repartition data <repartitioning_data>`
 
 .. _transforming_rows:
 
 Transforming rows
 =================
 
-To transform rows, call :meth:`~ray.data.Dataset.map` or
-:meth:`~ray.data.Dataset.flat_map`.
+.. tip::
+
+    If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
+    better performance. To learn more, see :ref:`Transforming batches <transforming_batches>`.
 
 Transforming rows with map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -48,10 +49,23 @@ If your transformation returns exactly one row for each input row, call
         .map(parse_filename)
     )
 
-.. tip::
+The user defined function passed to :meth:`~ray.data.Dataset.map` should be of type
+`Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words, your function should
+input and output a dictionary with keys of strings and values of any type. For example:
 
-    If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
-    better performance. To learn more, see `Transforming batches <#transforming-batches>`_.
+.. testcode::
+
+    from typing import Any, Dict
+
+    def fn(row: Dict[str, Any]) -> Dict[str, Any]:
+        # access row data
+        value = row["col1"]
+
+        # add data to row
+        row["col2"] = ...
+
+        # return row
+        return row
 
 Transforming rows with flat map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -76,6 +90,28 @@ If your transformation returns multiple rows for each input row, call
 .. testoutput::
 
     [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
+
+The user defined function passed to :meth:`~ray.data.Dataset.flat_map` should be of type
+`Callable[[Dict[str, Any]], List[Dict[str, Any]]]`. In other words your function should
+input a dictionary with keys of strings and values of any type and output a list of
+dictionaries that have the same type as the input, for example:
+
+.. testcode::
+
+    from typing import Any, Dict, List
+
+    def fn(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        # access row data
+        value = row["col1"]
+
+        # add data to row
+        row["col2"] = ...
+
+        # construct output list
+        output = [row, row]
+
+        # return list of output rows
+        return output
 
 .. _transforming_batches:
 
@@ -106,10 +142,9 @@ Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
-default, Ray Data represents batches as dicts of NumPy ndarrays.
-
-To configure the batch type, specify ``batch_format`` in
-:meth:`~ray.data.Dataset.map_batches`. You can return either format from your function.
+default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
+specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
+format from your function, but ``batch_format`` should match the input of your function.
 
 .. tab-set::
 
@@ -145,6 +180,37 @@ To configure the batch type, specify ``batch_format`` in
                 .map_batches(drop_nas, batch_format="pandas")
             )
 
+The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
+in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
+``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
+other words, your function should take as input and output a batch of data which you can represent as a
+pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
+
+.. testcode::
+
+    import pandas as pd
+
+    def fn(batch: pd.DataFrame) -> pd.DataFrame:
+        # modify batch
+        batch = ...
+
+        # return batch
+        return batch
+
+The user defined function can also be a Python generator that yields batches, so the function can also
+be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
+In this case, your function would look like:
+
+.. testcode::
+
+    from typing import Dict, Iterator
+    import numpy as np
+
+    def fn(batch: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
+        # yield the same batch multiple times
+        for _ in range(10):
+            yield batch
+
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -153,16 +219,30 @@ NumPy functions and model inference. However, if your batch size is too large, y
 program might run out of memory. If you encounter an out-of-memory error, decrease your
 ``batch_size``.
 
-.. note::
+.. _ordering_of_rows:
 
-    The default batch size depends on your resource type. If you're using CPUs,
-    the default batch size is 4096. If you're using GPUs, you must specify an explicit
-    batch size.
+Ordering of rows
+================
+
+When transforming data, the order of :ref:`blocks <data_key_concepts>` isn't preserved by default.
+
+If the order of blocks needs to be preserved/deterministic,
+you can use :meth:`~ray.data.Dataset.sort` method, or set :attr:`ray.data.ExecutionOptions.preserve_order` to `True`.
+Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
+
+.. testcode::
+
+   import ray
+   
+   ctx = ray.data.DataContext().get_current()
+   
+   # By default, this is set to False.
+   ctx.execution_options.preserve_order = True
 
 .. _stateful_transforms:
 
 Stateful Transforms
-==============================
+===================
 
 If your transform requires expensive setup such as downloading
 model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
@@ -253,6 +333,28 @@ To transform data with a Python class, complete these steps:
 
             ds.materialize()
 
+Avoiding out-of-memory errors
+=============================
+
+If your user defined function uses lots of memory, you might encounter out-of-memory 
+errors. To avoid these errors, configure the ``memory`` parameter. It tells Ray how much 
+memory your function uses, and prevents Ray from scheduling too many tasks on a node.
+
+.. testcode::
+    :hide:
+
+    import ray
+    
+    ds = ray.data.range(1)
+
+.. testcode::
+
+    def uses_lots_of_memory(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        ...
+
+    # Tell Ray that the function uses 1 GiB of memory
+    ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
+
 .. _transforming_groupby:
 
 Groupby and transforming groups
@@ -304,115 +406,3 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .groupby("target")
                 .map_groups(normalize_features)
             )
-
-.. _shuffling_data:
-
-Shuffling data
-==============
-
-.. _shuffling_file_order:
-
-Shuffle the ordering of files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To randomly shuffle the ordering of input files before reading, call a function like
-:func:`~ray.data.read_images` and specify ``shuffle="files"``. This randomly assigns
-input files to workers for reading.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.read_images(
-        "s3://anonymous@ray-example-data/image-datasets/simple",
-        shuffle="files",
-    )
-
-.. tip::
-
-    This is the fastest option for shuffle, and is a purely metadata operation. This
-    option doesn't shuffle the actual rows inside files, so the randomness might be
-    poor if each file has many rows.
-
-.. _local_shuffle_buffer:
-
-Local shuffle when iterating over batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To locally shuffle a subset of rows, call a function like :meth:`~ray.data.Dataset.iter_batches`
-and specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
-size during iteration. See more details in
-:ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-
-    for batch in ds.iter_batches(
-        batch_size=2,
-        batch_format="numpy",
-        local_shuffle_buffer_size=250,
-    ):
-        print(batch)
-
-.. tip::
-
-    This is slower than shuffling ordering of files, and shuffles rows locally without
-    network transfer. This local shuffle buffer can be used together with shuffling
-    ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
-
-    If you observe reduced throughput when using ``local_shuffle_buffer_size``;
-    one way to diagnose this is to check the total time spent in batch creation by
-    examining the ``ds.stats()`` output (``In batch formatting``, under
-    ``Batch iteration time breakdown``).
-    
-    If this time is significantly larger than the
-    time spent in other steps, one way to improve performance is to decrease
-    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
-
-Shuffle all rows
-~~~~~~~~~~~~~~~~
-
-To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
-
-.. testcode::
-
-    import ray
-
-    ds = (
-        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-        .random_shuffle()
-    )
-
-.. tip::
-
-    This is the slowest option for shuffle, and requires transferring data across
-    network between workers. This option achieves the best randomness among all options.
-
-.. _repartitioning_data:
-
-Repartitioning data
-===================
-
-A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
-:term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks by setting a higher ``parallelism`` at read time.
-
-To change the number of blocks for an existing Dataset, call
-:meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10000, parallelism=1000)
-
-    # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
-    # data movement during this operation by merging adjacent blocks.
-    ds = ds.repartition(100, shuffle=False).materialize()
-
-    # Repartition the data into 200 blocks, and force a full data shuffle.
-    # This operation will be more expensive
-    ds = ds.repartition(200, shuffle=True).materialize()

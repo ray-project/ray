@@ -4,7 +4,7 @@ set -euo pipefail
 
 if [[ ! -f /usr/local/bin/kind ]]; then
     echo "--- Installing kind"
-    curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64" -o /usr/local/bin/kind
+    curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/v0.22.0/kind-linux-amd64" -o /usr/local/bin/kind
     chmod +x /usr/local/bin/kind
     kind --help
 fi

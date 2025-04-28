@@ -1,111 +1,209 @@
 /**
- * Check whether a panel matches the selected filter tags.
+ * Get the status (checked/unchecked) for each filter.
  *
- * @param {any} panel Example gallery item
- * @param {Array<Array<string>>} groupedActiveTags Groups of tags selected by the user.
- * @returns {boolean} True if the panel should be shown, false otherwise
+ * @returns {Object} Arrays of the name and status of each filter, grouped together into filter
+ * groups.
  */
-function panelMatchesTags(panel, groupedActiveTags) {
-  // Show the panel if every tagGroup has at least one active tag in the classList,
-  // or if no tag in a group is selected.
-  return groupedActiveTags.every(tagGroup => {
-    return tagGroup.length === 0 || Array.from(panel.classList).some(tag => tagGroup.includes(tag))
-  })
+function getFilterStatuses() {
+  const useCases = Array.from(
+    document.querySelectorAll('#use-case-dropdown .checkbox-container'),
+  ).map((label) => {
+    return {
+      name: label.textContent.toLowerCase(),
+      isChecked: label.querySelector('input').checked,
+    };
+  });
+  const libraries = Array.from(
+    document.querySelectorAll('#library-dropdown .checkbox-container'),
+  ).map((label) => {
+    return {
+      name: label.textContent.toLowerCase(),
+      isChecked: label.querySelector('input').checked,
+    };
+  });
+  const frameworks = Array.from(
+    document.querySelectorAll('#framework-dropdown .checkbox-container'),
+  ).map((label) => {
+    return {
+      name: label.textContent.toLowerCase(),
+      isChecked: label.querySelector('input').checked,
+    };
+  });
+  const contributor = Array.from(
+    document.querySelectorAll('#all-examples-dropdown .checkbox-container'),
+  ).map((label) => {
+    const inputElement = label.querySelector('input');
+    return {
+      name: inputElement.id.replace('-checkbox', ''),
+      isChecked: inputElement.checked,
+    };
+  });
+  return {
+    useCases,
+    libraries,
+    frameworks,
+    contributor,
+  };
 }
 
-
-window.addEventListener('load', () => {
-
-  /* Fetch the tags that the user can filter on from the buttons in the sidebar
-   * Additionally retrieve the elements that we need for filtering.
-   */
-  const tags = {}
-  document.querySelectorAll('div.tag-section').forEach(group => {
-    tags[group.id] = group.querySelectorAll('div.tag-group > div.tag.btn')
-  })
-  const noMatchesElement = document.querySelector("#noMatches");
-  const panels = document.querySelectorAll('.gallery-item')
-
-  /**
-   * Filter the links to the examples in the example gallery
-   * by the selected tags and the current search query.
-   */
-  function filterPanels() {
-    const query = document.getElementById("searchInput").value.toLowerCase();
-    const activeTags = Array.from(document.querySelectorAll('.tag.btn-primary')).map(el => el.id);
-    const groupedActiveTags = Object.values(tags).map(group => {
-      const tagNames = Array.from(group).map(element => element.id);
-      return activeTags.filter(activeTag => tagNames.includes(activeTag));
-    })
-
-    // Show all panels first
-    panels.forEach(panel => panel.classList.remove("hidden"));
-
-    let toHide = [];
-    let toShow = [];
-
-    // Show each panel if it has every active tag and matches the search query
-    panels.forEach(panel => {
-      const text = (panel.textContent + panel.classList.toString()).toLowerCase();
-      // const hasTag = activeTags.every(tag => panel.classList.contains(tag));
-      const hasTag = panelMatchesTags(panel, groupedActiveTags)
-      const hasText = text.includes(query.toLowerCase());
-
-      if (hasTag && hasText) {
-        toShow.push(panel);
-      } else {
-        toHide.push(panel);
-      }
-    })
-
-    toShow.forEach(panel => panel.classList.remove("hidden"));
-    toHide.forEach(panel => panel.classList.add("hidden"));
-
-    // If no matches are found, display the noMatches element
-    if (toShow.length === 0) {
-        noMatchesElement.classList.remove("hidden");
-      } else {
-        noMatchesElement.classList.add("hidden");
+/**
+ * Test whether the tags of the given example panel match the requested filters.
+ *
+ * @param {any} tags Tags of the example panel
+ * @param {any} filters Filter statuses for all the filter groups; this should be the output of
+ * getFilterStatuses.
+ * @returns {bool} True if the example panel matches the filters, or not.
+ */
+function panelMatchesFilters(tags, filters) {
+  return Object.entries(filters).every(([group, groupTags]) => {
+    // If there is no selection, consider the panel to be matched
+    if (groupTags.filter(({isChecked}) => isChecked).length === 0) {
+      return true;
     }
 
-    // Set the URL to match the active tags using query parameters
-    history.replaceState(null, null, activeTags.length === 0 ? location.pathname : `?tags=${activeTags.join(',')}`);
-  }
+    // If "Any" is checked, consider the panel to be matched
+    if (
+      groupTags.filter(({name, isChecked}) => name === 'any' && isChecked)
+        .length > 0
+    ) {
+      return true;
+    }
 
-  // Generate the callback triggered when a user clicks on a tag filter button.
-  document.querySelectorAll('.tag').forEach(tag => {
-    tag.addEventListener('click', () => {
-      // Toggle "tag" buttons on click.
-      if (tag.classList.contains('btn-primary')) {
-          // deactivate filter button
-          tag.classList.replace('btn-primary', 'btn-outline-primary');
-      } else {
-          // activate filter button
-          tag.classList.replace('btn-outline-primary', 'btn-primary');
-      }
-      filterPanels()
-    });
+    // Otherwise show the panel if any checked item matches the tags of the panel
+    return groupTags
+      .filter(({isChecked}) => isChecked)
+      .some(({name}) => tags.includes(name));
+  });
+}
+
+/** Apply the currently selected filters to the example gallery, showing only the relevant examples. */
+function applyFilter() {
+  const noMatchesElement = document.getElementById('no-matches');
+  const panels = document.querySelectorAll('.example');
+  const filters = getFilterStatuses();
+  const searchTerm = document
+    .getElementById('examples-search-input')
+    .value.toLowerCase();
+
+  // Show all panels before hiding the ones that need to be hidden.
+  panels.forEach((panel) => panel.classList.remove('hidden'));
+
+  // Check the title and tags of each example panel. If the tags match and the search term matches,
+  // show the panel.
+  panels.forEach((panel) => {
+    const title = panel
+      .querySelector('.example-title')
+      .textContent.toLowerCase();
+    const tags = panel
+      .querySelector('.example-tags')
+      .textContent.toLowerCase()
+      .concat();
+    const other_keywords = panel
+      .querySelector('.example-other-keywords')
+      .textContent.toLowerCase();
+    const keywords = `${tags} ${other_keywords}`;
+    const matchesSearch =
+      title.includes(searchTerm) || keywords.includes(searchTerm);
+    const matchesTags = panelMatchesFilters(keywords, filters);
+
+    // Hide panels that have no match
+    if (matchesSearch && matchesTags) {
+      panel.classList.remove('hidden');
+    } else {
+      panel.classList.add('hidden');
+    }
   });
 
-  // Add event listener for keypresses in the search bar
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) {
-      searchInput.addEventListener("keyup", function (event) {
-          event.preventDefault();
-          filterPanels();
-      });
+  // If none are shown, show the "no matches" graphic.
+  if (document.querySelectorAll('.example:not(.hidden)').length === 0) {
+    noMatchesElement.classList.remove('hidden');
+  } else {
+    noMatchesElement.classList.add('hidden');
   }
 
-  // Add the ability to provide URL query parameters to filter examples on page load
+  // Set the URL to match the active filters using query parameters.
+  const selectedTags = Object.entries(filters).map(([group, groupTags]) => {
+    return {
+      group,
+      selected: groupTags
+        .filter(({isChecked}) => isChecked)
+        .map(({name}) => name),
+    };
+  });
+
+  const queryParam = selectedTags
+    .filter(({group, selected}) => selected.length > 0)
+    .map(({group, selected}) => `${group}=${selected.join(',')}`)
+    .join('&');
+
+  history.replaceState(
+    null,
+    null,
+    queryParam.length === 0 ? location.pathname : `?${queryParam}`,
+  );
+}
+
+window.addEventListener('load', () => {
+  // Listen for filter checkbox clicks.
+  document.querySelectorAll('.filter-checkbox').forEach((tag) => {
+    tag.addEventListener('click', () => applyFilter());
+  });
+
+  // Add event listener for keypresses in the search bar.
+  document
+    .getElementById('examples-search-input')
+    .addEventListener('keyup', (event) => {
+      event.preventDefault();
+      applyFilter();
+    });
+
+  // Add the ability to provide URL query parameters to filter examples on page load.
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.size > 0) {
-      const urlTagParams = urlParams.get('tags').split(',');
-      urlTagParams.forEach(tag => {
-          const tagButton = document.getElementById(tag);
-          if (tagButton) {
-            tagButton.classList.replace('btn-outline-primary', 'btn-primary');
-          }
+    urlParams.forEach((params) => {
+      params.split(',').forEach((param) => {
+        const element = document.getElementById(`${param}-checkbox`);
+        if (element) {
+          element.checked = true;
+        }
       });
-      filterPanels();
+    });
   }
+
+  // Apply the filter in case there are URL query parameters.
+  applyFilter();
+
+  const dropdowns = Array.from(
+    document.querySelectorAll('.dropdown-content'),
+  ).map((dropdown) => {
+    return {
+      dropdown,
+      input: dropdown.parentNode.querySelector('input'),
+      inputContainer: dropdown.parentNode,
+    };
+  });
+  document.addEventListener('click', (event) => {
+    let targetEl = event.target; // clicked element
+
+    do {
+      const unclicked = dropdowns.filter(({dropdown, inputContainer}) => {
+        return !(targetEl == dropdown || targetEl == inputContainer);
+      });
+      if (unclicked.length !== dropdowns.length) {
+        // There has been a click inside one of the dropdowns. Close unclicked dropdowns and return.
+        unclicked.forEach(({input}) => {
+          input.checked = false;
+        });
+        return;
+      }
+
+      // Go up the DOM.
+      targetEl = targetEl.parentNode;
+    } while (targetEl);
+
+    // This is a click outside. Close all dropdowns.
+    dropdowns.forEach(({dropdown, input}) => {
+      input.checked = false;
+    });
+  });
 });

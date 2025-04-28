@@ -130,7 +130,7 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "0910639b6eba1b77b9a36b9f3350c5aa274578dd"
+    test_commit = "593d04aba2726a0104280d1bdbc2779e3a8ba7d4"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             url = get_master_wheel_url(
@@ -144,7 +144,7 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.7.0": "904dbce085bc542b93fbe06d75f3b02a65d3a2b4"}
+    test_commits = {"2.31.0": "1240d3fc326517f9be28bb7897c1c88619f0d984"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
@@ -282,11 +282,11 @@ def test_container_option_serialize(runtime_env_class):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
+def test_no_spurious_worker_startup(shutdown_only, runtime_env_class, monkeypatch):
     """Test that no extra workers start up during a long env installation."""
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
-    os.environ["RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S"] = "15"
+    monkeypatch.setenv("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S", "15")
     ray.init(num_cpus=1)
 
     @ray.remote
@@ -343,10 +343,9 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
 
 
 @pytest.fixture
-def runtime_env_local_dev_env_var():
-    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+def runtime_env_local_dev_env_var(monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
@@ -386,6 +385,62 @@ def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     # Task with no runtime env should inherit the bad job env.
     with pytest.raises(RuntimeEnvSetupError):
         ray.get(f.remote())
+
+
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_runtime_env.RtEnvAgentSlowStartupPlugin"  # noqa
+)
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME = "RtEnvAgentSlowStartupPlugin"
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_runtime_env.RtEnvAgentSlowStartupPlugin"
+)
+
+
+class RtEnvAgentSlowStartupPlugin(RuntimeEnvPlugin):
+
+    name = RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME
+
+    def __init__(self):
+        # This happens in Runtime Env Agent start up process. Make it slow.
+        import time
+
+        time.sleep(5)
+        print("starting...")
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_slow_runtime_env_agent_startup_on_task_pressure(
+    shutdown_only, set_runtime_env_plugins
+):
+    """
+    Starts nodes with runtime env agent and a slow plugin. Then when the runtime env
+    agent is still starting up, we submit a lot of tasks to the cluster. The tasks
+    should wait for the runtime env agent to start up and then run.
+    https://github.com/ray-project/ray/issues/45353
+    """
+    ray.init()
+
+    @ray.remote(num_cpus=0.1)
+    def get_foo():
+        return os.environ.get("foo")
+
+    print("Submitting 20 tasks...")
+
+    # Each task has a different runtime env to ensure the agent is invoked for each.
+    vals = ray.get(
+        [
+            get_foo.options(runtime_env={"env_vars": {"foo": f"bar{i}"}}).remote()
+            for i in range(20)
+        ]
+    )
+    print("20 tasks done.")
+    assert vals == [f"bar{i}" for i in range(20)]
 
 
 class TestURICache:
@@ -502,11 +557,10 @@ class TestURICache:
 
 
 @pytest.fixture
-def enable_dev_mode(local_env_var_enabled):
+def enable_dev_mode(local_env_var_enabled, monkeypatch):
     enabled = "1" if local_env_var_enabled else "0"
-    os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"] = enabled
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", enabled)
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
 
 
 @pytest.mark.skipif(
@@ -886,7 +940,6 @@ def test_runtime_env_interface():
     # Test the interface related to container
     container_init = {
         "image": "anyscale/ray-ml:nightly-py38-cpu",
-        "worker_path": "/root/python/ray/_private/workers/default_worker.py",
         "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
     }
     update_container = {"image": "test_modify"}
@@ -894,7 +947,6 @@ def test_runtime_env_interface():
     runtime_env_dict = runtime_env.to_dict()
     assert runtime_env.has_py_container()
     assert runtime_env.py_container_image() == container_init["image"]
-    assert runtime_env.py_container_worker_path() == container_init["worker_path"]
     assert runtime_env.py_container_run_options() == container_init["run_options"]
     runtime_env["container"].update(update_container)
     runtime_env_dict["container"].update(update_container)
@@ -903,7 +955,6 @@ def test_runtime_env_interface():
     assert runtime_env_dict == runtime_env.to_dict()
     assert runtime_env.has_py_container()
     assert runtime_env.py_container_image() == container_copy["image"]
-    assert runtime_env.py_container_worker_path() == container_copy["worker_path"]
     assert runtime_env.py_container_run_options() == container_copy["run_options"]
 
     runtime_env.pop("container")
@@ -911,8 +962,6 @@ def test_runtime_env_interface():
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

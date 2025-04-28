@@ -137,7 +137,6 @@ class Collector(object):
                 :class:`~prometheus_client.core.HistogramMetricFamily` or
                 :class:`~prometheus_client.core.UnknownMetricFamily` or
                 :class:`~prometheus_client.core.GaugeMetricFamily`
-        :returns: A Prometheus metric object
         """
         metric_name = desc["name"]
         metric_description = desc["documentation"]
@@ -160,7 +159,7 @@ class Collector(object):
                 )
                 metrics_map[metric_name] = metric
             metric.add_metric(labels=tag_values, value=agg_data.count_data)
-            return metric
+            return
 
         elif isinstance(agg_data, aggregation_data_module.DistributionAggregationData):
 
@@ -191,7 +190,7 @@ class Collector(object):
                 buckets=buckets,
                 sum_value=agg_data.sum,
             )
-            return metric
+            return
 
         elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
             metric = metrics_map.get(metric_name)
@@ -203,7 +202,7 @@ class Collector(object):
                 )
                 metrics_map[metric_name] = metric
             metric.add_metric(labels=tag_values, value=agg_data.sum_data)
-            return metric
+            return
 
         elif isinstance(agg_data, aggregation_data_module.LastValueAggregationData):
             metric = metrics_map.get(metric_name)
@@ -215,7 +214,7 @@ class Collector(object):
                 )
                 metrics_map[metric_name] = metric
             metric.add_metric(labels=tag_values, value=agg_data.value)
-            return metric
+            return
 
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
@@ -235,7 +234,7 @@ class Collector(object):
             desc = self.registered_views[v_name]
             for tag_values in view_data.tag_value_aggregation_data_map:
                 agg_data = view_data.tag_value_aggregation_data_map[tag_values]
-                metric = self.to_metric(desc, tag_values, agg_data, metrics_map)
+                self.to_metric(desc, tag_values, agg_data, metrics_map)
 
         for metric in metrics_map.values():
             yield metric

@@ -155,7 +155,7 @@ shuffles all rows. If a full global shuffle isn't required, you can shuffle a su
 rows up to a provided buffer size during iteration by specifying
 ``local_shuffle_buffer_size``. While this isn't a true global shuffle like
 ``random_shuffle``, it's more performant because it doesn't require excessive data
-movement.
+movement. For more details about these options, see :doc:`Shuffling Data <shuffling-data>`.
 
 .. tip::
 

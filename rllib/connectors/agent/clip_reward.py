@@ -9,10 +9,10 @@ from ray.rllib.connectors.connector import (
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentConnectorDataType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ClipRewardAgentConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext, sign=False, limit=None):
         super().__init__(ctx)
@@ -25,7 +25,7 @@ class ClipRewardAgentConnector(AgentConnector):
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
         assert (
-            type(d) == dict
+            type(d) is dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
 
         if SampleBatch.REWARDS not in d:

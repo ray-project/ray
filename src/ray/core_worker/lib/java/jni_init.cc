@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "jni_utils.h"
+#include <string>
+
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 
 jclass java_boolean_class;
 jmethodID java_boolean_init;
@@ -131,6 +133,7 @@ jmethodID java_placement_group_creation_options_strategy_value;
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
 jfieldID java_gcs_client_options_port;
+jfieldID java_gcs_client_options_username;
 jfieldID java_gcs_client_options_password;
 
 jclass java_native_ray_object_class;
@@ -398,6 +401,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
   java_gcs_client_options_port =
       env->GetFieldID(java_gcs_client_options_class, "port", "I");
+  java_gcs_client_options_username =
+      env->GetFieldID(java_gcs_client_options_class, "username", "Ljava/lang/String;");
   java_gcs_client_options_password =
       env->GetFieldID(java_gcs_client_options_class, "password", "Ljava/lang/String;");
 

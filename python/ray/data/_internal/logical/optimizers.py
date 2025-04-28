@@ -6,31 +6,50 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
-from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
-    add_user_provided_logical_rules,
-    add_user_provided_physical_rules,
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
 )
+from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
     InheritTargetMaxBlockSizeRule,
 )
-from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
 from ray.data._internal.logical.rules.zero_copy_map_fusion import (
     EliminateBuildOutputBlocks,
 )
-from ray.data._internal.planner.planner import Planner
+from ray.util.annotations import DeveloperAPI
 
-DEFAULT_LOGICAL_RULES = [
-    ReorderRandomizeBlocksRule,
-]
+from .ruleset import Ruleset
 
-DEFAULT_PHYSICAL_RULES = [
-    InheritTargetMaxBlockSizeRule,
-    SetReadParallelismRule,
-    OperatorFusionRule,
-    EliminateBuildOutputBlocks,
-]
+_LOGICAL_RULESET = Ruleset(
+    [
+        ReorderRandomizeBlocksRule,
+        InheritBatchFormatRule,
+    ]
+)
+
+
+_PHYSICAL_RULESET = Ruleset(
+    [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        FuseOperators,
+        EliminateBuildOutputBlocks,
+        ConfigureMapTaskMemoryUsingOutputSize,
+    ]
+)
+
+
+@DeveloperAPI
+def get_logical_ruleset() -> Ruleset:
+    return _LOGICAL_RULESET
+
+
+@DeveloperAPI
+def get_physical_ruleset() -> Ruleset:
+    return _PHYSICAL_RULESET
 
 
 class LogicalOptimizer(Optimizer):
@@ -38,17 +57,15 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        rules = add_user_provided_logical_rules(DEFAULT_LOGICAL_RULES)
-        return [rule_cls() for rule_cls in rules]
+        return [rule_cls() for rule_cls in get_logical_ruleset()]
 
 
 class PhysicalOptimizer(Optimizer):
     """The optimizer for physical operators."""
 
     @property
-    def rules(self) -> List["Rule"]:
-        rules = add_user_provided_physical_rules(DEFAULT_PHYSICAL_RULES)
-        return [rule_cls() for rule_cls in rules]
+    def rules(self) -> List[Rule]:
+        return [rule_cls() for rule_cls in get_physical_ruleset()]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
@@ -59,6 +76,8 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
+    from ray.data._internal.planner.planner import Planner
+
     optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
     logical_plan._dag = optimized_logical_plan.dag
     physical_plan = Planner().plan(optimized_logical_plan)

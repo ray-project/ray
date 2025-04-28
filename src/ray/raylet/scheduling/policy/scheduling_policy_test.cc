@@ -67,10 +67,10 @@ class SchedulingPolicyTest : public ::testing::Test {
   }
 
   std::unique_ptr<ClusterResourceManager> MockClusterResourceManager(
-      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes) {
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_map) {
     static instrumented_io_context io_context;
     auto cluster_resource_manager = std::make_unique<ClusterResourceManager>(io_context);
-    cluster_resource_manager->nodes_ = nodes;
+    cluster_resource_manager->nodes_ = nodes_map;
     return cluster_resource_manager;
   }
 };
@@ -507,6 +507,57 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                                             true,
                                             /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, remote_node);
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
+  /*
+   * Test strict pack bundle scheduling policy with soft target node id.
+   */
+  nodes.emplace(local_node, CreateNodeResources(8, 8, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(2, 2, 0, 0, 0, 0));
+  nodes.emplace(remote_node_2, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
+  std::vector<const ResourceRequest *> req_list;
+  req_list.push_back(&req);
+  req_list.push_back(&req);
+
+  // No target node.
+  auto strict_pack_op = SchedulingOptions::BundleStrictPack(
+      /*max_cpu_fraction_per_node*/ 1.0, scheduling::NodeID::Nil());
+  auto to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                         *cluster_resource_manager, [](auto) { return true; })
+                         .Schedule(req_list, strict_pack_op);
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+  ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
+
+  // Target node has enough available resources.
+  strict_pack_op = SchedulingOptions::BundleStrictPack(/*max_cpu_fraction_per_node*/ 1.0,
+                                                       remote_node_2);
+  to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, strict_pack_op);
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+  ASSERT_EQ(to_schedule.selected_nodes[0], remote_node_2);
+
+  // Target node doesn't have enough available resources.
+  strict_pack_op =
+      SchedulingOptions::BundleStrictPack(/*max_cpu_fraction_per_node*/ 1.0, remote_node);
+  to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, strict_pack_op);
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+  ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
+
+  // Target node doesn't exist.
+  strict_pack_op = SchedulingOptions::BundleStrictPack(/*max_cpu_fraction_per_node*/ 1.0,
+                                                       scheduling::NodeID(888));
+  to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, strict_pack_op);
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+  ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 }
 
 TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionTest) {

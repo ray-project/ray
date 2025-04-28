@@ -18,17 +18,12 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/client.h"
-
-#ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
-#include <chrono>
-
-#include "absl/container/flat_hash_map.h"
-#endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 // clang-format on
 
 namespace ray {
@@ -51,21 +46,12 @@ class MockPlasmaClient : public plasma::PlasmaClientInterface {
 
   MOCK_METHOD1(Abort, ray::Status(const ObjectID &object_id));
 
-  MOCK_METHOD6(ExperimentalMutableObjectWriteAcquire,
+  MOCK_METHOD1(ExperimentalMutableObjectRegisterWriter,
+               ray::Status(const ObjectID &object_id));
+
+  MOCK_METHOD2(GetExperimentalMutableObject,
                ray::Status(const ObjectID &object_id,
-                           int64_t data_size,
-                           const uint8_t *metadata,
-                           int64_t metadata_size,
-                           int64_t num_readers,
-                           std::shared_ptr<Buffer> *data));
-
-  MOCK_METHOD1(ExperimentalMutableObjectWriteRelease,
-               ray::Status(const ObjectID &object_id));
-
-  MOCK_METHOD1(ExperimentalMutableObjectSetError, ray::Status(const ObjectID &object_id));
-
-  MOCK_METHOD1(ExperimentalMutableObjectReadRelease,
-               ray::Status(const ObjectID &object_id));
+                           std::unique_ptr<plasma::MutableObject> *mutable_object));
 
   ray::Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                      const ray::rpc::Address &owner_address,

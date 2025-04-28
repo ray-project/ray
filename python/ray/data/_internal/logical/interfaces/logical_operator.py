@@ -1,6 +1,10 @@
-from typing import List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional, Callable
 
 from .operator import Operator
+from ray.data.block import BlockMetadata
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import RefBundle
 
 
 class LogicalOperator(Operator):
@@ -38,3 +42,43 @@ class LogicalOperator(Operator):
         elif len(self._input_dependencies) == 1:
             return self._input_dependencies[0].estimated_num_outputs()
         return None
+
+    # Override the following 3 methods to correct type hints.
+
+    @property
+    def input_dependencies(self) -> List["LogicalOperator"]:
+        return super().input_dependencies  # type: ignore
+
+    @property
+    def output_dependencies(self) -> List["LogicalOperator"]:
+        return super().output_dependencies  # type: ignore
+
+    def post_order_iter(self) -> Iterator["LogicalOperator"]:
+        return super().post_order_iter()  # type: ignore
+
+    def _apply_transform(
+        self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
+    ) -> "LogicalOperator":
+        return super()._apply_transform(transform)  # type: ignore
+
+    def output_data(self) -> Optional[List["RefBundle"]]:
+        """The output data of this operator, or ``None`` if not known."""
+        return None
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
+
+        This method is used by methods like :meth:`~ray.data.Dataset.schema` to
+        efficiently return metadata.
+        """
+        return BlockMetadata(None, None, None, None, None)
+
+    def is_lineage_serializable(self) -> bool:
+        """Returns whether the lineage of this operator can be serialized.
+
+        An operator is lineage serializable if you can serialize it on one machine and
+        deserialize it on another without losing information. Operators that store
+        object references (e.g., ``InputData``) aren't lineage serializable because the
+        objects aren't available on the deserialized machine.
+        """
+        return True

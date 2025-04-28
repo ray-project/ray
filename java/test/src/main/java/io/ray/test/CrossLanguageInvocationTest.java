@@ -139,6 +139,13 @@ public class CrossLanguageInvocationTest extends BaseTest {
       Assert.assertEquals(((Number) r7array[0]).intValue(), input7array[0]);
       Assert.assertEquals(((Number) r7array[1]).intValue(), input7array[1]);
     }
+    // objectRef
+    {
+      ObjectRef<Integer> input = Ray.put(1);
+      ObjectRef<Integer> res =
+          Ray.task(PyFunction.of(PYTHON_MODULE, "py_return_input", Integer.class), input).remote();
+      Assert.assertEquals(res.get(), input.get());
+    }
     // Unsupported types, all Java specific types, e.g. List / Map...
     {
       Assert.expectThrows(
@@ -173,6 +180,11 @@ public class CrossLanguageInvocationTest extends BaseTest {
     ObjectRef<byte[]> res =
         actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "2".getBytes());
+
+    ObjectRef<String> numRef = Ray.put("2");
+    ObjectRef<byte[]> res2 =
+        actor.task(PyActorMethod.of("increase", byte[].class), numRef).remote();
+    Assert.assertEquals(res2.get(), "4".getBytes());
   }
 
   @Test

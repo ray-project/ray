@@ -1,97 +1,34 @@
 # coding: utf-8
-import signal
-import subprocess
-from collections import Counter
 import multiprocessing
 import os
-from pathlib import Path
-
-import pytest
 import shutil
+import signal
+import subprocess
 import tempfile
 import threading
 import time
-from typing import List
 import unittest
+from collections import Counter
+from typing import List
 from unittest import mock
+
+import pytest
 
 import ray
 import ray.train
 from ray import tune
-from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
-from ray.train import CheckpointConfig, Checkpoint
+from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError
-from ray.rllib import _register_all
+from ray.tune import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.search.basic_variant import BasicVariantGenerator
-from ray.tune.search import Searcher
-from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
+from ray.tune.experiment import Trial
+from ray.tune.search import Searcher
+from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
-
-
-class TuneRestoreTest(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=1, num_gpus=0, local_mode=True)
-        tmpdir = tempfile.mkdtemp()
-        test_name = "TuneRestoreTest"
-        tune.run(
-            "PPO",
-            name=test_name,
-            stop={"training_iteration": 1},
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            storage_path=tmpdir,
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
-        logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
-        self.logdir = logdir
-        self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
-        self.checkpoint_parent = Path(self.checkpoint_path).parent
-
-    def tearDown(self):
-        shutil.rmtree(self.logdir)
-        ray.shutdown()
-        _register_all()
-
-    def testTuneRestore(self):
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
-        tune.run(
-            "PPO",
-            name="TuneRestoreTest",
-            stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            restore=self.checkpoint_parent,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
-    def testPostRestoreCheckpointExistence(self):
-        """Tests that checkpoint restored from is not deleted post-restore."""
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
-        tune.run(
-            "PPO",
-            name="TuneRestoreTest",
-            stop={"training_iteration": 2},
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=1,
-                checkpoint_frequency=1,
-            ),
-            restore=self.checkpoint_parent,
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
 # Defining the callbacks at the file level, so they can be pickled and spawned
@@ -109,7 +46,7 @@ class SteppingCallback(Callback):
 def _run(local_dir, driver_semaphore, trainer_semaphore):
     def _train(config):
         for i in range(7):
-            ray.train.report(dict(val=i))
+            ray.tune.report(dict(val=i))
 
     tune.run(
         _train,
@@ -177,7 +114,7 @@ class TuneInterruptionTest(unittest.TestCase):
         def run_in_thread():
             def _train(config):
                 for i in range(7):
-                    ray.train.report(dict(val=i))
+                    ray.tune.report(dict(val=i))
 
             tune.run(_train)
             event.set()
@@ -195,13 +132,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
 
-        def __init__(self, num_trials=20):
+        def __init__(self, num_trials=20, delay_s=0.3):
             self.num_trials = num_trials
+            self.delay_s = delay_s
+            self.fail_at = None
 
         def on_step_end(self, trials, **kwargs):
+            if self.fail_at:
+                if time.monotonic() >= self.fail_at:
+                    raise RuntimeError(f"Failing after {self.delay_s}")
+                return
+
             if len(trials) >= self.num_trials:
-                print(f"Failing after {self.num_trials} trials.")
-                raise RuntimeError
+                print(
+                    f"Reached {self.num_trials} trials. "
+                    f"Scheduling failure in {self.delay_s} seconds."
+                )
+                self.fail_at = time.monotonic() + self.delay_s
 
     class CheckStateCallback(Callback):
         """Checks state for the experiment initialization."""
@@ -245,14 +192,11 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
-        # TODO(justinvyu): Some tests don't work with storage_path=self.logdir
-        # because the failure injector callback on the driver will fail the
-        # run before the experiment state file is synced to storage path.
-        # Previously, resume=True avoided the issue by restoring from the
-        # "local" staging copy of the file, which is more up to date.
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = self.logdir
+        # These tests need driver syncing to happen before the crash happens
+        # so that they can pick up from the *exact* state it left off at.
+        # We do this by failing after a delay of 0.3s > TUNE_GLOBAL_CHECKPOINT_S
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0.1"
 
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932
@@ -539,18 +483,19 @@ class TuneExampleTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()
 
     def testPBTKeras(self):
-        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.keras.datasets import cifar10
+
+        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
 
     def testPyTorchMNIST(self):
-        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
+        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
@@ -565,12 +510,11 @@ class TuneExampleTest(unittest.TestCase):
 class AutoInitTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertFalse(ray.is_initialized())
-        tune.run("__fake", name="TestAutoInit", stop={"training_iteration": 1})
+        tune.run(MyTrainableClass, name="TestAutoInit", stop={"training_iteration": 1})
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()
 
 
 class SearcherTest(unittest.TestCase):
@@ -617,40 +561,12 @@ class TrainableCrashWithFailFast(unittest.TestCase):
         should bubble up."""
 
         def f(config):
-            ray.train.report({"a": 1})
+            ray.tune.report({"a": 1})
             time.sleep(0.1)
             raise RuntimeError("Error happens in trainable!!")
 
         with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
             tune.run(f, fail_fast=TuneController.RAISE)
-
-
-# For some reason, different tests are coupled through tune.registry.
-# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
-# be put through GCS, which will fail subsequent tests.
-# tldr, make sure that this test is the last test in the file.
-class ResourceExhaustedTest(unittest.TestCase):
-    def test_resource_exhausted_info(self):
-        """This is to test if helpful information is displayed when
-        the objects captured in trainable/training function are too
-        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
-
-        # generate some random data to be captured implicitly in training func.
-        from sklearn.datasets import fetch_olivetti_faces
-
-        a_large_array = []
-        for i in range(50):
-            a_large_array.append(fetch_olivetti_faces())
-
-        def training_func(config):
-            for item in a_large_array:
-                assert item
-
-        with self.assertRaisesRegex(
-            TuneError,
-            "The Trainable/training function is too large for grpc resource limit.",
-        ):
-            tune.run(training_func)
 
 
 @pytest.mark.parametrize(
@@ -685,6 +601,82 @@ tune.run(train_fn, num_samples=1)
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)
     assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
+
+
+@pytest.mark.parametrize(
+    "resume",
+    [
+        True,
+        "AUTO",
+        "AUTO+ERRORED",
+        "AUTO+ERRORED_ONLY",
+        "AUTO+RESTART_ERRORED",
+        "AUTO+RESTART_ERRORED_ONLY",
+    ],
+)
+def test_resume_options(tmp_path, resume):
+    tmp_path.joinpath("dummy_ckpt").mkdir()
+
+    def train_fn(config):
+        checkpoint = ray.tune.get_checkpoint()
+        if not checkpoint:
+            ray.tune.report(
+                {"finish_marker": False},
+                checkpoint=Checkpoint.from_directory(tmp_path / "dummy_ckpt"),
+            )
+            raise RuntimeError("failing on the first run!!")
+        ray.tune.report({"finish_marker": True})
+
+    analysis = tune.run(
+        train_fn,
+        storage_path=str(tmp_path),
+        name="test_resume_options",
+        raise_on_failed_trial=False,
+    )
+    results = ray.tune.ResultGrid(analysis)
+    assert not results[0].metrics.get("finish_marker", False)
+    analysis = tune.run(
+        train_fn,
+        storage_path=str(tmp_path),
+        name="test_resume_options",
+        resume=resume,
+        raise_on_failed_trial=False,
+    )
+    results = ray.tune.ResultGrid(analysis)
+    if resume in [True, "AUTO", "AUTO+RESTART_ERRORED", "AUTO+RESTART_ERRORED_ONLY"]:
+        # These options either don't resume the errored trial,
+        # or restart it without a checkpoint --> leading to the RuntimeError again
+        assert not results[0].metrics.get("finish_marker")
+    else:
+        assert results[0].metrics.get("finish_marker")
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(50):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
 
 
 if __name__ == "__main__":

@@ -17,10 +17,10 @@ references
 
 In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
 
-Using the [KubeRay Operator](https://github.com/ray-project/kuberay) is the
+Using the [KubeRay operator](https://github.com/ray-project/kuberay) is the
 recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters.
 Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
-autoscaling support allows the KubeRay Operator to size your Ray clusters according to the
+autoscaling support allows the KubeRay operator to size your Ray clusters according to the
 requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
 heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
 different Ray versions in the same Kubernetes cluster.
@@ -40,6 +40,8 @@ See [Getting Started](kuberay-quickstart) to learn the basics of KubeRay and fol
 * [RayCluster Quick Start](kuberay-raycluster-quickstart)
 * [RayJob Quick Start](kuberay-rayjob-quickstart)
 * [RayService Quick Start](kuberay-rayservice-quickstart)
+
+Additionally, [Anyscale](https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=deploy-ray-on-k8s) is the managed Ray platform developed by the creators of Ray. It offers an easy path to deploy Ray clusters on your existing Kubernetes infrastructure, including EKS, GKE, AKS, or self-hosted Kubernetes.
 
 ## Learn More
 

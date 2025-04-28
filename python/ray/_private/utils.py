@@ -1,5 +1,6 @@
-import asyncio
 import binascii
+import random
+import string
 from collections import defaultdict
 import contextlib
 import errno
@@ -18,7 +19,6 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import warnings
 from inspect import signature
 from pathlib import Path
@@ -31,7 +31,6 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    Coroutine,
     List,
     Mapping,
 )
@@ -49,6 +48,10 @@ from ray.core.generated.runtime_env_common_pb2 import (
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
 
+
+INT32_MAX = (2**31) - 1
+
+
 pwd = None
 if sys.platform != "win32":
     import pwd
@@ -65,7 +68,6 @@ win32_job = None
 win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
-_PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
@@ -75,6 +77,18 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
 )
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def get_random_alphanumeric_string(length: int):
+    """Generates random string of length consisting exclusively of
+    - Lower-case ASCII chars
+    - Digits
+    """
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
 
 def get_user_temp_dir():
@@ -240,7 +254,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     if isinstance(s, str):
         return s
     else:
-        assert isinstance(s, bytes)
+        assert isinstance(s, bytes), f"Expected str or bytes, got {type(s)}"
         return s.decode(encoding, errors)
 
 
@@ -334,7 +348,7 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
     """
@@ -365,6 +379,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
+        )
+    elif ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
         )
 
     num_cpus = options_dict.get("num_cpus")
@@ -1155,40 +1174,6 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
-    """Given a full import path to a module attr, return the imported attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    module = importlib.import_module(module_name)
-    if reload_module:
-        importlib.reload(module)
-    return getattr(module, attr_name)
-
-
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
@@ -1294,11 +1279,7 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     import grpc
-
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     from ray._private.tls_utils import load_certs_from_env
 
@@ -1603,7 +1584,8 @@ def get_runtime_env_info(
     In the user interface, the argument `runtime_env` contains some fields
     which not contained in `ProtoRuntimeEnv` but in `ProtoRuntimeEnvInfo`,
     such as `eager_install`. This function will extract those fields from
-    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
+    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it
+    into json format.
     """
     from ray.runtime_env import RuntimeEnvConfig
 
@@ -1701,40 +1683,6 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.BaseEventLoop:
-    """Get a running async event loop if one exists, otherwise create one.
-
-    This function serves as a proxy for the deprecating get_event_loop().
-    It tries to get the running loop first, and if no running loop
-    could be retrieved:
-    - For python version <3.10: it falls back to the get_event_loop
-        call.
-    - For python version >= 3.10: it uses the same python implementation
-        of _get_event_loop() at asyncio/events.py.
-
-    Ideally, one should use high level APIs like asyncio.run() with python
-    version >= 3.7, if not possible, one should create and manage the event
-    loops explicitly.
-    """
-    vers_info = sys.version_info
-    if vers_info.major >= 3 and vers_info.minor >= 10:
-        # This follows the implementation of the deprecating `get_event_loop`
-        # in python3.10's asyncio. See python3.10/asyncio/events.py
-        # _get_event_loop()
-        loop = None
-        try:
-            loop = asyncio.get_running_loop()
-            assert loop is not None
-            return loop
-        except RuntimeError as e:
-            # No running loop, relying on the error message as for now to
-            # differentiate runtime errors.
-            assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
-
-    return asyncio.get_event_loop()
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -1750,100 +1698,16 @@ def get_entrypoint_name():
         return "unknown"
 
 
-def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
-    """Add params to the provided url as query parameters.
-
-    If url already contains query parameters, they will be merged with params, with the
-    existing query parameters overriding any in params with the same parameter name.
-
-    Args:
-        url: The URL to add query parameters to.
-        params: The query parameters to add.
-
-    Returns:
-        URL with params added as query parameters.
-    """
-    # Unquote URL first so we don't lose existing args.
-    url = unquote(url)
-    # Parse URL.
-    parsed_url = urlparse(url)
-    # Merge URL query string arguments dict with new params.
-    base_params = params
-    params = dict(parse_qsl(parsed_url.query))
-    base_params.update(params)
-    # bool and dict values should be converted to json-friendly values.
-    base_params.update(
-        {
-            k: json.dumps(v)
-            for k, v in base_params.items()
-            if isinstance(v, (bool, dict))
-        }
-    )
-
-    # Convert URL arguments to proper query string.
-    encoded_params = urlencode(base_params, doseq=True)
-    # Replace query string in parsed URL with updated query string.
-    parsed_url = parsed_url._replace(query=encoded_params)
-    # Convert back to URL.
-    return urlunparse(parsed_url)
-
-
-def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
-    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
-    parameter. For pyarrow >= 9.0.0, this is required in order to allow
-    ``S3FileSystem.create_dir()`` to create S3 buckets.
-
-    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
-    the URI unchanged.
-
-    Args:
-        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
-
-    Returns:
-        A URI with the added allow_bucket_creation=true query parameter, if the provided
-        URI is an S3 URL; uri will be returned unchanged otherwise.
-    """
-    from packaging.version import parse as parse_version
-
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
-        return uri
-    parsed_uri = urlparse(uri)
-    if parsed_uri.scheme == "s3":
-        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
-    return uri
-
-
-def _get_pyarrow_version() -> Optional[str]:
-    """Get the version of the installed pyarrow package, returned as a tuple of ints.
-    Returns None if the package is not found.
-    """
-    global _PYARROW_VERSION
-    if _PYARROW_VERSION is None:
-        try:
-            import pyarrow
-        except ModuleNotFoundError:
-            # pyarrow not installed, short-circuit.
-            pass
-        else:
-            if hasattr(pyarrow, "__version__"):
-                _PYARROW_VERSION = pyarrow.__version__
-    return _PYARROW_VERSION
-
-
 class DeferSigint(contextlib.AbstractContextManager):
-    """Context manager that defers SIGINT signals until the the context is left."""
+    """Context manager that defers SIGINT signals until the context is left."""
 
     # This is used by Ray's task cancellation to defer cancellation interrupts during
     # problematic areas, e.g. task argument deserialization.
     def __init__(self):
-        # Whether the task has been cancelled while in the context.
-        self.task_cancelled = False
-        # The original SIGINT handler.
-        self.orig_sigint_handler = None
+        # Whether a SIGINT signal was received during the context.
+        self.signal_received = False
+        # The overridden SIGINT handler
+        self.overridden_sigint_handler = None
         # The original signal method.
         self.orig_signal = None
 
@@ -1857,32 +1721,29 @@ class DeferSigint(contextlib.AbstractContextManager):
         else:
             return contextlib.nullcontext()
 
-    def _set_task_cancelled(self, signum, frame):
+    def _set_signal_received(self, signum, frame):
         """SIGINT handler that defers the signal."""
-        self.task_cancelled = True
+        self.signal_received = True
 
     def _signal_monkey_patch(self, signum, handler):
-        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
-        registered within the DeferSigint context.
-        """
-        # Only raise an error if setting a SIGINT handler in the main thread; if setting
-        # a handler in a non-main thread, signal.signal will raise an error anyway
-        # indicating that Python does not allow that.
+        """Monkey patch for signal.signal that defers the setting of new signal
+        handler after the DeferSigint context exits."""
+        # Only handle it in the main thread because if setting a handler in a non-main
+        # thread, signal.signal will raise an error because Python doesn't allow it.
         if (
             threading.current_thread() == threading.main_thread()
             and signum == signal.SIGINT
         ):
-            raise ValueError(
-                "Can't set signal handler for SIGINT while SIGINT is being deferred "
-                "within a DeferSigint context."
-            )
+            orig_sigint_handler = self.overridden_sigint_handler
+            self.overridden_sigint_handler = handler
+            return orig_sigint_handler
         return self.orig_signal(signum, handler)
 
     def __enter__(self):
         # Save original SIGINT handler for later restoration.
-        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        self.overridden_sigint_handler = signal.getsignal(signal.SIGINT)
         # Set SIGINT signal handler that defers the signal.
-        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        signal.signal(signal.SIGINT, self._set_signal_received)
         # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
         # within the context.
         self.orig_signal = signal.signal
@@ -1890,52 +1751,20 @@ class DeferSigint(contextlib.AbstractContextManager):
         return self
 
     def __exit__(self, exc_type, exc, exc_tb):
-        assert self.orig_sigint_handler is not None
+        assert self.overridden_sigint_handler is not None
         assert self.orig_signal is not None
         # Restore original signal.signal function.
         signal.signal = self.orig_signal
-        # Restore original SIGINT handler.
-        signal.signal(signal.SIGINT, self.orig_sigint_handler)
-        if exc_type is None and self.task_cancelled:
-            # No exception raised in context but task has been cancelled, so we raise
-            # KeyboardInterrupt to go through the task cancellation path.
-            raise KeyboardInterrupt
+        # Restore overridden SIGINT handler.
+        signal.signal(signal.SIGINT, self.overridden_sigint_handler)
+        if exc_type is None and self.signal_received:
+            # No exception raised in context, call the original SIGINT handler.
+            # By default, this means raising KeyboardInterrupt.
+            self.overridden_sigint_handler(signal.SIGINT, None)
         else:
             # If exception was raised in context, returning False will cause it to be
             # reraised.
             return False
-
-
-background_tasks = set()
-
-
-def run_background_task(coroutine: Coroutine) -> asyncio.Task:
-    """Schedule a task reliably to the event loop.
-
-    This API is used when you don't want to cache the reference of `asyncio.Task`.
-    For example,
-
-    ```
-    get_event_loop().create_task(coroutine(*args))
-    ```
-
-    The above code doesn't guarantee to schedule the coroutine to the event loops
-
-    When using create_task in a  "fire and forget" way, we should keep the references
-    alive for the reliable execution. This API is used to fire and forget
-    asynchronous execution.
-
-    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
-    """
-    task = get_or_create_event_loop().create_task(coroutine)
-    # Add task to the set. This creates a strong reference.
-    background_tasks.add(task)
-
-    # To prevent keeping references to finished tasks forever,
-    # make each task remove its own reference from the set after
-    # completion:
-    task.add_done_callback(background_tasks.discard)
-    return task
 
 
 def try_import_each_module(module_names_to_import: List[str]) -> None:
@@ -1948,6 +1777,15 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
             importlib.import_module(module_to_preload)
         except ImportError:
             logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def remove_ray_internal_flags_from_env(env: dict):
+    """
+    Remove Ray internal flags from `env`.
+    Defined in ray/common/ray_internal_flag_def.h
+    """
+    for flag in ray_constants.RAY_INTERNAL_FLAGS:
+        env.pop(flag, None)
 
 
 def update_envs(env_vars: Dict[str, str]):
@@ -1965,55 +1803,29 @@ def update_envs(env_vars: Dict[str, str]):
         os.environ[key] = result
 
 
-def parse_node_labels_json(
-    labels_json: str, cli_logger, cf, command_arg="--labels"
-) -> Dict[str, str]:
-    try:
-        labels = json.loads(labels_json)
-        if not isinstance(labels, dict):
-            raise ValueError(
-                "The format after deserialization is not a key-value pair map"
-            )
-        for key, value in labels.items():
-            if not isinstance(key, str):
-                raise ValueError("The key is not string type.")
-            if not isinstance(value, str):
-                raise ValueError(f'The value of the "{key}" is not string type')
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid JSON string, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"{command_arg}={labels_json}"),
-            str(e),
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
-        )
-    return labels
-
-
-def validate_node_labels(labels: Dict[str, str]):
-    if labels is None:
-        return
-    for key in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
-            raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
-                f"This is reserved for Ray defined labels."
-            )
-
-
-def pasre_pg_formatted_resources_to_original(
+def parse_pg_formatted_resources_to_original(
     pg_formatted_resources: Dict[str, float]
 ) -> Dict[str, float]:
     original_resources = {}
 
     for key, value in pg_formatted_resources.items():
-        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 2:
-            original_resources[result.group(1)] = value
-            continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 3:
+            # Filter out resources that have bundle_group_[pg_id] since
+            # it is an implementation detail.
+            # This resource is automatically added to the resource
+            # request for all tasks that require placement groups.
+            if result.group(1) == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+                continue
+
+            original_resources[result.group(1)] = value
+            continue
+
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         original_resources[key] = value
@@ -2076,3 +1888,35 @@ def get_current_node_cpu_model_name() -> Optional[str]:
     except Exception:
         logger.debug("Failed to get CPU model name", exc_info=True)
         return None
+
+
+def validate_socket_filepath(filepath: str):
+    """
+    Validate the provided filename is a valid Unix socket filename.
+    """
+    # Don't check for Windows as it doesn't support Unix sockets.
+    if sys.platform == "win32":
+        return
+    is_mac = sys.platform.startswith("darwin")
+    maxlen = (104 if is_mac else 108) - 1
+    if len(filepath.encode("utf-8")) > maxlen:
+        raise OSError(
+            f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
+        )
+
+
+# Whether we're currently running in a test, either local or CI.
+in_test = None
+
+
+def is_in_test():
+    global in_test
+
+    if in_test is None:
+        in_test = any(
+            env_var in os.environ
+            # These environment variables are always set by pytest and Buildkite,
+            # respectively.
+            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
+        )
+    return in_test

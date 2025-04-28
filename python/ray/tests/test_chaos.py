@@ -1,6 +1,5 @@
 import sys
 import random
-import string
 
 import ray
 
@@ -9,10 +8,9 @@ import time
 
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
-from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import (
-    NodeKillerActor,
+    RayletKiller,
     get_log_message,
     get_and_run_resource_killer,
     WorkerKillerActor,
@@ -63,44 +61,6 @@ def set_kill_interval(request):
         yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
 
 
-@pytest.mark.skip(
-    reason="Skip until https://github.com/ray-project/ray/issues/20706 is fixed."
-)
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "set_kill_interval",
-    [(True, None), (True, 20), (False, None), (False, 20)],
-    indirect=True,
-)
-def test_chaos_task_retry(set_kill_interval):
-    # Chaos testing.
-    @ray.remote(max_retries=-1)
-    def task():
-        a = ""
-        for _ in range(100000):
-            a = a + random.choice(string.ascii_letters)
-        return
-
-    @ray.remote(max_retries=-1)
-    def invoke_nested_task():
-        time.sleep(0.8)
-        return ray.get(task.remote())
-
-    # 50MB of return values.
-    TOTAL_TASKS = 100
-
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
-    results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
-    start = time.time()
-    pb.block_until_complete(results)
-    runtime_with_failure = time.time() - start
-    print(f"Runtime when there are many failures: {runtime_with_failure}")
-    pb.close()
-
-    # TODO(sang): Enable this again.
-    # assert_no_system_failure(p, 10)
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "set_kill_interval",
@@ -120,16 +80,15 @@ def test_chaos_actor_retry(set_kill_interval):
     NUM_CPUS = 16
     TOTAL_TASKS = 300
 
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS)
     actors = [Actor.remote() for _ in range(NUM_CPUS)]
     results = []
     for a in actors:
         results.extend([a.add.remote(str(i)) for i in range(TOTAL_TASKS)])
+
     start = time.time()
-    pb.fetch_until_complete(results)
+    ray.get(results)
     runtime_with_failure = time.time() - start
     print(f"Runtime when there are many failures: {runtime_with_failure}")
-    pb.close()
 
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
@@ -305,45 +264,56 @@ def test_worker_killer():
     ray.shutdown()
 
 
-def test_node_killer_filter():
+@pytest.mark.parametrize(
+    "autoscaler_v2",
+    [False, True],
+    ids=["v1", "v2"],
+)
+def test_node_killer_filter(autoscaler_v2):
     # Initialize cluster with 1 head node and 2 worker nodes.
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 1,
+    try:
+        cluster = AutoscalingCluster(
+            head_resources={"CPU": 0},
+            worker_node_types={
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 1,
+                    },
+                    "node_config": {},
+                    "min_workers": 2,
+                    "max_workers": 2,
                 },
-                "node_config": {},
-                "min_workers": 2,
-                "max_workers": 2,
             },
-        },
-    )
-    cluster.start()
-    ray.init()
+            autoscaler_v2=autoscaler_v2,
+            idle_timeout_minutes=999,  # it could idle killed before the killer.
+        )
+        cluster.start()
+        ray.init()
 
-    wait_for_condition(lambda: len(list_nodes()) > 2)
+        wait_for_condition(lambda: len(list_nodes()) > 2)
 
-    # Choose random worker node to kill.
-    worker_nodes = [node for node in list_nodes() if not node["is_head_node"]]
-    node_to_kill = random.choice(worker_nodes)
-    node_killer = get_and_run_resource_killer(
-        NodeKillerActor,
-        1,
-        max_to_kill=1,
-        kill_filter_fn=lambda: lambda node: node["NodeID"] == node_to_kill.node_id,
-    )
+        # Choose random worker node to kill.
+        worker_nodes = [node for node in list_nodes() if not node["is_head_node"]]
+        node_to_kill = random.choice(worker_nodes)
+        node_killer = get_and_run_resource_killer(
+            RayletKiller,
+            1,
+            max_to_kill=1,
+            kill_filter_fn=lambda: lambda node: node["NodeID"] == node_to_kill.node_id,
+        )
 
-    def check_killed():
-        # Check that killed node is consistent across list_nodes() and NodeKillerActor
-        killed = list(ray.get(node_killer.get_total_killed.remote()))
-        dead = [node.node_id for node in list_nodes() if node.state == "DEAD"]
-        if len(killed) != 1 or len(dead) != 1:
-            return False
-        return killed[0] == dead[0] == node_to_kill.node_id
+        def check_killed():
+            # Check that killed node is consistent across list_nodes()
+            killed = list(ray.get(node_killer.get_total_killed.remote()))
+            dead = [node.node_id for node in list_nodes() if node.state == "DEAD"]
+            if len(killed) != 1 or len(dead) != 1:
+                return False
+            return killed[0] == dead[0] == node_to_kill.node_id
 
-    wait_for_condition(check_killed, timeout=100)
+        wait_for_condition(check_killed, timeout=100)
+    finally:
+        cluster.shutdown()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

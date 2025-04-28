@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 (aws-neuron-core-inference-tutorial)=
 
 # Serve an Inference Model on AWS NeuronCores Using FastAPI (Experimental)
@@ -6,7 +9,7 @@ instance using Ray Serve and FastAPI.
 
 
 :::{note}
-  Before starting this example: 
+  Before starting this example:
   * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/setup/torch-neuronx.html#setup-torch-neuronx)
   * Install AWS NeuronCore drivers and tools, and torch-neuronx based on the instance-type
 

@@ -97,8 +97,8 @@ Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see r
   total_actor_scheduled: 0
   total_actor_tasks: 0
   total_tasks: 5
-  
-  
+
+
   Table (group by func_name):
   ------------------------------------
       FUNC_OR_CLASS_NAME    STATE_COUNTS    TYPE
@@ -286,6 +286,18 @@ You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
+
+Task Events
+-----------
+
+
+By default, Ray traces the execution of tasks, reporting task status events and profiling events
+that the Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
+
+You can change this behavior by setting ``enable_task_events`` options in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`
+to disable task events, which reduces the overhead of task execution, and the amount of data the task sends to the Ray Dashboard.
+Nested tasks don't inherit the task events settings from the parent task. You need to set the task events settings for each task separately.
+
 
 
 More about Ray Tasks

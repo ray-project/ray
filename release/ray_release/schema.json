@@ -15,6 +15,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+				"repeated_run": {
+					"type": "integer"
+				},
 				"env": {
 					"type": "string"
 				},
@@ -25,7 +28,8 @@
 					"type": "string",
 					"enum": [
 						"3.9",
-						"3.11"
+						"3.11",
+						"3.12"
 					]
 				},
 				"frequency": {
@@ -35,7 +39,8 @@
 						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				},
 				"team": {
@@ -78,6 +83,9 @@
 				"cloud_id": {
 					"type": "string"
 				},
+				"project_id": {
+					"type": "string"
+				},
 				"cloud_name": {
 					"type": "string"
 				},
@@ -96,15 +104,9 @@
 			"additionalProperties": false,
 			"properties": {
 				"type": {
-					"type": "string",
-					"enum": [
-						"cpu",
-						"gpu",
-						"cu118",
-						"cu121"
-					]
+					"type": "string"
 				},
-				"post_build_script":{
+				"post_build_script": {
 					"type": "string"
 				},
 				"pip": {
@@ -114,8 +116,7 @@
 					"type": "array"
 				}
 			},
-			"required": [
-			],
+			"required": [],
 			"title": "Byod"
 		},
 		"Run": {
@@ -203,7 +204,8 @@
 						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				}
 			},

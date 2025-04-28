@@ -60,11 +60,8 @@ def test_run_off_main_thread(workflow_start_regular_shared):
     def fake_data(num: int):
         return list(range(num))
 
-    succ = False
-
     # Start new thread here ⚠️
     def run():
-        global succ
         # Setup the workflow.
         assert workflow.run(fake_data.bind(10), workflow_id="run") == list(range(10))
 

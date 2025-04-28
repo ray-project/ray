@@ -60,7 +60,7 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
 def _add_serve_context_tag_values(tag_keys: Tuple, tags: Dict[str, str]):
     """Add serve context tag values to the metric tags"""
 
-    _request_context = ray.serve.context._serve_request_context.get()
+    _request_context = ray.serve.context._get_serve_request_context()
     if ROUTE_TAG in tag_keys and ROUTE_TAG not in tags:
         tags[ROUTE_TAG] = _request_context.route
 
@@ -93,6 +93,15 @@ class Counter(metrics.Counter):
                     self.num_requests += 1
                     if self.num_requests % 2 == 1:
                         self.my_counter.inc()
+
+    .. note::
+
+        Before Ray 2.10, this exports a Prometheus gauge metric instead of
+        a counter metric.
+        Starting in Ray 2.10, this exports both the proper counter metric
+        (with a suffix "_total") and gauge metric (for compatibility).
+        The gauge metric will be removed in a future Ray release and you can set
+        `RAY_EXPORT_COUNTER_AS_GAUGE=0` to disable exporting it in the meantime.
 
     Args:
         name: Name of the metric.

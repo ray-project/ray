@@ -12,7 +12,7 @@ Lightweight config updates modify running deployment replicas without tearing th
 - `num_replicas`
 - `autoscaling_config`
 - `user_config`
-- `max_concurrent_queries`
+- `max_ongoing_requests`
 - `graceful_shutdown_timeout_s`
 - `graceful_shutdown_wait_loop_s`
 - `health_check_period_s`

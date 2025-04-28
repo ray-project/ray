@@ -22,8 +22,7 @@ def temp_database_fixture() -> Generator[str, None, None]:
         yield file.name
 
 
-@pytest.mark.parametrize("parallelism", [-1, 1])
-def test_read_sql(temp_database: str, parallelism: int):
+def test_read_sql(temp_database: str):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE movie(title, year, score)")
     expected_values = [
@@ -37,11 +36,77 @@ def test_read_sql(temp_database: str, parallelism: int):
     dataset = ray.data.read_sql(
         "SELECT * FROM movie",
         lambda: sqlite3.connect(temp_database),
-        parallelism=parallelism,
     )
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
 
     assert sorted(actual_values) == sorted(expected_values)
+
+
+def test_read_sql_with_parallelism_fallback(temp_database: str):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE grade(name, id, score)")
+    base_tuple = ("xiaoming", 1, 8.2)
+    # Generate 200 elements
+    expected_values = [
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
+    ]
+    connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    num_blocks = 2
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        lambda: sqlite3.connect(temp_database),
+        override_num_blocks=num_blocks,
+        shard_hash_fn="unicode",
+        shard_keys=["id"],
+    )
+    dataset = dataset.materialize()
+    assert dataset.num_blocks() == num_blocks
+
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+    assert sorted(actual_values) == sorted(expected_values)
+
+
+# for mysql test
+@pytest.mark.skip(reason="skip this test because mysql env is not ready")
+def test_read_sql_with_parallelism_mysql(temp_database: str):
+    # connect mysql
+    import pymysql
+
+    connection = pymysql.connect(
+        host="10.10.xx.xx", user="root", password="22222", database="test"
+    )
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS grade (name VARCHAR(255), id INT, score FLOAT)"
+    )
+
+    base_tuple = ("xiaoming", 1, 8.2)
+    expected_values = [
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(200)
+    ]
+
+    cursor.executemany(
+        "INSERT INTO grade (name, id, score) VALUES (%s, %s, %s)", expected_values
+    )
+    connection.commit()
+
+    cursor.close()
+    connection.close()
+
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        lambda: pymysql.connect(host="xxxxx", user="xx", password="xx", database="xx"),
+        parallelism=4,
+        shard_keys=["id"],
+    )
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+
+    assert sorted(actual_values) == sorted(expected_values)
+    assert dataset.materialize().num_blocks() == 4
 
 
 def test_write_sql(temp_database: str):
@@ -146,12 +211,13 @@ def test_databricks_uc_datasource():
         def request_post_mock(url, data=None, json=None, **kwargs):
             import json as jsonlib
 
-            auth = kwargs["auth"]
             headers = kwargs["headers"]
 
             if url == "https://test_shard/api/2.0/sql/statements/":
-                assert auth == ("token", token)
-                assert headers == {"Content-Type": "application/json"}
+                assert headers == {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token,
+                }
                 assert jsonlib.loads(data) == {
                     "statement": query,
                     "warehouse_id": warehouse_id,
@@ -177,15 +243,16 @@ def test_databricks_uc_datasource():
             assert False, "Invalid request."
 
         def request_get_mock(url, params=None, **kwargs):
-            auth = kwargs["auth"]
             headers = kwargs["headers"]
 
             if match := re.match(
                 r"^https://test_shard/api/2\.0/sql/statements/([^/]*)/$", url
             ):
                 statement_id = match.group(1)
-                assert auth == ("token", token)
-                assert headers == {"Content-Type": "application/json"}
+                assert headers == {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token,
+                }
 
                 assert statement_id in valid_statement_ids
 
@@ -206,8 +273,10 @@ def test_databricks_uc_datasource():
                 r"statements/([^/]*)/result/chunks/([^/]*)$",
                 url,
             ):
-                assert auth == ("token", token)
-                assert headers == {"Content-Type": "application/json"}
+                assert headers == {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token,
+                }
 
                 chunk_index = match.group(2)
 
@@ -225,7 +294,6 @@ def test_databricks_uc_datasource():
                 )
 
             if match := re.match(r"^https://test_external_link/([^/]*)$", url):
-                assert auth is None
                 assert headers is None
 
                 chunk_index = int(match.group(1))
@@ -262,35 +330,49 @@ def test_databricks_uc_datasource():
         ray.init()
 
         # test query with a table name
-        result = ray.data.read_databricks_tables(
-            warehouse_id=warehouse_id,
-            table="table1",
-            catalog="catalog1",
-            schema="db1",
-            parallelism=5,
-        ).to_pandas()
-
+        result = (
+            ray.data.read_databricks_tables(
+                warehouse_id=warehouse_id,
+                table="table1",
+                catalog="catalog1",
+                schema="db1",
+                override_num_blocks=5,
+            )
+            .to_pandas()
+            .sort_values("c1")
+            .reset_index(drop=True)
+        )
         pd.testing.assert_frame_equal(result, expected_result_df)
 
         # test query with SQL
-        result = ray.data.read_databricks_tables(
-            warehouse_id=warehouse_id,
-            query="select * from table1",
-            catalog="catalog1",
-            schema="db1",
-            parallelism=5,
-        ).to_pandas()
+        result = (
+            ray.data.read_databricks_tables(
+                warehouse_id=warehouse_id,
+                query="select * from table1",
+                catalog="catalog1",
+                schema="db1",
+                override_num_blocks=5,
+            )
+            .to_pandas()
+            .sort_values("c1")
+            .reset_index(drop=True)
+        )
 
         pd.testing.assert_frame_equal(result, expected_result_df)
 
         # test larger parallelism
-        result = ray.data.read_databricks_tables(
-            warehouse_id=warehouse_id,
-            query="select * from table1",
-            catalog="catalog1",
-            schema="db1",
-            parallelism=100,
-        ).to_pandas()
+        result = (
+            ray.data.read_databricks_tables(
+                warehouse_id=warehouse_id,
+                query="select * from table1",
+                catalog="catalog1",
+                schema="db1",
+                override_num_blocks=100,
+            )
+            .to_pandas()
+            .sort_values("c1")
+            .reset_index(drop=True)
+        )
 
         pd.testing.assert_frame_equal(result, expected_result_df)
 

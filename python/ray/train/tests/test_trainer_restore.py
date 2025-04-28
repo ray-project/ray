@@ -1,8 +1,8 @@
-import warnings
 from functools import partial
 from pathlib import Path
 from typing import Dict, List
 
+import pyarrow.fs
 import pytest
 
 import ray
@@ -13,7 +13,6 @@ from ray.train.base_trainer import BaseTrainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.train.torch import TorchTrainer
 from ray.train.trainer import TrainingFailedError
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback
@@ -144,10 +143,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
     - Results are being logged to the same directory as before.
     """
-    # TODO(krfricke): Re-enable this once gbdt trainers are supported.
-    # Also runs into the same problem as the test below.
-    pytest.skip("GBDT trainers are not supported yet.")
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(100)])
@@ -168,6 +164,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
             num_workers=2, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 1}
         ),
         run_config=RunConfig(
+            storage_path=str(tmp_path),
             name=exp_name,
             checkpoint_config=CheckpointConfig(
                 num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
@@ -187,26 +184,24 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     assert tmp_path / exp_name in Path(result.path).parents
 
 
+@pytest.mark.parametrize("name", [None, "restore_from_uri"])
 def test_restore_from_uri_s3(
-    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri
+    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri, name
 ):
     """Restoration from S3 should work."""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="restore_from_uri", storage_path=mock_s3_bucket_uri),
+        run_config=RunConfig(name=name, storage_path=mock_s3_bucket_uri),
     )
-    trainer.fit()
+    result = trainer.fit()
 
-    # Restore from local dir
-    DataParallelTrainer.restore(str(tmp_path / "restore_from_uri"))
+    if name is None:
+        name = Path(result.path).parent.name
 
     # Restore from S3
-    assert DataParallelTrainer.can_restore(
-        str(URI(mock_s3_bucket_uri) / "restore_from_uri")
-    )
-    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / "restore_from_uri"))
+    assert DataParallelTrainer.can_restore(str(URI(mock_s3_bucket_uri) / name))
+    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / name))
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
@@ -220,9 +215,9 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         datasets=datasets,
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="datasets_respecify_test", local_dir=tmpdir),
+        run_config=RunConfig(name="datasets_respecify_test"),
     )
-    trainer._save(tmpdir)
+    trainer._save(pyarrow.fs.LocalFileSystem(), str(tmpdir))
 
     # Restore should complain, if all the datasets don't get passed in again
     with pytest.raises(ValueError):
@@ -238,44 +233,6 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         )
 
     trainer = DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
-
-
-def test_restore_with_different_trainer(tmpdir):
-    """Tests that an error is raised if trying to restore a XTrainer with
-    `YTrainer.restore`"""
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: train.report({"score": 1}),
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="restore_with_diff_trainer"),
-    )
-    trainer._save(tmpdir)
-
-    def attempt_restore(trainer_cls, should_warn: bool, should_raise: bool):
-        def check_for_raise():
-            if should_raise:
-                with pytest.raises(ValueError):
-                    trainer_cls.restore(str(tmpdir))
-            else:
-                trainer_cls.restore(str(tmpdir))
-
-        if should_warn:
-            with pytest.warns(Warning) as warn_record:
-                check_for_raise()
-                assert any(
-                    "Invalid trainer type" in str(record.message)
-                    for record in warn_record
-                )
-        else:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error")
-                check_for_raise()
-
-    attempt_restore(BaseTrainer, should_warn=True, should_raise=True)
-    attempt_restore(XGBoostTrainer, should_warn=True, should_raise=True)
-    # This won't raise because the DataParallelTrainer args can technically
-    # be fed into a TorchTrainer.
-    attempt_restore(TorchTrainer, should_warn=True, should_raise=False)
-    attempt_restore(DataParallelTrainer, should_warn=False, should_raise=False)
 
 
 def test_restore_from_invalid_dir(tmpdir):
@@ -301,7 +258,7 @@ def test_trainer_can_restore_utility(tmp_path):
         scaling_config=ScalingConfig(num_workers=1),
     )
     (tmp_path / name).mkdir(exist_ok=True)
-    trainer._save(tmp_path / name)
+    trainer._save(pyarrow.fs.LocalFileSystem(), str(tmp_path / name))
 
     assert DataParallelTrainer.can_restore(path)
 

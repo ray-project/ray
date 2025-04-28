@@ -16,6 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
+#include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
@@ -28,7 +33,7 @@ namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(rpc::ActorHandle inner) : inner_(inner) {}
+  explicit ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,
@@ -43,7 +48,9 @@ class ActorHandle {
               const std::string &name,
               const std::string &ray_namespace,
               int32_t max_pending_calls,
-              bool execute_out_of_order = false);
+              bool execute_out_of_order = false,
+              std::optional<bool> enable_task_events = absl::nullopt,
+              const std::unordered_map<std::string, std::string> &labels = {});
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -87,13 +94,13 @@ class ActorHandle {
   ///
   /// \param[in] spec An existing task spec that has executed on the actor
   /// before.
-  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
-  /// raylet-based actor restart.
-  void SetResubmittedActorTaskSpec(TaskSpecification &spec, const ObjectID new_cursor);
+  void SetResubmittedActorTaskSpec(TaskSpecification &spec);
 
   void Serialize(std::string *output);
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
+
+  bool EnableTaskEvents() const { return inner_.enable_task_events(); }
 
   std::string GetName() const;
 
@@ -102,6 +109,10 @@ class ActorHandle {
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+
+  const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
+    return inner_.labels();
+  }
 
  private:
   // Protobuf-defined persistent state of the actor handle.

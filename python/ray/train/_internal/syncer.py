@@ -4,11 +4,10 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.train.constants import _DEPRECATED_VALUE
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
@@ -20,79 +19,13 @@ DEFAULT_SYNC_PERIOD = 300
 DEFAULT_SYNC_TIMEOUT = 1800
 
 
-@PublicAPI(stability="stable")
+@Deprecated
 @dataclass
 class SyncConfig:
-    """Configuration object for Train/Tune file syncing to `RunConfig(storage_path)`.
-
-    In Ray Train/Tune, here is where syncing (mainly uploading) happens:
-
-    The experiment driver (on the head node) syncs the experiment directory to storage
-    (which includes experiment state such as searcher state, the list of trials
-    and their statuses, and trial metadata).
-
-    It's also possible to sync artifacts from the trial directory to storage
-    by setting `sync_artifacts=True`.
-    For a Ray Tune run with many trials, each trial will upload its trial directory
-    to storage, which includes arbitrary files that you dumped during the run.
-    For a Ray Train run doing distributed training, each remote worker will similarly
-    upload its trial directory to storage.
-
-    See :ref:`persistent-storage-guide` for more details and examples.
-
-    Args:
-        sync_period: Minimum time in seconds to wait between two sync operations.
-            A smaller ``sync_period`` will have the data in storage updated more often
-            but introduces more syncing overhead. Defaults to 5 minutes.
-        sync_timeout: Maximum time in seconds to wait for a sync process
-            to finish running. A sync operation will run for at most this long
-            before raising a `TimeoutError`. Defaults to 30 minutes.
-        sync_artifacts: [Beta] Whether or not to sync artifacts that are saved to the
-            trial directory (accessed via `train.get_context().get_trial_dir()`)
-            to the persistent storage configured via `train.RunConfig(storage_path)`.
-            The trial or remote worker will try to launch an artifact syncing
-            operation every time `train.report` happens, subject to `sync_period`
-            and `sync_artifacts_on_checkpoint`.
-            Defaults to False -- no artifacts are persisted by default.
-        sync_artifacts_on_checkpoint: If True, trial/worker artifacts are
-            forcefully synced on every reported checkpoint.
-            This only has an effect if `sync_artifacts` is True.
-            Defaults to True.
-    """
-
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
     sync_artifacts: bool = False
     sync_artifacts_on_checkpoint: bool = True
-    upload_dir: Optional[str] = _DEPRECATED_VALUE
-    syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
-    sync_on_checkpoint: bool = _DEPRECATED_VALUE
-
-    # TODO(justinvyu): [Deprecated] Remove in 2.11.
-    def _deprecation_warning(self, attr_name: str, extra_msg: str):
-        if getattr(self, attr_name) != _DEPRECATED_VALUE:
-            raise DeprecationWarning(
-                f"`SyncConfig({attr_name})` is a deprecated configuration "
-                "Please remove it from your `SyncConfig`. "
-                f"{extra_msg}"
-            )
-
-    def __post_init__(self):
-        for attr_name, extra_msg in [
-            (
-                "upload_dir",
-                "\nPlease specify `ray.train.RunConfig(storage_path)` instead.",
-            ),
-            (
-                "syncer",
-                "\nPlease implement custom syncing logic with a custom "
-                "`pyarrow.fs.FileSystem` instead, and pass it into "
-                "`ray.train.RunConfig(storage_filesystem)`. "
-                "See here: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#custom-storage",  # noqa: E501
-            ),
-            ("sync_on_checkpoint", ""),
-        ]:
-            self._deprecation_warning(attr_name, extra_msg)
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig."""
@@ -184,7 +117,7 @@ class Syncer(abc.ABC):
 
     This class handles data transfer for two cases:
 
-    1. Synchronizing data such as experiment checkpoints from the driver to
+    1. Synchronizing data such as experiment state snapshots from the driver to
        cloud storage.
     2. Synchronizing data such as trial checkpoints from remote trainables to
        cloud storage.
@@ -283,7 +216,7 @@ class Syncer(abc.ABC):
         """
         pass
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
@@ -415,7 +348,7 @@ class _BackgroundSyncer(Syncer):
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
         if self._should_continue_existing_sync():
-            logger.warning(
+            logger.debug(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
             )
@@ -466,10 +399,10 @@ class _BackgroundSyncer(Syncer):
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
         raise NotImplementedError
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None):
         if self._sync_process:
             try:
-                self._sync_process.wait(timeout=self.sync_timeout)
+                self._sync_process.wait(timeout=timeout or self.sync_timeout)
             except Exception as e:
                 raise e
             finally:

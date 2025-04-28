@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/future_resolver.h"
 
+#include <memory>
+
 namespace ray {
 namespace core {
 
@@ -43,7 +45,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                                            const rpc::GetObjectStatusReply &reply) {
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
-                     << " that was deserialized: " << status.ToString();
+                     << " that was deserialized: " << status;
   }
 
   if (!status.ok()) {
@@ -77,7 +79,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     // Put the RayObject into the in-memory store.
     const auto &data = reply.object().data();
     std::shared_ptr<LocalMemoryBuffer> data_buffer;
-    if (data.size() > 0) {
+    if (!data.empty()) {
       RAY_LOG(DEBUG) << "Object returned directly in GetObjectStatus reply, putting "
                      << object_id << " in memory store";
       data_buffer = std::make_shared<LocalMemoryBuffer>(
@@ -89,7 +91,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     }
     const auto &metadata = reply.object().metadata();
     std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-    if (metadata.size() > 0) {
+    if (!metadata.empty()) {
       metadata_buffer = std::make_shared<LocalMemoryBuffer>(
           const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(metadata.data())),
           metadata.size());

@@ -17,12 +17,14 @@
 #include <atomic>
 #include <boost/asio/deadline_timer.hpp>
 #include <csignal>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace raylet {
@@ -46,19 +48,21 @@ class AgentManager {
   struct Options {
     const NodeID node_id;
     const std::string agent_name;
-    // Commands to start the agent. Note we append extra arguments:
-    // --agent-id $AGENT_ID # A random string of int
+    // Commands to start the agent.
     std::vector<std::string> agent_commands;
     // If true: the started process fate-shares with the raylet. i.e., when the process
     // fails to start or exits, we SIGTERM the raylet.
     bool fate_shares;
   };
 
-  explicit AgentManager(Options options,
-                        DelayExecutorFn delay_executor,
-                        bool start_agent = true /* for test */)
+  explicit AgentManager(
+      Options options,
+      DelayExecutorFn delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
+        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
@@ -79,6 +83,7 @@ class AgentManager {
   const Options options_;
   Process process_;
   DelayExecutorFn delay_executor_;
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   // If true, when the agent dies, raylet kills itself.
   std::atomic<bool> fate_shares_;
   std::unique_ptr<std::thread> monitor_thread_;

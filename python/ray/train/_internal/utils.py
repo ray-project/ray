@@ -4,11 +4,25 @@ import inspect
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
-from ray.air._internal.util import StartTraceback, find_free_port
+from ray.air._internal.util import (
+    StartTraceback,
+    StartTracebackWithWorkerRank,
+    find_free_port,
+)
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 
@@ -47,7 +61,10 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                raise StartTraceback from exc
+                failed_worker_rank = remote_values.index(object_ref)
+                raise StartTracebackWithWorkerRank(
+                    worker_rank=failed_worker_rank
+                ) from exc
 
     return True, None
 
@@ -127,6 +144,7 @@ def count_required_parameters(fn: Callable) -> int:
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
+    train_func_context: ContextManager,
     fn_arg_name: Optional[str] = "train_func",
     discard_returns: bool = False,
 ) -> Callable[[], T]:
@@ -136,6 +154,8 @@ def construct_train_func(
             This can either take in no arguments or a ``config`` dict.
         config (Optional[Dict]): Configurations to pass into
             ``train_func``. If None then an empty Dict will be created.
+        train_func_context: Context manager for user's `train_func`, which executes
+            backend-specific logic before and after the training function.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
         discard_returns: Whether to discard any returns from train_func or not.
@@ -173,7 +193,8 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                return wrapped_train_func(config)
+                with train_func_context():
+                    return wrapped_train_func(config)
             except Exception as e:
                 raise StartTraceback from e
 
@@ -182,7 +203,8 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                return wrapped_train_func()
+                with train_func_context():
+                    return wrapped_train_func()
             except Exception as e:
                 raise StartTraceback from e
 

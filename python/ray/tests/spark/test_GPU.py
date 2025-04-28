@@ -78,6 +78,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     num_task_slots=num_ray_task_slots,
                     physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                     shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                    configured_heap_memory_bytes=None,
                     configured_object_store_bytes=None,
                 )
 
@@ -135,6 +136,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
 
@@ -180,6 +182,16 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     timeout=60,
                     retry_interval_ms=1000,
                 )
+
+    def test_default_resource_allocation(self):
+        with _setup_ray_cluster(
+            max_worker_nodes=1,
+            head_node_options={"include_dashboard": False},
+        ):
+            ray.init()
+            worker_res_list = self.get_ray_worker_resources_list()
+            assert worker_res_list[0]["CPU"] == self.num_total_gpus
+            assert worker_res_list[0]["GPU"] == self.num_total_cpus
 
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):

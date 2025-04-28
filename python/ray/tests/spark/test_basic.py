@@ -19,7 +19,6 @@ from ray.util.spark import (
     MAX_NUM_WORKER_NODES,
 )
 from ray.util.spark.utils import (
-    is_port_in_use,
     _calc_mem_per_ray_worker_node,
 )
 from pyspark.sql import SparkSession
@@ -70,7 +69,9 @@ _logger = logging.getLogger(__name__)
 class RayOnSparkCPUClusterTestBase(ABC):
     spark = None
     num_total_cpus = None
+    num_total_gpus = None
     num_cpus_per_spark_task = None
+    num_gpus_per_spark_task = None
     max_spark_tasks = None
 
     @classmethod
@@ -118,11 +119,13 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
             with _setup_ray_cluster(
                 max_worker_nodes=max_worker_nodes_arg,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
@@ -144,6 +147,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
             setup_ray_cluster(
                 max_worker_nodes=MAX_NUM_WORKER_NODES,
+                num_cpus_worker_node=1,
+                num_gpus_worker_node=0,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
@@ -190,34 +195,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(ray_temp_root_dir, ignore_errors=True)
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
-    def test_ray_cluster_shutdown(self):
-        with _setup_ray_cluster(max_worker_nodes=self.max_spark_tasks) as cluster:
-            ray.init()
-            assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
-
-            # Test: cancel background spark job will cause all ray worker nodes exit.
-            cluster._cancel_background_spark_job()
-            time.sleep(8)
-
-            assert len(self.get_ray_worker_resources_list()) == 0
-
-        time.sleep(2)  # wait ray head node exit.
-        # assert ray head node exit by checking head port being closed.
-        hostname, port = cluster.address.split(":")
-        assert not is_port_in_use(hostname, int(port))
-
-    def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _setup_ray_cluster(max_worker_nodes=self.max_spark_tasks) as cluster:
-            ray.init()
-            # Mimic the case the job failed unexpectedly.
-            cluster._cancel_background_spark_job()
-            cluster.spark_job_is_canceled = False
-            time.sleep(5)
-
-            # assert ray head node exit by checking head port being closed.
-            hostname, port = cluster.address.split(":")
-            assert not is_port_in_use(hostname, int(port))
-
     def test_autoscaling(self):
         for max_worker_nodes, num_cpus_worker_node, min_worker_nodes in [
             (self.max_spark_tasks, self.num_cpus_per_spark_task, 0),
@@ -235,6 +212,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
 
@@ -242,6 +220,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 max_worker_nodes=max_worker_nodes,
                 min_worker_nodes=min_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
                 autoscale_idle_timeout_minutes=0.1,
             ):
@@ -338,15 +317,14 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    @pytest.mark.parametrize("autoscale", [False, True])
-    def test_use_driver_resources(self, autoscale):
+    def test_use_driver_resources(self):
         setup_ray_cluster(
             max_worker_nodes=1,
             num_cpus_head_node=3,
             num_gpus_head_node=2,
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
-            min_worker_nodes=(0 if autoscale else 1),
+            min_worker_nodes=0,
         )
 
         ray.init()
@@ -360,8 +338,7 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    @pytest.mark.parametrize("autoscale", [False, True])
-    def test_setup_global_ray_cluster(self, autoscale):
+    def test_setup_global_ray_cluster(self):
         shutil.rmtree("/tmp/ray", ignore_errors=True)
 
         assert ray.util.spark.cluster_init._global_ray_cluster_cancel_event is None
@@ -375,7 +352,7 @@ class TestSparkLocalCluster:
                     ):
                         setup_global_ray_cluster(
                             max_worker_nodes=1,
-                            min_worker_nodes=(0 if autoscale else 1),
+                            min_worker_nodes=0,
                         )
                 except BaseException:
                     # For debugging testing failure.
@@ -417,7 +394,7 @@ class TestSparkLocalCluster:
             ):
                 setup_global_ray_cluster(
                     max_worker_nodes=1,
-                    min_worker_nodes=(0 if autoscale else 1),
+                    min_worker_nodes=0,
                 )
 
         # shut down the cluster
@@ -490,6 +467,31 @@ class TestSparkLocalCluster:
         assert config["idle_timeout_minutes"] == 3.0
         assert config["provider"]["extra_aa"] == "abc"
         assert config["provider"]["extra_bb"] == 789
+
+    def test_start_ray_node_in_new_process_group(self):
+        from ray.util.spark.cluster_init import _start_ray_head_node
+
+        proc, _ = _start_ray_head_node(
+            [
+                sys.executable,
+                "-m",
+                "ray.util.spark.start_ray_node",
+                "--head",
+                "--block",
+                "--port=44335",
+            ],
+            synchronous=False,
+            extra_env={
+                "RAY_ON_SPARK_COLLECT_LOG_TO_PATH": "",
+                "RAY_ON_SPARK_START_RAY_PARENT_PID": str(os.getpid()),
+            },
+        )
+        time.sleep(10)
+
+        # Assert the created Ray head node process has a different
+        # group id from parent process group id.
+        assert os.getpgid(proc.pid) != os.getpgrp()
+        proc.terminate()
 
 
 if __name__ == "__main__":

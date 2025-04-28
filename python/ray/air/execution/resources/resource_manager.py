@@ -1,12 +1,8 @@
 import abc
-
 from typing import List, Optional
 
 import ray
-from ray.air.execution.resources.request import (
-    ResourceRequest,
-    AcquiredResources,
-)
+from ray.air.execution.resources.request import AcquiredResources, ResourceRequest
 from ray.util.annotations import DeveloperAPI
 
 

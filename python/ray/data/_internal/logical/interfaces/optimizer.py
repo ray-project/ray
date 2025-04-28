@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Type
 
 from .plan import Plan
 
@@ -6,9 +6,19 @@ from .plan import Plan
 class Rule:
     """Abstract class for optimization rule."""
 
-    def apply(plan: Plan) -> Plan:
+    def apply(self, plan: Plan) -> Plan:
         """Apply the optimization rule to the execution plan."""
         raise NotImplementedError
+
+    @classmethod
+    def dependencies(cls) -> List[Type["Rule"]]:
+        """List of rules that must be applied before this rule."""
+        return []
+
+    @classmethod
+    def dependents(cls) -> List[Type["Rule"]]:
+        """List of rules that must be applied after this rule."""
+        return []
 
 
 class Optimizer:

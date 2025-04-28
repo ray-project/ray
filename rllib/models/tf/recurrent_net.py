@@ -10,7 +10,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
@@ -22,7 +22,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class RecurrentNetwork(TFModelV2):
     """Helper class to simplify implementing RNN models with TFModelV2.
 
@@ -129,7 +129,7 @@ class RecurrentNetwork(TFModelV2):
         raise NotImplementedError("You must implement this for a RNN model")
 
 
-@DeveloperAPI
+@OldAPIStack
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
 
@@ -149,7 +149,7 @@ class LSTMWrapper(RecurrentNetwork):
         # is the input size for the LSTM layer.
         # If None, set it to the observation space.
         if self.num_outputs is None:
-            self.num_outputs = int(np.product(self.obs_space.shape))
+            self.num_outputs = int(np.prod(self.obs_space.shape))
 
         self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action = model_config["lstm_use_prev_action"]
@@ -164,7 +164,7 @@ class LSTMWrapper(RecurrentNetwork):
             elif isinstance(space, MultiDiscrete):
                 self.action_dim += np.sum(space.nvec)
             elif space.shape is not None:
-                self.action_dim += int(np.product(space.shape))
+                self.action_dim += int(np.prod(space.shape))
             else:
                 self.action_dim += int(len(space))
 

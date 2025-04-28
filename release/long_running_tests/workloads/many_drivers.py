@@ -3,7 +3,7 @@ import time
 import argparse
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import run_string_as_driver, safe_write_to_results_json
 
 
@@ -12,79 +12,46 @@ def update_progress(result):
     safe_write_to_results_json(result)
 
 
-num_redis_shards = 5
-redis_max_memory = 10**8
-object_store_memory = 10**8
-num_nodes = 4
+ray.init()
 
-message = (
-    "Make sure there is enough memory on this machine to run this "
-    "workload. We divide the system memory by 2 to provide a buffer."
-)
-assert (
-    num_nodes * object_store_memory + num_redis_shards * redis_max_memory
-    < ray._private.utils.get_system_memory() / 2
-), message
-
-# Simulate a cluster on one machine.
-
-cluster = Cluster()
-for i in range(num_nodes):
-    cluster.add_node(
-        redis_port=6379 if i == 0 else None,
-        num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=4,
-        num_gpus=0,
-        resources={str(i): 5},
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0",
-    )
-ray.init(address=cluster.address)
+nodes = [node["NodeID"] for node in ray.nodes()]
+assert len(nodes) == 4
 
 # Run the workload.
 
 # Define a driver script that runs a few tasks and actors on each node in the
 # cluster.
-driver_script = """
+driver_script = f"""
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-ray.init(address="{}")
+ray.init()
 
-num_nodes = {}
+nodes = "{','.join(nodes)}".split(',')
 
-
-@ray.remote
+@ray.remote(num_cpus=1)
 def f():
     return 1
 
-
-@ray.remote
+@ray.remote(num_cpus=1)
 class Actor(object):
     def method(self):
         return 1
 
-
 for _ in range(5):
-    for i in range(num_nodes):
-        assert (ray.get(
-            f._remote(args=[],
-            kwargs={{}},
-            resources={{str(i): 1}})) == 1)
-        actor = Actor._remote(
-            args=[], kwargs={{}}, resources={{str(i): 1}})
+    for node in nodes:
+        assert ray.get(
+            f.options(scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node, soft=False)).remote()) == 1
+        actor = Actor.options(scheduling_strategy=NodeAffinitySchedulingStrategy(
+            node, soft=False)).remote()
         assert ray.get(actor.method.remote()) == 1
 
-# Tests datasets doesn't leak workers.
-ray.data.range(100).map(lambda x: x).take()
-
 print("success")
-""".format(
-    cluster.address, num_nodes
-)
+"""
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def run_driver():
     output = run_string_as_driver(driver_script, encode="utf-8")
     assert "success" in output
@@ -92,8 +59,10 @@ def run_driver():
 
 iteration = 0
 running_ids = [
-    run_driver._remote(args=[], kwargs={}, num_cpus=0, resources={str(i): 0.01})
-    for i in range(num_nodes)
+    run_driver.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+    ).remote()
+    for node in nodes
 ]
 start_time = time.time()
 previous_time = start_time
@@ -121,9 +90,11 @@ while True:
     ray.get(ready_id)
 
     running_ids.append(
-        run_driver._remote(
-            args=[], kwargs={}, num_cpus=0, resources={str(iteration % num_nodes): 0.01}
-        )
+        run_driver.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                nodes[iteration % len(nodes)], soft=False
+            )
+        ).remote()
     )
 
     new_time = time.time()

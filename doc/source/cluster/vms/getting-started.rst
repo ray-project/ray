@@ -142,7 +142,7 @@ We will write a simple Python application that tracks the IP addresses of the ma
     def f():
         time.sleep(0.001)
         # Return IP address.
-        return socket.gethostbyname(socket.gethostname())
+        return socket.gethostbyname("localhost")
 
     ip_addresses = [f() for _ in range(10000)]
     print(Counter(ip_addresses))
@@ -165,7 +165,7 @@ With some small changes, we can make this application run on Ray (for more infor
     def f():
         time.sleep(0.001)
         # Return IP address.
-        return socket.gethostbyname(socket.gethostname())
+        return socket.gethostbyname("localhost")
 
     object_ids = [f.remote() for _ in range(10000)]
     ip_addresses = ray.get(object_ids)
@@ -192,7 +192,7 @@ Finally, let's add some code to make the output more interesting:
     def f():
         time.sleep(0.001)
         # Return IP address.
-        return socket.gethostbyname(socket.gethostname())
+        return socket.gethostbyname("localhost")
 
     object_ids = [f.remote() for _ in range(10000)]
     ip_addresses = ray.get(object_ids)

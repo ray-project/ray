@@ -1,8 +1,7 @@
 .. _ray-core-examples-tutorial:
 
-
-Ray Tutorials and Examples
-==========================
+Ray Core Examples
+=================
 
 .. toctree::
     :hidden:
@@ -10,94 +9,37 @@ Ray Tutorials and Examples
 
     *
 
+.. Organize example .rst files in the same manner as the
+   .py files in ray/python/ray/train/examples.
 
-Machine Learning Examples
--------------------------
+Below are examples for using Ray Core for a variety use cases.
 
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
+Beginner
+--------
 
-    .. grid-item-card::
-        :img-top: /images/timeseries.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+.. list-table::
 
-        .. button-ref:: automl_for_time_series
-
-            Build Simple AutoML for Time Series Using Ray
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: batch_prediction
-
-            Build Batch Prediction Using Ray
-
-    .. grid-item-card::
-        :img-top: images/param_actor.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_parameter_server
-
-            Build a Simple Parameter Server Using Ray
-
-    .. grid-item-card::
-        :img-top: images/hyperparameter.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_hyperparameter
-
-            Simple Parallel Model Selection
+  * - :doc:`A Gentle Introduction to Ray Core by Example <gentle_walkthrough>`
+  * - :doc:`Using Ray for Highly Parallelizable Tasks <highly_parallel>`
+  * - :doc:`Monte Carlo Estimation of π <monte_carlo_pi>`
 
 
-Reinforcement Learning Examples
--------------------------------
+Intermediate
+------------
 
-These are simple examples that show you how to leverage Ray Core.
-For Ray's production-grade reinforcement learning library, see `RLlib <https://docs.ray.io/en/latest/rllib/index.html>`__.
+.. list-table::
 
-
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top:  images/pong.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_pong_example
-
-            Learning to Play Pong
+  * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
 
 
-Basic Examples
---------------
+Advanced
+--------
 
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
+.. list-table::
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: gentle_walkthrough
-
-            A Gentle Introduction to Ray Core by Example
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: highly_parallel
-
-            Using Ray for Highly Parallelizable Tasks
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: map_reduce
-
-            Running a Simple MapReduce Example with Ray Core
+  * - :doc:`Build Simple AutoML for Time Series Using Ray <automl_for_time_series>`
+  * - :doc:`Build Batch Prediction Using Ray <batch_prediction>`
+  * - :doc:`Build a Simple Parameter Server Using Ray <plot_parameter_server>`
+  * - :doc:`Simple Parallel Model Selection <plot_hyperparameter>`
+  * - :doc:`Learning to Play Pong <plot_pong_example>`

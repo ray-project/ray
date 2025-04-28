@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import sys
 import subprocess
@@ -11,9 +13,9 @@ import pytest
 import ray
 import ray._private.storage as storage
 from ray._private.test_utils import simulate_storage
-from ray._private.utils import (
-    _add_creatable_buckets_param_if_s3_uri,
-    _get_pyarrow_version,
+from ray._private.arrow_utils import (
+    add_creatable_buckets_param_if_s3_uri,
+    get_pyarrow_version,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -65,22 +67,74 @@ def test_get_filesystem_s3(shutdown_only):
         assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="The issue is not fixed for windows yet"
-)
 def test_escape_storage_uri_with_runtime_env(shutdown_only):
     # https://github.com/ray-project/ray/issues/41568
     # Test to make sure we can successfully start worker process
-    # when storage uri contains ? and we use runtime env.
+    # when storage uri contains ?,& and we use runtime env and that the
+    # moto mocking actually works with the escaped uri
     with simulate_storage("s3") as s3_uri:
         assert "?" in s3_uri
+        assert "&" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
 
         @ray.remote
         def f():
-            return 1
+            client = storage.get_client("foo")
+            return client.get("bar")
 
-        assert ray.get(f.remote()) == 1
+        assert ray.get(f.remote()) == b"baz"
+
+
+def test_storage_uri_semicolon(shutdown_only):
+    with simulate_storage("s3") as s3_uri:
+        # test that ';' can be used instead of '&'
+        s3_uri.replace("&", ";")
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+
+def test_storage_uri_special(shutdown_only):
+    # Test various non-ascii characters that can appear in a URI
+    # test that '$', '+', ' ' are passed through
+    with simulate_storage("s3", region="$value+value value") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        # url parsing: '+' becomes ' '
+        assert client.fs.region == "$value value value"
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar").decode() + ";" + client.fs.region
+
+        assert ray.get(f.remote()) == "baz;$value value value"
+
+
+def test_storage_uri_unicode(shutdown_only):
+    # test unicode characters in URI
+    with simulate_storage("s3", region="üs-öst-2") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):
@@ -88,6 +142,9 @@ def test_get_filesystem_invalid(shutdown_only, tmp_path):
         ray.init(storage="blahblah://bad")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Fails on Windows + Deprecating storage"
+)
 def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
     ray.init(storage=path, num_gpus=1)
@@ -168,7 +225,9 @@ def test_list_basic(shutdown_only, storage_type):
         assert sorted([f.base_name for f in d2]) == ["bar1", "bar2"], d2
         with pytest.raises(FileNotFoundError):
             client.list("invalid")
-        with pytest.raises(NotADirectoryError):
+        with pytest.raises(
+            FileNotFoundError if storage_type == "s3" else NotADirectoryError
+        ):
             client.list("foo/bar1")
 
 
@@ -199,36 +258,36 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
 
 
 def test_add_creatable_buckets_param_if_s3_uri():
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         # Test that the allow_bucket_creation=true query arg is added to an S3 URI.
         uri = "s3://bucket/foo"
         assert (
-            _add_creatable_buckets_param_if_s3_uri(uri)
+            add_creatable_buckets_param_if_s3_uri(uri)
             == "s3://bucket/foo?allow_bucket_creation=true"
         )
 
         # Test that query args are merged (i.e. existing query args aren't dropped).
         uri = "s3://bucket/foo?bar=baz"
         assert (
-            _add_creatable_buckets_param_if_s3_uri(uri)
+            add_creatable_buckets_param_if_s3_uri(uri)
             == "s3://bucket/foo?allow_bucket_creation=true&bar=baz"
         )
 
         # Test that existing allow_bucket_creation=false query arg isn't overridden.
         uri = "s3://bucket/foo?allow_bucket_creation=false"
         assert (
-            _add_creatable_buckets_param_if_s3_uri(uri)
+            add_creatable_buckets_param_if_s3_uri(uri)
             == "s3://bucket/foo?allow_bucket_creation=false"
         )
     else:
         # Test that the allow_bucket_creation=true query arg is not added to an S3 URI,
         # since we're using Arrow < 9.
         uri = "s3://bucket/foo"
-        assert _add_creatable_buckets_param_if_s3_uri(uri) == uri
+        assert add_creatable_buckets_param_if_s3_uri(uri) == uri
 
     # Test that non-S3 URI is unchanged.
     uri = "gcs://bucket/foo"
-    assert _add_creatable_buckets_param_if_s3_uri(uri) == "gcs://bucket/foo"
+    assert add_creatable_buckets_param_if_s3_uri(uri) == "gcs://bucket/foo"
 
 
 if __name__ == "__main__":

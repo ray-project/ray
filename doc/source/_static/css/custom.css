@@ -4,8 +4,8 @@
 * dark/light theme specific values, which normally take precedence over the PST defaults.
 * */
 html {
-  --anyscale-blue: #0641ac;
-  --ray-blue: #3c8ae9; /* Ray blue color - use this for all ray branding */
+  --anyscale-blue: #0066FF;
+  --ray-blue: #02A0CF; /* Ray blue color - use this for all ray branding */
   --pst-color-primary: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
@@ -25,6 +25,7 @@ html[data-theme='dark'] {
   --pst-color-text-base: #f1f2f4;
   --pst-color-text-muted: #b3b9c4;
   --pst-color-border: #2c333a;
+  --bs-body-color: #f1f2f4;
   --heading-color: #ffffff;
   --base-pygments-code-color: #cccccc;
   --pst-color-link-hover: #cce0ff;
@@ -65,12 +66,13 @@ h6 {
   background-color: transparent;
 }
 .bd-content:after {
-  background: linear-gradient(
+  /*   Commenting the code below to make more modifications after 2.10 release */
+  /*   background: linear-gradient(
     60deg,
     rgba(0, 85, 204, 0.18) 14%,
     rgba(110, 93, 198, 0.18) 49.2%,
     rgba(174, 71, 135, 0.18) 81.54%
-  );
+  ); */
   background-size: 746px 746px;
   background-repeat: no-repeat;
   background-position: center;
@@ -225,27 +227,6 @@ li.active-link {
 .navbar-brand.logo > svg path#ray-text {
   fill: var(--pst-color-text-base);
 }
-.navbar-brand.logo > svg path#ray-logo {
-  fill: var(--ray-blue);
-}
-
-/* Search button styling */
-.search-button-field {
-  border-radius: 4px;
-  min-width: 12em;
-  background-color: unset;
-}
-/* Disable `ctrl+k` label inside search button */
-.search-button-field > .search-button__kbd-shortcut {
-  display: none;
-}
-/* Disable "search" text inside search button */
-.search-button-field > .search-button__default-text {
-  visibility: hidden;
-}
-.search-button-field svg.fa-magnifying-glass {
-  color: var(--pst-color-border);
-}
 
 /* Anyscale branding */
 #try-anyscale-text {
@@ -372,4 +353,53 @@ table.autosummary tr > td:first-child > p > a > code > span {
 .bd-sidebar-primary div#rtd-footer-container {
   margin: unset;
   max-width: 30vw;
+}
+
+.query-param-ref-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 8px;
+}
+
+.query-param-ref-wrapper p {
+  margin: 0;
+}
+
+/* Styles for tables in example pages */
+.table.example-table {
+  table-layout: fixed;
+}
+.table.example-table th:first-child {
+  width: 30%;
+}
+
+.bd-header-announcement {
+  color: var(--pst-color-light);
+}
+
+.bd-header-announcement::after {
+  background-color: var(--ray-blue);
+}
+
+.bd-header-announcement a {
+  color: var(--pst-color-light);
+  text-decoration: underline;
+}
+
+/* Prevent the the PyData theme Version Switcher from getting too large */
+.version-switcher__menu {
+  max-height: 40rem;
+  overflow-y: scroll;
+}
+
+/* Hide the RTD version switcher since we are using PyData theme one */
+readthedocs-flyout {
+  display: none !important;
+}
+
+/* Styling the experimental Anyscale upsell CTA */
+.anyscale-cta {
+  margin-bottom: 16px;
 }

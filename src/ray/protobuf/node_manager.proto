@@ -13,13 +13,13 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/autoscaler.proto";
+import "src/ray/protobuf/runtime_env_common.proto";
 
 message WorkerBacklogReport {
   // TaskSpec indicating the scheduling class.
@@ -94,6 +94,20 @@ message RequestWorkerLeaseReply {
   string scheduling_failure_message = 10;
 }
 
+// Request to prestart workers. At this time we don't yet know the resource, or task type.
+message PrestartWorkersRequest {
+  Language language = 1;
+  // Job ID for the workers. Note: root_detached_actor_id is not supported.
+  optional bytes job_id = 2;
+  RuntimeEnvInfo runtime_env_info = 3;
+  // Started idle workers will be kept alive for this duration. Reset on task assignment.
+  uint64 keep_alive_duration_secs = 4;
+  // Raylet will try to start `num_workers` workers.
+  uint64 num_workers = 5;
+}
+
+message PrestartWorkersReply {}
+
 message PrepareBundleResourcesRequest {
   // Bundles that containing the requested resources.
   repeated Bundle bundle_specs = 1;
@@ -109,16 +123,14 @@ message CommitBundleResourcesRequest {
   repeated Bundle bundle_specs = 1;
 }
 
-message CommitBundleResourcesReply {
-}
+message CommitBundleResourcesReply {}
 
 message CancelResourceReserveRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReserveReply {
-}
+message CancelResourceReserveReply {}
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
@@ -135,15 +147,13 @@ message ReturnWorkerRequest {
   string disconnect_worker_error_detail = 5;
 }
 
-message ReturnWorkerReply {
-}
+message ReturnWorkerReply {}
 
-message ReleaseUnusedWorkersRequest {
+message ReleaseUnusedActorWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
 }
 
-message ReleaseUnusedWorkersReply {
-}
+message ReleaseUnusedActorWorkersReply {}
 
 message ShutdownRayletRequest {
   /// Whether the shutdown request is graceful or not.
@@ -236,11 +246,9 @@ message GetNodeStatsReply {
   ObjectStoreStats store_stats = 6;
 }
 
-message GlobalGCRequest {
-}
+message GlobalGCRequest {}
 
-message GlobalGCReply {
-}
+message GlobalGCReply {}
 
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
@@ -261,52 +269,16 @@ message FormatGlobalMemoryInfoReply {
   ObjectStoreStats store_stats = 2;
 }
 
-message RequestObjectSpillageRequest {
-  // ObjectID to spill.
-  bytes object_id = 1;
-}
-
-message RequestObjectSpillageReply {
-  // Whether the object spilling was successful or not.
-  bool success = 1;
-  // Object URL where the object is spilled.
-  string object_url = 2;
-  // The node id of a node where the object is spilled.
-  bytes spilled_node_id = 3;
-}
-
 message ReleaseUnusedBundlesRequest {
   repeated Bundle bundles_in_use = 1;
 }
 
-message ReleaseUnusedBundlesReply {
-}
+message ReleaseUnusedBundlesReply {}
 
-message GetSystemConfigRequest {
-}
+message GetSystemConfigRequest {}
 
 message GetSystemConfigReply {
   string system_config = 1;
-}
-
-message GetTasksInfoRequest {
-  // Maximum number of entries to return.
-  // If not specified, return the whole entries without truncation.
-  optional int64 limit = 1;
-}
-
-message GetTasksInfoReply {
-  repeated TaskInfoEntry owned_task_info_entries = 1;
-  // A list of task that's currently running.
-  // All tasks must be treated as TaskStatus::RUNNING
-  // from the caller side.
-  repeated bytes running_task_ids = 2;
-  // Length of the corresponding resource without truncation.
-  int64 total = 3;
-  // NOTE: we don't truncate running_task_ids because it is usually small.
-  // However, there are edge cases it can be very large (e.g., when the
-  // async actor tasks are used, it can have up to 1000 running tasks per
-  // actor). We should handle this better.
 }
 
 message GetObjectsInfoRequest {
@@ -325,6 +297,20 @@ message GetResourceLoadRequest {}
 
 message GetResourceLoadReply {
   ResourcesData resources = 1;
+}
+
+message CancelTasksWithResourceShapesRequest {
+  message ResourceShape {
+    // A map from resource name to the quantity of that resource. This map represents
+    // the resource request shape of a task.
+    map<string, double> resource_shape = 1;
+  }
+  // The resource shapes of the tasks to cancel.
+  repeated ResourceShape resource_shapes = 1;
+}
+
+message CancelTasksWithResourceShapesReply {
+  // Empty
 }
 
 message NotifyGCSRestartRequest {}
@@ -356,6 +342,50 @@ message DrainRayletRequest {
 message DrainRayletReply {
   // Whether the drain request is accepted.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
+}
+
+message RegisterMutableObjectRequest {
+  bytes writer_object_id = 1;
+  int64 num_readers = 2;
+  bytes reader_object_id = 3;
+}
+
+message RegisterMutableObjectReply {
+  // Nothing for now.
+}
+
+message PushMutableObjectRequest {
+  // The object ID of the object written to on the writer node.
+  bytes writer_object_id = 1;
+  // The total size of the data (across all chunks).
+  uint64 total_data_size = 2;
+  // The total size of the metadata (across all chunks).
+  uint64 total_metadata_size = 3;
+
+  // The offset of the chunk (in bytes) within the object.
+  uint64 offset = 4;
+  // The size of this chunk. Note that this size could include both data and metadata.
+  uint64 chunk_size = 5;
+  // The chunk payload. Note that this could include both data and metadata.
+  bytes payload = 6;
+}
+
+message PushMutableObjectReply {
+  // The receiver sets this to true once it has received all chunks for a mutable object
+  // write, false otherwise (i.e., the receiver still expects to receive more chunks).
+  bool done = 1;
+}
+
+message IsLocalWorkerDeadRequest {
+  // Binary worker id of the target worker.
+  bytes worker_id = 1;
+}
+
+message IsLocalWorkerDeadReply {
+  // Whether the target worker is dead or not.
+  bool is_dead = 1;
 }
 
 // Service for inter-node-manager communication.
@@ -364,8 +394,16 @@ service NodeManagerService {
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
+  // Cancel tasks that require certain resource shapes. This method is intended to only
+  // used for cancelling infeasible tasks. To make it a general-purpose task
+  // cancellation method, we need to add the failure type and failure message to the
+  // request.
+  rpc CancelTasksWithResourceShapes(CancelTasksWithResourceShapesRequest)
+      returns (CancelTasksWithResourceShapesReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
+  // Request to prestart workers.
+  rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
   // Report task backlog information from a worker to the raylet
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Release a worker back to its raylet.
@@ -374,8 +412,8 @@ service NodeManagerService {
   // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
   // in the previous lifecycle. In this case, GCS will send a list of worker ids that
   // are still needed. And Raylet will release other leased workers.
-  rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
-      returns (ReleaseUnusedWorkersReply);
+  rpc ReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest)
+      returns (ReleaseUnusedActorWorkersReply);
   /// Shutdown the raylet (node manager).
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request to drain the raylet.
@@ -403,9 +441,6 @@ service NodeManagerService {
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
-  // Ask the raylet to spill an object to external storage.
-  rpc RequestObjectSpillage(RequestObjectSpillageRequest)
-      returns (RequestObjectSpillageReply);
   // This method is only used by GCS, and the purpose is to release bundles
   // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
   // in the previous lifecycle. In this case, GCS will send a list of bundles that
@@ -414,11 +449,13 @@ service NodeManagerService {
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
-  // [State API] Get the all task information of the node.
-  rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
   // Gets the task execution result. May contain a result if
   // the task completed in error.
   rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  rpc RegisterMutableObject(RegisterMutableObjectRequest)
+      returns (RegisterMutableObjectReply);
+  rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
+  rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
 }

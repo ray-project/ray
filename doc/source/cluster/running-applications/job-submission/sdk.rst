@@ -48,13 +48,14 @@ Let's start with a sample script that can be run locally. The following script u
     ray.init()
     print(ray.get(hello_world.remote()))
 
-SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray Dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses.
+SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray Dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses; see
+:ref:`Using a Remote Cluster <jobs-remote-cluster>` for details on setting up port forwarding.
 
 .. code-block:: python
 
     from ray.job_submission import JobSubmissionClient
 
-    # If using a remote cluster, replace 127.0.0.1 with the head node's IP address.
+    # If using a remote cluster, replace 127.0.0.1 with the head node's IP address or set up port forwarding.
     client = JobSubmissionClient("http://127.0.0.1:8265")
     job_id = client.submit_job(
         # Entrypoint shell command to execute
@@ -153,8 +154,8 @@ The output should look something like the following:
 
 To get information about all jobs, call ``client.list_jobs()``.  This returns a ``Dict[str, JobInfo]`` object mapping Job IDs to their information.
 
-Job information (status and associated metadata) is stored on the cluster indefinitely.  
-To delete this information, you may call ``client.delete_job(job_id)`` for any job that is already in a terminal state.  
+Job information (status and associated metadata) is stored on the cluster indefinitely.
+To delete this information, you may call ``client.delete_job(job_id)`` for any job that is already in a terminal state.
 See the :ref:`SDK API Reference <ray-job-submission-sdk-ref>` for more details.
 
 Dependency Management
@@ -209,19 +210,19 @@ If any of these arguments are specified, the entrypoint script will be scheduled
 
 The same arguments are also available as options ``--entrypoint-num-cpus``, ``--entrypoint-num-gpus``, ``--entrypoint-memory``, and ``--entrypoint-resources`` to ``ray job submit`` in the Jobs CLI; see :ref:`Ray Job Submission CLI Reference <ray-job-submission-cli-ref>`.
 
-If ``num_gpus`` is not specified, GPUs will still be available to the entrypoint script, but Ray will not provide isolation in terms of visible devices. 
+If ``num_gpus`` is not specified, GPUs will still be available to the entrypoint script, but Ray will not provide isolation in terms of visible devices.
 To be precise, the environment variable ``CUDA_VISIBLE_DEVICES`` will not be set in the entrypoint script; it will only be set inside tasks and actors that have `num_gpus` specified in their ``@ray.remote()`` decorator.
 
 .. note::
 
     Resources specified by ``entrypoint_num_cpus``, ``entrypoint_num_gpus``,  ``entrypoint-memory``, and ``entrypoint_resources`` are separate from any resources specified
-    for tasks and actors within the job.  
-    
+    for tasks and actors within the job.
+
     For example, if you specify ``entrypoint_num_gpus=1``, then the entrypoint script will be scheduled on a node with at least 1 GPU,
     but if your script also contains a Ray task defined with ``@ray.remote(num_gpus=1)``, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
 
 .. note::
-    
+
     As with the ``num_cpus``, ``num_gpus``, ``resources``, and ``_memory`` arguments to ``@ray.remote()`` described in :ref:`resource-requirements`, these arguments only refer to logical resources used for scheduling purposes. The actual CPU and GPU utilization is not controlled or limited by Ray.
 
 
@@ -233,7 +234,7 @@ To be precise, the environment variable ``CUDA_VISIBLE_DEVICES`` will not be set
 Client Configuration
 --------------------------------
 
-Additional client connection options, such as custom HTTP headers and cookies, can be passed to the ``JobSubmissionClient`` class. 
+Additional client connection options, such as custom HTTP headers and cookies, can be passed to the ``JobSubmissionClient`` class.
 A full list of options can be found in the :ref:`API Reference <ray-job-submission-sdk-ref>`.
 
 TLS Verification

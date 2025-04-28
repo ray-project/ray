@@ -38,7 +38,7 @@ Copy this code to a file named `text_translator.py`.
 Generate a multi-application config file that contains both of these two applications and save it to `config.yaml`.
 
 ```
-serve build --multi-app image_classifier:app text_translator:app -o config.yaml
+serve build image_classifier:app text_translator:app -o config.yaml
 ```
 
 This generates the following config:
@@ -53,21 +53,27 @@ grpc_options:
   port: 9000
   grpc_servicer_functions: []
 
-applications:
-- name: app1
-  route_prefix: /classify
-  import_path: image_classifier:app
-  runtime_env: {}
-  deployments:
-  - name: downloader
-  - name: ImageClassifier
+logging_config:
+  encoding: JSON
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
 
-- name: app2
-  route_prefix: /translate
-  import_path: text_translator:app
-  runtime_env: {}
-  deployments:
-  - name: Translator
+applications:
+  - name: app1
+    route_prefix: /classify
+    import_path: image_classifier:app
+    runtime_env: {}
+    deployments:
+      - name: downloader
+      - name: ImageClassifier
+
+  - name: app2
+    route_prefix: /translate
+    import_path: text_translator:app
+    runtime_env: {}
+    deployments:
+      - name: Translator
 ```
 
 :::{note} 

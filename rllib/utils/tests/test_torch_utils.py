@@ -5,6 +5,7 @@ import torch.cuda
 
 import ray
 from ray.rllib.utils.torch_utils import (
+    clip_gradients,
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
@@ -93,6 +94,29 @@ class TestTorchUtils(unittest.TestCase):
             self.assertTrue(
                 all(copied_tensor.detach().numpy() == tensor.detach().cpu().numpy())
             )
+
+    def test_large_gradients_clipping(self):
+
+        large_gradients = {
+            f"gradient_{i}": torch.full((256, 256), 1e22) for i in range(20)
+        }
+
+        total_norm = clip_gradients(
+            large_gradients, grad_clip=40, grad_clip_by="global_norm"
+        )
+
+        self.assertFalse(total_norm.isinf())
+        print(f"total norm for large gradients: {total_norm}")
+
+        small_gradients = {
+            f"gradient_{i}": torch.full((256, 256), 1e-22) for i in range(20)
+        }
+
+        total_norm = clip_gradients(
+            small_gradients, grad_clip=40, grad_clip_by="global_norm"
+        )
+        self.assertFalse(total_norm.isneginf())
+        print(f"total norm for small gradients: {total_norm}")
 
 
 if __name__ == "__main__":

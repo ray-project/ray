@@ -12,10 +12,10 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.common import ProxyStatus
+from ray.serve.config import HTTPOptions
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.context import _get_global_client
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails
+from ray.serve.schema import LoggingConfig, ProxyStatus, ServeInstanceDetails
 
 
 # ==== Callbacks used in this test ====
@@ -160,9 +160,7 @@ def test_callback_fail(ray_instance):
 
     actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
-        host="http_proxy",
-        port=123,
-        root_path="/",
+        http_options=HTTPOptions(host="http_proxy", root_path="/", port=123),
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
@@ -173,7 +171,7 @@ def test_callback_fail(ray_instance):
 
     actor_def = ray.serve._private.controller.ServeController
     handle = actor_def.remote(
-        http_config={},
+        http_options=HTTPOptions(),
         global_logging_config=LoggingConfig(),
     )
     with pytest.raises(RayActorError, match="cannot be imported"):
@@ -194,9 +192,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
 
     actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
-        host="http_proxy",
-        port=123,
-        root_path="/",
+        http_options=HTTPOptions(host="http_proxy", root_path="/", port=123),
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
@@ -217,7 +213,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     ],
     indirect=True,
 )
-def test_http_proxy_calllback_failures(ray_instance, capsys):
+def test_http_proxy_callback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
 
     try:

@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -28,6 +29,8 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include "ray/util/compat.h"
 
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
@@ -45,10 +48,6 @@ class EnvironmentVariableLess {
 };
 
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
-
-#ifdef _WIN32
-typedef int pid_t;
-#endif
 
 using StartupToken = int64_t;
 
@@ -77,6 +76,13 @@ class Process {
   /// \param[in] pipe_to_stdin If true, it creates a pipe and redirect to child process'
   /// stdin. It is used for health checking from a child process.
   /// Child process can read stdin to detect when the current process dies.
+  ///
+  // The subprocess is child of this process, so it's caller process's duty to handle
+  // SIGCHLD signal and reap the zombie children.
+  //
+  // Note: if RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper is set to
+  // true, Raylet will kill any orphan grandchildren processes when the spawned process
+  // dies, *even if* `decouple` is set to `true`.
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,

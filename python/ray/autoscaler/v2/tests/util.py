@@ -1,13 +1,54 @@
 import abc
 import operator
+import time
 from abc import abstractmethod
+from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+
+
+class MockEventLogger:
+    def __init__(self, logger) -> None:
+        self._logs = defaultdict(list)
+        self._logger = logger
+
+    def info(self, s):
+        self._logger.info(s)
+        self._logs["info"].append(s)
+
+    def warning(self, s):
+        self._logger.warning(s)
+        self._logs["warning"].append(s)
+
+    def error(self, s):
+        self._logger.error(s)
+        self._logs["error"].append(s)
+
+    def debug(self, s):
+        self._logger.debug(s)
+        self._logs["debug"].append(s)
+
+    def get_logs(self, level: str) -> List[str]:
+        return self._logs[level]
+
+
+class MockSubscriber:
+    def __init__(self):
+        self.events = []
+
+    def notify(self, events):
+        self.events.extend(events)
+
+    def clear(self):
+        self.events.clear()
+
+    def events_by_id(self, instance_id):
+        return [e for e in self.events if e.instance_id == instance_id]
 
 
 def make_autoscaler_instance(
@@ -49,7 +90,13 @@ def create_instance(
     launch_request_id="",
     version=0,
     cloud_instance_id="",
+    ray_node_id="",
+    node_kind=NodeKind.WORKER,
 ):
+
+    if not status_times:
+        status_times = [(status, time.time_ns())]
+
     return Instance(
         instance_id=instance_id,
         status=status,
@@ -59,10 +106,10 @@ def create_instance(
         status_history=[
             Instance.StatusHistory(instance_status=status, timestamp_ns=ts)
             for status, ts in status_times
-        ]
-        if status_times
-        else [],
+        ],
         cloud_instance_id=cloud_instance_id,
+        node_id=ray_node_id,
+        node_kind=node_kind,
     )
 
 

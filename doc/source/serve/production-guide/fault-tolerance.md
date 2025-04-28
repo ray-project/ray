@@ -17,7 +17,9 @@ This section discusses concepts from:
 (serve-e2e-ft-guide)=
 ## Guide: end-to-end fault tolerance for your Serve app
 
-Serve provides some [fault tolerance](serve-ft-detail) features out of the box. You can provide end-to-end fault tolerance by tuning these features and running Serve on top of [KubeRay].
+Serve provides some [fault tolerance](serve-ft-detail) features out of the box. Two options to get end-to-end fault tolerance are the following:
+* tune these features and run Serve on top of [KubeRay]
+* use the [Anyscale platform](https://docs.anyscale.com/platform/services/head-node-ft?utm_source=ray_docs&utm_medium=docs&utm_campaign=tolerance), a managed Ray platform
 
 ### Replica health-checking
 
@@ -62,8 +64,8 @@ In this section, you'll learn how to add fault tolerance to Ray's Global Control
 
 By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and you must restart it. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
-In Ray 2.0, KubeRay has **experimental support** for [Global Control Store (GCS) fault tolerance](kuberay-gcs-ft), preventing the Ray cluster from crashing if the head node goes down.
-While the head node is recovering, Serve applications can still handle traffic with worker nodes but you can't update or recover from other failures like actors or worker nodes crashing.
+Starting with Ray 2.0+, KubeRay supports [Global Control Store (GCS) fault tolerance](kuberay-gcs-ft), preventing the Ray cluster from crashing if the head node goes down.
+While the head node is recovering, Serve applications can still handle traffic with worker nodes but you can't update or recover from other failures like Actors or Worker nodes crashing.
 Once the GCS recovers, the cluster returns to normal behavior.
 
 You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object with the following steps:
@@ -590,9 +592,9 @@ $ python
 383
 ```
 
-### HTTPProxy failure
+### Proxy failure
 
-You can simulate HTTPProxy failures by manually killing deployment replicas. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
+You can simulate Proxy failures by manually killing `ProxyActor` actors. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
 
 ```console
 $ ray summary actors

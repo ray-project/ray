@@ -6,8 +6,6 @@ bitsandbytes
 boto3
 cmake
 crc32c
-cupy-cuda113
-dataset
 datasets
 decord
 deepspeed>=0.12.3
@@ -20,7 +18,8 @@ gcsfs==2023.5.0
 gsutil
 ipywidgets
 jupytext
-lm_eval
+lm_eval==0.4.0
+locust==2.18.0
 matplotlib
 memray
 modin
@@ -42,12 +41,11 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-torch
-torch 
+triton==2.3.0
+torch==2.3.0
 torchaudio
 torchmetrics
 torchtext
-torchvision
 tqdm
 transformers
 trueskill

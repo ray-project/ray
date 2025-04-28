@@ -1,4 +1,5 @@
-# flake8: noqa
+# ruff: noqa
+# isort: skip_file
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 
 # fmt: off
@@ -11,7 +12,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
@@ -78,6 +79,11 @@ def test_func(model, data_loader):
 
 
 # __train_func_begin__
+import os
+import tempfile
+
+from ray.tune import Checkpoint
+
 def train_mnist(config):
     # Data Setup
     mnist_transforms = transforms.Compose(
@@ -104,12 +110,20 @@ def train_mnist(config):
         train_func(model, optimizer, train_loader)
         acc = test_func(model, test_loader)
 
-        # Send the current training result back to Tune
-        train.report({"mean_accuracy": acc})
 
-        if i % 5 == 0:
-            # This saves the model to the trial directory
-            torch.save(model.state_dict(), "./model.pth")
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            checkpoint = None
+            if (i + 1) % 5 == 0:
+                # This saves the model to the trial directory
+                torch.save(
+                    model.state_dict(),
+                    os.path.join(temp_checkpoint_dir, "model.pth")
+                )
+                checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+
+            # Send the current training result back to Tune
+            tune.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+
 # __train_func_end__
 # fmt: on
 
@@ -188,10 +202,9 @@ results = tuner.fit()
 # __run_searchalg_end__
 
 # __run_analysis_begin__
-import os
-
-logdir = results.get_best_result("mean_accuracy", mode="max").path
-state_dict = torch.load(os.path.join(logdir, "model.pth"))
+best_result = results.get_best_result("mean_accuracy", mode="max")
+with best_result.checkpoint.as_directory() as checkpoint_dir:
+    state_dict = torch.load(os.path.join(checkpoint_dir, "model.pth"))
 
 model = ConvNet()
 model.load_state_dict(state_dict)
@@ -207,7 +220,7 @@ search_space = {
 
 tuner = tune.Tuner(
     TrainMNIST,
-    run_config=train.RunConfig(stop={"training_iteration": 10}),
+    run_config=tune.RunConfig(stop={"training_iteration": 10}),
     param_space=search_space,
 )
 results = tuner.fit()

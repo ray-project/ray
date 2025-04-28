@@ -15,38 +15,21 @@ steps:
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
         --parallelism-per-worker 3
         --except-tags manual,spark_plugin_tests
-
-  - label: ":serverless: serverless: :windows: tests"
-    tags: python
-    job_env: WINDOWS
-    mount_windows_artifacts: true
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --build-name windowsbuild
-        --operating-system windows
-        --except-tags no_windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-        --parallelism-per-worker 3
-    depends_on: windowsbuild
 
   - label: ":serverless: serverless: spark tests"
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
         --build-type debug
         --test-env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
         --test-env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
         --parallelism-per-worker 3
         --only-tags spark_plugin_tests
-        --except-tags kubernetes 
+        --except-tags kubernetes
 
   - label: ":serverless: serverless: flaky tests"
     tags:

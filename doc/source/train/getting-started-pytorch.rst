@@ -24,7 +24,7 @@ For reference, the final code will look something like the following:
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    def train_func(config):
+    def train_func():
         # Your PyTorch training code here.
         ...
 
@@ -68,7 +68,7 @@ Compare a PyTorch training script with and without Ray Train.
             optimizer = Adam(model.parameters(), lr=0.001)
 
             # Data
-            transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+            transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
             train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
             train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
 
@@ -108,7 +108,7 @@ Compare a PyTorch training script with and without Ray Train.
 
             import ray.train.torch
 
-            def train_func(config):
+            def train_func():
                 # Model, Loss, Optimizer
                 model = resnet18(num_classes=10)
                 model.conv1 = torch.nn.Conv2d(
@@ -121,7 +121,7 @@ Compare a PyTorch training script with and without Ray Train.
                 optimizer = Adam(model.parameters(), lr=0.001)
 
                 # Data
-                transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+                transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
                 data_dir = os.path.join(tempfile.gettempdir(), "data")
                 train_data = FashionMNIST(root=data_dir, train=True, download=True, transform=transform)
                 train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
@@ -183,17 +183,7 @@ Compare a PyTorch training script with and without Ray Train.
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training.
-Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
-
-.. testcode::
-    :skipif: True
-
-    def train_func(config):
-        # Your PyTorch training code here.
-        ...
-
-Each distributed training worker executes this function.
+.. include:: ./common/torch-configure-train_func.rst
 
 Set up a model
 ^^^^^^^^^^^^^^
@@ -208,7 +198,7 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
     -from torch.nn.parallel import DistributedDataParallel
     +import ray.train.torch
 
-     def train_func(config):
+     def train_func():
 
          ...
 
@@ -241,7 +231,7 @@ See :ref:`data-ingest-torch`.
      from torch.utils.data import DataLoader
     +import ray.train.torch
 
-     def train_func(config):
+     def train_func():
 
          ...
 
@@ -295,7 +285,7 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
 
     +import ray.train
 
-     def train_func(config):
+     def train_func():
 
          ...
 
@@ -327,5 +317,5 @@ Next steps
 After you have converted your PyTorch training script to use Ray Train:
 
 * See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
+* Browse the :doc:`Examples <examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
