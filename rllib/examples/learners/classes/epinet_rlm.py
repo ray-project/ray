@@ -1,9 +1,7 @@
 import gymnasium as gym
 from typing import Any, Dict, Optional
 
-import torch.nn as nn
 from torch.distributions.normal import Normal
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
