@@ -278,12 +278,20 @@ def configure_shuffle_method(request):
     ctx = ray.data.context.DataContext.get_current()
 
     original_shuffle_strategy = ctx.shuffle_strategy
+    original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
 
     ctx.shuffle_strategy = shuffle_strategy
+
+    # NOTE: We override default parallelism for hash-based shuffling to
+    #       avoid excessive partitioning of the data (to achieve desired
+    #       parallelism
+    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        ctx.default_hash_shuffle_parallelism = 8
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
+    ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
 
 
 @pytest.fixture(params=[True, False])

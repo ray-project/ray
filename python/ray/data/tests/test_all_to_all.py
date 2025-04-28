@@ -32,7 +32,7 @@ from ray.data.aggregate import (
     AbsMax,
     Unique,
 )
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -72,6 +72,40 @@ def test_repartition_shuffle(
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
     assert large._block_num_rows() == [500] * 20
+
+
+def test_key_based_repartition_shuffle(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    disable_fallback_to_object_extension,
+):
+    context = DataContext.get_current()
+
+    context.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    context.hash_shuffle_operator_actor_num_cpus_per_partition_override = 0.001
+
+    ds = ray.data.range(20, override_num_blocks=10)
+    assert ds._plan.initial_num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_num_rows() == [2] * 10
+
+    ds2 = ds.repartition(3, keys=["id"])
+    assert ds2._plan.initial_num_blocks() == 3
+    assert ds2.sum() == 190
+
+    ds3 = ds.repartition(5, keys=["id"])
+    assert ds3._plan.initial_num_blocks() == 5
+    assert ds3.sum() == 190
+
+    large = ray.data.range(10000, override_num_blocks=100)
+    large = large.repartition(20, keys=["id"])
+    assert large._plan.initial_num_blocks() == 20
+
+    # Assert block sizes distribution
+    assert sum(large._block_num_rows()) == 10000
+    assert 495 < np.mean(large._block_num_rows()) < 505
+
+    assert large.sum() == 49995000
 
 
 def test_repartition_noshuffle(
