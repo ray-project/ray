@@ -102,6 +102,8 @@ OutofOrderActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
   return {};
 }
 
+void OutofOrderActorSubmitQueue::OnClientConnected() {}
+
 uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
   return task_spec.ActorCounter();
