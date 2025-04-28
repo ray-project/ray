@@ -172,7 +172,6 @@ class vLLMEngineWrapper:
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
             **kwargs,
-            disable_log_requests=True,
         )
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
@@ -467,6 +466,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             disable_log_stats=False,
+            disable_log_requests=True,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
