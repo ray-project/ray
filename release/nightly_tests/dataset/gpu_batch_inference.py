@@ -102,8 +102,7 @@ def main(args):
         compute = ActorPoolStrategy(size=4)
         num_gpus = 0
     else:
-        # Autoscale to use as many GPUs as possible.
-        compute = ActorPoolStrategy(min_size=1, max_size=None)
+        compute = ActorPoolStrategy(min_size=1, max_size=10)
         num_gpus = 1
     ds = ds.map_batches(preprocess, batch_size=PREPROCESS_BATCH_SIZE)
     ds = ds.map_batches(
