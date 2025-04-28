@@ -85,6 +85,10 @@ class AbstractNcclGroup(Communicator):
     def get_transport_name(self) -> str:
         return "nccl"
 
+    @classmethod
+    def generate_communicator_id(cls) -> str:
+        pass
+
 
 class MockNcclGroupSet:
     def __init__(self):

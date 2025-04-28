@@ -192,7 +192,7 @@ class Communicator(ABC):
 
     @classmethod
     @abstractmethod
-    def generate_communicator_id() -> str:
+    def generate_communicator_id(cls) -> str:
         """
         Return the unique id of the communicator.
         """
