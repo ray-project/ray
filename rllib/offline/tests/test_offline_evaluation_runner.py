@@ -1,6 +1,5 @@
 import unittest
 import gymnasium as gym
-import ray
 
 from pathlib import Path
 from typing import Any, Dict, TYPE_CHECKING
