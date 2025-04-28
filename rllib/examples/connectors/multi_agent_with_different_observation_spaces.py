@@ -1,4 +1,4 @@
-"""TODO: describe Example using a ConnectorV2 for processing observations with a mean/std filter.
+"""Example of a ConnectorV2 mapping global observations to n per-module observations.
 
 An RLlib Algorithm has 3 distinct connector pipelines:
 - An env-to-module pipeline in an EnvRunner accepting a list of episodes and producing
@@ -20,11 +20,12 @@ pieces (or use the ones available already in RLlib) and add them to one of the 3
 different pipelines described above, as required.
 
 This example:
-    - shows how the `MeanStdFilter` ConnectorV2 piece can be added to the env-to-module
-    pipeline.
-    - demonstrates that using such a filter enhances learning behavior (or even makes
-    if possible to learn overall) in some environments, especially those with lopsided
-    observation spaces, for example `Box(-3000, -1000, ...)`.
+    - shows how the `DoubleXYPosToDiscreteIndex` and `DoubleXYPosToSingleXYPos`
+    ConnectorV2 pieces can be activated for different agents/modules and added to the
+    env-to-module pipeline.
+    - demonstrates that using various such observation mapping connector pieces allows
+    users to map from global, multi-agent observations to individual modules'
+    observations.
 
 
 How to run this script
@@ -43,32 +44,6 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Running this example with the mean-std filter results in the normally expected Pendulum
-learning behavior:
-+-------------------------------+------------+-----------------+--------+
-| Trial name                    | status     | loc             |   iter |
-|                               |            |                 |        |
-|-------------------------------+------------+-----------------+--------+
-| PPO_lopsided-pend_f9c96_00000 | TERMINATED | 127.0.0.1:43612 |     77 |
-+-------------------------------+------------+-----------------+--------+
-+------------------+------------------------+-----------------------+
-|   total time (s) |   num_env_steps_sample |   episode_return_mean |
-|                  |             d_lifetime |                       |
-|------------------+------------------------+-----------------------|
-|          30.7466 |                  40040 |                -276.3 |
-+------------------+------------------------+-----------------------+
-
-If you try using the `--disable-mean-std-filter` (all other things being equal), you
-will either see no learning progress at all (or a very slow one), but more likely some
-numerical instability related error will be thrown:
-
-ValueError: Expected parameter loc (Tensor of shape (64, 1)) of distribution
-            Normal(loc: torch.Size([64, 1]), scale: torch.Size([64, 1])) to satisfy the
-            constraint Real(), but found invalid values:
-tensor([[nan],
-        [nan],
-        [nan],
-        ...
 """
 from ray.rllib.examples.envs.classes.multi_agent.double_row_corridor_env import (
     DoubleRowCorridorEnv,
