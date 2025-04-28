@@ -54,7 +54,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     else None
                 ),
                 collate_fn=self.collate_fn,
-                prefetch_batches=dataloader_config.prefetch_batches,
+                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
             )
         )
 
@@ -65,7 +65,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.validation_batch_size,
                 collate_fn=self.collate_fn,
-                prefetch_batches=dataloader_config.prefetch_batches,
+                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
             )
         )
 
