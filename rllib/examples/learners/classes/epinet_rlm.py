@@ -185,10 +185,6 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         )
         return total_output
 
-    @property
-    def inc_step_number(self) -> int:
-        self.step_number += 1
-
     def _pass_through_epinet(self, obs: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
         The epinet will now take in the `enn_input` which is z_dim number of Gaussian samples
