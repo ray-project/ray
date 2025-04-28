@@ -211,10 +211,10 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     return handle.options(stream=not info.app_is_cross_language)
 
 
-def get_controller_handle():
+def get_controller_impl():
     from ray.serve._private.controller import ServeController
 
-    controller_handle = ray.remote(
+    controller_impl = ray.remote(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
@@ -226,4 +226,4 @@ def get_controller_handle():
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
     )(ServeController)
 
-    return controller_handle
+    return controller_impl

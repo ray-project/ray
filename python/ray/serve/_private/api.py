@@ -18,7 +18,7 @@ from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
-from ray.serve._private.default_impl import get_controller_handle
+from ray.serve._private.default_impl import get_controller_impl
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -90,8 +90,8 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller_handle = get_controller_handle()
-    controller = controller_handle.remote(
+    controller_impl = get_controller_impl()
+    controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
