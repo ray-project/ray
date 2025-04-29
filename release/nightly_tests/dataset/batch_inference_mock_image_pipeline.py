@@ -33,7 +33,7 @@ OVERRIDE_NUM_BLOCKS = int(NUM_CONTAINERS * NUM_UNITS / IMAGES_PER_BLOCK)
 PATCH_SIZE = 256
 
 # Largest batch that can fit on a T4.
-BATCH_SIZE = 1400
+BATCH_SIZE = 1200
 
 
 def parse_args() -> argparse.Namespace:
