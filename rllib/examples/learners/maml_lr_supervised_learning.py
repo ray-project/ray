@@ -1,14 +1,28 @@
 """Example of how to use `TorchMetaLearner` and `DifferentiableLearner` for MAML.
 
-In this MAML example the model is trained through meta learning to be able to adapt
-to infinitely many tasks. Each task is defined by a sinusoid curve with random
-amplitude and phase. During training the `DifferentiableLearner` computes the
-training error and performs a functional parameter update. The `TorchMetaLearner`
-uses the updated parameters for its forward pass and computes the test error. It
-then updates parameters as such that they minimize test error.
+Meta-learning, or “learning to learn,” trains models to quickly adapt to new tasks
+using only a few examples. One prominent method is Model-Agnostic Meta-Learning
+(MAML), which is compatible with any model trained via gradient descent. MAML has
+been successfully applied across domains such as classification, regression, and
+reinforcement learning.
 
-During inference the model receives a batch of new examples and makes few-shot
-learning to adapt quickly to the new task.
+In this MAML example, the goal is to train a model that can adapt to an infinite
+number of tasks, where each task corresponds to a sinusoidal function with randomly
+sampled amplitude and phase. Because each new task introduces a shift in data
+distribution, traditional learning algorithms would fail to generalize — they’d
+overfit to the training task and struggle on unseen ones. Meta-learning addresses
+this by optimizing the model parameters such that they can be fine-tuned rapidly
+for any new task.
+
+During training, a DifferentiableLearner performs an inner-loop update using the
+training error for each task. The outer-loop TorchMetaLearner then evaluates the
+model’s performance on held-out data (the task's test set) and updates the meta-
+parameters so that they lead to better generalization across all tasks. This bi-
+level optimization ensures that gradients across tasks remain close, enabling
+fast adaptation.
+
+At inference time, the trained model can adapt to a new task using just a small
+batch of examples — performing few-shot learning to adjust quickly and accurately.
 
 This example shows:
 - how to implement MAML with RLlib in just a few lines of code.
@@ -104,79 +118,6 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 # Import torch.
 torch, _ = try_import_torch()
-
-# Define arguments.
-parser = add_rllib_example_script_args(
-    default_iters=70_000,
-)
-
-parser.add_argument(
-    "--meta-train-batch-size",
-    type=int,
-    default=5,
-    help="The number of samples per train and test update (meta-learning).",
-)
-parser.add_argument(
-    "--meta-lr",
-    type=float,
-    default=0.001,
-    help="The learning rate to be used for meta learning (in the `MetaLearner`).",
-)
-parser.add_argument(
-    "--fine-tune-batch-size",
-    type=int,
-    default=10,
-    help="The number of samples for the fine-tuning updates.",
-)
-parser.add_argument(
-    "--noise-std",
-    type=float,
-    default=0.0,
-    help="The standard deviation for noise added to the single tasks.",
-)
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=None,
-    help="An optional random seed. If not set, the experiment is not reproducable.",
-)
-parser.add_argument(
-    "--fine-tune-iters",
-    type=int,
-    default=10,
-    help="The number of updates in fine-tuning.",
-)
-parser.add_argument(
-    "--fine-tune-lr",
-    type=float,
-    default=0.01,
-    help="The learning rate to be used in fine-tuning the model in the test phase.",
-)
-parser.add_argument(
-    "--no-plot",
-    action="store_true",
-    help=(
-        "If plotting should suppressed. Otherwise user action is needed to close "
-        "the plot early."
-    ),
-)
-parser.add_argument(
-    "--pause-plot-secs",
-    type=int,
-    default=1000,
-    help=(
-        "The number of seconds to keep the plot open. Note the plot can always be "
-        "closed by the user when open."
-    ),
-)
-
-# Parse the arguments.
-args = parser.parse_args()
-
-# If a random seed is provided set it for torch and numpy.
-if args.seed:
-    torch.random.manual_seed(args.seed)
-    np.random.seed(args.seed)
 
 # Implement generation of data from sinusoid curves.
 def generate_sinusoid_task(batch_size, noise_std=0.1, return_params=False):
@@ -282,142 +223,221 @@ def sample_task(batch_size=10, noise_std=0.1, training_data=False, return_params
         return meta_train_batch, task_train_batch
 
 
-# Define the `RLModule`.
-module_spec = RLModuleSpec(
-    module_class=DifferentiableTorchRLModule,
-    # Note, the spaces are needed by default but are not used.
-    observation_space=gym.spaces.Box(-np.inf, np.inf, (1,), dtype=np.float32),
-    action_space=gym.spaces.Box(-np.inf, np.inf, (1,), dtype=np.float32),
-)
-# `Learner`s work on `MultiRLModule`s.
-multi_module_spec = MultiRLModuleSpec(rl_module_specs={DEFAULT_MODULE_ID: module_spec})
-
-# Build the `MultiRLModule`.
-module = multi_module_spec.build()
-
-# Configure the `DifferentiableLearner`.
-diff_learner_config = DifferentiableLearnerConfig(
-    learner_class=MAMLTorchDifferentiableLearner,
-    minibatch_size=args.meta_train_batch_size,
-    lr=0.01,
+# Define arguments.
+parser = add_rllib_example_script_args(
+    default_iters=70_000,
 )
 
-# Configure the `TorchMetaLearner` via the `DifferentiableAlgorithmConfig`.
-config = (
-    DifferentiableAlgorithmConfig()
-    .learners(
-        # Add the `DifferentiableLearnerConfig`s.
-        differentiable_learner_configs=[diff_learner_config],
+parser.add_argument(
+    "--meta-train-batch-size",
+    type=int,
+    default=5,
+    help="The number of samples per train and test update (meta-learning).",
+)
+parser.add_argument(
+    "--meta-lr",
+    type=float,
+    default=0.001,
+    help="The learning rate to be used for meta learning (in the `MetaLearner`).",
+)
+parser.add_argument(
+    "--fine-tune-batch-size",
+    type=int,
+    default=10,
+    help="The number of samples for the fine-tuning updates.",
+)
+parser.add_argument(
+    "--noise-std",
+    type=float,
+    default=0.0,
+    help="The standard deviation for noise added to the single tasks.",
+)
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=None,
+    help="An optional random seed. If not set, the experiment is not reproducable.",
+)
+parser.add_argument(
+    "--fine-tune-iters",
+    type=int,
+    default=10,
+    help="The number of updates in fine-tuning.",
+)
+parser.add_argument(
+    "--fine-tune-lr",
+    type=float,
+    default=0.01,
+    help="The learning rate to be used in fine-tuning the model in the test phase.",
+)
+parser.add_argument(
+    "--no-plot",
+    action="store_true",
+    help=(
+        "If plotting should suppressed. Otherwise user action is needed to close "
+        "the plot early."
+    ),
+)
+parser.add_argument(
+    "--pause-plot-secs",
+    type=int,
+    default=1000,
+    help=(
+        "The number of seconds to keep the plot open. Note the plot can always be "
+        "closed by the user when open."
+    ),
+)
+
+# Parse the arguments.
+args = parser.parse_args()
+
+# If a random seed is provided set it for torch and numpy.
+if args.seed:
+    torch.random.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
+
+if __name__ == "__main__":
+    # Define the `RLModule`.
+    module_spec = RLModuleSpec(
+        module_class=DifferentiableTorchRLModule,
+        # Note, the spaces are needed by default but are not used.
+        observation_space=gym.spaces.Box(-np.inf, np.inf, (1,), dtype=np.float32),
+        action_space=gym.spaces.Box(-np.inf, np.inf, (1,), dtype=np.float32),
     )
-    .training(
-        lr=args.meta_lr,
-        train_batch_size=args.meta_train_batch_size,
-        # Use the full batch in a single update.
+    # `Learner`s work on `MultiRLModule`s.
+    multi_module_spec = MultiRLModuleSpec(
+        rl_module_specs={DEFAULT_MODULE_ID: module_spec}
+    )
+
+    # Build the `MultiRLModule`.
+    module = multi_module_spec.build()
+
+    # Configure the `DifferentiableLearner`.
+    diff_learner_config = DifferentiableLearnerConfig(
+        learner_class=MAMLTorchDifferentiableLearner,
         minibatch_size=args.meta_train_batch_size,
-    )
-)
-
-# Initialize the `TorchMetaLearner`.
-meta_learner = MAMLTorchMetaLearner(config=config, module_spec=module_spec)
-# Build the `TorchMetaLearner`.
-meta_learner.build()
-
-for i in range(args.stop_iters):
-    # Sample the training data.
-    meta_training_data, task_training_data = sample_task(
-        args.meta_train_batch_size, noise_std=args.noise_std, training_data=True
+        lr=0.01,
     )
 
-    # Update the module.
-    outs = meta_learner.update(
-        training_data=meta_training_data,
-        num_epochs=1,
-        others_training_data=[task_training_data],
-    )
-    iter = i + 1
-    if iter % 1000 == 0:
-        total_loss = outs["default_policy"]["total_loss"].peek()
-        print("-------------------------\n")
-        print(f"Iteration: {iter}")
-        print(f"Total loss: {total_loss}")
-
-# Generate test data.
-test_batch, _, amplitude, phase = sample_task(
-    batch_size=args.fine_tune_batch_size, noise_std=args.noise_std, return_params=True
-)
-
-# Run inference and plot results.
-with torch.no_grad():
-    # Generate a grid for the support.
-    x_grid = torch.tensor(np.arange(-5.0, 5.0, 0.02), dtype=torch.float32).view(-1, 1)
-    # Get label prediction from the model trained by MAML.
-    y_pred = meta_learner.module[DEFAULT_MODULE_ID]({Columns.OBS: x_grid})["y_pred"]
-
-# Plot the results if requested.
-if not args.no_plot:
-    # Sort the data by the support.
-    x_order = np.argsort(test_batch[DEFAULT_MODULE_ID][Columns.OBS].numpy()[:, 0])
-    x_sorted = test_batch[DEFAULT_MODULE_ID][Columns.OBS].numpy()[:, 0][x_order]
-    y_sorted = test_batch[DEFAULT_MODULE_ID]["y"][:, 0][x_order]
-
-    # Plot the data.
-    def sinusoid(t):
-        return amplitude * np.sin(t - phase)
-
-    plt.ion()
-    plt.figure(figsize=(5, 3))
-    # Plot the true sinusoid curve.
-    plt.plot(x_grid, sinusoid(x_grid), "r", label="Ground Truth")
-    # Add the sampled support values.
-    plt.plot(x_sorted, y_sorted, "^", color="purple")
-    # Add the prediction made by the model after MAML training.
-    plt.plot(x_grid, y_pred, ":", label="Prediction", color="#90EE90")
-    plt.title(f"MAML Results from {args.fine_tune_iters} fine-tuning steps.")
-
-
-# Fine-tune with the meta loss for just a few steps.
-optim = meta_learner.get_optimizers_for_module(DEFAULT_MODULE_ID)[0][1]
-# Set the learning rate to a larger value.
-for g in optim.param_groups:
-    g["lr"] = args.fine_tune_lr
-# Now run the fine-tune iterations and update the model via the meta-learner loss.
-for i in range(args.fine_tune_iters):
-    # Forward pass.
-    fwd_out = {
-        DEFAULT_MODULE_ID: meta_learner.module[DEFAULT_MODULE_ID](
-            test_batch[DEFAULT_MODULE_ID]
+    # Configure the `TorchMetaLearner` via the `DifferentiableAlgorithmConfig`.
+    config = (
+        DifferentiableAlgorithmConfig()
+        .learners(
+            # Add the `DifferentiableLearnerConfig`s.
+            differentiable_learner_configs=[diff_learner_config],
         )
-    }
-    # Compute the MSE prediction loss.
-    loss_per_module = meta_learner.compute_losses(fwd_out=fwd_out, batch=test_batch)
-    # Optimize parameters.
-    optim.zero_grad(set_to_none=True)
-    loss_per_module[DEFAULT_MODULE_ID].backward()
-    optim.step()
-    # Show the loss for few-shot learning (fine-tuning).
-    print(
-        f"Few shot loss: {loss_per_module[DEFAULT_MODULE_ID].detach().numpy().item()}"
+        .training(
+            lr=args.meta_lr,
+            train_batch_size=args.meta_train_batch_size,
+            # Use the full batch in a single update.
+            minibatch_size=args.meta_train_batch_size,
+        )
     )
 
+    # Initialize the `TorchMetaLearner`.
+    meta_learner = MAMLTorchMetaLearner(config=config, module_spec=module_spec)
+    # Build the `TorchMetaLearner`.
+    meta_learner.build()
 
-# Run the model again after fine-tuning.
-with torch.no_grad():
-    y_pred_fine_tuned = meta_learner.module[DEFAULT_MODULE_ID]({Columns.OBS: x_grid})[
-        "y_pred"
-    ]
+    for i in range(args.stop_iters):
+        # Sample the training data.
+        meta_training_data, task_training_data = sample_task(
+            args.meta_train_batch_size, noise_std=args.noise_std, training_data=True
+        )
 
-if not args.no_plot:
-    # Plot the predictions of the fine-tuned model.
-    plt.plot(
-        x_grid,
-        y_pred_fine_tuned,
-        "-.",
-        label="Tuned Prediction",
-        color="green",
-        mfc="gray",
+        # Update the module.
+        outs = meta_learner.update(
+            training_data=meta_training_data,
+            num_epochs=1,
+            others_training_data=[task_training_data],
+        )
+        iter = i + 1
+        if iter % 1000 == 0:
+            total_loss = outs["default_policy"]["total_loss"].peek()
+            print("-------------------------\n")
+            print(f"Iteration: {iter}")
+            print(f"Total loss: {total_loss}")
+
+    # Generate test data.
+    test_batch, _, amplitude, phase = sample_task(
+        batch_size=args.fine_tune_batch_size,
+        noise_std=args.noise_std,
+        return_params=True,
     )
-    plt.legend()
-    plt.show()
 
-    # Pause the plot until the user closes it.
-    plt.pause(args.pause_plot_secs)
+    # Run inference and plot results.
+    with torch.no_grad():
+        # Generate a grid for the support.
+        x_grid = torch.tensor(np.arange(-5.0, 5.0, 0.02), dtype=torch.float32).view(
+            -1, 1
+        )
+        # Get label prediction from the model trained by MAML.
+        y_pred = meta_learner.module[DEFAULT_MODULE_ID]({Columns.OBS: x_grid})["y_pred"]
+
+    # Plot the results if requested.
+    if not args.no_plot:
+        # Sort the data by the support.
+        x_order = np.argsort(test_batch[DEFAULT_MODULE_ID][Columns.OBS].numpy()[:, 0])
+        x_sorted = test_batch[DEFAULT_MODULE_ID][Columns.OBS].numpy()[:, 0][x_order]
+        y_sorted = test_batch[DEFAULT_MODULE_ID]["y"][:, 0][x_order]
+
+        # Plot the data.
+        def sinusoid(t):
+            return amplitude * np.sin(t - phase)
+
+        plt.ion()
+        plt.figure(figsize=(5, 3))
+        # Plot the true sinusoid curve.
+        plt.plot(x_grid, sinusoid(x_grid), "r", label="Ground Truth")
+        # Add the sampled support values.
+        plt.plot(x_sorted, y_sorted, "^", color="purple")
+        # Add the prediction made by the model after MAML training.
+        plt.plot(x_grid, y_pred, ":", label="Prediction", color="#90EE90")
+        plt.title(f"MAML Results from {args.fine_tune_iters} fine-tuning steps.")
+
+    # Fine-tune with the meta loss for just a few steps.
+    optim = meta_learner.get_optimizers_for_module(DEFAULT_MODULE_ID)[0][1]
+    # Set the learning rate to a larger value.
+    for g in optim.param_groups:
+        g["lr"] = args.fine_tune_lr
+    # Now run the fine-tune iterations and update the model via the meta-learner loss.
+    for i in range(args.fine_tune_iters):
+        # Forward pass.
+        fwd_out = {
+            DEFAULT_MODULE_ID: meta_learner.module[DEFAULT_MODULE_ID](
+                test_batch[DEFAULT_MODULE_ID]
+            )
+        }
+        # Compute the MSE prediction loss.
+        loss_per_module = meta_learner.compute_losses(fwd_out=fwd_out, batch=test_batch)
+        # Optimize parameters.
+        optim.zero_grad(set_to_none=True)
+        loss_per_module[DEFAULT_MODULE_ID].backward()
+        optim.step()
+        # Show the loss for few-shot learning (fine-tuning).
+        print(
+            f"Few shot loss: {loss_per_module[DEFAULT_MODULE_ID].detach().numpy().item()}"
+        )
+
+    # Run the model again after fine-tuning.
+    with torch.no_grad():
+        y_pred_fine_tuned = meta_learner.module[DEFAULT_MODULE_ID](
+            {Columns.OBS: x_grid}
+        )["y_pred"]
+
+    if not args.no_plot:
+        # Plot the predictions of the fine-tuned model.
+        plt.plot(
+            x_grid,
+            y_pred_fine_tuned,
+            "-.",
+            label="Tuned Prediction",
+            color="green",
+            mfc="gray",
+        )
+        plt.legend()
+        plt.show()
+
+        # Pause the plot until the user closes it.
+        plt.pause(args.pause_plot_secs)

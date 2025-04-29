@@ -45,6 +45,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
+    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
@@ -6041,10 +6042,12 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
         # defines the default, i.e. the `MetaLearner` will have no nested updates.
         self.differentiable_learner_configs: List[DifferentiableLearnerConfig] = []
 
+    @override(AlgorithmConfig)
     def learners(
         self,
         *,
         differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
+        **kwargs,
     ) -> "DifferentiableAlgorithmConfig":
         """Sets the configurations for differentiable learners.
 
@@ -6053,11 +6056,17 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 defining the `DifferentiableLearner` classes used for the nested updates in
                 `Algorithm`'s learner.
         """
+        # First call the super's method.
+        super().learners(**kwargs)
+
+        # Assign now the differentiable learner configurations.
         if differentiable_learner_configs is not NotProvided:
             self.differentiable_learner_configs = differentiable_learner_configs
 
         return self
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(AlgorithmConfig)
     def validate(self):
         """Validates all values in this config."""
 
@@ -6092,6 +6101,7 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 "one instance is not a `DifferentiableLearnerConfig`."
             )
 
+    @override(AlgorithmConfig)
     def get_default_learner_class(self):
         """Returns the Learner class to use for this algorithm.
 
@@ -6101,6 +6111,7 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             The `MetaLearner` class to use for this algorithm either as a class
             type or as a string. (e.g. "ray.rllib.core.learner.torch.torch_meta_learner.TorchMetaLearner")
         """
+        # Default learner class is here a meta learner.
         from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
 
         return TorchMetaLearner
