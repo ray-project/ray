@@ -2,13 +2,16 @@
 import ray
 import time
 
+
 @ray.remote
 def f():
     return 1
 
+
 @ray.remote
 def pass_via_nested_ref(refs):
     print(sum(ray.get(refs)))
+
 
 @ray.remote
 def pass_via_direct_arg(*args):
