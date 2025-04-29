@@ -23,7 +23,17 @@ To access the dashboard, use `ray[default]` or :ref:`other installation commands
 
   pip install -U "ray[default]"
 
-When you start a single-node Ray Cluster on your laptop, access the dashboard with the URL that Ray prints when it initializes (the default URL is **http://localhost:8265**) or with the context object returned by `ray.init`.
+When you start a single-node Ray Cluster on your laptop, access the dashboard with the URL that Ray prints when it initializes (the default URL is **http://localhost:8265**).
+
+.. code-block:: text
+
+   INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
+
+There are two ways to get the dashboard URL programmatically:
+
+**1. Using the Context from `ray.init()`**
+
+You can capture the context object returned by `ray.init()` and access the URL through its `dashboard_url` property.
 
 .. testcode::
   :hide:
@@ -38,24 +48,37 @@ When you start a single-node Ray Cluster on your laptop, access the dashboard wi
     context = ray.init()
     print(context.dashboard_url)
 
-..
-    This test output is flaky. If Ray isn't completely shutdown, the port can be
-    "8266" instead of "8265".
+.. testoutput::
+    :options: +MOCK
+
+   127.0.0.1:8265
+
+**2. Using the Runtime Context**
+
+A more convenient way to get the dashboard URL *after* Ray has been initialized is to use the :meth:`ray.get_runtime_context().get_dashboard_url() <ray.runtime_context.RuntimeContext.get_dashboard_url>` method. This works even if you didn't store the initial context from `ray.init()`.
+
+.. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
+
+    import ray
+
+    ray.init()
+    ctx = ray.get_runtime_context()
+    print(ctx.get_dashboard_url())
 
 .. testoutput::
     :options: +MOCK
 
    127.0.0.1:8265
 
-.. code-block:: text
-
-  INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
-
 .. note::
 
-    If you start Ray in a docker container, ``--dashboard-host`` is a required parameter. For example, ``ray start --head --dashboard-host=0.0.0.0``.
-
-
+    If you start Ray in a docker container, `--dashboard-host` is a required parameter. For example, `ray start --head --dashboard-host=0.0.0.0`.
 
 When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. View :ref:`configuring the dashboard <dashboard-in-browser>` for how to view Dashboard from outside the Head Node.
 

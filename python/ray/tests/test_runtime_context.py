@@ -9,6 +9,7 @@ import warnings
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
 from ray._private.test_utils import wait_for_condition
+from ray._private import ray_constants
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -413,6 +414,33 @@ def test_async_actor_task_id(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+def test_dashboard_url_default(ray_start_regular):
+    ctx = ray.get_runtime_context()
+    expected_url = f"{ray_start_regular.address_info['webui_url']}"
+
+    assert ctx.get_dashboard_url() == expected_url
+
+
+def test_dashboard_url_disabled(shutdown_only):
+    ray.init(include_dashboard=False)
+    ctx = ray.get_runtime_context()
+
+    assert ctx.get_dashboard_url() is None
+
+
+def test_dashboard_url_override(monkeypatch, ray_start_regular):
+    ray.shutdown()
+
+    override_url = "ray-dashboard.test:1234"
+    monkeypatch.setenv(ray_constants.RAY_OVERRIDE_DASHBOARD_URL, override_url)
+
+    ray.init()
+    ctx = ray.get_runtime_context()
+    print(ctx.get_dashboard_url())
+
+    assert ctx.get_dashboard_url() == override_url
 
 
 if __name__ == "__main__":
