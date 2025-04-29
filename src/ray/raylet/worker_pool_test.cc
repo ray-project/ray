@@ -44,7 +44,7 @@ int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 3;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 1;
 JobID JOB_ID = JobID::FromInt(1);
-JobID JOB_ID2 = JobID::FromInt(2);
+JobID JOB_ID_2 = JobID::FromInt(2);
 constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
 constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
 
@@ -927,71 +927,59 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
 }
 
 // Tests the following cases: XXX.
-TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerRootDetachedActor) {
-  auto job_id1 = JOB_ID;
-  auto job_id2 = JOB_ID2;
-  ASSERT_NE(job_id1, job_id2);
-  JobID job_ids[] = {job_id1, job_id2};
+// 1) Worker has no root detached actor and matching job ID.
+// 2) Worker has mismatched root detached actor ID and no job ID.
+// 3) Worker has matching root detached actor ID and no job ID.
+// 4) Worker has matching root detached actor ID and mismatched job ID.
+// 5) Worker has no root detached actor ID and mismatched job ID.
+TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor) {
+  auto job_1_id = JOB_ID;
+  auto job_1_detached_actor_1_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
+  // auto job_1_detached_actor_2_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 1);
 
-  // The driver of job 1 is already registered. Here we register the driver for job 2.
-  RegisterDriver(Language::PYTHON, job_id2);
+  auto job_2_id = JOB_ID_2;
+  // auto job_2_detached_actor_1_id = ActorID::Of(job_2_id, TaskID::FromRandom(job_2_id), 0);
 
-  // Register 2 workers for each job.
-  for (auto job_id : job_ids) {
-    for (int i = 0; i < 2; i++) {
-      int runtime_env_hash = 0;
-      // Make the first worker an actor worker.
-      if (i == 0) {
-        auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-        auto task_spec = ExampleTaskSpec(
-            /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
-        runtime_env_hash = task_spec.GetRuntimeEnvHash();
-      }
-      auto worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                               Language::PYTHON,
-                                               job_id,
-                                               rpc::WorkerType::WORKER,
-                                               runtime_env_hash);
-      worker_pool_->PushWorker(worker);
-    }
-  }
-  std::unordered_set<WorkerID> worker_ids;
-  for (int round = 0; round < 2; round++) {
-    std::vector<std::shared_ptr<WorkerInterface>> workers;
+  auto job_1_detached_actor_1_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  job_1_detached_actor_1_task_spec.GetMutableMessage().set_root_detached_actor_id(job_1_detached_actor_1_id.Binary());
 
-    // Pop workers for actor.
-    for (auto job_id : job_ids) {
-      auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-      // Pop workers for actor creation tasks.
-      auto task_spec = ExampleTaskSpec(
-          /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
-      auto worker = worker_pool_->PopWorkerSync(task_spec);
-      ASSERT_TRUE(worker);
-      ASSERT_EQ(worker->GetAssignedJobId(), job_id);
-      workers.push_back(worker);
-    }
+  auto job_2_no_detached_actor = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
 
-    // Pop workers for normal tasks.
-    for (auto job_id : job_ids) {
-      auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
-      auto worker = worker_pool_->PopWorkerSync(task_spec);
-      ASSERT_TRUE(worker);
-      ASSERT_EQ(worker->GetAssignedJobId(), job_id);
-      workers.push_back(worker);
-    }
+  auto worker_no_job_no_detached_actor = worker_pool_->CreateWorker(Process::CreateNewDummy(),
+                                           Language::PYTHON,
+                                           JobID::Nil());
 
-    // Return all workers.
-    for (auto worker : workers) {
-      worker_pool_->PushWorker(worker);
-      if (round == 0) {
-        // For the first round, all workers are new.
-        ASSERT_TRUE(worker_ids.insert(worker->WorkerId()).second);
-      } else {
-        // For the second round, all workers are existing ones.
-        ASSERT_GT(worker_ids.count(worker->WorkerId()), 0);
-      }
-    }
-  }
+  auto worker_job_1_detached_actor_1 = worker_pool_->CreateWorker(Process::CreateNewDummy(),
+                                           Language::PYTHON,
+                                           job_1_id);
+  RayTask job_1_detached_actor_1_task(job_1_detached_actor_1_task_spec);
+  worker_job_1_detached_actor_1->SetAssignedTask(job_1_detached_actor_1_task);
+  worker_job_1_detached_actor_1->AssignTaskId(TaskID::Nil());
+
+  auto worker_job_2_no_detached_actor = worker_pool_->CreateWorker(Process::CreateNewDummy(),
+                                           Language::PYTHON,
+                                           job_2_id);
+
+  // Case 1 (match):
+  //   - request has root detached actor ID
+  //   - worker has no root detached actor ID and no job ID
+  worker_pool_->PushWorker(worker_no_job_no_detached_actor);
+  ASSERT_NE(worker_pool_->PopWorkerSync(job_1_detached_actor_1_task_spec), nullptr);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  // Case 2 (match):
+  //   - request has root detached actor ID
+  //   - worker has matching root detached actor ID and job ID
+  worker_pool_->PushWorker(worker_job_1_detached_actor_1);
+  ASSERT_NE(worker_pool_->PopWorkerSync(job_1_detached_actor_1_task_spec), nullptr);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  // Case 3 (no match):
+  //   - request has root detached actor ID
+  //   - worker has no root detached actor ID and mismatched job ID
+  worker_pool_->PushWorker(worker_job_2_no_detached_actor);
+  ASSERT_EQ(worker_pool_->PopWorkerSync(job_1_detached_actor_1_task_spec), nullptr);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
@@ -1604,7 +1592,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
   mock_rpc_client->ExitReplySucceed();
 
-  job_id = JOB_ID2;
+  job_id = JOB_ID_2;
   rpc::JobConfig job_config;
   RegisterDriver(Language::PYTHON, job_id, job_config);
   task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
@@ -1624,7 +1612,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   RAY_CHECK(process.IsValid());
   ASSERT_EQ(1, worker_pool_->NumWorkersStarting());
 
-  // Starts a worker for JOB_ID2.
+  // Starts a worker for JOB_ID_2.
   worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
   worker->SetStartupToken(worker_pool_->GetStartupToken(process));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(
@@ -2252,7 +2240,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForSameJobId) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
   const auto task_spec = ExampleTaskSpec();
-  const auto task_spec1 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID2);
+  const auto task_spec1 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID_2);
 
   // start one worker
   auto popped_worker = worker_pool_->PopWorkerSync(task_spec);
@@ -2261,7 +2249,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
   worker_pool_->PushWorker(popped_worker);
 
-  RegisterDriver(Language::PYTHON, JOB_ID2);
+  RegisterDriver(Language::PYTHON, JOB_ID_2);
 
   // start a new worker with different job_id requires a new worker.
   auto popped_worker1 = worker_pool_->PopWorkerSync(task_spec1);
