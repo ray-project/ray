@@ -4436,45 +4436,40 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                  caller_worker_id,
                  on_canceled = std::move(on_canceled),
                  is_async_actor]() {
-    bool is_task_running = false;
-    TaskSpecification spec;
-    RayFunction func;
-    std::string concurrency_group_name;
+    bool success = false;
 
-    bool is_task_queued_or_executing =
+    // If the task was still queued (not executing yet), `CancelQueuedActorTask` will cancel it.
+    // If it was executing, we need to attempt to cancel it.
+    bool task_found = 
         task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
-
-    // If a task is already running, we send a cancel request.
-    // Right now, we can only cancel async actor tasks.
-    if (is_task_queued_or_executing) {
-      {
-        absl::MutexLock lock(&mutex_);
-        auto it = current_tasks_.find(task_id);
-        is_task_running = it != current_tasks_.end();
-        if (is_task_running) {
-          spec = it->second;
-          func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
-          concurrency_group_name = spec.ConcurrencyGroupName();
+    if (task_found) {
+      if (!is_async_actor) {
+        // NOTE: we can't currently interrupt executing tasks for non-asyncio actors.
+        // Return success even if the task is running so the client doesn't retry.
+        success = task_found;
+      } else {
+        bool is_running = false;
+        RayFunction func;
+        std::string concurrency_group_name;
+        {
+          absl::MutexLock lock(&mutex_);
+          auto it = current_tasks_.find(task_id);
+          is_running = it != current_tasks_.end();
+          if (is_running) {
+            auto spec = it->second;
+            func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
+            concurrency_group_name = spec.ConcurrencyGroupName();
+          }
+        }
+        if (is_running) {
+          success = options_.cancel_async_task(task_id, func, concurrency_group_name);
         }
       }
-
-      if (is_task_running && is_async_actor) {
-        options_.cancel_async_task(task_id, func, concurrency_group_name);
-      }
-      // TODO(sang): else support regular actor interrupt.
     }
 
-    // If `is_task_queued_or_executing`is true, task was either queued or run.
-    // If a task is queued, it is guaranteed to be canceled by
-    // CancelQueuedActorTask. If a task is executing, we try canceling
-    // them, but it is not guaranteed. For both cases, we consider cancelation
-    // succeeds. If `is_task_queued_or_executing` is false, it means task is finished
-    // or not received yet. In this case, we mark `success` as false, so that the
-    // caller can retry cancel RPCs. Note that the caller knows exactly when a task is
-    // finished from their end, so it won't infinitely retry cancel RPCs.
-    // requested_task_running is not used, so we just always mark it as false.
-    on_canceled(/*success*/ is_task_queued_or_executing,
-                /*requested_task_running*/ false);
+    // NOTE: requested_task_running is not used by the client for actor tasks, only
+    // normal tasks, so we always set it to false.
+    on_canceled(/*success=*/success, /*requested_task_running=*/false);
   };
 
   if (is_async_actor) {

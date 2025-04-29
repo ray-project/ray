@@ -177,7 +177,9 @@ struct CoreWorkerOptions {
   // Function that tries to interrupt the currently running Python thread if its
   // task ID matches the one given.
   std::function<bool(const TaskID &task_id)> kill_main;
-  std::function<void(const TaskID &task_id,
+  // Function to cancel an in-progress asyncio actor task.
+  // Must return a boolean indicating if the task was successfully cancelled or not.
+  std::function<bool(const TaskID &task_id,
                      const RayFunction &ray_function,
                      const std::string name_of_concurrency_group_to_execute)>
       cancel_async_task;

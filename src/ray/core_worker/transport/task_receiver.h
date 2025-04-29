@@ -99,9 +99,11 @@ class TaskReceiver {
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
-  /// Cancel an actor task queued in the actor scheduling queue for caller_worker_id.
-  /// Return true if a task is queued or executing. False otherwise.
-  /// If task is not executed yet, this will guarantee the task won't be executed.
+  /// Cancel an actor task that is queued for execution, but hasn't started executing yet.
+  ///
+  /// Returns a boolean indicating if the task is present in the executor at all. If not,
+  /// it means the task either hasn't been received yet or has already finished executing.
+  ///
   /// This API is idempotent.
   bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
 

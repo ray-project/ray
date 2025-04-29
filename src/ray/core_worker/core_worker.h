@@ -1660,11 +1660,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                             bool recursive,
                             const OnCanceledCallback &on_canceled);
 
-  /// Cancel an actor task queued or running in the current worker.
-  ///
-  /// See params in CancelTaskOnExecutor.
-  /// For the actor task cancel protocol, see the docstring of
-  /// actor_task_submitter.h::CancelTask.
+  // Attempt to cancel the actor task.
+  //
+  // The callback will be called with `success` to indicate if the cancellation succeeded.
+  // If not, the caller must retry the cancellation request until either it succeeds or
+  // the task finishes executing.
+  //
+  // A task can be in one of three states locally:
+  //
+  // 1) Not present in the local task receiver.
+  //    This means it wasn't received yet or it already finished executing.
+  // 2) Queued in the local task receiver, but not executing yet.
+  // 3) Executing.
+  //
+  // We first check if the task is present in the local receiver. If not, we
+  // do nothing and return success=false.
+  //
+  // If the task *is* present in the local receiver, we attempt to cancel it.
+  // The task may already be running, in which case we cancel it during execution.
+  //
+  // NOTE: only asyncio actor tasks can be cancelled during execution. For non-asyncio
+  // actor tasks that are already executing, we will return success=true to prevent the
+  // client from retrying infinitely.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,
