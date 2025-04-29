@@ -204,6 +204,13 @@ def _convert_to_pyarrow_native_array(
         if len(column_values) > 0 and isinstance(column_values[0], datetime):
             column_values = _convert_datetime_to_np_datetime(column_values)
 
+        # To avoid deserialization penalty of converting Arrow arrays (`Array` and `ChunkedArray`)
+        # to Python objects and then back to Arrow, we instead combine them into ListArray manually
+        if len(column_values) > 0 and isinstance(
+            column_values[0], (pa.Array, pa.ChunkedArray)
+        ):
+            return _combine_as_list_array(column_values)
+
         # NOTE: We explicitly infer PyArrow `DataType` so that
         #       we can perform upcasting to be able to accommodate
         #       blocks that are larger than 2Gb in size (limited
@@ -236,6 +243,27 @@ def _convert_to_pyarrow_native_array(
         return pa.array(column_values, type=pa_type)
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e
+
+
+def _combine_as_list_array(column_values: List[Union[pa.Array, pa.ChunkedArray]]):
+    """Combines list of Arrow arrays into a single `ListArray`"""
+
+    # First, compute respective offsets in the resulting array
+    lens = [len(v) for v in column_values]
+    offsets = pa.array(np.concatenate([[0], np.cumsum(lens)]), type=pa.int32())
+
+    # Concat all the chunks into a single contiguous array
+    combined = pa.concat_arrays(
+        itertools.chain(
+            *[
+                v.chunks if isinstance(v, pa.ChunkedArray) else [v]
+                for v in column_values
+            ]
+        )
+    )
+
+    # TODO support null masking
+    return pa.ListArray.from_arrays(offsets, combined, pa.list_(combined.type))
 
 
 def _coerce_np_datetime_to_pa_timestamp_precision(

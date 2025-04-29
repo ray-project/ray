@@ -159,6 +159,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "asan-clang",
             "ubsan",
             "tsan-clang",
+            "cgroup",
             # java build types
             "java",
             # do not build ray
@@ -188,6 +189,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=str,
     help=("Filesystem to use for /tmp"),
 )
+@click.option(
+    "--privileged",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Run the test in a privileged Docker container",
+)
 def main(
     targets: List[str],
     team: str,
@@ -212,6 +220,7 @@ def main(
     install_mask: Optional[str],
     bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
+    privileged: bool,
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -241,6 +250,7 @@ def main(
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
         install_mask=install_mask,
+        privileged=privileged,
     )
     if build_only:
         sys.exit(0)
@@ -295,6 +305,7 @@ def _get_container(
     build_type: Optional[str] = None,
     install_mask: Optional[str] = None,
     skip_ray_installation: bool = False,
+    privileged: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
     shard_start = worker_id * parallelism_per_worker
@@ -316,6 +327,7 @@ def _get_container(
             build_type=build_type,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
+            privileged=privileged,
         )
 
     if operating_system == "windows":
@@ -435,7 +447,7 @@ def _get_test_targets(
         ).union(_get_new_tests(prefix, container))
         final_targets = high_impact_tests.intersection(final_targets)
 
-    return list(final_targets)
+    return sorted(final_targets)
 
 
 def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:

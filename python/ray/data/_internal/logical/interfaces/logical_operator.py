@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional, Callable
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
@@ -56,6 +56,11 @@ class LogicalOperator(Operator):
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
 
+    def _apply_transform(
+        self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
+    ) -> "LogicalOperator":
+        return super()._apply_transform(transform)  # type: ignore
+
     def output_data(self) -> Optional[List["RefBundle"]]:
         """The output data of this operator, or ``None`` if not known."""
         return None
@@ -77,3 +82,7 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
+
+    @classmethod
+    def is_read_op(cls):
+        return False

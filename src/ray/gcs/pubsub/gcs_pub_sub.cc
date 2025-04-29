@@ -358,10 +358,12 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
         status.error_code() == grpc::StatusCode::UNAVAILABLE) {
       return Status::OK();
-    } else if (status.error_code() == grpc::StatusCode::CANCELLED) {
+    }
+    if (status.error_code() == grpc::StatusCode::CANCELLED) {
       // This channel was shut down via Close()
       return Status::OK();
-    } else if (status.error_code() != grpc::StatusCode::OK) {
+    }
+    if (status.error_code() != grpc::StatusCode::OK) {
       return Status::Invalid(status.error_message());
     }
 
@@ -376,18 +378,18 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       max_processed_sequence_id_ = 0;
     }
     last_batch_size_ = reply.pub_messages().size();
-    for (auto &message : reply.pub_messages()) {
-      if (message.sequence_id() <= max_processed_sequence_id_) {
-        RAY_LOG(WARNING) << "Ignoring out of order message " << message.sequence_id();
+    for (auto &cur_pub_msg : reply.pub_messages()) {
+      if (cur_pub_msg.sequence_id() <= max_processed_sequence_id_) {
+        RAY_LOG(WARNING) << "Ignoring out of order message " << cur_pub_msg.sequence_id();
         continue;
       }
-      max_processed_sequence_id_ = message.sequence_id();
-      if (message.channel_type() != channel_type_) {
+      max_processed_sequence_id_ = cur_pub_msg.sequence_id();
+      if (cur_pub_msg.channel_type() != channel_type_) {
         RAY_LOG(WARNING) << "Ignoring message from unsubscribed channel "
-                         << message.channel_type();
+                         << cur_pub_msg.channel_type();
         continue;
       }
-      queue_.emplace_back(std::move(message));
+      queue_.emplace_back(std::move(cur_pub_msg));
     }
   }
 

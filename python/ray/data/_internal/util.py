@@ -1,17 +1,15 @@
+import functools
 import importlib
 import logging
 import os
 import pathlib
+import platform
 import random
 import sys
-import psutil
-import platform
 import threading
 import time
-import functools
 import urllib.parse
 from queue import Empty, Full, Queue
-from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
@@ -28,7 +26,9 @@ from typing import (
 )
 
 import numpy as np
+import psutil
 import pyarrow
+from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
@@ -68,17 +68,28 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
-class _NullSentinel:
-    """Sentinel value that sorts greater than any other value."""
+class _OrderedNullSentinel:
+    """Sentinel value that sorts greater than any other non-null value.
+
+    NOTE: Semantic of this sentinel is closely mirroring that one of
+          ``np.nan`` for the purpose of consistency in handling of
+          ``None``s and ``np.nan``s.
+    """
 
     def __eq__(self, other):
-        return isinstance(other, _NullSentinel)
-
-    def __lt__(self, other):
         return False
 
+    def __lt__(self, other):
+        # not None < _OrderedNullSentinel
+        # _OrderedNullSentinel < _OrderedNullSentinel
+        # _OrderedNullSentinel < None
+        # _OrderedNullSentinel < np.nan
+        return isinstance(other, _OrderedNullSentinel) or is_null(other)
+
     def __le__(self, other):
-        return isinstance(other, _NullSentinel)
+        # NOTE: This is just a shortened version of
+        #   self < other or self == other
+        return self.__lt__(other)
 
     def __gt__(self, other):
         return not self.__le__(other)
@@ -90,7 +101,7 @@ class _NullSentinel:
         return id(self)
 
 
-NULL_SENTINEL = _NullSentinel()
+NULL_SENTINEL = _OrderedNullSentinel()
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -687,7 +698,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
 
 def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
@@ -766,12 +777,6 @@ def find_partition_index(
         if desired_val is None:
             desired_val = NULL_SENTINEL
 
-        # Replace None/NaN values in col_vals with sentinel
-        null_mask = col_vals == None  # noqa: E711
-        if null_mask.any():
-            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
-            col_vals[null_mask] = NULL_SENTINEL
-
         prevleft = left
         if descending[i] is True:
             # ``np.searchsorted`` expects the array to be sorted in ascending
@@ -780,13 +785,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -795,38 +801,14 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+
     return right if descending[0] is True else left
-
-
-def find_partitions(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
-    boundaries: List[Tuple[Union[int, float]]],
-    sort_key: "SortKey",
-):
-    partitions = []
-
-    # For each boundary value, count the number of items that are less
-    # than it. Since the block is sorted, these counts partition the items
-    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-    # partition[i]. If `descending` is true, `boundaries` would also be
-    # in descending order and we only need to count the number of items
-    # *greater than* the boundary value instead.
-    bounds = [
-        find_partition_index(table, boundary, sort_key) for boundary in boundaries
-    ]
-
-    last_idx = 0
-    for idx in bounds:
-        partitions.append(table[last_idx:idx])
-        last_idx = idx
-    partitions.append(table[last_idx:])
-    return partitions
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
@@ -914,29 +896,39 @@ class _InterruptibleQueue(Queue):
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
+    preserve_ordering: bool,
     num_workers: int = 1,
-    queue_buffer_size: int = 2,
+    buffer_size: int = 1,
 ) -> Generator[U, None, None]:
-
-    gen_id = random.randint(0, 2**31 - 1)
-
     """Returns a generator (iterator) mapping items from the
     provided iterator applying provided transformation in parallel (using a
     thread-pool).
 
-    NOTE: Even though the mapping is performed in parallel across N
-          threads, this method provides crucial guarantee of preserving the
-          ordering of the source iterator, ie that
+    NOTE: There are some important constraints that needs to be carefully
+          understood before using this method
 
-            iterator = [A1, A2, ... An]
-            mapped iterator = [map(A1), map(A2), ..., map(An)]
+        1. If `preserve_ordering` is True
+            a. This method would unroll input iterator eagerly (irrespective
+                of the speed of resulting generator being consumed). This is necessary
+                as we can not guarantee liveness of the algorithm AND preserving of the
+                original ordering at the same time.
 
-          Preserving ordering is crucial to eliminate non-determinism in producing
-          content of the blocks.
+            b. Resulting ordering of the output will "match" ordering of the input, ie
+               that:
+                    iterator = [A1, A2, ... An]
+                    output iterator = [map(A1), map(A2), ..., map(An)]
+
+        2. If `preserve_ordering` is False
+            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be
+                fetched from the iterator
+
+            b. Resulting ordering of the output is unspecified (and is
+            non-deterministic)
 
     Args:
         base_iterator: Iterator yielding elements to map
         fn: Transformation to apply to each element
+        preserve_ordering: Whether ordering has to be preserved
         num_workers: The number of threads to use in the threadpool (defaults to 1)
         buffer_size: Number of objects to be buffered in its input/output
                      queues (per queue; defaults to 2). Total number of objects held
@@ -949,8 +941,13 @@ def make_async_gen(
         elements mapped by provided transformation (while *preserving the ordering*)
     """
 
+    gen_id = random.randint(0, 2**31 - 1)
+
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
+
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
 
     # To apply transformations to elements in parallel *and* preserve the ordering
     # following invariants are established:
@@ -967,16 +964,26 @@ def make_async_gen(
     #     order as input queues) dequeues 1 mapped element at a time from each output
     #     queue and yields it
     #
-    # Signal handler used to interrupt workers when terminating
-    interrupted_event = threading.Event()
+    # However, in case when we're preserving the ordering we can not enforce the input
+    # queue size as this could result in deadlocks since transformations could be
+    # producing sequences of arbitrary length.
+    #
+    # Check `test_make_async_gen_varying_seq_length_stress_test` for more context on
+    # this problem.
+    if preserve_ordering:
+        input_queue_buf_size = -1
+        num_input_queues = num_workers
+    else:
+        input_queue_buf_size = (buffer_size + 1) * num_workers
+        num_input_queues = 1
 
     input_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(input_queue_buf_size, interrupted_event)
+        for _ in range(num_input_queues)
     ]
+
     output_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(buffer_size, interrupted_event) for _ in range(num_workers)
     ]
 
     # Filling worker
@@ -985,11 +992,16 @@ def make_async_gen(
             # First, round-robin elements from the iterator into
             # corresponding input queues (one by one)
             for idx, item in enumerate(base_iterator):
-                input_queues[idx % num_workers].put(item)
+                input_queues[idx % num_input_queues].put(item)
 
-            # Enqueue sentinel objects to signal end of the line
+            # NOTE: We have to Enqueue sentinel objects for every transforming
+            #       worker:
+            #   - In case of preserving order of ``num_queues`` == ``num_workers``
+            #     we will enqueue 1 sentinel per queue
+            #   - In case of NOT preserving order all ``num_workers`` sentinels
+            #     will be enqueued into a single queue
             for idx in range(num_workers):
-                input_queues[idx].put(SENTINEL)
+                input_queues[idx % num_input_queues].put(SENTINEL)
 
         except InterruptedError:
             pass
@@ -1004,18 +1016,14 @@ def make_async_gen(
                 output_queue.put(e)
 
     # Transforming worker
-    def _run_transforming_worker(worker_id: int):
-        input_queue = input_queues[worker_id]
-        output_queue = output_queues[worker_id]
-
+    def _run_transforming_worker(input_queue, output_queue):
         try:
             # Create iterator draining the queue, until it receives sentinel
             #
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
 
-            mapped_iter = fn(input_queue_iter)
-            for result in mapped_iter:
+            for result in fn(input_queue_iter):
                 # Enqueue result of the transformation
                 output_queue.put(result)
 
@@ -1042,11 +1050,11 @@ def make_async_gen(
     transforming_worker_threads = [
         threading.Thread(
             target=_run_transforming_worker,
-            name=f"map_tp_transforming_worker-{gen_id}-{worker_idx}",
-            args=(worker_idx,),
+            name=f"map_tp_transforming_worker-{gen_id}-{idx}",
+            args=(input_queues[idx % num_input_queues], output_queues[idx]),
             daemon=True,
         )
-        for worker_idx in range(num_workers)
+        for idx in range(num_workers)
     ]
 
     for t in transforming_worker_threads:
@@ -1071,7 +1079,6 @@ def make_async_gen(
             #     order and one single element is dequeued (in a blocking way!) at a
             #     time from every individual output queue
             #
-            non_empty_queues = []
             empty_queues = []
 
             # At every iteration only remaining non-empty queues
@@ -1086,10 +1093,12 @@ def make_async_gen(
                 if item is SENTINEL:
                     empty_queues.append(output_queue)
                 else:
-                    non_empty_queues.append(output_queue)
                     yield item
 
-            remaining_output_queues = non_empty_queues
+            if empty_queues:
+                remaining_output_queues = [
+                    q for q in remaining_output_queues if q not in empty_queues
+                ]
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
@@ -1117,6 +1126,9 @@ class RetryingContextManager:
         self._data_context = context
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} fs={self.handler.unwrap()}>"
 
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
@@ -1436,13 +1448,6 @@ def iterate_with_retry(
                 time.sleep(backoff)
             else:
                 raise e from None
-
-
-def create_dataset_tag(dataset_name: Optional[str], *args):
-    tag = dataset_name or "dataset"
-    for arg in args:
-        tag += f"_{arg}"
-    return tag
 
 
 def convert_bytes_to_human_readable_str(num_bytes: int) -> str:

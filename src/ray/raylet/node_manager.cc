@@ -41,6 +41,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
@@ -152,7 +153,8 @@ NodeManager::NodeManager(
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::Now(); }),
+          /*get_time=*/[]() { return absl::Now(); },
+          config.enable_resource_isolation),
       client_call_manager_(io_service),
       worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
@@ -239,7 +241,6 @@ NodeManager::NodeManager(
       store_client_(std::make_unique<plasma::PlasmaClient>()),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
-      temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
       wait_manager_(/*is_object_local*/
@@ -265,7 +266,6 @@ NodeManager::NodeManager(
           worker_pool_,
           worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
-          /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
           /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
@@ -351,9 +351,6 @@ NodeManager::NodeManager(
       self_node_id_,
       *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
-      [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
-        return !this->IsWorkerDead(owner_worker_id, owner_node_id);
-      },
       get_node_info_func,
       worker_pool_,
       leased_workers_,
@@ -426,11 +423,6 @@ std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
   return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
 };
 
-bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
-  return failed_workers_cache_.count(worker_id) > 0 ||
-         failed_nodes_cache_.count(node_id) > 0;
-}
-
 ray::Status NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
@@ -486,7 +478,8 @@ ray::Status NodeManager::RegisterGcs() {
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const rpc::WorkerDeltaData &worker_failure_data) {
-        HandleUnexpectedWorkerFailure(worker_failure_data);
+        HandleUnexpectedWorkerFailure(
+            WorkerID::FromBinary(worker_failure_data.worker_id()));
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, nullptr));
@@ -1037,8 +1030,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
-  // TODO(swang): If we receive a notification for our own death, clean up and
-  // exit immediately.
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 
   if (node_id == self_node_id_) {
@@ -1062,6 +1053,25 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     }
   }
 
+  failed_nodes_cache_.insert(node_id);
+
+  cluster_task_manager_->CancelAllTasksOwnedBy(node_id);
+
+  // Clean up workers that were owned by processes that were on the failed
+  // node.
+  for (const auto &[_, worker] : leased_workers_) {
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    RAY_CHECK(!owner_node_id.IsNil());
+    if (worker->IsDetachedActor() || owner_node_id != node_id) {
+      continue;
+    }
+    // If the leased worker's owner was on the failed node, then kill the leased
+    // worker.
+    RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
+        << "The leased worker is killed because the owner node died.";
+    KillWorker(worker);
+  }
+
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
@@ -1070,7 +1080,6 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
           scheduling::NodeID(node_id.Binary()))) {
     RAY_LOG(DEBUG).WithField(node_id)
         << "Received NodeRemoved callback for an unknown node.";
-    return;
   }
 
   // Remove the node manager address.
@@ -1082,58 +1091,27 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Notify the object directory that the node has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleNodeRemoved(node_id);
-
-  // Clean up workers that were owned by processes that were on the failed
-  // node.
-  rpc::WorkerDeltaData data;
-  data.set_raylet_id(node_id.Binary());
-  HandleUnexpectedWorkerFailure(data);
 }
 
-void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data) {
-  const WorkerID worker_id = WorkerID::FromBinary(data.worker_id());
-  const NodeID node_id = NodeID::FromBinary(data.raylet_id());
-  if (!worker_id.IsNil()) {
-    RAY_LOG(DEBUG).WithField(worker_id) << "Worker failed";
-    failed_workers_cache_.insert(worker_id);
-  } else {
-    RAY_CHECK(!node_id.IsNil());
-    failed_nodes_cache_.insert(node_id);
-  }
+void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
+  RAY_CHECK(!worker_id.IsNil());
+  RAY_LOG(DEBUG).WithField(worker_id) << "Worker failed";
+  failed_workers_cache_.insert(worker_id);
 
-  cluster_task_manager_->CancelAllTaskOwnedBy(worker_id);
+  cluster_task_manager_->CancelAllTasksOwnedBy(worker_id);
 
-  for (const auto &pair : leased_workers_) {
-    auto &worker = pair.second;
+  for (const auto &[_, worker] : leased_workers_) {
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
-    RAY_LOG(DEBUG).WithField(worker->WorkerId())
-        << "Lease worker owned by " << owner_worker_id;
-    RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
-    if (!worker->IsDetachedActor()) {
-      if (!worker_id.IsNil()) {
-        // If the failed worker was a leased worker's owner, then kill the leased worker.
-        if (owner_worker_id == worker_id) {
-          std::ostringstream stream;
-          stream << "The leased worker " << worker->WorkerId()
-                 << " is killed because the owner process " << owner_worker_id
-                 << " died.";
-          const auto &err_msg = stream.str();
-          RAY_LOG(INFO) << err_msg;
-          KillWorker(worker);
-        }
-      } else if (owner_node_id == node_id) {
-        // If the leased worker's owner was on the failed node, then kill the leased
-        // worker.
-        std::ostringstream stream;
-        stream << "The leased worker " << worker->WorkerId()
-               << " is killed because the owner node " << owner_node_id << " died.";
-        const auto &err_msg = stream.str();
-        RAY_LOG(INFO) << err_msg;
-        KillWorker(worker);
-      }
+    RAY_CHECK(!owner_worker_id.IsNil());
+    if (worker->IsDetachedActor() || owner_worker_id != worker_id) {
+      continue;
     }
+    // If the failed worker was a leased worker's owner, then kill the leased worker.
+    RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
+                  << " is killed because the owner process " << owner_worker_id
+                  << " died.";
+    KillWorker(worker);
   }
 }
 
@@ -1740,7 +1718,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
-  cluster_task_manager_->CancelAllTaskOwnedBy(worker->WorkerId());
+  cluster_task_manager_->CancelAllTasksOwnedBy(worker->WorkerId());
 
   if (graceful) {
     // Graceful disconnects are initiated by a request from the worker and
@@ -1853,47 +1831,45 @@ void NodeManager::ProcessWaitRequestMessage(
     } else {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
-      stream << "Failed to write WaitReply to the client. Status " << status
-             << ", message: " << status.message();
+      stream << "Failed to write WaitReply to the client. Status " << status;
       DisconnectClient(
           client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
-  wait_manager_.Wait(object_ids,
-                     message->timeout(),
-                     num_required_objects,
-                     [this, resolve_objects, client, current_task_id](
-                         std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
-                       // Write the data.
-                       flatbuffers::FlatBufferBuilder fbb;
-                       flatbuffers::Offset<protocol::WaitReply> wait_reply =
-                           protocol::CreateWaitReply(
-                               fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
-                       fbb.Finish(wait_reply);
+  wait_manager_.Wait(
+      object_ids,
+      message->timeout(),
+      num_required_objects,
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
+                                                       std::vector<ObjectID> remaining) {
+        // Write the data.
+        flatbuffers::FlatBufferBuilder fbb;
+        flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+        fbb.Finish(wait_reply);
 
-                       auto status = client->WriteMessage(
-                           static_cast<int64_t>(protocol::MessageType::WaitReply),
-                           fbb.GetSize(),
-                           fbb.GetBufferPointer());
-                       if (status.ok()) {
-                         // The client is unblocked now because the wait call has
-                         // returned.
-                         if (resolve_objects) {
-                           AsyncResolveObjectsFinish(client, current_task_id);
-                         }
-                       } else {
-                         // We failed to write to the client, so disconnect the client.
-                         std::ostringstream stream;
-                         stream << "Failed to write WaitReply to the client. Status "
-                                << status << ", message: " << status.message();
-                         DisconnectClient(client,
-                                          /*graceful=*/false,
-                                          rpc::WorkerExitType::SYSTEM_ERROR,
-                                          stream.str());
-                       }
-                     });
+        auto status =
+            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                                 fbb.GetSize(),
+                                 fbb.GetBufferPointer());
+        if (status.ok()) {
+          // The client is unblocked now because the wait call has
+          // returned.
+          if (resolve_objects) {
+            AsyncResolveObjectsFinish(client, current_task_id);
+          }
+        } else {
+          // We failed to write to the client, so disconnect the client.
+          std::ostringstream stream;
+          stream << "Failed to write WaitReply to the client. Status " << status;
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           stream.str());
+        }
+      });
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
@@ -2010,7 +1986,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   const auto caller_node =
       NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
   if (!task.GetTaskSpecification().IsDetachedActor() &&
-      IsWorkerDead(caller_worker, caller_node)) {
+      (failed_workers_cache_.contains(caller_worker) ||
+       failed_nodes_cache_.contains(caller_node))) {
     RAY_LOG(INFO).WithField(caller_worker).WithField(caller_node)
         << "Caller of RequestWorkerLease is dead. Skip leasing.";
     reply->set_canceled(true);
@@ -2658,11 +2635,6 @@ std::string NodeManager::DebugString() const {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
-  }
-
-  result << "\nRemote node managers: ";
-  for (const auto &entry : remote_node_manager_addresses_) {
-    result << "\n" << entry.first;
   }
 
   // Event stats.
@@ -3348,20 +3320,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
     agent_command_line.push_back("--disable-metrics-collection");
   }
 
-  // Create a non-zero random agent_id to pass to the child process.
-  // We cannot use pid an id because os.getpid() from the python process is not
-  // reliable when using a launcher.
-  // See https://github.com/ray-project/ray/issues/24361 and Python issue
-  // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();  // NOLINT
-  };
-  std::string agent_id_str = std::to_string(agent_id);
-  agent_command_line.push_back("--agent-id");
-  agent_command_line.push_back(agent_id_str);
-
-  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  std::string agent_name = "dashboard_agent";
   // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
   // dashboard agent crash no longer lead to a raylet crash.
   auto options = AgentManager::Options({self_node_id,

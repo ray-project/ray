@@ -44,6 +44,28 @@ def test_get_tag_matcher() -> None:
     )
 
 
+def test_linux_privileged() -> None:
+    with mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
+        return_value=None,
+    ):
+        container = _get_container(
+            team="core",
+            operating_system="linux",
+            workers=3,
+            worker_id=1,
+            parallelism_per_worker=2,
+            network=None,
+            gpus=0,
+            tmp_filesystem=None,
+            privileged=True,
+        )
+        assert (
+            container.privileged
+            and "--privileged" in container.get_run_command_extra_args()
+        )
+
+
 def test_get_container() -> None:
     with mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",

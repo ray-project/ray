@@ -153,7 +153,10 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   RAY_LOG(INFO) << "create_and_mmap_buffer(" << size << ", " << file_template << ")";
   std::vector<char> file_name(file_template.begin(), file_template.end());
   file_name.push_back('\0');
-  *fd = mkstemp(&file_name[0]);
+  // O_CLOEXEC will ensure the fd for plasma store memory backed by shm or fallback
+  // is closed when the process is forked. The core and IO worker processes are
+  // are forked from raylet which can cause memory leaks.
+  *fd = mkostemp(&file_name[0], O_CLOEXEC);
   if (*fd < 0) {
     RAY_LOG(FATAL) << "create_buffer failed to open file " << &file_name[0] << ", error"
                    << std::strerror(errno);
@@ -318,6 +321,11 @@ void SetDLMallocConfig(const std::string &plasma_directory,
                        const std::string &fallback_directory,
                        bool hugepage_enabled,
                        bool fallback_enabled) {
+  RAY_LOG(INFO) << "Setting dlmalloc config: "
+                << "plasma_directory=" << plasma_directory
+                << ", fallback_directory=" << fallback_directory
+                << ", hugepage_enabled=" << hugepage_enabled
+                << ", fallback_enabled=" << fallback_enabled;
   dlmalloc_config.hugepages_enabled = hugepage_enabled;
   dlmalloc_config.directory = plasma_directory;
   dlmalloc_config.fallback_directory = fallback_directory;

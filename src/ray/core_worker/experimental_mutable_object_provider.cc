@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 namespace experimental {
@@ -166,13 +170,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is large enough to hold both the data and the
   // metadata.
-  size_t chunk_offset = 0;
-  for (absl::string_view cord_chunk : request.payload().Chunks()) {
-    memcpy(object_backing_store->Data() + offset + chunk_offset,
-           cord_chunk.data(),
-           cord_chunk.size());
-    chunk_offset += cord_chunk.size();
-  }
+  memcpy(object_backing_store->Data() + offset, request.payload().data(), chunk_size);
 
   size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);

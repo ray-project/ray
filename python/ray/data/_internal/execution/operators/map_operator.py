@@ -473,7 +473,10 @@ class MapOperator(OneToOneOperator, ABC):
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
 
-    def shutdown(self):
+    def _do_shutdown(self, force: bool = False):
+        # Invoke base-class sequence
+        super()._do_shutdown(force)
+        # Release refs
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 
@@ -531,6 +534,7 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+    TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
@@ -546,6 +550,8 @@ def _map_task(
             stats = BlockExecStats.builder()
             profiler.reset()
 
+    TaskContext.reset_current()
+
 
 class _BlockRefBundler:
     """Rebundles RefBundles to get them close to a particular number of rows."""
@@ -558,6 +564,10 @@ class _BlockRefBundler:
                 bundle up to this target, but only exceed it if not doing so would
                 result in an empty bundle.
         """
+        assert (
+            min_rows_per_bundle is None or min_rows_per_bundle >= 0
+        ), "Min rows per bundle has to be non-negative"
+
         self._min_rows_per_bundle = min_rows_per_bundle
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0

@@ -97,8 +97,8 @@ ray_cc_test(
     srcs = ["filesystem_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
-        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -123,6 +123,7 @@ ray_cc_test(
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@nlohmann_json",
     ],
 )
 
@@ -132,7 +133,6 @@ ray_cc_test(
     srcs = ["sample_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
         "//src/ray/util:sample",
         "@com_google_googletest//:gtest_main",
     ],
@@ -248,26 +248,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "stream_redirection_utils_test",
-    size = "small",
-    srcs = ["stream_redirection_utils_test.cc"],
-    tags = [
-        "team:core",
-        # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
-        # ostream concurrently at pipe dumper thread and main thread, which we have ordered
-        # properly. Disable the complete test suite here since it always contains exactly one test
-        # case.
-        "no_tsan",
-    ],
-    deps = [
-        "//src/ray/common/test:testing",
-        "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "stream_redirection_exit_test",
     size = "small",
     srcs = ["stream_redirection_exit_test.cc"],
@@ -282,7 +262,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -384,6 +364,28 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:invoke_once_token",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "concurrent_flat_map_test",
+    size = "small",
+    srcs = ["concurrent_flat_map_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:concurrent_flat_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "filesystem_monitor_test",
+    size = "small",
+    srcs = ["filesystem_monitor_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:file_system_monitor",
         "@com_google_googletest//:gtest_main",
     ],
 )

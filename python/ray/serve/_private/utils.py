@@ -13,7 +13,10 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
+from ray.serve.config import gRPCOptions
 import requests
+from asyncio import ensure_future, futures, coroutines
+import concurrent.futures
 
 import ray
 import ray.util.serialization_addons
@@ -590,7 +593,7 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if "{" in route_prefix or "}" in route_prefix:
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+            f"Invalid route_prefix '{route_prefix}', may not contain wildcards."
         )
 
 
@@ -618,3 +621,38 @@ def wait_for_interrupt() -> None:
         # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
         # from the main script.
         raise
+
+
+def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+    return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
+
+
+def run_coroutine_or_future_threadsafe(coro_or_future, loop):
+    """Submit a coroutine object or future to a given event loop.
+
+    Ref: https://github.com/python/cpython/blob/eef49c359505eaf109d519d39e53dfd3c78d066a/Lib/asyncio/tasks.py#L991
+
+    Return a concurrent.futures.Future to access the result.
+    """
+    if not coroutines.iscoroutine(coro_or_future) and not futures.isfuture(
+        coro_or_future
+    ):
+        raise TypeError("A coroutine object or future is required")
+
+    if futures.isfuture(coro_or_future):
+        assert loop == coro_or_future.get_loop()
+
+    future = concurrent.futures.Future()
+
+    def callback():
+        try:
+            futures._chain_future(ensure_future(coro_or_future, loop=loop), future)
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except BaseException as exc:
+            if future.set_running_or_notify_cancel():
+                future.set_exception(exc)
+            raise
+
+    loop.call_soon_threadsafe(callback)
+    return future

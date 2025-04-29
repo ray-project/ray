@@ -3159,17 +3159,76 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Demands:
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
+Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
+""".strip()
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+    )
+    print(actual)
+    assert expected == actual
+
+
+def test_info_string_multiple_constraints():
+    lm_summary = LoadMetricsSummary(
+        usage={
+            "CPU": (530.0, 544.0),
+            "GPU": (2, 2),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
+        },
+        resource_demand=[({"CPU": 1}, 150)],
+        pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
+        request_demand=[({"CPU": 16}, 100), ({"CPU": 1, "GPU": 16}, 10)],
+        node_types=[],
+    )
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={"p3.2xlarge": 2},
+        pending_nodes=[],
+        idle_nodes=[],
+        pending_launches={},
+        failed_nodes=[],
+    )
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+Node status
+--------------------------------------------------------
+Active:
+ 2 p3.2xlarge
+Idle:
+ (no idle nodes)
+Pending:
+ (no pending nodes)
+Recent failures:
+ (no failures)
+
+Resources
+--------------------------------------------------------
+Total Usage:
+ 530.0/544.0 CPU
+ 2/2 GPU
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
+
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
+ {'CPU': 1, 'GPU': 16}: 10 from request_resources()
+Total Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3256,10 +3315,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 
 Node: 192.168.1.1
  Usage:
@@ -3370,10 +3430,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 
 Node: 192.168.1.1 (head-node)
  Usage:
@@ -3461,10 +3522,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3548,17 +3610,18 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Demands:
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
+Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3647,10 +3710,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3728,18 +3792,19 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Demands:
+Total Constraints:
+ {'CPU': 16}: 100 from request_resources()
+Total Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
  {'GPU': 0.5}: 100+ pending tasks/actors (100+ using placement groups)
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """
 
     actual = format_info_string(
@@ -3918,9 +3983,9 @@ def _lexical_scorer_plugin(
 
 @pytest.fixture
 def lexical_score_plugin():
-    os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY] = (
-        "ray.tests.test_resource_demand_scheduler." "_lexical_scorer_plugin"
-    )
+    os.environ[
+        AUTOSCALER_UTILIZATION_SCORER_KEY
+    ] = "ray.tests.test_resource_demand_scheduler._lexical_scorer_plugin"
     try:
         yield None
     finally:

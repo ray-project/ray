@@ -60,6 +60,26 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> manager;
 };
 
+TEST_F(ClusterResourceManagerTest, DebugStringTest) {
+  // Test max_num_nodes_to_include parameter is working.
+  ASSERT_EQ(std::vector<std::string>(absl::StrSplit(manager->DebugString(), "node id:"))
+                    .size() -
+                1,
+            3);
+  ASSERT_EQ(std::vector<std::string>(
+                absl::StrSplit(manager->DebugString(/*max_num_nodes_to_include=*/5),
+                               "node id:"))
+                    .size() -
+                1,
+            3);
+  ASSERT_EQ(std::vector<std::string>(
+                absl::StrSplit(manager->DebugString(/*max_num_nodes_to_include=*/2),
+                               "node id:"))
+                    .size() -
+                1,
+            2);
+}
+
 TEST_F(ClusterResourceManagerTest, HasFeasibleResourcesTest) {
   ASSERT_FALSE(manager->HasFeasibleResources(node3, {}));
   ASSERT_FALSE(manager->HasFeasibleResources(

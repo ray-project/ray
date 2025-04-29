@@ -186,10 +186,12 @@ using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Rep
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
 ///
-/// It maintains a thread that keeps polling events from `CompletionQueue`, and post
-/// the callback function to the main event loop when a reply is received.
+/// It maintains multiple threads that keep polling events from its corresponding
+/// `CompletionQueue`, and post the callback function to the main event loop when a reply
+/// is received.
 ///
-/// Multiple clients can share one `ClientCallManager`.
+/// Multiple clients can share one `ClientCallManager`, with responses delegated to one
+/// completion queue in the round-robin style.
 class ClientCallManager {
  public:
   /// Constructor.
@@ -210,7 +212,7 @@ class ClientCallManager {
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
-      cqs_.push_back(std::make_unique<grpc::CompletionQueue>());
+      cqs_.emplace_back(std::make_unique<grpc::CompletionQueue>());
       polling_threads_.emplace_back(
           &ClientCallManager::PollEventsFromCompletionQueue, this, i);
     }
@@ -222,6 +224,7 @@ class ClientCallManager {
       cq->Shutdown();
     }
     for (auto &polling_thread : polling_threads_) {
+      RAY_CHECK(polling_thread.joinable());
       polling_thread.join();
     }
   }
@@ -325,7 +328,7 @@ class ClientCallManager {
               stats_handle->event_name + ".OnReplyReceived",
               // Implement the delay of the rpc client call as the
               // delay of OnReplyReceived().
-              ray::asio::testing::get_delay_us(stats_handle->event_name));
+              ray::asio::testing::GetDelayUs(stats_handle->event_name));
           EventTracker::RecordEnd(std::move(stats_handle));
         } else {
           delete tag;

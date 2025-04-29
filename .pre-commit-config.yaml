@@ -47,16 +47,20 @@ repos:
     hooks:
       - id: cpplint
         args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
-        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker/transport)/.*\.(h|cc)$
-        exclude: ^src/ray/raylet/scheduling/.*\.(h|cc)$
+        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker)/.*\.(h|cc)$
+        exclude: |
+          (?x)^(
+            src/ray/raylet/scheduling/.*\.(h|cc)$ |
+            src/ray/core_worker/lib/java/.*\.h$
+          )
 
   - repo: https://github.com/keith/pre-commit-buildifier
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python)(/[^/]+)*/BUILD$
+        files: ^(src|cpp|python|rllib)(/[^/]+)*/BUILD$
       - id: buildifier-lint
-        files: ^(src|cpp|python)(/[^/]+)*/BUILD$
+        files: ^(src|cpp|python|rllib)(/[^/]+)*/BUILD$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
