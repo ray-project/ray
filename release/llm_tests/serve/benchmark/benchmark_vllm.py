@@ -16,10 +16,7 @@ import time  # noqa: E402
 from datetime import datetime  # noqa: E402
 
 from bm import run_bm  # noqa: E402
-from common import (  # noqa: E402
-    read_yaml,
-    write_to_s3,
-)
+from common import write_to_s3, get_llm_config  # noqa: E402
 
 RAYLLM_RELEASE_TEST_PERF_SERVICE_NAME = "rayllm_release_test_perf_service"
 THREAD_CLEANUP_TIMEOUT_S = 10
@@ -233,7 +230,7 @@ def upload_results_to_s3(s3_path, results, service_metadata):
 
 
 def main(pargs):
-    llm_config = read_yaml(pargs.llm_config)
+    llm_config = get_llm_config(pargs.llm_config)
     vllm_cli_args = get_vllm_cli_args(llm_config)
 
     results = run_vllm_benchmark(vllm_cli_args)
@@ -244,7 +241,7 @@ def main(pargs):
         if llm_config["accelerator_type"] == "A10G"
         else llm_config["accelerator_type"]
     )
-    tag = (f"{accelerator}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}",)
+    tag = f"{accelerator}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
     service_metadata = {
         "cloud_name": "",
         "service_name": "",

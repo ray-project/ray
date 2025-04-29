@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Dict, List
+from typing import Dict, List, Any
 from urllib.parse import urlparse
 
 import boto3
@@ -15,6 +15,23 @@ logging.basicConfig(
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO,
 )
+
+
+def get_llm_config(serve_config_file: List[Dict]) -> List[Any]:
+    """Get the first llm_config from serve config file."""
+    with open(serve_config_file, "r") as f:
+        loaded_llm_config = yaml.safe_load(f)
+
+    applications = loaded_llm_config["applications"]
+    config = applications[0]["args"]["llm_configs"][0]
+    if isinstance(config, dict):
+        return config
+
+    assert isinstance(config, str)
+    with open(config, "r") as f:
+        loaded_llm_config = yaml.safe_load(f)
+
+    return loaded_llm_config
 
 
 def read_yaml(file_path: str) -> Dict:

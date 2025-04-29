@@ -182,12 +182,6 @@ def get_applications(serve_config_file: str) -> List[Any]:
     return loaded_llm_config["applications"]
 
 
-def get_first_llm_config(applications: List[Dict]) -> List[Any]:
-    """Get the first llm_config from serve config file."""
-
-    return applications[0]["args"]["llm_configs"][0]
-
-
 def setup_client_env_vars(api_url: str, api_token: Optional[str] = None):
     """Set up the environment variables for the tests."""
     os.environ["OPENAI_API_BASE"] = f"{api_url.rstrip('/')}/v1"

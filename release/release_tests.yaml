@@ -4126,7 +4126,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-perf-profiler false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml
 
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
@@ -4166,7 +4166,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-perf-profiler false
 
 
 - name: llm_serve_llama_3dot1_8B_lora

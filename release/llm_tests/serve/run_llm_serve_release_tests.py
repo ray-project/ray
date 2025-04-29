@@ -12,7 +12,7 @@ import click
 import pytest
 import logging
 import anyscale
-from benchmark.common import read_from_s3
+from benchmark.common import read_from_s3, get_llm_config
 from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
     start_service,
@@ -23,7 +23,6 @@ from test_utils import (
     get_python_version_from_image,
     append_python_version_from_image,
     get_s3_storage_path,
-    get_first_llm_config,
 )
 
 
@@ -55,16 +54,16 @@ def main(
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
+    llm_config = get_llm_config(serve_config_file)
 
     if run_perf_profiler:
-        llm_config = get_first_llm_config(applications)
         if image_uri is None:
             cluster_env = os.environ.get("ANYSCALE_JOB_CLUSTER_ENV_NAME", None)
             if cluster_env is not None:
                 image_uri = f"anyscale/image/{cluster_env}:1"
 
         submit_benchmark_vllm_job(
-            image_uri, llm_config, env_vars["HUGGING_FACE_HUB_TOKEN"]
+            image_uri, serve_config_file, env_vars["HUGGING_FACE_HUB_TOKEN"]
         )
 
     with start_service(
@@ -117,16 +116,16 @@ def main(
             )
 
             logger.info(f"Performance test results: {results}")
-            with open(llm_config, "r") as f:
-                loaded_llm_config = yaml.safe_load(f)
 
+            accelerator = llm_config.get("accelerator_type", "NoGpu")
             # "A10" without "G" to match existing dashboard tags
-            accelerator = (
-                "A10"
-                if loaded_llm_config["accelerator_type"] == "A10G"
-                else loaded_llm_config["accelerator_type"]
+            if accelerator == "A10G":
+                accelerator = "A10"
+
+            tensor_parallel_size = llm_config["engine_kwargs"].get(
+                "tensor_parallel_size", 0 if accelerator == "NoGpu" else 1
             )
-            tag = f"{accelerator}-TP{loaded_llm_config['engine_kwargs']['tensor_parallel_size']}"
+            tag = f"{accelerator}-TP{tensor_parallel_size}"
             for result in results:
                 record = FirehoseRecord(
                     record_name=RecordName.RAYLLM_PERF_TEST,
@@ -143,7 +142,7 @@ def main(
             record.write(verbose=True)
 
 
-def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
+def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: str):
     py_version = get_python_version_from_image(image_uri)
     s3_storage_path = get_s3_storage_path(suffix=py_version)
 
@@ -156,7 +155,7 @@ def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
 
     job_config = anyscale.job.JobConfig(
         name=job_name,
-        entrypoint=f"python benchmark/benchmark_vllm.py --llm-config {llm_config} --remote-result-path {s3_storage_path} {f'--py-version {py_version}' if py_version else ''}",
+        entrypoint=f"python benchmark/benchmark_vllm.py --llm-config {serve_config_file} --remote-result-path {s3_storage_path} {f'--py-version {py_version}' if py_version else ''}",
         working_dir=working_dir,
         cloud=CLOUD,
         compute_config=anyscale.compute_config.ComputeConfig(
