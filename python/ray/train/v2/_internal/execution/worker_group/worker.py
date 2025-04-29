@@ -28,6 +28,7 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
 from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
+from ray.train.v2._internal.util import ObjectRefWrapper
 
 T = TypeVar("T")
 
@@ -111,12 +112,14 @@ class RayTrainWorker:
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> T:
         return fn(*fn_args, **fn_kwargs)
 
-    def run_train_fn(self, train_fn: Callable[[], Any]):
+    def run_train_fn(self, train_fn_ref: ObjectRefWrapper[Callable[[], Any]]):
         """Run the training function in a separate thread.
 
         This function should return immediately, freeing up the main actor thread
         to perform other tasks such as polling the status.
         """
+        train_fn = train_fn_ref.get()
+
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(train_fn)
 

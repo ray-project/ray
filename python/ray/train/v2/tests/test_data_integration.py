@@ -12,6 +12,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.train.v2.tests.test_controller import DummyWorkerGroup
 
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
@@ -71,7 +72,7 @@ def test_dataset_setup_callback(ray_start_4_cpus):
 
     worker_group_context = WorkerGroupContext(
         run_attempt_id="attempt_1",
-        train_fn=lambda: None,
+        train_fn_ref=ObjectRefWrapper(lambda: None),
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
     )
