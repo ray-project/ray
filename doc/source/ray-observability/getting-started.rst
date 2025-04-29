@@ -48,6 +48,10 @@ You can capture the context object returned by `ray.init()` and access the URL t
     context = ray.init()
     print(context.dashboard_url)
 
+..
+    This test output is flaky. If Ray isn't completely shutdown, the port can be
+    "8266" instead of "8265".
+
 .. testoutput::
     :options: +MOCK
 
@@ -70,6 +74,10 @@ A more convenient way to get the dashboard URL *after* Ray has been initialized 
     ray.init()
     ctx = ray.get_runtime_context()
     print(ctx.get_dashboard_url())
+
+..
+    This test output is flaky. If Ray isn't completely shutdown, the port can be
+    "8266" instead of "8265".
 
 .. testoutput::
     :options: +MOCK
