@@ -84,7 +84,7 @@ class MockVLLMEngine(LLMEngine):
             sampling_params=VLLMSamplingParams.from_prompt(prompt),
         )
 
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
         sampling_params = self._parse_sampling_params(
             vllm_engine_request.sampling_params
         )
@@ -240,7 +240,7 @@ class MockEchoVLLMEngine(MockVLLMEngine):
         res.update({"has_image": has_image})
         return json.dumps(res)
 
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
         yield LLMRawResponse(
             generated_text=self._convert_to_json(vllm_engine_request),
             num_input_tokens=0,
@@ -356,7 +356,7 @@ class MockJSONModeVLLMEngine(MockVLLMEngine):
             yield llm_response
             await asyncio.sleep(generation_time)
 
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
         sampling_params = self._parse_sampling_params(
             vllm_engine_request.sampling_params
         )
