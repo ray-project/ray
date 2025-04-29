@@ -143,14 +143,11 @@ async def test_multiplex_deployment(
 
     assert arg is not None
 
-    expected_lora_out_with_serve_request_context = dict(expected_lora_out)
-    expected_lora_out_with_serve_request_context[
-        "serve_request_context"
-    ] = arg.model_dump().get("serve_request_context")
-    expected_lora_out_with_serve_request_context["stream"] = stream_tokens
+    expected_lora_out_modified = dict(expected_lora_out)
+    expected_lora_out_modified["stream"] = stream_tokens
     print("***arg***", arg.model_dump())
-    print("***exp***", expected_lora_out_with_serve_request_context)
-    assert arg == arg.__class__(**expected_lora_out_with_serve_request_context)
+    print("***exp***", expected_lora_out_modified)
+    assert arg == arg.__class__(**expected_lora_out_modified)
 
     responses = [
         x
@@ -189,7 +186,6 @@ async def test_multiplex_deployment(
             "best_of": 1,
         },
         "multi_modal_data": None,
-        "serve_request_context": arg.model_dump().get("serve_request_context"),
         "disk_multiplex_config": None,
         "stream": stream_tokens,
     }
