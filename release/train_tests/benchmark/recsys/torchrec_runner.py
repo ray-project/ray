@@ -101,7 +101,10 @@ class TorchRecRunner(TrainLoopRunner):
         return f"model_shard_{rank=}.pt", f"optimizer_shard_{rank=}.pt"
 
     def _save_training_state(self, local_dir: str):
-        # Save sharded model and optimizer state.
+        # NOTE: Embedding table shards are on different GPUs,
+        # so we need to do distributed checkpointing.
+        # This checkpoint format must be loaded on the same number
+        # of workers and GPU types, since it was sharded with a compute-specific plan.
         model_filename, optimizer_filename = self._get_model_and_optim_filenames()
 
         torch.save(self.model.state_dict(), os.path.join(local_dir, model_filename))
