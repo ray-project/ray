@@ -24,6 +24,7 @@ from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands,
     get_conda_envs,
     get_conda_info_json,
+    validate_ray_installed_in_conda_env,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -357,6 +358,7 @@ class CondaPlugin(RuntimeEnvPlugin):
                         "You can only specify an env that already exists. "
                         f"Please make sure to create an env {result} "
                     )
+                validate_ray_installed_in_conda_env(result)
                 self._validated_named_conda_env.add(result)
                 return 0
 
