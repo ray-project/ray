@@ -15,18 +15,6 @@ from logger_utils import ContextLoggerAdapter
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
-if torch.cuda.is_available():
-    import torch.multiprocessing as mp
-
-    try:
-        mp.set_start_method("spawn", force=True)
-        logger.info(
-            "Set multiprocessing start method to 'spawn' for CUDA compatibility"
-        )
-    except RuntimeError:
-        logger.info("Multiprocessing start method already set")
-
-
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
     """Factory for creating PyTorch DataLoaders."""
 
@@ -113,6 +101,17 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         Returns:
             An iterator that yields (image, label) tensors for training
         """
+        if torch.cuda.is_available():
+            import torch.multiprocessing as mp
+
+            try:
+                mp.set_start_method("spawn", force=True)
+                logger.info(
+                    "Set multiprocessing start method to 'spawn' for CUDA compatibility"
+                )
+            except RuntimeError:
+                logger.info("Multiprocessing start method already set")
+
         worker_rank = ray.train.get_context().get_world_rank()
         logger.info(f"Worker {worker_rank}: Creating train dataloader")
 
