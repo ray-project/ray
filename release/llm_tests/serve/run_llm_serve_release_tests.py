@@ -117,7 +117,7 @@ def main(
             )
 
             logger.info(f"Performance test results: {results}")
-            with open(serve_config_file, "r") as f:
+            with open(llm_config, "r") as f:
                 loaded_llm_config = yaml.safe_load(f)
 
             tag = f"{loaded_llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
@@ -175,17 +175,6 @@ def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
         state=anyscale.job.JobState.SUCCEEDED,
         timeout_s=JOB_TIMEOUT_S,
     )
-
-    # Read data from bucket and send to anyscale-dev-product's Firehose
-    # This Firehose is where databricks has access to.
-    data_for_firehose = read_from_s3(s3_storage_path)
-
-    for result in data_for_firehose:
-        record = FirehoseRecord(
-            record_name=RecordName.VLLM_PERF_TEST,
-            record_metrics=result,
-        )
-    record.write(verbose=True)
 
 
 if __name__ == "__main__":
