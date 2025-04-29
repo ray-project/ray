@@ -331,7 +331,9 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
 def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
     """Test that serve logs show up across different drivers."""
 
-    file1 = """import ray
+    file1 = """import sys
+print(f"script1 using {sys.executable=}")
+import ray
 from ray import serve
 @serve.deployment
 class A:
@@ -339,7 +341,9 @@ class A:
         return "Hello A"
 serve.run(A.bind())"""
 
-    file2 = """import ray
+    file2 = """import sys
+print(f"script2 using {sys.executable=}")
+import ray
 from ray import serve
 @serve.deployment
 class B:
@@ -350,6 +354,7 @@ serve.run(B.bind())"""
     with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
         f1.write(file1.encode("utf-8"))
         f1.seek(0)
+        print(f"test using {sys.executable=}")
         # Driver 1 (starts Serve controller)
         output = subprocess.check_output(
             [sys.executable, f1.name], stderr=subprocess.STDOUT
