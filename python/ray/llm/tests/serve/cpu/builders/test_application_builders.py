@@ -1,5 +1,6 @@
 import pytest
 from ray import serve
+from ray.serve.schema import ApplicationStatus, DeploymentStatus
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
@@ -42,43 +43,44 @@ def get_llm_serve_args(llm_config_with_mock_engine):
 
 @pytest.fixture()
 def serve_config_separate_model_config_files():
-    with tempfile.TemporaryDirectory() as config_dir:
-        serve_config_filename = "llm_app_separate_model_config_files.yaml"
-        config_root = os.path.join(os.path.dirname(__file__), "test_config_files")
-        serve_config_src = os.path.join(config_root, serve_config_filename)
-        serve_config_dst = os.path.join(config_dir, serve_config_filename)
+    # with tempfile.TemporaryDirectory() as config_dir:
+    config_dir = tempfile.mkdtemp()
+    serve_config_filename = "llm_app_separate_model_config_files.yaml"
+    config_root = os.path.join(os.path.dirname(__file__), "test_config_files")
+    serve_config_src = os.path.join(config_root, serve_config_filename)
+    serve_config_dst = os.path.join(config_dir, serve_config_filename)
 
-        with open(serve_config_src, "r") as f:
-            serve_config_yaml = yaml.safe_load(f)
+    with open(serve_config_src, "r") as f:
+        serve_config_yaml = yaml.safe_load(f)
 
-        for application in serve_config_yaml["applications"]:
-            llm_configs = application["args"]["llm_configs"]
-            tmp_llm_config_files = []
-            for llm_config in llm_configs:
-                llm_config_src = llm_config.replace(".", config_root, 1)
-                llm_config_dst = llm_config.replace(".", config_dir, 1)
-                tmp_llm_config_files.append(llm_config_dst)
+    for application in serve_config_yaml["applications"]:
+        llm_configs = application["args"]["llm_configs"]
+        tmp_llm_config_files = []
+        for llm_config in llm_configs:
+            llm_config_src = llm_config.replace(".", config_root, 1)
+            llm_config_dst = llm_config.replace(".", config_dir, 1)
+            tmp_llm_config_files.append(llm_config_dst)
 
-                with open(llm_config_src, "r") as f:
-                    llm_config_yaml = yaml.safe_load(f)
+            with open(llm_config_src, "r") as f:
+                llm_config_yaml = yaml.safe_load(f)
 
-                # Make sure engine is mocked.
-                if llm_config_yaml.get("runtime_env", None) is None:
-                    llm_config_yaml["runtime_env"] = {}
-                llm_config_yaml["runtime_env"]["env_vars"] = {
-                    "RAYLLM_VLLM_ENGINE_CLS": "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
-                }
+            # Make sure engine is mocked.
+            if llm_config_yaml.get("runtime_env", None) is None:
+                llm_config_yaml["runtime_env"] = {}
+            llm_config_yaml["runtime_env"]["env_vars"] = {
+                "RAYLLM_VLLM_ENGINE_CLS": "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
+            }
 
-                os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
-                with open(llm_config_dst, "w") as f:
-                    yaml.dump(llm_config_yaml, f)
+            os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
+            with open(llm_config_dst, "w") as f:
+                yaml.dump(llm_config_yaml, f)
 
-            application["args"]["llm_configs"] = tmp_llm_config_files
+        application["args"]["llm_configs"] = tmp_llm_config_files
 
-        with open(serve_config_dst, "w") as f:
-            yaml.dump(serve_config_yaml, f)
+    with open(serve_config_dst, "w") as f:
+        yaml.dump(serve_config_yaml, f)
 
-        yield serve_config_dst
+    yield serve_config_dst
 
 
 class TestBuildOpenaiApp:
@@ -97,13 +99,23 @@ class TestBuildOpenaiApp:
         """Test `build_openai_app` can be used in serve config."""
 
         def deployments_healthy():
-            status_response = subprocess.check_output(["serve", "status"])
-            serve_status = yaml.safe_load(status_response)["applications"][
-                "llm-endpoint"
-            ]
-            assert len(serve_status["deployments"]) == 2
-            deployment_status = serve_status["deployments"].values()
-            assert all([status["status"] == "HEALTHY" for status in deployment_status])
+            status = serve.status()
+            app_status = status.applications.get("llm-endpoint")
+            if not app_status or app_status.status != ApplicationStatus.RUNNING:
+                return False
+
+            deployments = app_status.deployments
+            if len(deployments) != 2:
+                return False
+
+            all_healthy = all(
+                dep.status == DeploymentStatus.HEALTHY for dep in deployments.values()
+            )
+            if not all_healthy:
+                unhealthy_deployments = {name: dep.status for name, dep in deployments.items() if dep.status != DeploymentStatus.HEALTHY}
+                return False
+
+            print("[TEST] All deployments healthy.")
             return True
 
         p = subprocess.Popen(["serve", "run", serve_config_separate_model_config_files])
