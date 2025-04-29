@@ -5,7 +5,6 @@ python:
     - boto3
     - tqdm
     - mosaicml-streaming
-    - albumentations
   conda_packages: []
 
 post_build_cmds:
