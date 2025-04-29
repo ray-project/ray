@@ -112,7 +112,6 @@ class TestBuildOpenaiApp:
                 dep.status == DeploymentStatus.HEALTHY for dep in deployments.values()
             )
             if not all_healthy:
-                unhealthy_deployments = {name: dep.status for name, dep in deployments.items() if dep.status != DeploymentStatus.HEALTHY}
                 return False
 
             print("[TEST] All deployments healthy.")
