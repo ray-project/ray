@@ -85,7 +85,7 @@ class MockVLLMEngine(LLMEngine):
             prompt_text = prompt.prompt[0].content
         else:
             prompt_text = prompt.prompt
-            
+
         return VLLMGenerationRequest(
             request_id=request_id,
             prompt=prompt_text,

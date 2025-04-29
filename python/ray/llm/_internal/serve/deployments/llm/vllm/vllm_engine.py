@@ -467,7 +467,7 @@ class VLLMEngine(LLMEngine):
         prompt: Prompt,
         stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
-    ) -> VLLMGenerationRequest:
+    ) -> GenerationRequest:
         from vllm.entrypoints.chat_utils import (
             parse_chat_messages_futures,
             apply_hf_chat_template,
@@ -515,7 +515,7 @@ class VLLMEngine(LLMEngine):
 
     async def generate(
         self,
-        request: VLLMGenerationRequest,
+        request: GenerationRequest,
     ) -> AsyncGenerator[LLMRawResponse, None]:
         batch_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS if request.stream else None
 

@@ -44,7 +44,15 @@ class LLMEngine(abc.ABC):
 
     async def check_health(self):
         """Check the health of the engine"""
-        pass
+        return True
+
+    ##############################################################
+    # Optional methods
+    # These methods will be implemented in the future to allow
+    # more granular life-cycle management of the engine.
+    # e.g. in usecases like RL training, we need to put the engine
+    # to sleep during training and wake up during rollouts.
+    ##############################################################
 
     async def sleep(self):
         """Puts the engine to sleep"""

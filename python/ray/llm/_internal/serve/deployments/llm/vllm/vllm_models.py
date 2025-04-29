@@ -2,7 +2,6 @@ import os
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 from pydantic import ConfigDict, Field
-from ray import serve
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,

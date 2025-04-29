@@ -1,7 +1,6 @@
 import ray
 from ray import serve
 import pytest
-from ray.llm._internal.serve.configs.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
@@ -28,8 +27,6 @@ def shutdown_ray_and_serve():
     serve.shutdown()
     if ray.is_initialized():
         ray.shutdown()
-
-
 
 
 @pytest.fixture
