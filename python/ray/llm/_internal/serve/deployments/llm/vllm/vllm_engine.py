@@ -4,7 +4,6 @@ import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
-from ray import serve
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -506,7 +505,6 @@ class VLLMEngine(LLMEngine):
             "request_id": request_id,
             "sampling_params": VLLMSamplingParams.from_prompt(prompt),
             "disk_multiplex_config": disk_lora_model,
-            "serve_request_context": serve.context._serve_request_context.get(),
             "stream": stream,
         }
         if mm_data:
@@ -520,8 +518,7 @@ class VLLMEngine(LLMEngine):
         request: VLLMGenerationRequest,
     ) -> AsyncGenerator[LLMRawResponse, None]:
         batch_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS if request.stream else None
-        if request.serve_request_context:
-            ray.serve.context._serve_request_context.set(request.serve_request_context)
+
         response_stream = LLMRawResponsesBatcher(
             self._generate(request),
             interval_ms=batch_interval_ms,
