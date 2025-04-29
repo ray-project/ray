@@ -1,6 +1,5 @@
 import unittest
 import gymnasium as gym
-import ray
 
 from pathlib import Path
 from typing import Any, Dict, TYPE_CHECKING
@@ -55,11 +54,6 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
                 offline_eval_batch_size_per_runner=256,
             )
         )
-        # Start ray.
-        ray.init(ignore_reinit_error=True)
-
-    def tearDown(self) -> None:
-        ray.shutdown()
 
     def test_offline_evaluation_runner_setup(self):
 
