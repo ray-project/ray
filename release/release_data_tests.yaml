@@ -490,19 +490,12 @@
     script: >
       python dataset/batch_inference_mock_image_pipeline.py
 
-- name: batch_inference_mock_image_pipeline_chaos
-  working_dir: nightly_tests
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
-  cluster:
-    cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
-    byod:
-      post_build_script: byod_install_albumentations.sh
-
-  run:
-    timeout: 3600
-    prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
-    script: >
-      python dataset/batch_inference_mock_image_pipeline.py
 
 ##############
 # TPCH Queries
