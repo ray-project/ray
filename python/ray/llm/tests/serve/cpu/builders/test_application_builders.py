@@ -97,7 +97,7 @@ class TestBuildOpenaiApp:
         self, serve_config_separate_model_config_files, shutdown_ray_and_serve
     ):
         """Test `build_openai_app` can be used in serve config."""
-        
+
         # Initialize Ray cluster so that the serve run attaches to the same cluster.
         # and so that serve.status() works.
         ray.init()
