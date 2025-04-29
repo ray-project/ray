@@ -8,12 +8,17 @@ from ray.experimental.channel.communicator import Communicator
 if TYPE_CHECKING:
     import torch
 
+_accelerator_context_lock = threading.Lock()
+
 
 class AcceleratorContext:
     """
-    Base class for managing device-specific runtime operations. This class
-    provides an interface for device-related operations such as stream
-    management, event creation, and device communication.
+    Provides a general interface for the Accelerator, including stream, event,
+    and device management.
+
+    This is a singleton class. Before using it, you must register the accelerator's
+    device module name and the Communicator class. If nothing is registered,
+    it will automatically fall back to GPU or CPU.
     """
 
     _torch_module_name = None
@@ -24,44 +29,63 @@ class AcceleratorContext:
     @classmethod
     def get(cls):
         """
-        Singleton method to get the runtime instance based on the default torch
-        device. It initializes the appropriate runtime class based on the
-        detected device type.
+        Returns the singleton instance of the accelerator context.
+
+        If a custom accelerator has been registered, initializes the context
+        based on the registration. Otherwise, selects an appropriate runtime
+        based on the available device (CUDA or CPU) and registers the
+        corresponding default communicator.
+
         Returns:
-            AcceleratorContext: An instance of the appropriate runtime class
-            (CudaContext, or CpuContext).
+            AcceleratorContext: A singleton instance of the appropriate
+            runtime context.
         """
         if cls._instance is not None:
             return cls._instance
-        _accelerator_context_lock = threading.Lock()
+
         with _accelerator_context_lock:
-            # not registrey yet.
-            if cls._torch_mod is None:
-                if len(ray.get_gpu_ids()) > 0:
-                    from ray.experimental.channel.nccl_group import _NcclGroup
+            # Check _instance again to avoid creating a duplicate instance
+            # if it was initialized while waiting for the lock.
+            if cls._instance is None:
+                # Not registrey yet.
+                if cls._torch_mod is None:
+                    if len(ray.get_gpu_ids()) > 0:
+                        from ray.experimental.channel.nccl_group import _NcclGroup
 
-                    cls._set_context("cuda", _NcclGroup)
-                else:
-                    from ray.experimental.channel.cpu_communicator import (
-                        CPUCommunicator,
-                    )
+                        cls._set_context("cuda", _NcclGroup)
+                    else:
+                        from ray.experimental.channel.cpu_communicator import (
+                            CPUCommunicator,
+                        )
 
-                    cls._set_context("cpu", CPUCommunicator)
-            cls._instance = cls()
+                        cls._set_context("cpu", CPUCommunicator)
+                cls._instance = cls()
 
         return cls._instance
 
     @classmethod
-    def _set_context(cls, name, communicator):
+    def _set_context(cls, name: str, communicator: Communicator):
+        """
+        Registers the accelerator's name and communicator class.
+
+        Args:
+            name: The name of the device module under torch (e.g., 'cuda', 'cpu').
+            communicator: The communicator class associated with the device.
+        """
         cls._torch_module_name = name
         cls._communicator_cls = communicator
+        # Save the torch module corresponding to the device module name.
         cls._torch_mod = importlib.import_module(f"torch.{cls._torch_module_name}")
 
     def get_default_device(self) -> "torch.device":
-        """Gets the correct torch device list configured for this process.
+        """
+        Returns the default device used by the compiled graph.
 
-        Returns a list of torch devices allocated for the current worker.
-        If no devices are assigned, then it returns a list with a single CPU device.
+        Currently, the default device for the compiled graph is the first visible
+        device. By default, it returns the device with logical ID 0.
+
+        Returns:
+            torch.device: The default device.
         """
         import torch
 
@@ -73,13 +97,13 @@ class AcceleratorContext:
     def get_device_context(self, device):
         """
         Retrieves the context manager for the specified accelerator device.
-        This function checks the type of the provided `device` and returns the
-        appropriate context manager for that device.
+        There is no device context for CPU, returning a nullcontext.
+
         Args:
             device (torch.device): The target device for which the context manager
             is required.
         Returns:
-            contextmanager: A context manager specific to the device type.
+            device_context: A context manager specific to the device type.
         """
         if device.type == "cpu":
             return nullcontext()
@@ -100,7 +124,7 @@ class AcceleratorContext:
 
     def generate_communicator_id(self) -> str:
         """
-        Generates a unique identifier for communication purposes.
+        Generates a communication identifier for communication group.
         """
         return self._communicator_cls.generate_communicator_id()
 
@@ -111,5 +135,12 @@ class AcceleratorContext:
         return self._communicator_cls(*args, **kwargs)
 
 
-def register_accelerator_context(device_type: str, communicator: Communicator = None):
-    AcceleratorContext._set_context(device_type, communicator)
+def register_accelerator_context(name: str, communicator: Communicator):
+    """
+    Registers the accelerator context with the specified device type and communicator.
+
+    Args:
+        name: The name of the device module under torch (e.g., 'cuda', 'cpu').
+        communicator: The communicator class associated with the device.
+    """
+    AcceleratorContext._set_context(name, communicator)

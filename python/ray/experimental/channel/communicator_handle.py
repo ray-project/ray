@@ -9,18 +9,12 @@ if TYPE_CHECKING:
 
 class CommunicatorHandle(Communicator):
     """
-    The driver maintains a communicator instance but does not participate
-    in the group. However, it still needs to store certain information,
-    such as world size and actor details.
+    A lightweight communicator handle used to store world size and actors
+    without providing actual communication capabilities.
 
-    Since the driver may not have a GPU (or other accelerators), it could
-    mistakenly select the wrong `TorchDeviceManager`
-    (e.g., `CPUTorchDeviceManager`), causing `get_communicator`
-    to return `None`.
-
-    Because the driver does not actively join the group and only uses the
-    communicator for metadata storage, Introduced a hardware-independent
-    class specifically for the driver.
+    This class is mainly used on the driver side where no real communicator
+    initialization or communication operations are needed. Most communication
+    methods are not implemented and will raise NotImplementedError if called.
     """
 
     def __init__(
@@ -29,8 +23,11 @@ class CommunicatorHandle(Communicator):
         actor_handles: List["ray.actor.ActorHandle"],
     ):
         """
-        Only need to store the actor handles, since we don't need
-        to initialize the communicator for Driver.
+        Initializes the CommunicatorHandle with the given world size and actor handles.
+
+        Args:
+            world_size: The number of actors participating in the communicator.
+            actor_handles: A list of actor handles to be stored.
         """
         self._world_size = world_size
         self._actor_handles = actor_handles
