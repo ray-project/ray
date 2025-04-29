@@ -120,7 +120,13 @@ def main(
             with open(llm_config, "r") as f:
                 loaded_llm_config = yaml.safe_load(f)
 
-            tag = f"{loaded_llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
+            # "A10" without "G" to match existing dashboard tags
+            accelerator = (
+                "A10"
+                if loaded_llm_config["accelerator_type"] == "A10G"
+                else loaded_llm_config["accelerator_type"]
+            )
+            tag = f"{accelerator}-TP{loaded_llm_config['engine_kwargs']['tensor_parallel_size']}"
             for result in results:
                 record = FirehoseRecord(
                     record_name=RecordName.RAYLLM_PERF_TEST,

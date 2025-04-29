@@ -238,14 +238,21 @@ def main(pargs):
 
     results = run_vllm_benchmark(vllm_cli_args)
 
-    # Post the results to S3
+    # "A10" without "G" to match existing dashboard tags
+    accelerator = (
+        "A10"
+        if llm_config["accelerator_type"] == "A10G"
+        else llm_config["accelerator_type"]
+    )
+    tag = (f"{accelerator}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}",)
     service_metadata = {
         "cloud_name": "",
         "service_name": "",
         "py_version": pargs.py_version,
-        "tag": f"{llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}",
+        "tag": tag,
     }
 
+    # Post the results to S3
     if results:
         print(
             "Writing final result to AWS S3:",

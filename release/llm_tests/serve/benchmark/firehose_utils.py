@@ -5,7 +5,6 @@ from enum import Enum
 from typing import Any, Dict
 
 import boto3
-from botocore.config import Config
 from pydantic import BaseModel, field_validator
 
 STREAM_NAME = "rayllm-ci-results"
@@ -79,11 +78,6 @@ class FirehoseRecord(BaseModel):
         if verbose:
             print("PutRecord response:")
             print(response)
-
-        firehose_client.put_record(
-            DeliveryStreamName=STREAM_NAME,
-            Record={"Data": data},
-        )
 
         # Add some delay to make sure timestamps are unique ints.
         time.sleep(SLEEP_BETWEEN_FIREHOSE_WRITES_MS / 1000)
