@@ -466,10 +466,10 @@ class LLMServer(_LLMServerBase):
 
     @property
     def _get_engine_class(self) -> Type[LLMEngine]:
-        """Helper to load the engine class from the environment variable if existed
-        else it will fallback to the default engine class.
+        """Helper to load the engine class from the environment variable. 
         
-        This is used for testing or patching purposes. 
+        This is used for testing or escape-hatch for patching purposes. 
+        If env variable is not set, it will fallback to the default engine class.
         """
         engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
         if engine_cls_path:
