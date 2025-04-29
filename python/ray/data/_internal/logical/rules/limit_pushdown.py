@@ -61,7 +61,7 @@ class LimitPushdownRule(Rule):
                 while (
                     isinstance(new_input_into_limit, AbstractOneToOne)
                     and not isinstance(new_input_into_limit, Read)
-                    and not getattr(new_input_into_limit, "can_modify_num_rows", False)
+                    and not new_input_into_limit.can_modify_num_rows()
                 ):
                     new_input_into_limit_copy = copy.copy(new_input_into_limit)
                     ops_between_new_input_and_limit.append(new_input_into_limit_copy)

@@ -34,6 +34,14 @@ class Optimizer:
 
     def optimize(self, plan: Plan) -> Plan:
         """Optimize operators with a list of rules."""
-        for rule in self.rules:
-            plan = rule.apply(plan)
+        # Apply rules until the plan is not changed
+        previous_plan = plan
+        while True:
+            for rule in self.rules:
+                plan = rule.apply(plan)
+            # TODO: Eventually we should implement proper equality.
+            # Using str to check equality seems brittle
+            if plan.dag.dag_str == previous_plan.dag.dag_str:
+                break
+            previous_plan = plan
         return plan
