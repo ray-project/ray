@@ -124,11 +124,12 @@ To persist your checkpoints and monitor training progress, add a
 
 
 .. code-block:: python
+    :skipif: True
 
-     import xgboost
-     from ray.train.xgboost import RayTrainReportCallback
+    import xgboost
+    from ray.train.xgboost import RayTrainReportCallback
 
-     def train_func():
+    def train_func():
         ...
         bst = xgboost.train(
             ...,
@@ -156,7 +157,7 @@ When running distributed XGBoost training, each worker should use a different sh
         # Define logic to get the DMatrix shard for this worker rank
         ...
 
-    def get_eval_dataset(world_rank) -> xgboost.DMatrix:
+    def get_eval_dataset(world_rank: int) -> xgboost.DMatrix:
         # Define logic to get the DMatrix for each worker
         ...
 
@@ -231,13 +232,31 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
     # 4 nodes with 8 CPUs each.
     scaling_config = ScalingConfig(num_workers=4, resources_per_worker={"CPU": 8})
 
+.. note::
+    When using Ray Data with Ray Train, be careful not to request all available CPUs in your cluster with the `resources_per_worker` parameter. 
+    Ray Data needs CPU resources to execute data preprocessing operations in parallel. 
+    If all CPUs are allocated to training workers, Ray Data operations may be bottlenecked, leading to reduced performance. 
+    A good practice is to leave some portion of CPU resources available for Ray Data operations.
+
+    For example, if your cluster has 8 CPUs per node, you might allocate 6 CPUs to training workers and leave 2 CPUs for Ray Data:
+
+    .. code-block:: python
+
+        # Allocate 6 CPUs per worker, leaving resources for Ray Data operations
+        scaling_config = ScalingConfig(num_workers=4, resources_per_worker={"CPU": 6})
+
+
+In order to use GPUs, you will need to set the `use_gpu` parameter to `True` in your :class:`~ray.train.ScalingConfig` object.
+This will request and assign a single GPU per worker.
+
+.. testcode::
     # 1 node with 8 CPUs and 4 GPUs each.
     scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
 
     # 4 nodes with 8 CPUs and 4 GPUs each.
     scaling_config = ScalingConfig(num_workers=16, use_gpu=True)
 
-When using GPUs, you will also need to update your training function to use the GPU. 
+When using GPUs, you will also need to update your training function to use the assigned GPU. 
 This can be done by setting the `"device"` parameter as `"cuda"`. 
 For more details on XGBoost's GPU support, see the `XGBoost GPU documentation <https://xgboost.readthedocs.io/en/stable/gpu/index.html>`__.
 

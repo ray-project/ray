@@ -35,8 +35,8 @@ bst = xgboost.train(
 
 
 # __xgboost_ray_start__
-from sklearn.datasets import load_iris
 import xgboost
+from sklearn.datasets import load_iris
 
 import ray.train
 from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
