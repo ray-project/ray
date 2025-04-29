@@ -3789,9 +3789,16 @@ py_test(
     name = "examples/connectors/multi_agent_with_different_observation_spaces",
     size = "medium",
     srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2"],
+    args = [
+        "--enable-new-api-stack",
+        "--num-agents=2",
+    ],
     main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
-    tags = ["examples", "exclusive", "team:rllib"],
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
 )
 
 # subdirectory: curiosity/
