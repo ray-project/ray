@@ -11,10 +11,15 @@ from ray.serve._private.common import (
     ReplicaQueueLengthInfo,
     RunningReplicaInfo,
 )
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+
+import logging
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaWrapper(ABC):
@@ -105,6 +110,9 @@ class ActorReplicaWrapper(ReplicaWrapper):
             return ActorReplicaResult(obj_ref_gen, pr.metadata), queue_len_info
         except asyncio.CancelledError as e:
             # HTTP client disconnected or request was explicitly canceled.
+            logger.info(
+                "Cancelling request that has already been assigned to a replica."
+            )
             ray.cancel(obj_ref_gen)
             raise e from None
 
