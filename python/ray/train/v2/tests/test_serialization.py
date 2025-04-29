@@ -1,5 +1,7 @@
 import sys
 
+import pytest
+
 import ray.train
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2._internal.execution.callback import ControllerCallback
@@ -25,3 +27,9 @@ def test_captured_imports(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=2),
     )
     trainer.fit()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
