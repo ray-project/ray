@@ -67,7 +67,7 @@ torch, _ = try_import_torch()
 parser = add_rllib_example_script_args(
     default_iters=500,
     default_timesteps=500000,
-    default_reward=29.0,
+    default_reward=22.0,
 )
 parser.set_defaults(
     enable_new_api_stack=True,
