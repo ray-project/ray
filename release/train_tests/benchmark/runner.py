@@ -144,14 +144,8 @@ class TrainLoopRunner:
             with self._metrics["train/step"].timer():
                 if not self.benchmark_config.skip_train_step:
                     self._train_step(batch)
-                else:
-                    # There are still some GPU operations that do not involve the model
-                    # (ex: non_blocking batch.to(device), data shuffling collective ops)
-                    # that need to be synchronized.
-                    if torch.cuda.is_available():
-                        torch.cuda.synchronize()
 
-            # TODO: This is slightly off if the last batch is a partial batch.
+            # TODO: This is slightly off if the last batch is a partial batch (if drop_last=False)
             self._metrics["train/rows_processed"].add(
                 self.benchmark_config.dataloader_config.train_batch_size
             )
