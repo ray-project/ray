@@ -20,6 +20,8 @@ pip install -U --ignore-installed \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
+pip install setproctitle -c python/requirements_compiled.txt
+
 # TODO(can): upgrade tensorflow for python 3.12
 if [[ "${PYTHON-}" != "3.12" ]]; then
   pip install -U -c python/requirements_compiled.txt \

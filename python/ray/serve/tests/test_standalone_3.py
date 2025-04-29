@@ -208,9 +208,9 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
 
         # Ensure Serve can be restarted and shutdown with for loop
         for _ in range(2):
-            subprocess.check_output(["python", deploy_file.name])
+            subprocess.check_output([sys.executable, deploy_file.name])
             assert requests.get("http://localhost:8000/f").text == "got f"
-            subprocess.check_output(["python", shutdown_file.name])
+            subprocess.check_output([sys.executable, shutdown_file.name])
             with pytest.raises(requests.exceptions.ConnectionError):
                 requests.get("http://localhost:8000/f")
     finally:
