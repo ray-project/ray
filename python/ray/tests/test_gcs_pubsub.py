@@ -67,8 +67,8 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     await subscriber.subscribe()
 
     gcs_aio_client = GcsAioClient(address=gcs_server_addr)
-    await gcs_aio_client.publish_resource_usage("aaa_id", '{"cpu": 1}')
-    await gcs_aio_client.publish_resource_usage("bbb_id", '{"cpu": 2}')
+    await gcs_aio_client.publish_node_resource_usage("aaa_id", '{"cpu": 1}')
+    await gcs_aio_client.publish_node_resource_usage("bbb_id", '{"cpu": 2}')
 
     assert await subscriber.poll() == ("aaa_id", '{"cpu": 1}')
     assert await subscriber.poll() == ("bbb_id", '{"cpu": 2}')

@@ -1260,7 +1260,7 @@ class ReporterAgent(
                     autoscaler_status_json_bytes,
                 )
 
-                await self._gcs_aio_client.publish_resource_usage(
+                await self._gcs_aio_client.publish_node_resource_usage(
                     self._key, json_payload
                 )
 

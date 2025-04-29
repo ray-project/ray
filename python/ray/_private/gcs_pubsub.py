@@ -12,7 +12,6 @@ import ray._private.gcs_utils as gcs_utils
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
-from ray.core.generated import common_pb2
 from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)

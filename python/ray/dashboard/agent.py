@@ -82,8 +82,8 @@ class DashboardAgent:
 
     def _init_non_minimal(self):
         from ray.dashboard.http_server_agent import HttpServerAgent
-
         from grpc import aio as aiogrpc
+        from ray._private.tls_utils import add_port_to_grpc_server
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
@@ -113,7 +113,7 @@ class DashboardAgent:
         )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
-            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.grpc_port = add_port_to_grpc_server(
                 self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
             )
         except Exception:
