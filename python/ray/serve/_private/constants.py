@@ -380,7 +380,8 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
 def parse_custom_resource_priority() -> List[str]:
     return [r for r in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES.split(",") if r]
 
-# Comma-separated list of custom resources prioritized in scheduling (e.g., "customx,customy")
+# Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
+# Example: "customx,customy"
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES = os.environ.get(
     "RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", ""
 )

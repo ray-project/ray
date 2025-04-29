@@ -83,7 +83,7 @@ class Resources(dict):
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
-        1. Custom resources defined in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES (in order)
+        1. Custom resources defined in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES (sorted by priority)
         2. GPU
         3. CPU
         4. memory
