@@ -599,9 +599,6 @@ class RequestMetadata:
     # request objects. We can assume this is always unique between requests.
     internal_request_id: str
     
-    # Added for debugging purposes, can be manually set when needed
-    request_id_int: int = -1
-
     # Method of the user callable to execute.
     call_method: str = "__call__"
 

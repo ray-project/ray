@@ -81,7 +81,7 @@ class PrefixTree:
         return i
 
     # TODO: Verify that updating access time behavior is correct.
-    def insert(self, text, tenant, output_file=None, request_id=None):
+    def insert(self, text, tenant):
         """Insert text into tree with given tenant."""
         # Record time when the insert method is called
         timing = {"received_by_insert": time.time()}
@@ -293,7 +293,7 @@ class PrefixTree:
             # If resumed, **recompute traversal** in case tree structure has changed
 
 
-    def prefix_match(self, text, output_file=None, request_id=None):
+    def prefix_match(self, text):
         """
         Match text against tree and return (matched_text, matched_tenant).
         Updates access time for the matched tenant.

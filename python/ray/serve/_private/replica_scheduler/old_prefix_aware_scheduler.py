@@ -117,7 +117,7 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         self._zero_load_count = 0
         self._load_tracking_task = None
         self._num_requests_seen = 0
-        self._timing_output_file = f"/home/ray/default/work/_testing/logs/{time.strftime('%H-%M-%S')}_id_{random.randint(0, 1000000)}.jsonl"
+        self._timing_output_file = f"/home/ray/default/work/_testing/results/deployment_overhead/{time.strftime('%H-%M-%S')}_id_{random.randint(0, 1000000)}.json"
 
         # Variables to track prefix match rates / replica
         self._prefix_match_rates: Dict[str, List[float]] = {}
@@ -221,6 +221,12 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
+        self._scheduling_assignments_file_path = f"/home/ray/default/work/_testing/results/scheduling_logs/prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        self._scheduling_queue_overhead_file_path = f"/home/ray/default/work/_testing/results/scheduling_logs/prefix_aware_queue_overhead_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        with open(self._scheduling_assignments_file_path, "w") as f:
+            f.write("scheduling_decision,original_request_id,matched_replica_request_id\n")  # Clear the log file at start
+        with open(self._scheduling_queue_overhead_file_path, "w") as f:
+            f.write("num_searched,search_duration\n")  # Clear the log file at start
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -793,6 +799,9 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         Among replicas that respond within the deadline and don't have full queues, the
         one with the lowest queue length is chosen.
         """
+        # Artificial random delay to test scheduling mismatch
+        await asyncio.sleep(random.uniform(0.0, 0.1))
+        # End artificial random delay
 
         # BEGIN POW 2 LOGIC
         lowest_queue_len = math.inf
@@ -850,7 +859,7 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
                 pass
             else:
                 timing_info["before_calling_prefix_match"] = time.time()
-                matched_text, tenant_id, match_timing = await self._tree_deployment.prefix_match.remote(input_text, output_file=self._timing_output_file, request_id=request_id)
+                matched_text, tenant_id, match_timing = await self._tree_deployment.prefix_match.remote(input_text)
                 timing_info.update(match_timing)
                 timing_info["after_calling_prefix_match"] = time.time()
                 match_rate = len(matched_text) / len(input_text) if input_text else 0
@@ -884,14 +893,14 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         if pending_request is not None:
             input_text = self._get_input_text(pending_request)
             timing_info["before_calling_insert"] = time.time()
-            success, insert_timing = await self._tree_deployment.insert.remote(input_text, tenant=chosen_replica_id, output_file=self._timing_output_file, request_id=request_id)
+            success, insert_timing = await self._tree_deployment.insert.remote(input_text, tenant=chosen_replica_id)
             timing_info.update(insert_timing)
             timing_info["after_calling_insert"] = time.time()
         # END UPDATE TREE
         
-        # write to file takes very little time (< 1 ms)
-        with open(self._timing_output_file, "a") as f:
-            f.write(json.dumps(timing_info) + "\n")
+        # # write to file takes very little time (< 1 ms)
+        # with open(self._timing_output_file, "a") as f:
+        #     f.write(json.dumps(timing_info) + "\n")
         self._num_requests_seen += 1
         return self._replicas.get(chosen_replica_id, None)
 
@@ -899,18 +908,42 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
-            return None
+        selected_pr = None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
-                return pr
+        # First, try to match based on multiplexed model ID:
+        if request_metadata is not None and request_metadata.multiplexed_model_id:
+            for pr in self._pending_requests_to_fulfill:
+                if (
+                    not pr.future.done()
+                    and pr.metadata.multiplexed_model_id
+                    == request_metadata.multiplexed_model_id
+                ):
+                    selected_pr = pr
+                    with open(self._scheduling_assignments_file_path, "a") as f:
+                        f.write(f"multiplexed_model_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
 
-        return None
+                    break
+        # Second, try to match based on internal request ID:
+        num_searched = 0
+        search_start = time.time()
+        if selected_pr is None and request_metadata is not None and request_metadata.internal_request_id:
+            for pr in self._pending_requests_to_fulfill:
+                num_searched += 1
+                if (
+                    not pr.future.done()
+                    and pr.metadata.internal_request_id
+                    == request_metadata.internal_request_id
+                ):
+                    with open(self._scheduling_assignments_file_path, "a") as f:
+                        f.write(f"internal_request_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
+                    selected_pr = pr
+                    break
+
+        search_duration = time.time() - search_start
+        with open(self._scheduling_queue_overhead_file_path, "a") as f:
+            f.write(f"{num_searched},{search_duration}\n")
+
+        return selected_pr
 
     def fulfill_next_pending_request(
         self,
@@ -937,6 +970,8 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
             if not pr.future.done():
+                with open(self._scheduling_assignments_file_path, "a") as f:
+                    f.write(f"FIFO,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
                 pr.future.set_result(replica)
                 break
 
@@ -996,7 +1031,7 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
                     else:
-                        print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] No replica found for request {request_metadata.request_id}")
+                        print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] No replica found for request {request_metadata.internal_request_id}")
 
                     backoff_index += 1
                     if backoff_index >= 50 and backoff_index % 50 == 0:
@@ -1058,28 +1093,6 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
-        # print(f"[prefix_aware_scheduler.py: choose_replica_for_request] Choose replica for request")
-        # print(f"[prefix_aware_scheduler.py: choose_replica_for_request] self._replica_id_set: {self._replica_id_set}")
-        # candidates = list(self._replica_id_set)
-        # input_text = self._get_input_text(pending_request)
-        # chosen_replica = None
-        # async for matched_text, tenant_id_unique_id in self._tree_deployment.options(stream=True).prefix_match_generator.remote(input_text):
-        #     print(f"[prefix_aware_scheduler.py: choose_replica_for_request] Checking tenant: {tenant_id_unique_id} with matched text: {matched_text}")
-        #     # Find replicas for this tenant
-        #     if chosen_replica is None:
-        #         chosen_replica = candidates[0]
-        #     for replica in candidates:
-        #         # Check if candidate replica is the matched tenant
-        #         if tenant_id_unique_id == replica.replica_id.unique_id:
-        #             chosen_replica = replica
-        # if chosen_replica is None:
-        #     chosen_replica = candidates[0]
-        #     print(f"[prefix_aware_scheduler.py: choose_replica_for_request] No matches for input_text {input_text}; choosing candidates[0]: {chosen_replica.replica_id.unique_id}")
-        # print(f"[prefix_aware_scheduler.py: choose_replica_for_request] Updating tree with input_text {input_text} and tenant {chosen_replica.replica_id.unique_id}")
-        # self._tree_deployment.insert.remote(input_text, chosen_replica.replica_id.unique_id)
-        # return chosen_replica
-        
-        # return selected_url        
         try:
             if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)

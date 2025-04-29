@@ -228,7 +228,7 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
-class PrefixAwareReplicaScheduler(
+class LLMPowerOfTwoChoicesReplicaScheduler(
     MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
@@ -359,16 +359,12 @@ class PrefixAwareReplicaScheduler(
             self.num_scheduling_tasks_in_backoff
         )
 
-        self._request_counter = 0  # Add this in __init__
-        self._request_id_map: Dict[PendingRequest, int] = {}  # For tracking
-        self._log_file_path = "/home/ray/default/work/_testing/logs/fake_prefix_aware_scheduler_out.txt"
-        with open(self._log_file_path, "w") as f:
-            f.write("Working!")  # Clear the log file at start
-        
-        print("(Fake) PrefixAwareReplicaScheduler initialized")
-    def _log(self, message: str):
-        with open(self._log_file_path, "a") as f:
-            f.write(message + "\n")
+        self._scheduling_assignments_file_path = f"/home/ray/default/work/_testing/results/scheduling_logs/pow_2_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        self._scheduling_queue_overhead_file_path = f"/home/ray/default/work/_testing/results/queue_overhead/pow_2_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        with open(self._scheduling_assignments_file_path, "w") as f:
+            f.write("scheduling_decision,original_request_id,matched_replica_request_id\n")  # Clear the log file at start
+        with open(self._scheduling_queue_overhead_file_path, "w") as f:
+            f.write("num_searched,search_duration\n")  # Clear the log file at start
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -704,6 +700,10 @@ class PrefixAwareReplicaScheduler(
         Among replicas that respond within the deadline and don't have full queues, the
         one with the lowest queue length is chosen.
         """
+        # Artificial random delay to test scheduling mismatch
+        await asyncio.sleep(random.uniform(0.0, 0.1))
+        # End artificial random delay
+        
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
         not_in_cache: List[RunningReplica] = []
@@ -764,6 +764,30 @@ class PrefixAwareReplicaScheduler(
 
         return None
 
+    def _get_pending_request_matching_internal_request_id(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        if request_metadata is None or not request_metadata.internal_request_id:
+            return None
+        num_searched = 0
+        search_start = time.time()
+        found_pr = None
+        for pr in self._pending_requests_to_fulfill:
+            num_searched += 1
+            if (
+                not pr.future.done()
+                and pr.metadata.internal_request_id
+                == request_metadata.internal_request_id
+            ):
+                found_pr = pr
+                break
+        search_duration = time.time() - search_start
+        with open(self._scheduling_queue_overhead_file_path, "a") as f:
+            f.write(f"{num_searched},{search_duration}\n")
+
+        return found_pr
+
     def fulfill_next_pending_request(
         self,
         replica: RunningReplica,
@@ -779,11 +803,17 @@ class PrefixAwareReplicaScheduler(
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
-        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
         if matched_pending_request is not None:
-            req_id = matched_pending_request.metadata.request_id_int
-            # req_id = self._request_id_map.get(matched_pending_request.metadata.request_id, "unknown")
-            self._log(f"Replica for request {request_metadata.request_id_int} matched with request {req_id}")
+            with open(self._scheduling_assignments_file_path, "a") as f:
+                f.write(f"multiplexed_model_id,{matched_pending_request.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
+        # else: 
+        #     matched_pending_request = self._get_pending_request_matching_internal_request_id(
+        #         request_metadata
+        #     )
+        #     if matched_pending_request is not None:
+        #         with open(self._scheduling_assignments_file_path, "a") as f:
+        #             f.write(f"internal_request_id,{matched_pending_request.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
+        if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -794,9 +824,8 @@ class PrefixAwareReplicaScheduler(
             pr = self._pending_requests_to_fulfill.popleft()
             # print(f"{pr=} {pr.future.done()=}")
             if not pr.future.done():
-                # req_id = self._request_id_map.get(pr.metadata.request_id, "unknown")
-                req_id = pr.metadata.request_id_int
-                self._log(f"Replica for request {request_metadata.request_id_int} matched with request {req_id}")
+                with open(self._scheduling_assignments_file_path, "a") as f:
+                    f.write(f"FIFO,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
                 pr.future.set_result(replica)
                 break
 
@@ -844,7 +873,6 @@ class PrefixAwareReplicaScheduler(
                     )
                     # print(f"in fulfill_pending_requests {candidates=} {backoff_index=} {replica=} {_get_request_scheduling_context()}")
                     if replica is not None:
-                        self._log(f"Replica selected for request {request_metadata.request_id_int}")
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
 
@@ -858,7 +886,7 @@ class PrefixAwareReplicaScheduler(
                         )
                         if request_metadata is not None:
                             warning_log += (
-                                f" Request ID: {request_metadata.request_id_int}."
+                                f" Request ID: {request_metadata.request_id}."
                             )
                             if request_metadata.multiplexed_model_id:
                                 warning_log += (
@@ -912,14 +940,7 @@ class PrefixAwareReplicaScheduler(
             if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_schedule.append(pending_request)
-                self._log(f"Called choose_replica_for_request for request {self._request_counter}")
-                request_id = self._request_counter
-                self._request_counter += 1
-                pending_request.metadata.request_id_int = request_id
-                # self._request_id_map[pending_request.metadata.request_id] = request_id
-                self._log(f"Created scheduling task for request {request_id}")
             else:
-                self._log("is_retry")
                 pending_request.reset_future()
                 index = 0
                 for pr in self._pending_requests_to_fulfill:

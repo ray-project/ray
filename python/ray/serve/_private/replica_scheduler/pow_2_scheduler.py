@@ -359,17 +359,6 @@ class PowerOfTwoChoicesReplicaScheduler(
             self.num_scheduling_tasks_in_backoff
         )
 
-        self._request_counter = 0  # Add this in __init__
-        self._request_id_map: Dict[PendingRequest, int] = {}  # For tracking
-        self._log_file_path = "/home/ray/default/work/_testing/logs/out.txt"
-        with open(self._log_file_path, "w") as f:
-            f.write("")  # Clear the log file at start
-        
-        print("PowerOfTwoChoicesReplicaScheduler initialized")
-    def _log(self, message: str):
-        with open(self._log_file_path, "a") as f:
-            f.write(message + "\n")
-
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
         if self._lazily_fetched_loop is None:
@@ -537,7 +526,6 @@ class PowerOfTwoChoicesReplicaScheduler(
                     )
 
                 multiplexed_start_matching_time = time.time()
-                print(f"in choose_replicas {request_metadata=}")
                 if (
                     request_metadata is not None
                     and request_metadata.multiplexed_model_id
@@ -781,9 +769,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         )
         # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
         if matched_pending_request is not None:
-            req_id = matched_pending_request.metadata.request_id_int
-            # req_id = self._request_id_map.get(matched_pending_request.metadata.request_id, "unknown")
-            self._log(f"Replica for request {request_metadata.request_id_int} matched with request {req_id}")
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -794,9 +779,6 @@ class PowerOfTwoChoicesReplicaScheduler(
             pr = self._pending_requests_to_fulfill.popleft()
             # print(f"{pr=} {pr.future.done()=}")
             if not pr.future.done():
-                # req_id = self._request_id_map.get(pr.metadata.request_id, "unknown")
-                req_id = pr.metadata.request_id_int
-                self._log(f"Replica for request {request_metadata.request_id_int} matched with request {req_id}")
                 pr.future.set_result(replica)
                 break
 
@@ -844,7 +826,6 @@ class PowerOfTwoChoicesReplicaScheduler(
                     )
                     # print(f"in fulfill_pending_requests {candidates=} {backoff_index=} {replica=} {_get_request_scheduling_context()}")
                     if replica is not None:
-                        self._log(f"Replica selected for request {request_metadata.request_id_int}")
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
 
@@ -858,7 +839,7 @@ class PowerOfTwoChoicesReplicaScheduler(
                         )
                         if request_metadata is not None:
                             warning_log += (
-                                f" Request ID: {request_metadata.request_id_int}."
+                                f" Request ID: {request_metadata.request_id}."
                             )
                             if request_metadata.multiplexed_model_id:
                                 warning_log += (
@@ -912,14 +893,7 @@ class PowerOfTwoChoicesReplicaScheduler(
             if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_schedule.append(pending_request)
-                self._log(f"Called choose_replica_for_request for request {self._request_counter}")
-                request_id = self._request_counter
-                self._request_counter += 1
-                pending_request.metadata.request_id_int = request_id
-                # self._request_id_map[pending_request.metadata.request_id] = request_id
-                self._log(f"Created scheduling task for request {request_id}")
             else:
-                self._log("is_retry")
                 pending_request.reset_future()
                 index = 0
                 for pr in self._pending_requests_to_fulfill:

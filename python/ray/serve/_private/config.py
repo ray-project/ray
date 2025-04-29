@@ -178,9 +178,6 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
-    # replica_scheduler_class: Optional[Union[str, Callable]] = Field(
-    #   default=None, update_type=DeploymentOptionUpdateType.LightWeight
-    # )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()

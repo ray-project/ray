@@ -182,7 +182,7 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    # Beginning of injected code
+    # Beginning of injected code to get the replica scheduler from the deployment config
     # print(f"create_router: controller_handle: {controller_handle}")
     # cfg_bytes_ref = controller_handle.get_deployment_config.remote(deployment_id)
     # print(f"create_router: cfg_bytes_ref: {cfg_bytes_ref}")
@@ -192,9 +192,10 @@ def create_router(
     # cfg = DeploymentConfig.from_proto_bytes(cfg_bytes)
     # print(f"create_router: cfg: {cfg}")
     # replica_scheduler = cfg.get_replica_scheduler()
-    print(f"create_router: replica_scheduler: {replica_scheduler}")
-    # End of injected code
+    # End of injected code to get the replica scheduler from the deployment config
 
+    print(f"create_router: replica_scheduler: {replica_scheduler}")
+    
     replica_scheduler_instance = create_scheduler(
         actor_id,
         deployment_id,
