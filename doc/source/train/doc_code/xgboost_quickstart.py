@@ -1,6 +1,7 @@
+# flake8: noqa
+# isort: skip_file
 
 # __xgboost_start__
-
 import xgboost
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
@@ -30,12 +31,10 @@ bst = xgboost.train(
     evals=[(deval, "validation")],
     num_boost_round=10,
 )
-
 # __xgboost_end__
 
 
 # __xgboost_ray_start__
-
 from sklearn.datasets import load_iris
 import xgboost
 
@@ -108,5 +107,4 @@ with result.checkpoint.as_directory() as checkpoint_dir:
     model_path = os.path.join(checkpoint_dir, RayTrainReportCallback.CHECKPOINT_NAME)
     model = xgboost.Booster()
     model.load_model(model_path)
-
 # __xgboost_ray_end__

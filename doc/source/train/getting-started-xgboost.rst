@@ -40,7 +40,7 @@ Compare a XGBoost training script with and without Ray Train.
 
     .. tab-item:: XGBoost
 
-        .. literalinclude:: ../doc_code/xgboost_quickstart.py
+        .. literalinclude:: ./doc_code/xgboost_quickstart.py
             :language: python
             :start-after: __xgboost_start__
             :end-before: __xgboost_end__
@@ -48,7 +48,7 @@ Compare a XGBoost training script with and without Ray Train.
 
     .. tab-item:: XGBoost + Ray Train
 
-        .. literalinclude:: ../doc_code/xgboost_quickstart.py
+        .. literalinclude:: ./doc_code/xgboost_quickstart.py
             :language: python
             :start-after: __xgboost_ray_start__
             :end-before: __xgboost_ray_end__
@@ -173,15 +173,17 @@ Use Ray Data to shard the dataset
 
 :ref:`Ray Data <data>` is a distributed data processing library that allows you to easily shard and distribute your data across multiple workers. 
 
-First, load your entire dataset as a Ray Data Dataset.
+First, load your **entire** dataset as a Ray Data Dataset. 
+Reference the :ref:`Ray Data Quickstart <data_quickstart>` for more details on how to load and preprocess data from different sources.
 
 .. testcode:: python
     :skipif: True
 
-    train_dataset = ray.data.from_parquet("s3://...")
-    eval_dataset = ray.data.from_parquet("s3://...")
+    train_dataset = ray.data.read_parquet("s3://path/to/entire/train/dataset/dir")
+    eval_dataset = ray.data.read_parquet("s3://path/to/entire/eval/dataset/dir")
 
-In the training function, you can access the dataset shards for this worker using :meth:`ray.train.get_dataset_shard`. Convert this into the DMatrix.
+In the training function, you can access the dataset shards for this worker using :meth:`ray.train.get_dataset_shard`. 
+Convert this into a native `xgboost.DMatrix <https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.DMatrix>`_.
 
 
 .. testcode:: python
@@ -233,7 +235,9 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
     # 4 nodes with 8 CPUs and 4 GPUs each.
     scaling_config = ScalingConfig(num_workers=16, use_gpu=True)
 
-When using GPUs, you will also need to update your training function to use the GPU. This can be done by setting the `"device"` parameter as `"cuda"`.
+When using GPUs, you will also need to update your training function to use the GPU. 
+This can be done by setting the `"device"` parameter as `"cuda"`. 
+For more details on XGBoost's GPU support, see the `XGBoost GPU documentation <https://xgboost.readthedocs.io/en/stable/gpu/index.html>`__.
 
 .. code-block:: diff
 
