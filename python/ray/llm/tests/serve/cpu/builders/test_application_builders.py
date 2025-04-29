@@ -1,5 +1,6 @@
 import pytest
 from ray import serve
+import ray
 from ray.serve.schema import ApplicationStatus, DeploymentStatus
 
 from ray.llm._internal.serve.configs.server_models import (
@@ -96,6 +97,10 @@ class TestBuildOpenaiApp:
         self, serve_config_separate_model_config_files, shutdown_ray_and_serve
     ):
         """Test `build_openai_app` can be used in serve config."""
+        
+        # Initialize Ray cluster so that the serve run attaches to the same cluster.
+        # and so that serve.status() works.
+        ray.init()
 
         def deployments_healthy():
             status = serve.status()
