@@ -233,7 +233,7 @@ class VLLMEngine(LLMEngine):
             # Use HF to get the chat template so set it to None here.
             chat_template=None,
             # Default to None, change when it's needed.
-            # vllm Does not have a high level API to support all of this.
+            # vLLM does not have a high level API to support all of this.
             tools=None,
             # Let vllm decide the content format.
             given_format="auto",
