@@ -407,8 +407,11 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      // This should ideally only happen when resources on the node are changed,
-      // and the only dynamic resource is placement group bundles.
+      RAY_LOG(ERROR)
+          << "An task got scheduled to a node even though it was infeasible. "
+             "Please report an issue on GitHub.\nTask placement resource requirements: "
+          << front_task.GetRequiredPlacementResources().GetResourceMap()
+          << "\n Scheduling strategy: " << front_task.GetSchedulingStrategy();
       for (const auto &work : dispatch_queue) {
         CancelTask(work->task.GetTaskSpecification().TaskId(),
                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
