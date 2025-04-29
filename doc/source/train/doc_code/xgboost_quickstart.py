@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 # 1. Load your data as an `xgboost.DMatrix`.
 data = load_iris(as_frame=True)
 train_X, eval_X, train_y, eval_y = train_test_split(
-    data["data"], data["target"], test_size=.2
+    data["data"], data["target"], test_size=0.2
 )
 
 dtrain = xgboost.DMatrix(train_X, label=train_y)
@@ -44,19 +44,20 @@ from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
 # 1. Load your data as a Ray Data Dataset.
 data = load_iris(as_frame=True).frame
 dataset = ray.data.from_pandas(data)
-train_dataset, eval_dataset = dataset.train_test_split(test_size=.2)
-    
+train_dataset, eval_dataset = dataset.train_test_split(test_size=0.2)
+
+
 def train_func():
     # 2. Load your data shard as an `xgboost.DMatrix`.
-    
+
     # Get dataset shards for this worker
     train_shard = ray.train.get_dataset_shard("train")
     eval_shard = ray.train.get_dataset_shard("eval")
-    
+
     # Convert shards to pandas DataFrames
     train_df = train_shard.materialize().to_pandas()
     eval_df = eval_shard.materialize().to_pandas()
-    
+
     # Extract features and labels
     train_X = train_df.drop("target", axis=1)
     train_y = train_df["target"]
@@ -86,6 +87,7 @@ def train_func():
         callbacks=[RayTrainReportCallback()],
     )
 
+
 # 5. Configure scaling and resource requirements.
 scaling_config = ray.train.ScalingConfig(num_workers=2, resources_per_worker={"CPU": 4})
 
@@ -93,7 +95,7 @@ scaling_config = ray.train.ScalingConfig(num_workers=2, resources_per_worker={"C
 trainer = XGBoostTrainer(
     train_func,
     scaling_config=scaling_config,
-    datasets = {"train": train_dataset, "eval": eval_dataset},
+    datasets={"train": train_dataset, "eval": eval_dataset},
     # If running in a multi-node cluster, this is where you
     # should configure the run's persistent storage that is accessible
     # across all worker nodes.
@@ -103,6 +105,7 @@ result = trainer.fit()
 
 # 7. Load the trained model
 import os
+
 with result.checkpoint.as_directory() as checkpoint_dir:
     model_path = os.path.join(checkpoint_dir, RayTrainReportCallback.CHECKPOINT_NAME)
     model = xgboost.Booster()
