@@ -235,7 +235,7 @@ class VLLMEngine(LLMEngine):
             # Default to None, change when it's needed.
             # vLLM does not have a high level API to support all of this.
             tools=None,
-            # Let vllm decide the content format.
+            # Let vLLM decide the content format.
             given_format="auto",
             tokenizer=self._tokenizer,
             trust_remote_code=self.model_config.trust_remote_code,
