@@ -149,7 +149,6 @@ def from_items(
     *,
     parallelism: int = -1,
     override_num_blocks: Optional[int] = None,
-    column_name: str = "item",
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
 
@@ -166,6 +165,8 @@ def from_items(
         ------  ----
         item    int64
 
+        Column name defaults to "item".
+
     Args:
         items: List of local Python objects.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
@@ -173,7 +174,6 @@ def from_items(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_name: The name of the column. Defaults to 'item'
     Returns:
         A :class:`~ray.data.Dataset` holding the items.
     """
@@ -208,7 +208,7 @@ def from_items(
         for j in builtins.range(block_start, block_end):
             item = items[j]
             if not isinstance(item, collections.abc.Mapping):
-                item = {column_name: item}
+                item = {"item": item}
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
@@ -235,7 +235,6 @@ def range(
     parallelism: int = -1,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_name: str = "id",
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
@@ -251,6 +250,8 @@ def range(
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
         [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
 
+        Column name defaults to "id".
+
     Args:
         n: The upper bound of the range of integers.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
@@ -262,7 +263,6 @@ def range(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_name: The name of the column. Defaults to 'id'
     Returns:
         A :class:`~ray.data.Dataset` producing the integers from the range 0 to n.
 
@@ -272,7 +272,7 @@ def range(
                     Call this method for creating synthetic datasets of tensor data.
 
     """
-    datasource = RangeDatasource(n=n, block_format="arrow", column_name=column_name)
+    datasource = RangeDatasource(n=n, block_format="arrow", column_name="id")
     return read_datasource(
         datasource,
         parallelism=parallelism,
@@ -289,7 +289,6 @@ def range_tensor(
     parallelism: int = -1,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_name: str = "data",
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` tensors of the provided shape from range
     [0...n].
@@ -308,6 +307,8 @@ def range_tensor(
                [0, 0]])}, {'data': array([[2, 2],
                [2, 2]])}]
 
+        Colum name defaults to data.
+
     Args:
         n: The upper bound of the range of tensor records.
         shape: The shape of each tensor in the dataset.
@@ -320,7 +321,6 @@ def range_tensor(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_name: The name of the column. Defaults to 'data'
     Returns:
         A :class:`~ray.data.Dataset` producing the tensor data from range 0 to n.
 
@@ -331,7 +331,7 @@ def range_tensor(
 
     """
     datasource = RangeDatasource(
-        n=n, block_format="tensor", column_name=column_name, tensor_shape=tuple(shape)
+        n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape)
     )
     return read_datasource(
         datasource,
@@ -450,7 +450,6 @@ def read_audio(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    column_names: Optional[Dict[str, str]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
 
@@ -463,6 +462,8 @@ def read_audio(
         ------       ----
         amplitude    numpy.ndarray(shape=(1, 191760), dtype=float)
         sample_rate  int64
+
+        Column names default to "amplitude" and "sample_rate".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -498,8 +499,6 @@ def read_audio(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        column_names: A mapping from the default column name -> provided column name.
-            Defaults to `amplitude` and `sample-rate`.
     Returns:
         A :class:`~ray.data.Dataset` containing audio amplitudes and associated
         metadata.
@@ -515,7 +514,6 @@ def read_audio(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -541,7 +539,6 @@ def read_videos(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    column_names: Optional[Dict[str, str]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from video files.
 
@@ -556,6 +553,8 @@ def read_videos(
         ------       ----
         frame        numpy.ndarray(shape=(720, 1280, 3), dtype=uint8)
         frame_index  int64
+
+        Column names default to "frame", "frame_index" and "frame_timestamp".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -589,8 +588,6 @@ def read_videos(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        column_names: A mapping from the default column name -> provided column name.
-            Defaults to 'frame', 'frame_index' and 'frame_timestamp'.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
@@ -606,7 +603,6 @@ def read_videos(
         include_paths=include_paths,
         include_timestamps=include_timestamps,
         file_extensions=file_extensions,
-        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -989,7 +985,6 @@ def read_images(
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -1036,6 +1031,8 @@ def read_images(
         ------  ----
         image   numpy.ndarray(shape=(224, 224, 3), dtype=uint8)
         class   string
+
+        Column name defaults to "image".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1088,8 +1085,6 @@ def read_images(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_names: A mapping from the default column name -> provided column name.
-            Defaults to 'image'
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
         the specified paths. For information on working with tensors, read the
@@ -1117,7 +1112,6 @@ def read_images(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         file_extensions=file_extensions,
-        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -1614,7 +1608,6 @@ def read_text(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1632,6 +1625,8 @@ def read_text(
 
         >>> ray.data.read_text( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
+
+        Column names default to "text".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1678,8 +1673,6 @@ def read_text(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_names: A mapping from the default column name -> provided column name.
-            Defaults to 'text'
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
@@ -1702,7 +1695,6 @@ def read_text(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -1838,7 +1830,6 @@ def read_numpy(
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1857,6 +1848,8 @@ def read_numpy(
 
         >>> ray.data.read_numpy( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        Column name defaults to "data".
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1892,8 +1885,6 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_names: A mapping from the default column name -> provided column name.
-            Defaults to 'data'.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
@@ -1914,7 +1905,6 @@ def read_numpy(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -2838,9 +2828,7 @@ def from_pandas_refs(
 
 
 @PublicAPI
-def from_numpy(
-    ndarrays: Union[np.ndarray, List[np.ndarray]], column_name="data"
-) -> MaterializedDataset:
+def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays.
 
     Examples:
@@ -2855,24 +2843,22 @@ def from_numpy(
         >>> ray.data.from_numpy([arr, arr])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 
+        Column name defaults to "data".
+
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
-        column_name: The name of the column. Defaults to 'data'
     Returns:
         :class:`~ray.data.Dataset` holding data from the given ndarrays.
     """
     if isinstance(ndarrays, np.ndarray):
         ndarrays = [ndarrays]
 
-    return from_numpy_refs(
-        [ray.put(ndarray) for ndarray in ndarrays], column_name=column_name
-    )
+    return from_numpy_refs([ray.put(ndarray) for ndarray in ndarrays])
 
 
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-    column_name: str = "data",
 ) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
     NumPy ndarrays.
@@ -2889,10 +2875,11 @@ def from_numpy_refs(
         >>> ray.data.from_numpy_refs([arr_ref, arr_ref])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 
+        Column name defaults to "data".
+
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
             references to NumPy ndarrays.
-        column_name: The name of the column. Defaults to 'data'
     Returns:
         :class:`~ray.data.Dataset` holding data from the given ndarrays.
     """
@@ -2911,11 +2898,7 @@ def from_numpy_refs(
         )
 
     ctx = DataContext.get_current()
-
-    def custom_ndarray_to_block(*args, **kwargs):
-        return ndarray_to_block(*args, **kwargs, column_name=column_name)
-
-    ndarray_to_block_remote = cached_remote_fn(custom_ndarray_to_block, num_returns=2)
+    ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
@@ -3334,7 +3317,6 @@ def from_tf(
 def from_torch(
     dataset: "torch.utils.data.Dataset",
     local_read: bool = False,
-    column_name: str = "data",
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -3342,6 +3324,8 @@ def from_torch(
     .. note::
         The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.
         The data will be sequentially streamed with one single read task.
+
+    The column name defaults to "data".
 
     Examples:
         >>> import ray
@@ -3356,7 +3340,6 @@ def from_torch(
     Args:
         dataset: A `Torch Dataset`_.
         local_read: If ``True``, perform the read as a local read.
-        column_name: The name of the column. Defaults to 'data'
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
@@ -3376,7 +3359,7 @@ def from_torch(
             "num_cpus": 0,
         }
     return read_datasource(
-        TorchDatasource(dataset=dataset, column_name=column_name),
+        TorchDatasource(dataset=dataset),
         ray_remote_args=ray_remote_args,
         # Only non-parallel, streaming read is currently supported
         override_num_blocks=1,

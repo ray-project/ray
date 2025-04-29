@@ -686,15 +686,13 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     )
 
 
-def ndarray_to_block(
-    ndarray: np.ndarray, ctx: DataContext, column_name: str = "data"
-) -> "Block":
+def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     DataContext._set_current(ctx)
 
     stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block({column_name: ndarray})
+    block = BlockAccessor.batch_to_block({"data": ndarray})
     metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
     return block, metadata
 
