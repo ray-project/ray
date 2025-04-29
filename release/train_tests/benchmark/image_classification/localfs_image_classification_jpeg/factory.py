@@ -38,6 +38,13 @@ class LocalFSImageClassificationRayDataLoaderFactory(
 
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         """Get Ray datasets for training and validation from local filesystem."""
+        dataloader_config = self.get_dataloader_config()
+        override_num_blocks = (
+            dataloader_config.ray_data_override_num_blocks
+            if dataloader_config.ray_data_override_num_blocks != 0
+            else None
+        )
+
         # Create training dataset
         train_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS["train"],
@@ -48,7 +55,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
                 field_names=["class"],
             ),
-            parallelism=20,
+            override_num_blocks=override_num_blocks,
         ).map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset
@@ -61,7 +68,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
                 field_names=["class"],
             ),
-            parallelism=20,
+            override_num_blocks=override_num_blocks,
         ).map(get_preprocess_map_fn(random_transforms=False))
 
         return {"train": train_ds, "val": val_ds}
