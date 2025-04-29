@@ -412,7 +412,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           << "An task got scheduled to a node even though it was infeasible. "
              "Please report an issue on GitHub.\nTask placement resource requirements: "
           << front_task.GetRequiredPlacementResources().GetResourceMap()
-          << "\n Scheduling strategy: " << front_task.GetSchedulingStrategy();
+          << "\n Scheduling strategy: "
+          << front_task.GetSchedulingStrategy().scheduling_strategy_case();
       for (const auto &work : dispatch_queue) {
         CancelTask(work->task.GetTaskSpecification().TaskId(),
                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
