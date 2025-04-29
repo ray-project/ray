@@ -162,7 +162,7 @@ def main(scale_factor: int):
     benchmark = Benchmark()
 
     print("Creating metadata")
-    metadata = create_metadata(num_groups=scale_factor)
+    metadata = create_metadata(scale_factor=scale_factor)
 
     def benchmark_fn():
         weights = ViT_B_16_Weights.DEFAULT
