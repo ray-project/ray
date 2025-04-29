@@ -174,6 +174,7 @@ def from_items(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+
     Returns:
         A :class:`~ray.data.Dataset` holding the items.
     """
@@ -263,6 +264,7 @@ def range(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+
     Returns:
         A :class:`~ray.data.Dataset` producing the integers from the range 0 to n.
 
@@ -321,6 +323,7 @@ def range_tensor(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+
     Returns:
         A :class:`~ray.data.Dataset` producing the tensor data from range 0 to n.
 
@@ -499,6 +502,7 @@ def read_audio(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
     Returns:
         A :class:`~ray.data.Dataset` containing audio amplitudes and associated
         metadata.
@@ -588,6 +592,7 @@ def read_videos(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
@@ -1085,6 +1090,7 @@ def read_images(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
         the specified paths. For information on working with tensors, read the
@@ -1673,6 +1679,7 @@ def read_text(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
@@ -1885,6 +1892,7 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
@@ -2847,6 +2855,7 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
+
     Returns:
         :class:`~ray.data.Dataset` holding data from the given ndarrays.
     """
@@ -2880,6 +2889,7 @@ def from_numpy_refs(
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
             references to NumPy ndarrays.
+
     Returns:
         :class:`~ray.data.Dataset` holding data from the given ndarrays.
     """
@@ -3340,6 +3350,7 @@ def from_torch(
     Args:
         dataset: A `Torch Dataset`_.
         local_read: If ``True``, perform the read as a local read.
+
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
