@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray._common.utils import run_background_task
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
@@ -24,9 +23,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
-    CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
-    RAY_SERVE_ENABLE_TASK_EVENTS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -1195,47 +1192,3 @@ def log_target_capacity_change(
             )
         else:
             logger.info("Target capacity entering 100% at steady state.")
-
-
-@ray.remote(num_cpus=0)
-class ServeControllerAvatar:
-    """A hack that proxy the creation of async actors from Java.
-
-    To be removed after https://github.com/ray-project/ray/pull/26037
-
-    Java api can not support python async actor. If we use java api create
-    python async actor. The async init method won't be executed. The async
-    method will fail with pickle error. And the run_control_loop of controller
-    actor can't be executed too. We use this proxy actor create python async
-    actor to avoid the above problem.
-    """
-
-    def __init__(
-        self,
-        http_proxy_port: int = 8000,
-    ):
-        try:
-            self._controller = ray.get_actor(
-                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-            )
-        except ValueError:
-            self._controller = None
-        if self._controller is None:
-            self._controller = ServeController.options(
-                num_cpus=0,
-                name=SERVE_CONTROLLER_NAME,
-                lifetime="detached",
-                max_restarts=-1,
-                max_task_retries=-1,
-                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-                namespace=SERVE_NAMESPACE,
-                max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-            ).remote(
-                http_options=HTTPOptions(port=http_proxy_port),
-                global_logging_config=LoggingConfig(),
-            )
-
-    def check_alive(self) -> None:
-        """No-op to check if this actor is alive."""
-        return
