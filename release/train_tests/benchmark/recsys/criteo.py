@@ -216,6 +216,8 @@ def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN):
             val: i for i, (val, _) in enumerate(value_counts, start=2)
         }
 
+    # TODO: This will not scale well for the full dataset, since this dict might be 10s of GBs,
+    # which is expensive to copy to each map task.
     # This mapping is large, so put a shared copy in the object store for all the map tasks to use.
     categorical_value_to_index_ref = ray.put(categorical_value_to_index)
 
