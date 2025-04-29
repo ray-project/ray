@@ -77,11 +77,15 @@ class MockVLLMEngine(LLMEngine):
     async def prepare_request(
         self, request_id: str, prompt: Prompt, stream: bool, **kwargs
     ) -> VLLMGenerationRequest:
-        
-        # Simplification: Assume prompt is a list of messages with one user message
-        assert isinstance(prompt.prompt, list) and len(prompt.prompt) == 1
-        assert hasattr(prompt.prompt[0], "content")
-        prompt_text = prompt.prompt[0].content
+
+        if isinstance(prompt.prompt, list):
+            # Simplification: Assume prompt is a list of messages with one user message
+            assert len(prompt.prompt) == 1
+            assert hasattr(prompt.prompt[0], "content")
+            prompt_text = prompt.prompt[0].content
+        else:
+            prompt_text = prompt.prompt
+            
         return VLLMGenerationRequest(
             request_id=request_id,
             prompt=prompt_text,
@@ -277,12 +281,15 @@ class MockMultiplexEngine(LLMEngine):
         stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> VLLMGenerationRequest:
-        
-        # Simplification: Assume prompt is a list of messages with one user message
-        assert isinstance(prompt.prompt, list) and len(prompt.prompt) == 1
-        assert hasattr(prompt.prompt[0], "content")
-        prompt_text = prompt.prompt[0].content
-        
+
+        if isinstance(prompt.prompt, list):
+            # Simplification: Assume prompt is a list of messages with one user message
+            assert len(prompt.prompt) == 1
+            assert hasattr(prompt.prompt[0], "content")
+            prompt_text = prompt.prompt[0].content
+        else:
+            prompt_text = prompt.prompt
+
         output = VLLMGenerationRequest(
             request_id=request_id,
             prompt=prompt_text,

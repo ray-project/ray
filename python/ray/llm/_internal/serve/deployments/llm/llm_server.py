@@ -43,6 +43,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,
@@ -464,9 +465,11 @@ class LLMServer(_LLMServerBase):
         self.response_postprocessor = ResponsePostprocessor()
 
     @property
-    def _get_engine_class(self) -> VLLMEngine:
+    def _get_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable if existed
         else it will fallback to the default engine class.
+        
+        This is used for testing or patching purposes. 
         """
         engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
         if engine_cls_path:
@@ -477,7 +480,6 @@ class LLMServer(_LLMServerBase):
                     f"Failed to import engine class {engine_cls_path}. "
                     f"Using the default engine class {self._engine_cls}."
                 )
-
         return self._engine_cls
 
     async def _start_engine(self):

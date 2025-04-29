@@ -226,7 +226,6 @@ class VLLMGenerationRequest(GenerationRequest):
         Union[VLLMSamplingParams, List[VLLMSamplingParams]]
     ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
-    serve_request_context: Optional[serve.context._RequestContext] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 
     @property

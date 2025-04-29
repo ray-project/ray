@@ -25,12 +25,22 @@ from ray._private.test_utils import wait_for_condition
 
 
 @pytest.fixture
-def get_llm_serve_args(llm_config):
-    yield LLMServingArgs(llm_configs=[llm_config])
+def llm_config_with_mock_engine(llm_config):
+    # Make sure engine is mocked.
+    if llm_config.runtime_env is None:
+        llm_config.runtime_env = {}
+    llm_config.runtime_env.setdefault("env_vars", {})[
+        "RAYLLM_VLLM_ENGINE_CLS"
+    ] = "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
+    yield llm_config
+
+@pytest.fixture
+def get_llm_serve_args(llm_config_with_mock_engine):
+    yield LLMServingArgs(llm_configs=[llm_config_with_mock_engine])
 
 
 @pytest.fixture()
-def serve_config_separate_model_config_files(model_pixtral_12b):
+def serve_config_separate_model_config_files():
     with tempfile.TemporaryDirectory() as config_dir:
         serve_config_filename = "llm_app_separate_model_config_files.yaml"
         config_root = os.path.join(os.path.dirname(__file__), "test_config_files")
@@ -50,7 +60,14 @@ def serve_config_separate_model_config_files(model_pixtral_12b):
 
                 with open(llm_config_src, "r") as f:
                     llm_config_yaml = yaml.safe_load(f)
-                llm_config_yaml["model_loading_config"]["model_id"] = model_pixtral_12b
+                    
+                
+                # Make sure engine is mocked.
+                if llm_config_yaml.get("runtime_env", None) is None:
+                    llm_config_yaml["runtime_env"] = {}
+                llm_config_yaml["runtime_env"]["env_vars"] = {
+                    "RAYLLM_VLLM_ENGINE_CLS": "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
+                }
 
                 os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
                 with open(llm_config_dst, "w") as f:
@@ -66,7 +83,7 @@ def serve_config_separate_model_config_files(model_pixtral_12b):
 
 class TestBuildOpenaiApp:
     def test_build_openai_app(
-        self, get_llm_serve_args, shutdown_ray_and_serve, use_mock_vllm_engine
+        self, get_llm_serve_args, shutdown_ray_and_serve
     ):
         """Test `build_openai_app` can build app and run it with Serve."""
 
@@ -79,8 +96,7 @@ class TestBuildOpenaiApp:
     def test_build_openai_app_with_config(
         self,
         serve_config_separate_model_config_files,
-        shutdown_ray_and_serve,
-        use_mock_vllm_engine,
+        shutdown_ray_and_serve
     ):
         """Test `build_openai_app` can be used in serve config."""
 
@@ -149,13 +165,12 @@ class TestBuildOpenaiApp:
 class TestBuildVllmDeployment:
     def test_build_llm_deployment(
         self,
-        llm_config,
+        llm_config_with_mock_engine,
         shutdown_ray_and_serve,
-        use_mock_vllm_engine,
     ):
         """Test `build_llm_deployment` can build a vLLM deployment."""
 
-        app = build_llm_deployment(llm_config)
+        app = build_llm_deployment(llm_config_with_mock_engine)
         assert isinstance(app, serve.Application)
         serve.run(app)
 
