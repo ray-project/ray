@@ -1,9 +1,10 @@
+from dataclasses import dataclass
+from functools import cached_property
+import logging
 import os
 import queue
 import socket
-from dataclasses import dataclass
-from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray.types import ObjectRef
@@ -30,7 +31,10 @@ from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2._internal.util import ObjectRefWrapper
 
+
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -112,13 +116,17 @@ class RayTrainWorker:
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> T:
         return fn(*fn_args, **fn_kwargs)
 
-    def run_train_fn(self, train_fn_ref: ObjectRefWrapper[Callable[[], Any]]):
+    def run_train_fn(self, train_fn_ref: ObjectRefWrapper[Callable[[], None]]):
         """Run the training function in a separate thread.
 
         This function should return immediately, freeing up the main actor thread
         to perform other tasks such as polling the status.
         """
-        train_fn = train_fn_ref.get()
+        try:
+            train_fn = train_fn_ref.get()
+        except Exception as e:
+            logger.error(f"Error deserializing the training function: {e}")
+            raise
 
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(train_fn)
