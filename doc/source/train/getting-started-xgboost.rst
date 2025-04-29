@@ -240,7 +240,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
     For example, if your cluster has 8 CPUs per node, you might allocate 6 CPUs to training workers and leave 2 CPUs for Ray Data:
 
-        .. testcode::
+    .. testcode::
 
         # Allocate 6 CPUs per worker, leaving resources for Ray Data operations
         scaling_config = ScalingConfig(num_workers=4, resources_per_worker={"CPU": 6})
