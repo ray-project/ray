@@ -16,9 +16,6 @@ class NumpyDatasource(FileBasedDatasource):
     _COLUMN_NAME = "data"
     _FILE_EXTENSIONS = ["npy"]
 
-    _DATA = "data"
-    _REQUIRED_COLUMN_NAMES = [_DATA]
-
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -40,9 +37,5 @@ class NumpyDatasource(FileBasedDatasource):
         buf.write(data)
         buf.seek(0)
         yield BlockAccessor.batch_to_block(
-            {
-                self._column_names[self._DATA]: np.load(
-                    buf, allow_pickle=True, **self.numpy_load_args
-                )
-            }
+            {"data": np.load(buf, allow_pickle=True, **self.numpy_load_args)}
         )

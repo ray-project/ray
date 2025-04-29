@@ -17,9 +17,11 @@ class TorchDatasource(Datasource):
     This datasource implements a streaming read using a single read task.
     """
 
-    def __init__(self, dataset: "torch.utils.data.Dataset", column_name: str = "item"):
+    def __init__(
+        self,
+        dataset: "torch.utils.data.Dataset",
+    ):
         self._dataset = dataset
-        self._column_name = column_name
 
     def get_read_tasks(self, parallelism):
         assert parallelism == 1
@@ -32,7 +34,9 @@ class TorchDatasource(Datasource):
             exec_stats=None,
         )
         read_task = ReadTask(
-            lambda subset=self._dataset: _read_subset(subset, self._column_name),
+            lambda subset=self._dataset: _read_subset(
+                subset,
+            ),
             metadata=meta,
         )
 
@@ -42,17 +46,17 @@ class TorchDatasource(Datasource):
         return None
 
 
-def _read_subset(subset: "torch.utils.data.Subset", column_name: str):
+def _read_subset(subset: "torch.utils.data.Subset"):
     batch = []
     for item in subset:
         batch.append(item)
         if len(batch) == TORCH_DATASOURCE_READER_BATCH_SIZE:
             builder = DelegatingBlockBuilder()
-            builder.add_batch({column_name: batch})
+            builder.add_batch({"item": batch})
             yield builder.build()
             batch.clear()
 
     if len(batch) > 0:
         builder = DelegatingBlockBuilder()
-        builder.add_batch({column_name: batch})
+        builder.add_batch({"item": batch})
         yield builder.build()

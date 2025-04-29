@@ -107,9 +107,6 @@ class FileBasedDatasource(Datasource):
     # If zero or negative, reading will be performed in the main thread.
     _NUM_THREADS_PER_TASK = 0
 
-    # List of column names that must be used.
-    _REQUIRED_COLUMN_NAMES = []
-
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -124,7 +121,6 @@ class FileBasedDatasource(Datasource):
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
-        column_names: Optional[Dict[str, str]] = None,
     ):
         _check_pyarrow_version()
 
@@ -202,25 +198,6 @@ class FileBasedDatasource(Datasource):
         # the paths rather than the paths themselves.
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
-
-        self._column_names = {}
-        required_column_names = self._REQUIRED_COLUMN_NAMES.copy()
-        if self._include_paths:
-            required_column_names.append("path")
-        for name in required_column_names:
-            if (
-                column_names is not None
-                and name in column_names
-                and len(column_names[name]) > 0
-            ):
-                self._column_names[name] = column_names[name]
-            else:
-                self._column_names[name] = name
-        if len(self._column_names.values()) != len(set(self._column_names.values())):
-            raise ValueError(
-                "Column names must be unique. Here is what you provided"
-                f"{list(self._column_names.values())}"
-            )
 
     def _paths(self) -> List[str]:
         return ray.get(self._paths_ref)

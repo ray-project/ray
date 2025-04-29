@@ -32,10 +32,6 @@ class AudioDatasource(FileBasedDatasource):
         "caf",
     ]
 
-    _AMPLITUDE = "amplitude"
-    _SAMPLE_RATE = "sample_rate"
-    _REQUIRED_COLUMN_NAMES = [_AMPLITUDE, _SAMPLE_RATE]
-
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -57,10 +53,5 @@ class AudioDatasource(FileBasedDatasource):
         amplitude = amplitude.transpose((1, 0))
 
         builder = DelegatingBlockBuilder()
-        builder.add(
-            {
-                self._column_names[self._AMPLITUDE]: amplitude,
-                self._column_names[self._SAMPLE_RATE]: sample_rate,
-            }
-        )
+        builder.add({"amplitude": amplitude, "sample_rate": sample_rate})
         yield builder.build()
