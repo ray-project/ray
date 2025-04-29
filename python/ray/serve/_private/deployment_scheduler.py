@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     SERVE_LOGGER_NAME,
+    parse_custom_resource_priority,
 )
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
@@ -41,9 +42,7 @@ class SpreadDeploymentSchedulingPolicy:
 @total_ordering
 class Resources(dict):
     # Custom resource priority from environment variable
-    CUSTOM_PRIORITY = [
-        r for r in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES.split(",") if r
-    ]
+    CUSTOM_PRIORITY: List[str] = parse_custom_resource_priority()
 
     def get(self, key: str):
         val = super().get(key)

@@ -438,11 +438,9 @@ def test_best_fit_node():
     )
 
     # Custom resource prioritization: customx is more important than customy
-    with mock.patch.dict(os.environ, {RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: "customx,customy"}):
+    with mock.patch('ray.serve._private.deployment_scheduler.RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES', 'customx,customy'):
         original = Resources.CUSTOM_PRIORITY
-        Resources.CUSTOM_PRIORITY = [
-            r for r in os.environ[RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES].split(",") if r
-        ]
+        Resources.CUSTOM_PRIORITY = ['customx', 'customy']
 
         assert "node2" == scheduler._best_fit_node(
             required_resources=Resources(customx=1, customy=1),

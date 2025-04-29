@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
@@ -375,6 +376,9 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
+
+def parse_custom_resource_priority() -> List[str]:
+    return [r for r in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES.split(",") if r]
 
 # Comma-separated list of custom resources prioritized in scheduling (e.g., "customx,customy")
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES = os.environ.get(
