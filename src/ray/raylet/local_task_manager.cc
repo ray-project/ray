@@ -407,6 +407,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
+      TaskSpecification front_task = dispatch_queue.front()->task.GetTaskSpecification();
       RAY_LOG(ERROR)
           << "An task got scheduled to a node even though it was infeasible. "
              "Please report an issue on GitHub.\nTask placement resource requirements: "
