@@ -33,15 +33,15 @@ import org.slf4j.LoggerFactory;
 public class ServeControllerClient {
   private static final Logger LOGGER = LoggerFactory.getLogger(ServeControllerClient.class);
 
-  private static long CLIENT_POLLING_INTERVAL_S = 1;
+  private static final long CLIENT_POLLING_INTERVAL_S = 1;
 
-  private BaseActorHandle controller; // TODO change to PyActorHandle
+  private final BaseActorHandle controller; // TODO change to PyActorHandle
 
   private boolean shutdown;
 
-  private Map<String, DeploymentHandle> handleCache = new ConcurrentHashMap<>();
+  private final Map<String, DeploymentHandle> handleCache = new ConcurrentHashMap<>();
 
-  private String rootUrl;
+  private final String rootUrl;
 
   @SuppressWarnings("unchecked")
   public ServeControllerClient(BaseActorHandle controller) {
