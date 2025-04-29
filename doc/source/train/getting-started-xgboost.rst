@@ -59,7 +59,9 @@ Set up a training function
 --------------------------
 
 First, update your training code to support distributed training.
-Begin by wrapping your native XGBoost training code in a :ref:`training function <train-overview-training-function>`:
+Begin by wrapping your `native <https://xgboost.readthedocs.io/en/latest/python/python_intro.html>`_ 
+or `scikit-learn estimator <https://xgboost.readthedocs.io/en/latest/python/sklearn_estimator.html>`_ 
+XGBoost training code in a :ref:`training function <train-overview-training-function>`:
 
 .. testcode::
     :skipif: True

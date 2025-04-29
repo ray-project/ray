@@ -84,6 +84,7 @@ def train_func():
         dtrain=dtrain,
         evals=[(deval, "validation")],
         num_boost_round=10,
+        # Optional: Save the model checkpoint manually instead.
         callbacks=[RayTrainReportCallback()],
     )
 
