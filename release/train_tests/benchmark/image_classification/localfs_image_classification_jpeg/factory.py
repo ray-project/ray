@@ -42,7 +42,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         dataloader_config = self.get_dataloader_config()
         override_num_blocks = (
             dataloader_config.ray_data_override_num_blocks
-            if dataloader_config.ray_data_override_num_blocks != 0
+            if dataloader_config.ray_data_override_num_blocks != -1
             else None
         )
 
