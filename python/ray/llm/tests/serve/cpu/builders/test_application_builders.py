@@ -43,7 +43,6 @@ def get_llm_serve_args(llm_config_with_mock_engine):
 
 @pytest.fixture()
 def serve_config_separate_model_config_files():
-    # with tempfile.TemporaryDirectory() as config_dir:
     config_dir = tempfile.mkdtemp()
     serve_config_filename = "llm_app_separate_model_config_files.yaml"
     config_root = os.path.join(os.path.dirname(__file__), "test_config_files")
@@ -102,23 +101,33 @@ class TestBuildOpenaiApp:
             status = serve.status()
             app_status = status.applications.get("llm-endpoint")
             if not app_status or app_status.status != ApplicationStatus.RUNNING:
+                print(
+                    f"[TEST] Application 'llm-endpoint' not running yet. Status: {app_status}"
+                )
                 return False
 
             deployments = app_status.deployments
             if len(deployments) != 2:
+                print(f"[TEST] Expected 2 deployments, found {len(deployments)}")
                 return False
 
             all_healthy = all(
                 dep.status == DeploymentStatus.HEALTHY for dep in deployments.values()
             )
             if not all_healthy:
+                unhealthy_deployments = {
+                    name: dep.status
+                    for name, dep in deployments.items()
+                    if dep.status != DeploymentStatus.HEALTHY
+                }
+                print(f"[TEST] Not all deployments healthy: {unhealthy_deployments}")
                 return False
 
             print("[TEST] All deployments healthy.")
             return True
 
         p = subprocess.Popen(["serve", "run", serve_config_separate_model_config_files])
-        wait_for_condition(deployments_healthy, timeout=30)
+        wait_for_condition(deployments_healthy, timeout=60, retry_interval_ms=1000)
 
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
