@@ -2,15 +2,11 @@ import argparse
 import asyncio
 import json
 import logging
-import logging.handlers
 import os
 import signal
 import sys
 
-import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
