@@ -482,6 +482,8 @@
 
   cluster:
     cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+    byod:
+      post_build_script: byod_install_albumentations.sh
 
   run:
     timeout: 3600
@@ -493,6 +495,8 @@
 
   cluster:
     cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+    byod:
+      post_build_script: byod_install_albumentations.sh
 
   run:
     timeout: 3600
