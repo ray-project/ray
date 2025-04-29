@@ -15,7 +15,6 @@ import threading  # noqa: E402
 import time  # noqa: E402
 from datetime import datetime  # noqa: E402
 
-from benchmark.firehose_utils import FirehoseRecord, RecordName  # noqa: E402
 from bm import run_bm  # noqa: E402
 from common import (  # noqa: E402
     read_yaml,
@@ -247,12 +246,17 @@ def main(pargs):
         "tag": f"{llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}",
     }
 
-    for result in results:
-        record = FirehoseRecord(
-            record_name=RecordName.VLLM_PERF_TEST,
-            record_metrics={**service_metadata, **result},
+    if results:
+        print(
+            "Writing final result to AWS S3:",
+            json.dumps(results, indent=4, sort_keys=True),
+            sep="\n",
         )
-        record.write(verbose=True)
+        upload_results_to_s3(pargs.remote_result_path, results, service_metadata)
+    else:
+        raise ValueError(
+            "For some reason the benchmarking results are empty. Something is wrong."
+        )
 
 
 if __name__ == "__main__":

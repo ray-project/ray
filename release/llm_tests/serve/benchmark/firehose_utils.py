@@ -53,9 +53,33 @@ class FirehoseRecord(BaseModel):
         # Add newline character to separate records
         data = json.dumps(final_result) + "\n"
 
-        firehose_client = boto3.client(
-            "firehose", config=Config(region_name="us-west-2")
+        # Need to assume the role in order to share access to the Firehose
+        sts_client = boto3.client("sts")
+
+        assumed_role = sts_client.assume_role(
+            RoleArn="arn:aws:iam::830883877497:role/service-role/KinesisFirehoseServiceRole-rayllm-ci-res-us-west-2-1728664186256",
+            RoleSessionName="FirehosePutRecordSession",
         )
+
+        credentials = assumed_role["Credentials"]
+
+        # Use the assumed credentials to create a Firehose client
+        firehose_client = boto3.client(
+            "firehose",
+            region_name="us-west-2",
+            aws_access_key_id=credentials["AccessKeyId"],
+            aws_secret_access_key=credentials["SecretAccessKey"],
+            aws_session_token=credentials["SessionToken"],
+        )
+
+        response = firehose_client.put_record(
+            DeliveryStreamName=STREAM_NAME, Record={"Data": data}
+        )
+
+        if verbose:
+            print("PutRecord response:")
+            print(response)
+
         firehose_client.put_record(
             DeliveryStreamName=STREAM_NAME,
             Record={"Data": data},
