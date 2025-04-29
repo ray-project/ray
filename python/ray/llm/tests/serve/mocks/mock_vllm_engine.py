@@ -77,9 +77,14 @@ class MockVLLMEngine(LLMEngine):
     async def prepare_request(
         self, request_id: str, prompt: Prompt, stream: bool, **kwargs
     ) -> VLLMGenerationRequest:
+        
+        # Simplification: Assume prompt is a list of messages with one user message
+        assert isinstance(prompt.prompt, list) and len(prompt.prompt) == 1
+        assert hasattr(prompt.prompt[0], "content")
+        prompt_text = prompt.prompt[0].content
         return VLLMGenerationRequest(
             request_id=request_id,
-            prompt=prompt.prompt,
+            prompt=prompt_text,
             stream=stream,
             sampling_params=VLLMSamplingParams.from_prompt(prompt),
         )
@@ -272,9 +277,15 @@ class MockMultiplexEngine(LLMEngine):
         stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> VLLMGenerationRequest:
+        
+        # Simplification: Assume prompt is a list of messages with one user message
+        assert isinstance(prompt.prompt, list) and len(prompt.prompt) == 1
+        assert hasattr(prompt.prompt[0], "content")
+        prompt_text = prompt.prompt[0].content
+        
         output = VLLMGenerationRequest(
             request_id=request_id,
-            prompt=prompt.prompt,
+            prompt=prompt_text,
             stream=stream,
             sampling_params=VLLMSamplingParams.from_prompt(prompt),
             disk_multiplex_config=disk_lora_model,

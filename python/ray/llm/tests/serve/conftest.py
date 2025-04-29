@@ -101,13 +101,13 @@ def get_rayllm_testing_model(
 
 
 @pytest.fixture
-def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b):
+def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_smolvlm_256m):
     test_model_path = get_test_model_path("mock_vllm_model.yaml")
 
     with open(test_model_path, "r") as f:
         loaded_llm_config = yaml.safe_load(f)
 
-    loaded_llm_config["model_loading_config"]["model_source"] = model_pixtral_12b
+    loaded_llm_config["model_loading_config"]["model_source"] = model_smolvlm_256m
     test_model_path = write_yaml_file(loaded_llm_config)
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
@@ -116,14 +116,14 @@ def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12
 
 @pytest.fixture
 def testing_model_no_accelerator(
-    shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b
+    shutdown_ray_and_serve, use_mock_vllm_engine, model_smolvlm_256m
 ):
     test_model_path = get_test_model_path("mock_vllm_model_no_accelerator.yaml")
 
     with open(test_model_path, "r") as f:
         loaded_llm_config = yaml.safe_load(f)
 
-    loaded_llm_config["model_loading_config"]["model_source"] = model_pixtral_12b
+    loaded_llm_config["model_loading_config"]["model_source"] = model_smolvlm_256m
     test_model_path = write_yaml_file(loaded_llm_config)
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
