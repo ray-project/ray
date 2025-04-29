@@ -103,13 +103,13 @@ from ray.rllib.core.learner.differentiable_learner_config import (
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.learners.classes.maml_lr_differentiable_learner import (
+from ray.rllib.examples.algorithms.classes.maml_lr_differentiable_learner import (
     MAMLTorchDifferentiableLearner,
 )
-from ray.rllib.examples.learners.classes.maml_lr_meta_learner import (
+from ray.rllib.examples.algorithms.classes.maml_lr_meta_learner import (
     MAMLTorchMetaLearner,
 )
-from ray.rllib.examples.learners.classes.maml_lr_differentiable_rlm import (
+from ray.rllib.examples.algorithms.classes.maml_lr_differentiable_rlm import (
     DifferentiableTorchRLModule,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
