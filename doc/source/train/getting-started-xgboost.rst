@@ -14,7 +14,7 @@ Learn how to:
 Quickstart
 ----------
 
-For reference, the final code is as follows:
+For reference, the final code will look something like this:
 
 .. testcode::
     :skipif: True
@@ -156,14 +156,15 @@ Set up a training function
 --------------------------
 
 First, update your training code to support distributed training.
-Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
+Begin by wrapping your native XGBoost training code in a :ref:`training function <train-overview-training-function>`:
 
 .. testcode::
     :skipif: True
 
     def train_func():
-        # Your model training code here.
-        ...
+        # Your native XGBoost training code here.
+        dmatrix = ...
+        xgboost.train(...)
 
 Each distributed training worker executes this function.
 
@@ -183,7 +184,7 @@ You can also specify the input argument for `train_func` as a dictionary via the
 .. warning::
 
     Avoid passing large data objects through `train_loop_config` to reduce the
-    serialization and deserialization overhead. Instead, it's preferred to
+    serialization and deserialization overhead. Instead,
     initialize large objects (e.g. datasets, models) directly in `train_func`.
 
     .. code-block:: diff
@@ -208,7 +209,7 @@ You can also specify the input argument for `train_func` as a dictionary via the
 
          trainer = ray.train.xgboost.XGBoostTrainer(train_func, train_loop_config=config, ...)
 
-Ray Train automatically sets up the Rabit communicator for XGBoost, which handles the distributed communication between workers.
+Ray Train automatically performs the worker communication setup that is needed to do distributed xgboost training.
 
 Report metrics and save checkpoints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -217,7 +218,7 @@ To persist your checkpoints and monitor training progress, add a
 :class:`ray.train.xgboost.RayTrainReportCallback` utility callback to your Trainer:
 
 
-.. code-block:: diff
+.. code-block:: python
 
      import xgboost
      from ray.train.xgboost import RayTrainReportCallback
@@ -228,26 +229,26 @@ To persist your checkpoints and monitor training progress, add a
             ...,
             callbacks=[
                 RayTrainReportCallback(
-                    metrics={"loss": "eval-logloss"}, frequency=1
+                    metrics=["eval-logloss"], frequency=1
                 )
             ],
         )
         ...
 
 
-Reporting metrics and checkpoints to Ray Train enables integration with Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
+Reporting metrics and checkpoints to Ray Train enables :ref:`fault-tolerant training <train-fault-tolerance>` and the integration with Ray Tune.
 
 Loading data
 ------------
 
-When running distributed XGBoost training, you will need each worker to access a different shard of the dataset.
+When running distributed XGBoost training, each worker should use a different shard of the dataset.
 
 
 .. testcode:: python
     :skipif: True
 
-    def get_train_dataset(world_rank) -> xgboost.DMatrix:
-        # Define logic to get the DMatrix for each worker
+    def get_train_dataset(world_rank: int) -> xgboost.DMatrix:
+        # Define logic to get the DMatrix shard for this worker rank
         ...
 
     def get_eval_dataset(world_rank) -> xgboost.DMatrix:
@@ -260,9 +261,9 @@ When running distributed XGBoost training, you will need each worker to access a
         deval = get_eval_dataset(rank)
         ...
 
-A common way to do this is to pre-shard the dataset, so each worker reads from a different partition of the dataset. 
+A common way to do this is to pre-shard the dataset and then assign each worker a different set of files to read.
 
-For more flexibility, Ray Data provides a solution for sharding the dataset at runtime.
+Pre-sharding the dataset is not very flexible to changes in the number of workers, since some workers may be assigned more data than others. For more flexibility, Ray Data provides a solution for sharding the dataset at runtime.
 
 Use Ray Data to shard the dataset
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
