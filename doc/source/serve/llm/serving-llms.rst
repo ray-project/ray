@@ -27,7 +27,7 @@ Requirements
 Key Components
 --------------
 
-The ``ray.serve.llm`` module provides two key deployment types for serving LLMs:
+The :ref:`ray.serve.llm <serve-llm-api>` module provides two key deployment types for serving LLMs:
 
 LLMServer
 ~~~~~~~~~~~~~~~~~~
@@ -48,7 +48,7 @@ Configuration
 
 LLMConfig
 ~~~~~~~~~
-The ``LLMConfig`` class specifies model details such as:
+The :class:`LLMConfig <ray.serve.llm.LLMConfig>` class specifies model details such as:
 
 - Model loading sources (HuggingFace or cloud storage)
 - Hardware requirements (accelerator type)
@@ -59,17 +59,15 @@ The ``LLMConfig`` class specifies model details such as:
 Quickstart Examples
 -------------------
 
-
-
-Deployment through ``LLMRouter``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
     .. tab-item:: Builder Pattern
         :sync: builder
 
-        .. code-block:: python 
+        .. code-block:: python
 
             from ray import serve
             from ray.serve.llm import LLMConfig, build_openai_app
@@ -165,7 +163,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
 
-For deploying multiple models, you can pass a list of ``LLMConfig`` objects to the ``LLMRouter`` deployment:
+For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.serve.llm.LLMConfig>` objects to the :class:`LLMRouter <ray.serve.llm.LLMRouter>` deployment:
 
 .. tab-set::
 
@@ -212,7 +210,7 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
         :sync: bind
 
         .. code-block:: python
-            
+
             from ray import serve
             from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
 
@@ -248,6 +246,7 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
             llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app, blocking=True)
 
+See also :ref:`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
 
 Production Deployment
 ---------------------
@@ -367,7 +366,7 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``.
+You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
 We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
 This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
 
@@ -395,6 +394,9 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                     # are two of the LoRA checkpoints
                     dynamic_lora_loading_path="s3://my_dynamic_lora_path",
                     max_num_adapters_per_replica=16,
+                ),
+                engine_kwargs=dict(
+                    enable_lora=True,
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
@@ -508,7 +510,7 @@ For structured output, you can use JSON mode similar to OpenAI's API:
         If you want, you can also specify the schema you want for the response, using pydantic models:
 
         .. code-block:: python
-            
+
             from openai import OpenAI
             from typing import List, Literal
             from pydantic import BaseModel
@@ -526,7 +528,7 @@ For structured output, you can use JSON mode similar to OpenAI's API:
                 response_format={
                     "type": "json_schema",
                     "json_schema": Color.model_json_schema()
-                    
+
                 },
                 messages=[
                     {
@@ -670,7 +672,6 @@ You can then specify the `bucket_uri` in the `model_loading_config` to point to 
       name: llm_app
       route_prefix: "/"
 
-
 Frequently Asked Questions
 --------------------------
 
@@ -678,7 +679,7 @@ How do I use gated Huggingface models?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use `runtime_env` to specify the env variables that are required to access the model.
-To set the deployment options, you can use the ``get_serve_options`` method on the ``LLMConfig`` object.
+To set the deployment options, you can use the :meth:`get_serve_options <ray.serve.llm.LLMConfig.get_serve_options>` method on the :class:`LLMConfig <ray.serve.llm.LLMConfig>` object.
 
 .. code-block:: python
 
@@ -747,6 +748,31 @@ If you are using huggingface models, you can enable fast download by setting `HF
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app, blocking=True)
+
+How to configure tokenizer pool size so it doesn't hang?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using `tokenizer_pool_size` in vLLM's `engine_kwargs`,
+`tokenizer_pool_size` is also required to configure together in order to have
+the tokenizer group scheduled correctly.
+
+An example config is shown below:
+
+.. code-block:: yaml
+
+    # config.yaml
+    applications:
+    - args:
+        llm_configs:
+            - engine_kwargs:
+                max_model_len: 1000
+                tokenizer_pool_size: 2
+                tokenizer_pool_extra_config: "{\"runtime_env\": {}}"
+              model_loading_config:
+                model_id: Qwen/Qwen2.5-7B-Instruct
+      import_path: ray.serve.llm:build_openai_app
+      name: llm_app
+      route_prefix: "/"
 
 Usage Data Collection
 --------------------------

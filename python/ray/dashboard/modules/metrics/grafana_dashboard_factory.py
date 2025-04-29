@@ -271,6 +271,10 @@ def _generate_grafana_panels(
         template["yaxes"][0]["format"] = panel.unit
         template["fill"] = panel.fill
         template["stack"] = panel.stack
+        if panel.stack is True:
+            # If connected is not true, any nulls will cause the stacking visualization to break
+            # making the total appear much smaller than it actually is.
+            template["nullPointMode"] = "connected"
         template["linewidth"] = panel.linewidth
         out.append(template)
     return out

@@ -171,7 +171,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_arrow_block.py"],
     tags = [
         "data_non_parallel",
@@ -200,7 +200,7 @@ py_test(
 
 py_test(
     name = "test_batcher",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_batcher.py"],
     tags = [
         "exclusive",
@@ -479,6 +479,20 @@ py_test(
 )
 
 py_test(
+    name = "test_logging_dataset",
+    size = "small",
+    srcs = ["tests/test_logging_dataset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_logging",
     size = "small",
     srcs = ["tests/test_logging.py"],
@@ -606,7 +620,7 @@ py_test(
 
 py_test(
     name = "test_tf",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tf.py"],
     tags = [
         "exclusive",
@@ -680,6 +694,20 @@ py_test(
     name = "test_exceptions",
     size = "small",
     srcs = ["tests/test_exceptions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_operator_fusion",
+    size = "medium",
+    srcs = ["tests/test_operator_fusion.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1268,7 +1296,7 @@ py_test(
 
 py_test(
     name = "test_telemetry",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_telemetry.py"],
     tags = [
         "exclusive",
@@ -1298,6 +1326,20 @@ py_test(
     name = "test_daft",
     size = "small",
     srcs = ["tests/test_daft.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_state_export",
+    size = "small",
+    srcs = ["tests/test_state_export.py"],
     tags = [
         "exclusive",
         "team:data",

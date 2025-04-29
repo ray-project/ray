@@ -1,17 +1,15 @@
+import functools
 import importlib
 import logging
 import os
 import pathlib
+import platform
 import random
 import sys
-import psutil
-import platform
 import threading
 import time
-import functools
 import urllib.parse
 from queue import Empty, Full, Queue
-from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
@@ -28,7 +26,9 @@ from typing import (
 )
 
 import numpy as np
+import psutil
 import pyarrow
+from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
@@ -698,7 +698,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
 
 def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
@@ -785,13 +785,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -800,7 +801,7 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:
@@ -1126,6 +1127,9 @@ class RetryingContextManager:
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__} fs={self.handler.unwrap()}>"
+
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
         return call_with_retry(
@@ -1444,13 +1448,6 @@ def iterate_with_retry(
                 time.sleep(backoff)
             else:
                 raise e from None
-
-
-def create_dataset_tag(dataset_name: Optional[str], *args):
-    tag = dataset_name or "dataset"
-    for arg in args:
-        tag += f"_{arg}"
-    return tag
 
 
 def convert_bytes_to_human_readable_str(num_bytes: int) -> str:

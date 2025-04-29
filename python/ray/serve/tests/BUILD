@@ -36,7 +36,6 @@ py_test_module_list(
     files = [
         "test_actor_replica_wrapper.py",
         "test_advanced.py",
-        "test_backpressure.py",
         "test_batching.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
@@ -66,12 +65,12 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_backpressure.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller_recovery.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
-        "test_grpc.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -128,6 +127,7 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_deploy_2.py",
+        "test_grpc.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_telemetry_1.py",

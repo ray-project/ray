@@ -110,8 +110,6 @@ struct NodeManagerConfig {
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
-  // The minimum object size that can be spilled by each spill operation.
-  int64_t min_spilling_size;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
   // If true, core worker enables resource isolation by adding itself into appropriate
@@ -264,7 +262,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
   /// \param data The data of the worker that died.
-  void HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data);
+  void HandleUnexpectedWorkerFailure(const WorkerID &worker_id);
 
   /// Handler for the addition of a new node.
   ///
@@ -765,10 +763,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
-
-  /// If Node Manager already knows this (worker, node) is dead, return true.
-  /// Otherwise returns false.
-  bool IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const;
 
   /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
   /// channel is registered.

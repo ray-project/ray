@@ -84,3 +84,19 @@ steps:
       - "ml"
       - "rllib"
       - "ci"
+
+  - name: fossa-base
+    wanda: ci/docker/fossa.wanda.yaml
+    depends_on: forge
+
+  - label: "fossa analyze"
+    key: fossa-analyze
+    tags:
+      - skip-on-premerge
+      - fossa
+      - oss
+    instance_type: small
+    commands:
+      - bash ci/fossa/analyze.sh
+    depends_on: fossa-base
+    job_env: fossa-base

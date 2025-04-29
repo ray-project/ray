@@ -7,7 +7,10 @@ import ray
 from botocore.exceptions import ClientError
 from ray import serve
 
-from ray._private.usage.usage_lib import record_extra_usage_tag
+from ray._private.usage.usage_lib import (
+    record_extra_usage_tag,
+    get_hardware_usages_to_report,
+)
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
@@ -211,9 +214,36 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     ray.get(telemetry_agent.record.remote(model))
 
 
+class HardwareUsage:
+    """Hardware usage class to report telemetry."""
+
+    def __init__(self, get_hardware_fn: Callable = get_hardware_usages_to_report):
+        self._get_hardware_fn = get_hardware_fn
+
+    def infer_gpu_from_hardware(self) -> str:
+        """Infer the GPU type from the hardware when the accelerator type on llm config is
+        not specified.
+
+        Iterate through all the hardware recorded on the cluster and return the first
+        ray-compatible accelerator as the GPU type used for the deployment. If not, return
+        `UNSPECIFIED` as the default GPU type.
+        """
+        from ray.llm._internal.serve.configs.server_models import GPUType
+
+        all_accelerator_types = [t.value for t in GPUType]
+        gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        hardwares = self._get_hardware_fn(gcs_client)
+        for hardware in hardwares:
+            if hardware in all_accelerator_types:
+                return hardware
+
+        return DEFAULT_GPU_TYPE
+
+
 def push_telemetry_report_for_all_models(
     all_models: Optional[Sequence["LLMConfig"]] = None,
     get_lora_model_func: Callable = get_lora_model_ids,
+    get_hardware_fn: Callable = get_hardware_usages_to_report,
 ):
     """Push telemetry report for all models."""
     if not all_models:
@@ -254,6 +284,7 @@ def push_telemetry_report_for_all_models(
             max_replicas = autoscaling_config.max_replicas
 
         engine_config = model.get_engine_config()
+        hardware_usage = HardwareUsage(get_hardware_fn)
 
         telemetry_model = TelemetryModel(
             model_architecture=model.model_architecture,
@@ -265,7 +296,7 @@ def push_telemetry_report_for_all_models(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             tensor_parallel_degree=engine_config.tensor_parallel_degree,
-            gpu_type=model.accelerator_type or DEFAULT_GPU_TYPE,
+            gpu_type=model.accelerator_type or hardware_usage.infer_gpu_from_hardware(),
             num_gpus=engine_config.num_devices,
         )
         _push_telemetry_report(telemetry_model)
