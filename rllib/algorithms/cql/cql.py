@@ -280,6 +280,15 @@ class CQLConfig(SACConfig):
             )
 
     @property
+    def is_online(self) -> bool:
+        """Defines if this config is for online RL.
+
+        Note, a config can be for on- and offline training, if the algorithm is
+        for example hybrid.
+        """
+        return self._is_online if self.enable_env_runner_and_connector_v2 else True
+
+    @property
     def _model_config_auto_includes(self):
         return super()._model_config_auto_includes | {
             "num_actions": self.num_actions,

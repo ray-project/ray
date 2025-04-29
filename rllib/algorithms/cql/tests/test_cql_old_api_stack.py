@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestCQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
