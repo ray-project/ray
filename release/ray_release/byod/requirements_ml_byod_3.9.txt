@@ -3557,7 +3557,7 @@ sentry-sdk==2.10.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   wandb
-setproctitle==1.3.3 \
+setproctitle==1.3.5 \
     --hash=sha256:00e6e7adff74796ef12753ff399491b8827f84f6c77659d71bd0b35870a17d8f \
     --hash=sha256:059f4ce86f8cc92e5860abfc43a1dceb21137b26a02373618d88f6b4b86ba9b2 \
     --hash=sha256:088b9efc62d5aa5d6edf6cba1cf0c81f4488b5ce1c0342a8b67ae39d64001120 \
