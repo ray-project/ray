@@ -703,16 +703,7 @@ class DataIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
-            +- Dataset(
-                  num_rows=?,
-                  schema={
-                     sepal length (cm): double,
-                     sepal width (cm): double,
-                     petal length (cm): double,
-                     petal width (cm): double,
-                     target: int64
-                  }
-               ))
+            +- Dataset(num_rows=?, schema=...))
             >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
