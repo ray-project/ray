@@ -685,9 +685,9 @@ class VLLMEngine(LLMEngine):
                 len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
 
-    async def check_health(self):
+    async def check_health(self) -> bool:
         if not hasattr(self.engine, "check_health"):
-            return
+            return False
 
         try:
             return await asyncio.wait_for(self.engine.check_health(), timeout=15)

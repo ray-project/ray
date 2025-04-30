@@ -42,7 +42,7 @@ class LLMEngine(abc.ABC):
         """Generate an LLMRawResponse stream based on the GenerationRequest"""
         pass
 
-    async def check_health(self):
+    async def check_health(self) -> bool:
         """Check the health of the engine"""
         return True
 

@@ -566,8 +566,8 @@ class LLMServer(_LLMServerBase):
             model=self._llm_config.model_id, gen=gen, stream=stream
         )
 
-    async def check_health(self):
-        """Check the health of the vllm engine."""
+    async def check_health(self) -> bool:
+        """Check the health of the llm engine."""
         return await self.engine.check_health()
 
     async def _load_model(self, lora_model_id: str) -> DiskMultiplexConfig:
