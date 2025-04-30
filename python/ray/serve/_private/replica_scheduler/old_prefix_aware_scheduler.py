@@ -126,8 +126,6 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         self._tree_deployment = serve.get_deployment_handle("TreeDeployment", app_name="llm_app")
         if self._tree_deployment is None:
             raise ValueError("Tree deployment was not found")
-        self.running_queue = {}
-        self.processed_queue = {}
         self.balance_abs_threshold = 10
         self.balance_rel_threshold = 0.5
 
@@ -799,9 +797,9 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
         Among replicas that respond within the deadline and don't have full queues, the
         one with the lowest queue length is chosen.
         """
-        # Artificial random delay to test scheduling mismatch
-        await asyncio.sleep(random.uniform(0.0, 0.1))
-        # End artificial random delay
+        # # Artificial random delay to test scheduling mismatch
+        # await asyncio.sleep(random.uniform(0.0, 0.1))
+        # # End artificial random delay
 
         # BEGIN POW 2 LOGIC
         lowest_queue_len = math.inf
@@ -923,25 +921,25 @@ class PrefixAwareReplicaScheduler(ReplicaScheduler):
                         f.write(f"multiplexed_model_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
 
                     break
-        # Second, try to match based on internal request ID:
-        num_searched = 0
-        search_start = time.time()
-        if selected_pr is None and request_metadata is not None and request_metadata.internal_request_id:
-            for pr in self._pending_requests_to_fulfill:
-                num_searched += 1
-                if (
-                    not pr.future.done()
-                    and pr.metadata.internal_request_id
-                    == request_metadata.internal_request_id
-                ):
-                    with open(self._scheduling_assignments_file_path, "a") as f:
-                        f.write(f"internal_request_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
-                    selected_pr = pr
-                    break
+        # # Second, try to match based on internal request ID:
+        # num_searched = 0
+        # search_start = time.time()
+        # if selected_pr is None and request_metadata is not None and request_metadata.internal_request_id:
+        #     for pr in self._pending_requests_to_fulfill:
+        #         num_searched += 1
+        #         if (
+        #             not pr.future.done()
+        #             and pr.metadata.internal_request_id
+        #             == request_metadata.internal_request_id
+        #         ):
+        #             with open(self._scheduling_assignments_file_path, "a") as f:
+        #                 f.write(f"internal_request_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
+        #             selected_pr = pr
+        #             break
 
-        search_duration = time.time() - search_start
-        with open(self._scheduling_queue_overhead_file_path, "a") as f:
-            f.write(f"{num_searched},{search_duration}\n")
+        # search_duration = time.time() - search_start
+        # with open(self._scheduling_queue_overhead_file_path, "a") as f:
+        #     f.write(f"{num_searched},{search_duration}\n")
 
         return selected_pr
 
