@@ -30,10 +30,6 @@ from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 
-try:
-    from torch.profiler import profile
-except ImportError:
-    profile = None
 
 logger = logging.getLogger(__name__)
 
