@@ -39,6 +39,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         """
         ds_iterator = ray.train.get_dataset_shard(DatasetKey.TRAIN)
         self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
+
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
@@ -52,6 +53,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     device=ray.train.torch.get_device()
                 ),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
+                drop_last=True,
             )
         )
 
@@ -63,6 +65,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         """
         ds_iterator = ray.train.get_dataset_shard(DatasetKey.VALID)
         self._ray_ds_iterators[DatasetKey.VALID] = ds_iterator
+
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
@@ -71,6 +74,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     device=ray.train.torch.get_device()
                 ),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
+                drop_last=True,
             )
         )
 
