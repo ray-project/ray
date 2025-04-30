@@ -559,12 +559,12 @@ def get_component_file_name(
     component_type: Optional[ServeComponentType],
     suffix: str = "",
 ) -> str:
-    """Get the component's file name."""
-    FILE_NAME_REGEX = r'[^a-zA-Z0-9_-]'
-    
-    component_name = re.sub(FILE_NAME_REGEX, '_', component_name)
-    component_id = re.sub(FILE_NAME_REGEX, '_', component_id)
-    
+    """Get the component's file name. Replaces special characters with underscores."""
+    FILE_NAME_REGEX = r"[^a-zA-Z0-9_-]"
+
+    component_name = re.sub(FILE_NAME_REGEX, "_", component_name)
+    component_id = re.sub(FILE_NAME_REGEX, "_", component_id)
+
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.
     component_log_file_name = component_name
