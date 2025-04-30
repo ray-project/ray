@@ -11,6 +11,7 @@ from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.amd_gpu import HIP_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.mlu import MLU_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
 from ray.data import Dataset
 from ray.exceptions import RayActorError
@@ -29,6 +30,7 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_MLU_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
@@ -134,6 +136,11 @@ class BackendExecutor:
                 ray_constants.GPU,
                 ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
                 HIP_VISIBLE_DEVICES_ENV_VAR,
+            ),
+            ResourceConfig(
+                ray_constants.MLU,
+                ENABLE_SHARE_MLU_VISIBLE_DEVICES_ENV,
+                MLU_VISIBLE_DEVICES_ENV_VAR,
             ),
         ]
 
