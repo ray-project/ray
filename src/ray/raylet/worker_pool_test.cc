@@ -929,57 +929,61 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
 // Tests the worker assignment logic for task specs that have a root detached actor ID.
 // These tasks:
 //   - Must be matched to workers that have a matching job ID (or no job ID).
-//   - Must be matched to workers that have a matching detached actor ID (or no detached actor ID).
+//   - Must be matched to workers that have a matching detached actor ID (or no detached
+//   actor ID).
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerRootDetachedActor) {
   auto job_1_id = JOB_ID;
   auto job_2_id = JOB_ID_2;
 
-  // NOTE: in all test cases the request has job_1_detached_actor_1 as its root detached actor.
+  // NOTE: in all test cases the request has job_1_detached_actor_1 as its root detached
+  // actor.
   auto job_1_detached_actor_1_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
-  auto task_spec_job_1_detached_actor_1 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
-  task_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(job_1_detached_actor_1_id.Binary());
+  auto task_spec_job_1_detached_actor_1 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  task_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
+      job_1_detached_actor_1_id.Binary());
 
   // Case 1 (match):
   //   worker has no root detached actor ID and no job ID
-  auto worker_no_job_no_detached_actor = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           JobID::Nil());
+  auto worker_no_job_no_detached_actor = worker_pool_->CreateWorker(
+      Process::CreateNewDummy(), Language::PYTHON, JobID::Nil());
 
   worker_pool_->PushWorker(worker_no_job_no_detached_actor);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_no_job_no_detached_actor);
+  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_no_job_no_detached_actor);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   // Case 2 (match):
   //   worker has no root detached actor ID and matching job ID
-  auto worker_job_1_no_detached_actor = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           job_1_id);
+  auto worker_job_1_no_detached_actor =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
 
   worker_pool_->PushWorker(worker_job_1_no_detached_actor);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_job_1_no_detached_actor);
+  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_job_1_no_detached_actor);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   // Case 3 (match):
   //   worker has matching root detached actor ID and job ID
-  auto worker_job_1_detached_actor_1 = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           job_1_id);
+  auto worker_job_1_detached_actor_1 =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
   RayTask job_1_detached_actor_1_task(task_spec_job_1_detached_actor_1);
   worker_job_1_detached_actor_1->SetAssignedTask(job_1_detached_actor_1_task);
   worker_job_1_detached_actor_1->AssignTaskId(TaskID::Nil());
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_1);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_job_1_detached_actor_1);
+  ASSERT_EQ(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_job_1_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   // Case 4 (mismatch):
   //   worker has no root detached actor ID and mismatched job ID
-  auto worker_job_2_no_detached_actor = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           job_2_id);
+  auto worker_job_2_no_detached_actor =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
 
   worker_pool_->PushWorker(worker_job_2_no_detached_actor);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_job_2_no_detached_actor);
+  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_job_2_no_detached_actor);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_2_no_detached_actor->MarkDead();
   worker_pool_->TryKillingIdleWorkers();
@@ -987,18 +991,20 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerRootDetachedActor) {
 
   // Case 5 (mismatch):
   //   worker has mismatched detached actor ID and mismatched job ID
-  auto worker_job_2_detached_actor_3 = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           job_2_id);
+  auto worker_job_2_detached_actor_3 =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
   auto job_2_detached_actor_3_id = ActorID::Of(job_2_id, TaskID::FromRandom(job_2_id), 0);
-  auto task_spec_job_2_detached_actor_3 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
-  task_spec_job_2_detached_actor_3.GetMutableMessage().set_root_detached_actor_id(job_2_detached_actor_3_id.Binary());
+  auto task_spec_job_2_detached_actor_3 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
+  task_spec_job_2_detached_actor_3.GetMutableMessage().set_root_detached_actor_id(
+      job_2_detached_actor_3_id.Binary());
   RayTask job_2_detached_actor_3_task(task_spec_job_2_detached_actor_3);
   worker_job_2_detached_actor_3->SetAssignedTask(job_2_detached_actor_3_task);
   worker_job_2_detached_actor_3->AssignTaskId(TaskID::Nil());
 
   worker_pool_->PushWorker(worker_job_2_detached_actor_3);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_job_2_detached_actor_3);
+  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_job_2_detached_actor_3);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_2_detached_actor_3->MarkDead();
   worker_pool_->TryKillingIdleWorkers();
@@ -1006,18 +1012,20 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerRootDetachedActor) {
 
   // Case 6 (mismatch):
   //   worker has mismatched detached actor ID and matching job ID
-  auto worker_job_1_detached_actor_2 = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           job_1_id);
+  auto worker_job_1_detached_actor_2 =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
   auto job_1_detached_actor_2_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 1);
-  auto task_spec_job_1_detached_actor_2 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
-  task_spec_job_1_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(job_1_detached_actor_2_id.Binary());
+  auto task_spec_job_1_detached_actor_2 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
+  task_spec_job_1_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
+      job_1_detached_actor_2_id.Binary());
   RayTask job_1_detached_actor_2_task(task_spec_job_1_detached_actor_2);
   worker_job_1_detached_actor_2->SetAssignedTask(job_1_detached_actor_2_task);
   worker_job_1_detached_actor_2->AssignTaskId(TaskID::Nil());
 
   worker_pool_->PushWorker(worker_job_1_detached_actor_2);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_job_1_detached_actor_2);
+  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_job_1_detached_actor_2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_1_detached_actor_2->MarkDead();
   worker_pool_->TryKillingIdleWorkers();
@@ -1029,17 +1037,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerRootDetachedActor) {
   // NOTE(edoakes): this case should never happen in practice because all tasks rooted
   // in a detached actor ID should have the job ID that created the detached actor.
   // Test the worker pool logic regardless for completeness.
-  auto worker_job_2_detached_actor_1 = worker_pool_->CreateWorker(Process::CreateNewDummy(),
-                                           Language::PYTHON,
-                                           job_2_id);
-  auto task_spec_job_2_detached_actor_1 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
-  task_spec_job_2_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(job_1_detached_actor_1_id.Binary());
+  auto worker_job_2_detached_actor_1 =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
+  auto task_spec_job_2_detached_actor_1 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
+  task_spec_job_2_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
+      job_1_detached_actor_1_id.Binary());
   RayTask job_2_detached_actor_1_task(task_spec_job_2_detached_actor_1);
   worker_job_2_detached_actor_1->SetAssignedTask(job_2_detached_actor_1_task);
   worker_job_2_detached_actor_1->AssignTaskId(TaskID::Nil());
 
   worker_pool_->PushWorker(worker_job_2_detached_actor_1);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1), worker_job_2_detached_actor_1);
+  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec_job_1_detached_actor_1),
+            worker_job_2_detached_actor_1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   worker_job_2_detached_actor_1->MarkDead();
   worker_pool_->TryKillingIdleWorkers();
