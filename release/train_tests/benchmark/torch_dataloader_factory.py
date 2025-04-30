@@ -16,18 +16,6 @@ from logger_utils import ContextLoggerAdapter
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
-if torch.cuda.is_available():
-    import torch.multiprocessing as mp
-
-    try:
-        mp.set_start_method("spawn", force=True)
-        logger.info(
-            "Set multiprocessing start method to 'spawn' for CUDA compatibility"
-        )
-    except RuntimeError:
-        logger.info("Multiprocessing start method already set")
-
-
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
     """Factory for creating PyTorch DataLoaders."""
 
@@ -155,6 +143,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
+            multiprocessing_context="spawn",
         )
 
         return self.create_batch_iterator(dataloader, device)
@@ -208,5 +197,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
+            multiprocessing_context="spawn",
         )
         return self.create_batch_iterator(dataloader, device)
