@@ -1,6 +1,6 @@
 .. _ref-reference-architectures:
 
-Reference architectures
+Examples
 =======================
 
 .. toctree::
