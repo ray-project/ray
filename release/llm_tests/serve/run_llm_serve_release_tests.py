@@ -6,7 +6,6 @@ from benchmark.bm import run_bm
 import os
 from pathlib import Path  # noqa: E402
 from typing import Optional
-import yaml
 
 import click
 import pytest
@@ -139,7 +138,7 @@ def main(
                         **result,
                     },
                 )
-            record.write(verbose=True)
+                record.write(verbose=True)
 
 
 def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: str):
@@ -190,7 +189,7 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
             record_name=RecordName.VLLM_PERF_TEST,
             record_metrics=result,
         )
-    record.write(verbose=True)
+        record.write(verbose=True)
 
 
 if __name__ == "__main__":
