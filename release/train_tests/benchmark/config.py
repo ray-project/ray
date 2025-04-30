@@ -20,6 +20,7 @@ class RayDataConfig(DataLoaderConfig):
     local_buffer_shuffle_size: int = -1
     enable_operator_progress_bars: bool = False
     ray_data_prefetch_batches: int = 4
+    ray_data_override_num_blocks: int = -1
 
 
 class TorchConfig(DataLoaderConfig):
