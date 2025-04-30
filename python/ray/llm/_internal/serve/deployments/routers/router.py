@@ -47,8 +47,11 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
+    LLMEmbeddingsResponse,
     OpenAIHTTPException,
     to_model_metadata,
 )
@@ -265,9 +268,11 @@ class LLMRouter:
     async def _get_response(
         self,
         *,
-        body: Union[CompletionRequest, ChatCompletionRequest],
+        body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
         call_method: str,
-    ) -> AsyncGenerator[Union[LLMChatResponse, LLMCompletionsResponse], None]:
+    ) -> AsyncGenerator[
+        Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
+    ]:
         """Calls the model deployment and returns the stream."""
         model: str = body.model
         base_model_id = get_base_model_id(model)
@@ -408,6 +413,26 @@ class LLMRouter:
                 )
 
             if isinstance(result, ChatCompletionResponse):
+                return JSONResponse(content=result.model_dump())
+
+    @fastapi_router_app.post("/v1/embeddings")
+    async def embeddings(self, body: EmbeddingRequest) -> Response:
+        """Create embeddings for the provided input.
+
+        Returns:
+            A response object with embeddings.
+        """
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(body=body, call_method="embeddings")
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.message,
+                    status_code=result.code,
+                    type=result.type,
+                )
+
+            if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod

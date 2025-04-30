@@ -27,8 +27,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
     VLLMGenerationRequest,
+    VLLMEmbeddingRequest,
     VLLMSamplingParams,
 )
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
@@ -62,7 +64,7 @@ if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput
+    from vllm.outputs import RequestOutput, PoolingRequestOutput
     from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 vllm = try_import("vllm")
@@ -705,6 +707,50 @@ class VLLMEngine(LLMEngine):
             raise InputTooLong(
                 len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
+
+    async def embed(
+        self, vllm_embedding_request: VLLMEmbeddingRequest
+    ) -> Tuple[List[List[float]], int]:
+        """Return (embeddings, num_prompt_tokens)"""
+
+        num_prompts = len(vllm_embedding_request.prompt)
+        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+            logger.info(
+                f"Encoding request {vllm_embedding_request.request_id} started. "
+                f"Num prompts: {num_prompts}"
+            )
+
+        generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
+
+        prompts = vllm_embedding_request.prompt
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        for i, prompt in enumerate(prompts):
+            request_id = f"{vllm_embedding_request.request_id}-{i}"
+            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+                prompt=vllm.inputs.TextPrompt(
+                    prompt=prompt,
+                ),
+                pooling_params=vllm.pooling_params.PoolingParams(),
+                request_id=request_id,
+                lora_request=vllm_embedding_request.lora_request,  # type: ignore
+            )
+            generators.append(gen)
+
+        embedding_data = []
+        total_prompt_tokens = 0
+
+        for gen in generators:
+            async for result in gen:
+                embedding = result.outputs.embedding
+                if vllm_embedding_request.encoding_format == "base64":
+                    embedding = floats_to_base64(embedding)
+
+                embedding_data.append(embedding)
+                total_prompt_tokens += len(result.prompt_token_ids)
+
+        return embedding_data, total_prompt_tokens
 
     async def check_health(self) -> bool:
         if not hasattr(self.engine, "check_health"):
