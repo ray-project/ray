@@ -7,6 +7,7 @@ import torchvision
 from torch.utils.data import IterableDataset
 import ray.data
 
+from constants import DatasetKey
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
@@ -26,8 +27,8 @@ logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 # Use `download_input_data_from_s3.sh` to download the dataset
 LOCALFS_JPEG_SPLIT_DIRS = {
-    "train": "/mnt/local_storage/imagenet/train/",
-    "val": "/mnt/local_storage/imagenet/val/",
+    DatasetKey.TRAIN: "/mnt/local_storage/imagenet/train/",
+    DatasetKey.VALID: "/mnt/local_storage/imagenet/val/",
 }
 
 
@@ -38,31 +39,43 @@ class LocalFSImageClassificationRayDataLoaderFactory(
 
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         """Get Ray datasets for training and validation from local filesystem."""
+        dataloader_config = self.get_dataloader_config()
+        override_num_blocks = (
+            dataloader_config.ray_data_override_num_blocks
+            if dataloader_config.ray_data_override_num_blocks != -1
+            else None
+        )
+
         # Create training dataset
         train_ds = ray.data.read_images(
-            LOCALFS_JPEG_SPLIT_DIRS["train"],
+            LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
             mode="RGB",
-            include_paths=True,
+            include_paths=False,
             partitioning=Partitioning(
                 "dir",
-                base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
+                base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
                 field_names=["class"],
             ),
+            override_num_blocks=override_num_blocks,
         ).map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset
         val_ds = ray.data.read_images(
-            LOCALFS_JPEG_SPLIT_DIRS["val"],
+            LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
             mode="RGB",
-            include_paths=True,
+            include_paths=False,
             partitioning=Partitioning(
                 "dir",
-                base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
+                base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
                 field_names=["class"],
             ),
+            override_num_blocks=override_num_blocks,
         ).map(get_preprocess_map_fn(random_transforms=False))
 
-        return {"train": train_ds, "val": val_ds}
+        return {
+            DatasetKey.TRAIN: train_ds,
+            DatasetKey.VALID: val_ds,
+        }
 
 
 class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
@@ -85,11 +98,12 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
     ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a safe iterator that handles device transfer and error handling."""
+        non_blocking = self.get_dataloader_config().torch_non_blocking
         for batch in dataloader:
             try:
                 images, labels = batch
-                images = images.to(device, non_blocking=True)
-                labels = labels.to(device, non_blocking=True)
+                images = images.to(device, non_blocking=non_blocking)
+                labels = labels.to(device, non_blocking=non_blocking)
                 yield images, labels
             except Exception as e:
                 logger.error(f"Error processing batch: {e}")
@@ -98,16 +112,18 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
         """Get the train and validation datasets."""
         train_dataset = torchvision.datasets.ImageFolder(
-            root=LOCALFS_JPEG_SPLIT_DIRS["train"], transform=self.train_transform
+            root=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
+            transform=self.train_transform,
         )
 
         val_dataset = torchvision.datasets.ImageFolder(
-            root=LOCALFS_JPEG_SPLIT_DIRS["val"], transform=self.val_transform
+            root=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
+            transform=self.val_transform,
         )
 
         return {
-            "train": train_dataset,
-            "val": val_dataset,
+            DatasetKey.TRAIN: train_dataset,
+            DatasetKey.VALID: val_dataset,
         }
 
 

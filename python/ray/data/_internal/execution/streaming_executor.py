@@ -329,28 +329,30 @@ class StreamingExecutor(Executor, threading.Thread):
         self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
         self._report_current_usage()
-        op = select_operator_to_run(
-            topology,
-            self._resource_manager,
-            self._backpressure_policies,
-            self._autoscaler,
-            ensure_at_least_one_running=self._consumer_idling(),
-        )
 
         i = 0
-        while op is not None:
-            i += 1
-            if i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
-                self._refresh_progress_bars(topology)
-            topology[op].dispatch_next_task()
-            self._resource_manager.update_usages()
+        while True:
             op = select_operator_to_run(
                 topology,
                 self._resource_manager,
                 self._backpressure_policies,
-                self._autoscaler,
-                ensure_at_least_one_running=self._consumer_idling(),
+                # If consumer is idling (there's nothing for it to consume)
+                # enforce liveness, ie that at least a single task gets scheduled
+                ensure_liveness=self._consumer_idling(),
             )
+
+            if op is None:
+                break
+
+            topology[op].dispatch_next_task()
+            self._resource_manager.update_usages()
+
+            i += 1
+            if i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
+                self._refresh_progress_bars(topology)
+
+        # Trigger autoscaling
+        self._autoscaler.try_trigger_scaling()
 
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
@@ -385,7 +387,7 @@ class StreamingExecutor(Executor, threading.Thread):
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
-        return len(state.outqueue) == 0
+        return len(state.output_queue) == 0
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
@@ -444,7 +446,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": op.internal_queue_size() + op_state.num_queued(),
+                    "queued_blocks": (
+                        op.internal_queue_size() + op_state.total_input_enqueued()
+                    ),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
