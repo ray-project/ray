@@ -785,13 +785,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -800,7 +801,7 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:
