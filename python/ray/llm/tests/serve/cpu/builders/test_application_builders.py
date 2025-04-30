@@ -102,34 +102,46 @@ class TestBuildOpenaiApp:
         # and so that serve.status() works.
         ray.init()
 
+        # def deployments_healthy():
+        #     status = serve.status()
+        #     app_status = status.applications.get("llm-endpoint")
+        #     if not app_status or app_status.status != ApplicationStatus.RUNNING:
+        #         print(
+        #             f"[TEST] Application 'llm-endpoint' not running yet. Status: {app_status}"
+        #         )
+        #         return False
+
+        #     deployments = app_status.deployments
+        #     if len(deployments) != 2:
+        #         print(f"[TEST] Expected 2 deployments, found {len(deployments)}")
+        #         return False
+
+        #     all_healthy = all(
+        #         dep.status == DeploymentStatus.HEALTHY for dep in deployments.values()
+        #     )
+        #     if not all_healthy:
+        #         unhealthy_deployments = {
+        #             name: dep.status
+        #             for name, dep in deployments.items()
+        #             if dep.status != DeploymentStatus.HEALTHY
+        #         }
+        #         print(f"[TEST] Not all deployments healthy: {unhealthy_deployments}")
+        #         return False
+
+        #     print("[TEST] All deployments healthy.")
+        #     return True
+        
+        
         def deployments_healthy():
-            status = serve.status()
-            app_status = status.applications.get("llm-endpoint")
-            if not app_status or app_status.status != ApplicationStatus.RUNNING:
-                print(
-                    f"[TEST] Application 'llm-endpoint' not running yet. Status: {app_status}"
-                )
-                return False
-
-            deployments = app_status.deployments
-            if len(deployments) != 2:
-                print(f"[TEST] Expected 2 deployments, found {len(deployments)}")
-                return False
-
-            all_healthy = all(
-                dep.status == DeploymentStatus.HEALTHY for dep in deployments.values()
-            )
-            if not all_healthy:
-                unhealthy_deployments = {
-                    name: dep.status
-                    for name, dep in deployments.items()
-                    if dep.status != DeploymentStatus.HEALTHY
-                }
-                print(f"[TEST] Not all deployments healthy: {unhealthy_deployments}")
-                return False
-
-            print("[TEST] All deployments healthy.")
+            status_response = subprocess.check_output(["serve", "status"])
+            serve_status = yaml.safe_load(status_response)["applications"][
+                "llm-endpoint"
+            ]
+            assert len(serve_status["deployments"]) == 2
+            deployment_status = serve_status["deployments"].values()
+            assert all([status["status"] == "HEALTHY" for status in deployment_status])
             return True
+        
 
         p = subprocess.Popen(["serve", "run", serve_config_separate_model_config_files])
         wait_for_condition(deployments_healthy, timeout=60, retry_interval_ms=1000)
