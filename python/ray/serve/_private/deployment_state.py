@@ -912,6 +912,7 @@ class DeploymentReplica:
             start_time_s=0,
         )
         self._multiplexed_model_ids: List = []
+        self._cached_start_status: Optional[ReplicaStartupStatus] = None
 
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
@@ -1026,6 +1027,7 @@ class DeploymentReplica:
                 querying actor obj ref
         """
         is_ready = self._actor.check_ready()
+        self._cached_start_status = is_ready[0]
         self.update_actor_details(
             pid=self._actor.pid,
             node_id=self._actor.node_id,
@@ -2081,7 +2083,10 @@ class DeploymentState:
         """
         logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
 
-        start_status, _ = replica.check_started()
+        start_status = replica._cached_start_status
+        if start_status is None:
+            start_status, _ = replica.check_started()
+
         if start_status == ReplicaStartupStatus.PENDING_ALLOCATION:
             replica.stop(graceful=False)
         else:
