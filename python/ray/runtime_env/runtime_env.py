@@ -12,7 +12,10 @@ from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.uv import get_uri as get_uv_uri
-from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
+from ray._private.runtime_env.validation import (
+    OPTION_TO_VALIDATION_FN,
+    OPTION_TO_NO_PATH_VALIDATION_FN,
+)
 from ray._private.thirdparty.dacite import from_dict
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
@@ -615,6 +618,19 @@ class RuntimeEnv(dict):
             if key not in self.known_fields:
                 result.append((key, value))
         return result
+
+    def validate_no_local_paths(self):
+        """Checks that options such as working_dir and py_modules only contain
+        URIs that are well-formed.
+
+        Raises:
+            TypeError if an option does not have the correct type
+            ValueError if an option is not well-formed
+        """
+        for option in OPTION_TO_NO_PATH_VALIDATION_FN.items():
+            option_val = self.get(option)
+            if option_val:
+                OPTION_TO_NO_PATH_VALIDATION_FN[option](option_val)
 
 
 def _merge_runtime_env(

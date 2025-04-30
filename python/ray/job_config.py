@@ -171,9 +171,13 @@ class JobConfig:
         # this dependency and pass in a validated runtime_env instead.
         from ray.runtime_env import RuntimeEnv
 
-        if isinstance(self.runtime_env, RuntimeEnv):
-            return self.runtime_env
-        return RuntimeEnv(**self.runtime_env)
+        runtime_env = self.runtime_env
+
+        if not isinstance(runtime_env, RuntimeEnv):
+            runtime_env = RuntimeEnv(**self.runtime_env)
+
+        runtime_env.validate_no_local_paths()
+        return runtime_env
 
     def _get_proto_job_config(self):
         """Return the protobuf structure of JobConfig."""

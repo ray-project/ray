@@ -1644,7 +1644,9 @@ def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
     # a remote node where the files aren't available.
     if runtime_env:
         if isinstance(runtime_env, dict):
-            return RuntimeEnv(**(runtime_env or {}))
+            runtime_env = RuntimeEnv(**(runtime_env or {}))
+            runtime_env.validate_no_local_paths()
+            return runtime_env
         raise TypeError(
             "runtime_env must be dict or RuntimeEnv, ",
             f"but got: {type(runtime_env)}",

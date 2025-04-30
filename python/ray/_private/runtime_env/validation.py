@@ -49,6 +49,26 @@ def _handle_local_deps_requirement_file(requirements_file: str):
     return requirements_path.read_text().strip().split("\n")
 
 
+def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
+    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of uris.
+
+    Raises:
+        TypeError if py_modules is not a list or if any item in the list is not a string.
+        ValueError if any module is not a valid path or uri.
+    """
+    if not isinstance(py_modules_uris, list):
+        raise TypeError(
+            "`py_modules` must be a list of strings, got " f"{type(py_modules_uris)}."
+        )
+
+    for module in py_modules_uris:
+
+        if not isinstance(module, str):
+            raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
+
+        validate_uri(module)
+
+
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     """Parses and validates a 'py_modules' option. Expects py_modules to be a list of paths or uris.
 
@@ -74,10 +94,25 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     return py_modules
 
 
+def validate_working_dir_uri(working_dir_uri: str) -> str:
+    """Parses and validates a 'working_dir' option.
+
+    Raises:
+        TypeError if working_dir_uri is not a string.
+        ValueError if working_dir_uri is not well-formed.
+    """
+    if not isinstance(working_dir_uri, str):
+        raise TypeError(
+            "`working_dir` must be a string, got " f"{type(working_dir_uri)}."
+        )
+
+    validate_uri(working_dir_uri)
+
+
 def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a 'working_dir' option.
 
-    This should be a URI.
+    This can be a URI or a path.
     """
     assert working_dir is not None
 
@@ -403,4 +438,12 @@ OPTION_TO_VALIDATION_FN = {
     "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
+}
+
+# Certain RuntimeEnv options must only contain
+# URIs. This maps those options to functions to
+# validate them.
+OPTION_TO_NO_PATH_VALIDATION_FN = {
+    "working_dir": validate_working_dir_uri,
+    "py_modules": validate_py_modules_uris,
 }

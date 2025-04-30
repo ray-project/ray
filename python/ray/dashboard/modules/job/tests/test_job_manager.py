@@ -707,7 +707,7 @@ class TestRuntimeEnv:
 
         data = await job_manager.get_job_info(job_id)
         assert data.status == JobStatus.FAILED
-        assert "path_not_exist is not a valid URI" in data.message
+        assert "path_not_exist is not a valid path" in data.message
         assert data.driver_exit_code is None
 
     async def test_failed_runtime_env_setup(self, job_manager):
@@ -1388,7 +1388,7 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
         for _ in range(100):
             data = await job_manager.get_job_info(job_id)
             assert data.status == JobStatus.FAILED
-            assert "path_not_exist is not a valid URI" in data.message
+            assert "path_not_exist is not a valid path" in data.message
             assert data.driver_exit_code is None
 
 

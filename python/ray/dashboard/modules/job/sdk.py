@@ -222,7 +222,9 @@ class JobSubmissionClient(SubmissionClient):
             )
 
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
-        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+        runtime_env = RuntimeEnv(**runtime_env)
+        runtime_env.validate_no_local_paths()
+        runtime_env = runtime_env.to_dict()
 
         submission_id = submission_id or job_id
         req = JobSubmitRequest(
