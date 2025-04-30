@@ -2415,7 +2415,6 @@ def connect(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_client=worker.gcs_client,
-                num_retries=1,
             )
 
     driver_name = ""
