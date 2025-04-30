@@ -102,17 +102,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         Returns:
             An iterator that yields (image, label) tensors for training
         """
-        if torch.cuda.is_available():
-            import torch.multiprocessing as mp
-
-            try:
-                mp.set_start_method("spawn", force=True)
-                logger.info(
-                    "Set multiprocessing start method to 'spawn' for CUDA compatibility"
-                )
-            except RuntimeError:
-                logger.info("Multiprocessing start method already set")
-
         worker_rank = ray.train.get_context().get_world_rank()
         logger.info(f"Worker {worker_rank}: Creating train dataloader")
 
@@ -154,6 +143,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
+            multiprocessing_context="spawn",
         )
 
         return self.create_batch_iterator(dataloader, device)
@@ -207,5 +197,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
+            multiprocessing_context="spawn",
         )
         return self.create_batch_iterator(dataloader, device)
