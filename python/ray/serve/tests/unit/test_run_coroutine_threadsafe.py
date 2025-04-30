@@ -1,10 +1,12 @@
-import sys
-import pytest
 import asyncio
+import concurrent.futures
+import sys
+import threading
+
+import pytest
+
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import run_coroutine_or_future_threadsafe
-import concurrent.futures
-import threading
 
 
 @pytest.fixture

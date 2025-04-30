@@ -51,11 +51,14 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
-from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, DeploymentRoute
+from ray.serve.generated.serve_pb2 import (
+    ActorNameList,
+    DeploymentArgs,
+    DeploymentRoute,
+    EndpointSet,
+)
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
-from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
-    TargetGroup,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -65,6 +68,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TargetGroup,
     gRPCOptionsSchema,
 )
 from ray.util import metrics
