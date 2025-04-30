@@ -681,10 +681,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(
-               num_rows=?,
-               schema=...
-            ))
+            DataIterator(Dataset(num_rows=?, schema=...))
 
             If your model accepts a single tensor as input, specify a single feature column.
 

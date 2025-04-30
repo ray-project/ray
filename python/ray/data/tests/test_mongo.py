@@ -222,7 +222,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         "MaterializedDataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
-        "   schema=Unknown schema\n"
+        "   schema={_id: fixed_size_binary[12], float_field: double, "
+        "int_field: int32}\n"
         ")"
     )
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())

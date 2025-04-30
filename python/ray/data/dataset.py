@@ -4865,10 +4865,7 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(
-               num_rows=?,
-               schema=...
-            )
+            Dataset(num_rows=?, schema=...)
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -5604,10 +5601,7 @@ class Dataset:
 
             .. testoutput::
 
-                Dataset(
-                   num_rows=?,
-                   schema=...
-                )
+                Dataset(num_rows=?, schema=...)
 
 
         Returns:
@@ -5680,16 +5674,7 @@ class Dataset:
 
             .. testoutput::
 
-                Dataset(
-                   num_rows=?,
-                   schema={
-                      sepal length (cm): double,
-                      sepal width (cm): double,
-                      petal length (cm): double,
-                      petal width (cm): double,
-                      target: int64
-                   }
-                )
+                Dataset(num_rows=?, schema=...)
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
