@@ -4284,7 +4284,7 @@
   cluster:
     byod:
       type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
-      post_build_script: byod_llm_ner.sh
+      post_build_script: ../../../doc/source/ray-overview/examples/entity-recognition-with-llms/ci/build.sh  # relative to release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # <working_dir>/
 
   run:
