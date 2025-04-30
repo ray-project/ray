@@ -79,6 +79,13 @@ class LocalFSImageClassificationRayDataLoaderFactory(
 
 
 class LazyTorchImageFolder(torch.utils.data.Dataset):
+    """A lazy-loading wrapper for torchvision.datasets.ImageFolder.
+
+    This class defers creation of the ImageFolder instance until first use.
+    Useful for large datasets to avoid directory scanning during dataset construction.
+    Note: this does not preload image data — ImageFolder always loads images lazily.
+    """
+
     def __init__(self, root, transform=None):
         self.root = root
         self.transform = transform
