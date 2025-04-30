@@ -632,10 +632,10 @@ def _validate_no_local_paths(runtime_env: RuntimeEnv):
         raise TypeError(
             f"Expected type to be RuntimeEnv but received {type(runtime_env)} instead."
         )
-    for option in OPTION_TO_NO_PATH_VALIDATION_FN.items():
+    for option, validate_fn in OPTION_TO_NO_PATH_VALIDATION_FN.items():
         option_val = runtime_env.get(option)
         if option_val:
-            OPTION_TO_NO_PATH_VALIDATION_FN[option](option_val)
+            validate_fn(option_val)
 
 
 def _merge_runtime_env(

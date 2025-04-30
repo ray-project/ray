@@ -246,7 +246,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
-
     return (protocol, package_name)
 
 

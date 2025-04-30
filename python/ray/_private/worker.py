@@ -1680,7 +1680,7 @@ def init(
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
-            job_config.set_runtime_env(runtime_env, validate=True)
+            job_config.set_runtime_env(runtime_env)
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.

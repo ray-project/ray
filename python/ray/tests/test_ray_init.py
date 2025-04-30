@@ -359,22 +359,40 @@ def runtime_env_working_dir():
         yield working_dir
 
 
-def test_ray_init_job_runtime_env_as_dict(runtime_env_working_dir, ray_shutdown):
-    working_dir_path = runtime_env_working_dir
-    working_dir_str = str(working_dir_path)
-    ray.init(runtime_env={"working_dir": working_dir_str})
-    worker = ray._private.worker.global_worker.core_worker
-    parsed_runtime_env = json.loads(worker.get_current_runtime_env())
-    assert "gcs" in parsed_runtime_env["working_dir"]
+@pytest.fixture
+def py_module_whl():
+    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
+        yield tmp_file.name
 
 
-def test_ray_init_with_runtime_env_as_object(runtime_env_working_dir, ray_shutdown):
+def test_ray_init_with_runtime_env_as_dict(
+    runtime_env_working_dir, py_module_whl, ray_shutdown
+):
     working_dir_path = runtime_env_working_dir
     working_dir_str = str(working_dir_path)
-    ray.init(runtime_env=RuntimeEnv(working_dir=working_dir_str))
+    ray.init(
+        runtime_env={"working_dir": working_dir_str, "py_modules": [py_module_whl]}
+    )
     worker = ray._private.worker.global_worker.core_worker
     parsed_runtime_env = json.loads(worker.get_current_runtime_env())
-    assert "gcs" in parsed_runtime_env["working_dir"]
+    assert "gcs://" in parsed_runtime_env["working_dir"]
+    assert len(parsed_runtime_env["py_modules"]) == 1
+    assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_ray_init_with_runtime_env_as_object(
+    runtime_env_working_dir, py_module_whl, ray_shutdown
+):
+    working_dir_path = runtime_env_working_dir
+    working_dir_str = str(working_dir_path)
+    ray.init(
+        runtime_env=RuntimeEnv(working_dir=working_dir_str, py_modules=[py_module_whl])
+    )
+    worker = ray._private.worker.global_worker.core_worker
+    parsed_runtime_env = json.loads(worker.get_current_runtime_env())
+    assert "gcs://" in parsed_runtime_env["working_dir"]
+    assert len(parsed_runtime_env["py_modules"]) == 1
+    assert "gcs://" in parsed_runtime_env["py_modules"][0]
 
 
 if __name__ == "__main__":
