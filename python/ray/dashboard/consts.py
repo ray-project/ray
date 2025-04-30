@@ -87,7 +87,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
-    "RAY_enable_pipe_based_agent_to_parent_health_check", False
+    "RAY_enable_pipe_based_agent_to_parent_health_check", True
 )
 
 # Maximum time to wait for the subprocess module to be ready.
