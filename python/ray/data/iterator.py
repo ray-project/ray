@@ -318,12 +318,14 @@ class DataIterator(abc.ABC):
                 data structures. If not provided, `iter_torch_batches` automatically
                 converts batches to `torch.Tensor`s and moves them to the device
                 assigned to the current worker. The input to `collate_fn` may be:
-                    (1) dict of np.ndarray, where you should provide a function that
-                        takes in a dict of Numpy arrays
-                    (2) pd.DataFrame, where you should provide a callable class that
-                        subclasses `PandasCollateFn`
-                    (3) pyarrow.Table, where you should provide a callable class that
-                        subclasses `ArrowCollateFn` (recommended for best performance)
+
+                1. dict of np.ndarray, where you should provide a function that
+                   takes in a dict of Numpy arrays
+                2. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasCollateFn`
+                3. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowCollateFn` (recommended for best performance)
+
                 The output can be any type. If the output is a `torch.Tensor`,
                 `dict[str, torch.Tensor]`, or `list/tuple[torch.Tensor]`, it will be
                 automatically moved to the current worker's device. For other types,

@@ -204,7 +204,8 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             dtypes: Optional torch dtype(s) for the tensors
             device: Optional device to place tensors on
         """
-        super().__init__(dtypes=dtypes, device=device)
+        self.dtypes = dtypes
+        self.device = device
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
         """Convert an Arrow batch to PyTorch tensors.
