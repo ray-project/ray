@@ -67,10 +67,11 @@ We'll start by downloading our data from cloud storage to local shared storage.
 ```bash
 %%bash
 rm -rf /mnt/cluster_storage/viggo  # clean up
-aws s3 cp  s3://viggo-ds/train.jsonl /mnt/cluster_storage/viggo/
-aws s3 cp  s3://viggo-ds/val.jsonl /mnt/cluster_storage/viggo/
-aws s3 cp  s3://viggo-ds/test.jsonl /mnt/cluster_storage/viggo/
-aws s3 cp  s3://viggo-ds/dataset_info.json /mnt/cluster_storage/viggo/
+mkdir /mnt/cluster_storage/viggo
+wget https://viggo-ds.s3.amazonaws.com/train.jsonl -O /mnt/cluster_storage/viggo/train.jsonl
+wget https://viggo-ds.s3.amazonaws.com/val.jsonl -O /mnt/cluster_storage/viggo/val.jsonl
+wget https://viggo-ds.s3.amazonaws.com/test.jsonl -O /mnt/cluster_storage/viggo/test.jsonl
+wget https://viggo-ds.s3.amazonaws.com/dataset_info.json -O /mnt/cluster_storage/viggo/dataset_info.json
 ```
 
 ```bash
@@ -202,7 +203,7 @@ ray_storage_path: /mnt/cluster_storage/viggo/saves  # should be somewhere worker
 ray_num_workers: 4
 resources_per_worker:
   GPU: 1
-  anyscale/accelerator_shape:4xA10G: 1  # Use this to specify a specific node shape,
+  anyscale/accelerator_shape:4xL4: 0.001  # Use this to specify a specific node shape,
   # accelerator_type:A10G: 1           # Or use this to simply specify a GPU type.
   # see https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types
 placement_strategy: PACK
@@ -405,9 +406,30 @@ s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/
 ```bash
 %%bash
 # Save fine-tuning artifacts to cloud storage
-aws s3 rm $ANYSCALE_ARTIFACT_STORAGE/viggo --recursive --quiet
-aws s3 cp /mnt/cluster_storage/viggo/outputs $ANYSCALE_ARTIFACT_STORAGE/viggo/outputs --recursive --quiet
-aws s3 cp $2 /mnt/cluster_storage/viggo/saves $ANYSCALE_ARTIFACT_STORAGE/viggo/saves --recursive --quiet
+STORAGE_PATH="$ANYSCALE_ARTIFACT_STORAGE/viggo"
+LOCAL_OUTPUTS_PATH="/mnt/cluster_storage/viggo/outputs"
+LOCAL_SAVES_PATH="/mnt/cluster_storage/viggo/saves"
+
+# AWS S3 operations
+if [[ "$STORAGE_PATH" == s3://* ]]; then
+    if aws s3 ls "$STORAGE_PATH" > /dev/null 2>&1; then
+        aws s3 rm "$STORAGE_PATH" --recursive --quiet
+    fi
+    aws s3 cp "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs" --recursive --quiet
+    aws s3 cp "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves" --recursive --quiet
+
+# Google Cloud Storage operations
+elif [[ "$STORAGE_PATH" == gs://* ]]; then
+    if gsutil ls "$STORAGE_PATH" > /dev/null 2>&1; then
+        gsutil -m rm -q -r "$STORAGE_PATH"
+    fi
+    gsutil -m cp -q -r "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs"
+    gsutil -m cp -q -r "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves"
+
+else
+    echo "Unsupported storage protocol: $STORAGE_PATH"
+    exit 1
+fi
 ```
 
 
@@ -433,8 +455,8 @@ save_dir = Path("/mnt/cluster_storage/viggo/saves/lora_sft_ray")
 trainer_dirs = [d for d in save_dir.iterdir() if d.name.startswith("TorchTrainer_") and d.is_dir()]
 latest_trainer = max(trainer_dirs, key=lambda d: d.stat().st_mtime, default=None)
 lora_path = f"{latest_trainer}/checkpoint_000000/checkpoint"
-s3_lora_path = os.path.join(os.getenv("ANYSCALE_ARTIFACT_STORAGE"), lora_path.split("/mnt/cluster_storage/")[-1])
-dynamic_lora_path, lora_id = s3_lora_path.rsplit("/", 1)
+cloud_lora_path = os.path.join(os.getenv("ANYSCALE_ARTIFACT_STORAGE"), lora_path.split("/mnt/cluster_storage/")[-1])
+dynamic_lora_path, lora_id = cloud_lora_path.rsplit("/", 1)
 ```
 
 ```bash
@@ -761,6 +783,11 @@ Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anysca
 ```bash
 %%bash
 # clean up
-rm -rf /mnt/cluster_storage/viggo  # clean up
-aws s3 rm $ANYSCALE_ARTIFACT_STORAGE/viggo --recursive --quiet
+rm -rf /mnt/cluster_storage/viggo
+STORAGE_PATH="$ANYSCALE_ARTIFACT_STORAGE/viggo"
+if [[ "$STORAGE_PATH" == s3://* ]]; then
+    aws s3 rm "$STORAGE_PATH" --recursive --quiet
+elif [[ "$STORAGE_PATH" == gs://* ]]; then
+    gsutil -m rm -q -r "$STORAGE_PATH"
+fi
 ```
