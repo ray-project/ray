@@ -1065,7 +1065,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRootDetachedActorID) {
   auto job_1_id = JOB_ID;
   auto job_2_id = JOB_ID_2;
 
-  // NOTE: in all test cases the XXX.
+  // NOTE: in all test cases the only worker in the pool is worker_job_1_detached_actor_1.
   auto worker_job_1_detached_actor_1 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
   auto task_spec_job_1_detached_actor_1 =
