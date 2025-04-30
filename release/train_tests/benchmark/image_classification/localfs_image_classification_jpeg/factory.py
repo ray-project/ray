@@ -78,6 +78,27 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         }
 
 
+class LazyTorchImageFolder(torch.utils.data.Dataset):
+    def __init__(self, root, transform=None):
+        self.root = root
+        self.transform = transform
+        self._dataset = None
+
+    def _init_dataset(self):
+        if self._dataset is None:
+            self._dataset = torchvision.datasets.ImageFolder(
+                root=self.root, transform=self.transform
+            )
+
+    def __getitem__(self, idx):
+        self._init_dataset()
+        return self._dataset[idx]
+
+    def __len__(self):
+        self._init_dataset()
+        return len(self._dataset)
+
+
 class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
     """Factory for creating PyTorch DataLoaders for local JPEG image classification.
 
@@ -111,12 +132,12 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
         """Get the train and validation datasets."""
-        train_dataset = torchvision.datasets.ImageFolder(
+        train_dataset = LazyTorchImageFolder(
             root=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
             transform=self.train_transform,
         )
 
-        val_dataset = torchvision.datasets.ImageFolder(
+        val_dataset = LazyTorchImageFolder(
             root=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
             transform=self.val_transform,
         )
