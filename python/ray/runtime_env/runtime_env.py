@@ -619,18 +619,23 @@ class RuntimeEnv(dict):
                 result.append((key, value))
         return result
 
-    def validate_no_local_paths(self):
-        """Checks that options such as working_dir and py_modules only contain
-        URIs that are well-formed.
 
-        Raises:
-            TypeError if an option does not have the correct type
-            ValueError if an option is not well-formed
-        """
-        for option in OPTION_TO_NO_PATH_VALIDATION_FN.items():
-            option_val = self.get(option)
-            if option_val:
-                OPTION_TO_NO_PATH_VALIDATION_FN[option](option_val)
+def _validate_no_local_paths(runtime_env: RuntimeEnv):
+    """Checks that options such as working_dir and py_modules only contain
+    URIs that are well-formed.
+
+    Raises:
+        TypeError if an option does not have the correct type
+        ValueError if an option is not well-formed
+    """
+    if not isinstance(runtime_env, RuntimeEnv):
+        raise TypeError(
+            f"Expected type to be RuntimeEnv but received {type(runtime_env)} instead."
+        )
+    for option in OPTION_TO_NO_PATH_VALIDATION_FN.items():
+        option_val = runtime_env.get(option)
+        if option_val:
+            OPTION_TO_NO_PATH_VALIDATION_FN[option](option_val)
 
 
 def _merge_runtime_env(
@@ -677,6 +682,7 @@ def _merge_runtime_env(
 
     parent.update(child)
     parent_env_vars.update(child_env_vars)
-    parent["env_vars"] = parent_env_vars
+    if parent_env_vars:
+        parent["env_vars"] = parent_env_vars
 
     return parent

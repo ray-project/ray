@@ -170,13 +170,13 @@ class JobConfig:
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
         from ray.runtime_env import RuntimeEnv
+        from ray.runtime_env.runtime_env import _validate_no_local_paths
 
         runtime_env = self.runtime_env
 
         if not isinstance(runtime_env, RuntimeEnv):
             runtime_env = RuntimeEnv(**self.runtime_env)
-
-        runtime_env.validate_no_local_paths()
+        _validate_no_local_paths(runtime_env)
         return runtime_env
 
     def _get_proto_job_config(self):

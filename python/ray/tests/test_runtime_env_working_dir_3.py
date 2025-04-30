@@ -114,8 +114,10 @@ class TestGC:
                 "working_dir": tmp_working_dir,
                 "py_modules": [
                     S3_PACKAGE_URI,
-                    Path(os.path.dirname(__file__))
-                    / "pip_install_test-0.5-py3-none-any.whl",
+                    str(
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
                 ],
             },
         )
@@ -240,8 +242,10 @@ class TestGC:
                 "working_dir": tmp_working_dir,
                 "py_modules": [
                     S3_PACKAGE_URI,
-                    Path(os.path.dirname(__file__))
-                    / "pip_install_test-0.5-py3-none-any.whl",
+                    str(
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
                 ],
             },
         )
