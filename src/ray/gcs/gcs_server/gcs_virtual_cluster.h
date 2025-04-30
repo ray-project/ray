@@ -258,7 +258,14 @@ class VirtualCluster {
   std::shared_ptr<NodeInstance> ReplenishUndividedNodeInstance(
       std::shared_ptr<NodeInstance> node_instance_to_replenish);
 
-  Status RemoveNodeInstances(const std::vector<std::string> &nodes_to_remove);
+  /// Remove specified nodes from a virtual cluster.
+  ///
+  /// \param[in] nodes_to_remove The nodes to be removed.
+  /// \param[out] removed_replica_instances The replica instances that were
+  /// actually removed based on the `nodes_to_remove`.
+  /// \return The status of the removal.
+  Status RemoveNodeInstances(const std::vector<std::string> &nodes_to_remove,
+                             ReplicaInstances *removed_replica_instances);
 
  protected:
   /// Insert the node instances to the cluster.

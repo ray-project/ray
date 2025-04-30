@@ -30,9 +30,9 @@ class GcsVirtualClusterManagerTest : public ::testing::Test {
   GcsVirtualClusterManagerTest() : cluster_resource_manager_(io_service_) {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     gcs_virtual_cluster_manager_ = std::make_unique<gcs::GcsVirtualClusterManager>(
-        *gcs_table_storage_, *gcs_publisher_, cluster_resource_manager_);
+        io_service_, *gcs_table_storage_, *gcs_publisher_, cluster_resource_manager_);
   }
 
   instrumented_io_context io_service_;
@@ -813,6 +813,148 @@ TEST_F(PrimaryClusterTest, GetVirtualClusters) {
   }
 }
 
+TEST_F(PrimaryClusterTest, RemoveNodesFromVirtualCluster) {
+  size_t node_count = 200;
+  size_t template_count = 10;
+  auto primary_cluster = InitPrimaryCluster(node_count, template_count);
+
+  std::string template_id_0 = "0";
+  std::string template_id_1 = "1";
+  size_t node_count_per_template = node_count / template_count;
+
+  // Create virtual_cluster_id_0 and check that the status is successful.
+  std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
+  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
+                                   virtual_cluster_id_0,
+                                   {{template_id_0, 5}, {template_id_1, 10}})
+                  .ok());
+
+  {
+    // Check the primary cluster visible node instances.
+    const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 remains template_count - 5 nodes, template_id_1 has
+    // template_count - 10 nodes.
+    EXPECT_EQ(visiable_node_instances.size(), template_count);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              node_count_per_template - 5);
+
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
+              node_count_per_template - 10);
+
+    // Check that the revision unchanged.
+    EXPECT_NE(primary_cluster->GetRevision(), 0);
+  }
+
+  // Expecting to remove the first five `template_id_1` nodes from the virtual cluster.
+  size_t removing_node_count = 5;
+  absl::flat_hash_set<std::string> nodes_to_remove;
+  absl::flat_hash_set<std::string> remaining_nodes;
+  {
+    // Check the logical cluster virtual_cluster_id_0 visible node instances.
+    auto logical_cluster = primary_cluster->GetLogicalCluster(virtual_cluster_id_0);
+    ASSERT_NE(logical_cluster, nullptr);
+    const auto &visiable_node_instances = logical_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
+    EXPECT_EQ(visiable_node_instances.size(), 2);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              5);
+
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
+              10);
+    for (const auto &[node_id, _] :
+         visiable_node_instances.at(template_id_1).at(kUndividedClusterId)) {
+      if (removing_node_count > 0) {
+        nodes_to_remove.emplace(node_id);
+        removing_node_count--;
+      } else {
+        remaining_nodes.emplace(node_id);
+      }
+    }
+
+    // Check that the revision changed.
+    EXPECT_NE(logical_cluster->GetRevision(), 0);
+  }
+
+  {
+    rpc::RemoveNodesFromVirtualClusterRequest request;
+    request.set_virtual_cluster_id(virtual_cluster_id_0);
+    request.mutable_nodes_to_remove()->Assign(nodes_to_remove.begin(),
+                                              nodes_to_remove.end());
+    auto status = primary_cluster->RemoveNodesFromVirtualCluster(
+        request,
+        [this](const Status &status,
+               std::shared_ptr<rpc::VirtualClusterTableData> data,
+               const ReplicaSets *replica_sets_to_recommend) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+  }
+
+  {
+    // Check the primary cluster visible node instances.
+    const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 remains template_count - 5 nodes, template_id_1 has
+    // template_count - 5 nodes.
+    EXPECT_EQ(visiable_node_instances.size(), template_count);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              node_count_per_template - 5);
+
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
+              node_count_per_template - 5);
+  }
+
+  {
+    // Check the logical cluster virtual_cluster_id_0 visible node instances.
+    auto logical_cluster = primary_cluster->GetLogicalCluster(virtual_cluster_id_0);
+    ASSERT_NE(logical_cluster, nullptr);
+    const auto &visiable_node_instances = logical_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 has 5 nodes, template_id_1 has 5 nodes.
+    EXPECT_EQ(visiable_node_instances.size(), 2);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              5);
+
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
+              5);
+
+    // The nodes left in the virtual cluster should be exactly the same with
+    // `remaining_nodes`. Otherwise, wrong nodes were removed from the virtual cluster.
+    for (const auto &[node_id, _] :
+         visiable_node_instances.at(template_id_1).at(kUndividedClusterId)) {
+      ASSERT_TRUE(remaining_nodes.contains(node_id));
+    }
+  }
+
+  {
+    // Remove the `nodes_to_remove` again, we shall see failure.
+    rpc::RemoveNodesFromVirtualClusterRequest request;
+    request.set_virtual_cluster_id(virtual_cluster_id_0);
+    request.mutable_nodes_to_remove()->Assign(nodes_to_remove.begin(),
+                                              nodes_to_remove.end());
+    // Remove nodes that do not exist in the virtual cluster.
+    auto status = primary_cluster->RemoveNodesFromVirtualCluster(
+        request,
+        [this, &nodes_to_remove](const Status &status,
+                                 std::shared_ptr<rpc::VirtualClusterTableData> data,
+                                 const ReplicaSets *replica_sets_to_recommend) {});
+    ASSERT_TRUE(status.IsUnsafeToRemove());
+    // The failure message should tell which nodes are not eligible for removal.
+    auto nodes_with_failure = std::any_cast<std::vector<std::string>>(status.data());
+    ASSERT_EQ(nodes_with_failure.size(), 5);
+    for (const auto &node_id : nodes_with_failure) {
+      ASSERT_EQ(nodes_to_remove.erase(node_id), 1);
+    }
+    ASSERT_TRUE(nodes_to_remove.empty());
+  }
+}
+
 // ┌───────────────────────────────────────────────────┐
 // │ ┌───────────────────┐ ┌─────────┐                 │
 // │ │ virtual_cluster_1 │ │         │    Exclusive    │
@@ -899,8 +1041,7 @@ TEST_F(FailoverTest, FailoverNormal) {
   ASSERT_EQ(virtual_clusters_data_.size(), 4);
 
   // Mock a gcs_init_data.
-  instrumented_io_context io_service;
-  gcs::InMemoryGcsTableStorage gcs_table_storage(io_service);
+  gcs::InMemoryGcsTableStorage gcs_table_storage;
   MockGcsInitData gcs_init_data(gcs_table_storage);
   gcs_init_data.SetNodes(nodes_);
   gcs_init_data.SetVirtualClusters(virtual_clusters_data_);
@@ -961,8 +1102,7 @@ TEST_F(FailoverTest, FailoverWithDeadNodes) {
 
   {
     // Mock a gcs_init_data.
-    instrumented_io_context io_service;
-    gcs::InMemoryGcsTableStorage gcs_table_storage(io_service);
+    gcs::InMemoryGcsTableStorage gcs_table_storage;
     MockGcsInitData gcs_init_data(gcs_table_storage);
     gcs_init_data.SetNodes(nodes_);
     gcs_init_data.SetVirtualClusters(virtual_clusters_data_);
@@ -1008,8 +1148,7 @@ TEST_F(FailoverTest, FailoverWithDeadNodes) {
     ASSERT_TRUE(async_data_flusher_(virtual_cluster_1->ToProto(), nullptr).ok());
 
     // Mock a gcs_init_data.
-    instrumented_io_context io_service;
-    gcs::InMemoryGcsTableStorage gcs_table_storage(io_service);
+    gcs::InMemoryGcsTableStorage gcs_table_storage;
     MockGcsInitData gcs_init_data(gcs_table_storage);
     gcs_init_data.SetNodes(nodes_);
     gcs_init_data.SetVirtualClusters(virtual_clusters_data_);
@@ -1081,8 +1220,7 @@ TEST_F(FailoverTest, OnlyFlushJobClusters) {
     // async_data_flusher_(virtual_cluster_1->ToProto(), nullptr);
 
     // Mock a gcs_init_data.
-    instrumented_io_context io_service;
-    gcs::InMemoryGcsTableStorage gcs_table_storage(io_service);
+    gcs::InMemoryGcsTableStorage gcs_table_storage;
     MockGcsInitData gcs_init_data(gcs_table_storage);
     gcs_init_data.SetNodes(nodes_);
     gcs_init_data.SetVirtualClusters(virtual_clusters_data_);

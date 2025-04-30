@@ -347,6 +347,7 @@ def test_remove_nodes_from_virtual_cluster(
         revision=0,
     )
     assert result["result"] is True
+    revision = result["data"]["revision"]
 
     resp = requests.get(webui_url + "/virtual_clusters")
     resp.raise_for_status()
@@ -401,8 +402,8 @@ def test_remove_nodes_from_virtual_cluster(
     actor = SmallActor.options(num_cpus=1, resources={"8c16g": 1}).remote()
     ray.get(actor.pid.remote(), timeout=10)
 
-    # This time, we try to remove the first `4c8g` node (which now
-    # belongs to the primary cluster) and the `8c16g` node (which is not idle).
+    # This time, we try to remove the first `4c8g` node (which has already been removed)
+    # and the `8c16g` node (which is not idle).
     nodes_to_remove = [template_to_nodes["4c8g"][0], template_to_nodes["8c16g"][0]]
     result = remove_nodes_from_virtual_cluster(
         webui_url=webui_url,
@@ -411,10 +412,21 @@ def test_remove_nodes_from_virtual_cluster(
     )
     assert result["result"] is False
     node_set_to_remove = set(nodes_to_remove)
-    # The two nodes we were trying to remove should fail.
+    # The two nodes we were trying to remove should both fail.
     assert len(result["data"]["nodesWithFailure"]) == 2
     for node_id in result["data"]["nodesWithFailure"]:
         assert node_id in node_set_to_remove
+
+    # If the first `4c8g` node now belongs to the primary cluster, then adding it back
+    # to the virtual cluster (update with two `4c8g` replicas) should succeed.
+    result = create_or_update_virtual_cluster(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        divisible=divisible,
+        replica_sets={"4c8g": 2, "8c16g": 1},
+        revision=revision,
+    )
+    assert result["result"] is True
 
 
 @pytest.mark.parametrize(
