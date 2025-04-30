@@ -1,7 +1,7 @@
 # Standard library imports
 import logging
 import time
-from typing import Dict, Tuple, Iterator, Generator, Optional, Union
+from typing import Dict, Tuple, Iterator, Generator, Optional, Union, Type
 
 # Third-party imports
 import torch
@@ -9,6 +9,7 @@ import pyarrow
 import ray
 import ray.data
 import ray.train
+from ray.data.iterator import ArrowBatchCollateFn
 
 # Local imports
 from config import BenchmarkConfig
@@ -189,7 +190,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
             raise
 
 
-class CustomArrowCollateFn(ray.data.iterator.ArrowBatchCollateFn):
+class CustomArrowCollateFn(ArrowBatchCollateFn):
     """Custom collate function for converting Arrow batches to PyTorch tensors."""
 
     def __init__(
@@ -232,44 +233,8 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
 
-    def get_train_dataloader(self):
-        """Get the training dataloader.
-
-        Returns:
-            Iterator of training batches
-        """
-        ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard(
-            "train"
-        )
-        dataloader_config = self.get_dataloader_config()
-        return iter(
-            ds_iterator.iter_torch_batches(
-                batch_size=dataloader_config.train_batch_size,
-                local_shuffle_buffer_size=(
-                    dataloader_config.local_buffer_shuffle_size
-                    if dataloader_config.local_buffer_shuffle_size > 0
-                    else None
-                ),
-                collate_fn=CustomArrowCollateFn(device=ray.train.torch.get_device()),
-                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
-            )
-        )
-
-    def get_val_dataloader(self):
-        """Get the validation dataloader.
-
-        Returns:
-            Iterator of validation batches
-        """
-        ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
-        dataloader_config = self.get_dataloader_config()
-        return iter(
-            ds_iterator.iter_torch_batches(
-                batch_size=dataloader_config.validation_batch_size,
-                collate_fn=CustomArrowCollateFn(device=ray.train.torch.get_device()),
-                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
-            )
-        )
+    def _get_collate_fn_cls(self) -> Type[ArrowBatchCollateFn]:
+        return CustomArrowCollateFn
 
 
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
