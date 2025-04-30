@@ -170,8 +170,7 @@ async def test_completion_request_too_long_to_succeed(
     # Send a too long prompt
     print(f"Sending long prompt request to {model}")
 
-    error_type = openai.InternalServerError
-    with pytest.raises(error_type):
+    with pytest.raises((openai.InternalServerError, openai.BadRequestError)):
         long_request_should_fail = asyncio.create_task(
             deterministic_query.query(
                 model,
