@@ -6,15 +6,22 @@ from typing import Dict, List, Optional, Union
 from collections import OrderedDict
 import yaml
 
+from ray._private.runtime_env.packaging import parse_path, is_path
+
 logger = logging.getLogger(__name__)
 
 
-def validate_uri(uri: str):
-    if not isinstance(uri, str):
-        raise TypeError(
-            "URIs for working_dir and py_modules must be " f"strings, got {type(uri)}."
-        )
+def validate_path(path: str) -> None:
+    """Parse the path to ensure it is well-formed and exists. Works on Windows, Linux, and OSX.
 
+    Raises:
+        TypeError if path is not a string.
+        ValueError if path does not exist or is a circular symlink.
+    """
+    parse_path(path)
+
+
+def validate_uri(uri: str):
     try:
         from ray._private.runtime_env.packaging import parse_uri, Protocol
 
@@ -43,17 +50,26 @@ def _handle_local_deps_requirement_file(requirements_file: str):
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a 'py_modules' option.
+    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of paths or uris.
 
-    This should be a list of URIs.
+    Raises:
+        TypeError if py_modules is not a list or if any item in the list is not a string.
+        ValueError if any module is not a valid path or uri.
     """
     if not isinstance(py_modules, list):
         raise TypeError(
             "`py_modules` must be a list of strings, got " f"{type(py_modules)}."
         )
 
-    for uri in py_modules:
-        validate_uri(uri)
+    for module in py_modules:
+
+        if not isinstance(module, str):
+            raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
+
+        if is_path(module):
+            validate_path(module)
+        else:
+            validate_uri(module)
 
     return py_modules
 
@@ -68,7 +84,10 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
     if not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got " f"{type(working_dir)}.")
 
-    validate_uri(working_dir)
+    if is_path(working_dir):
+        validate_path(working_dir)
+    else:
+        validate_uri(working_dir)
 
     return working_dir
 

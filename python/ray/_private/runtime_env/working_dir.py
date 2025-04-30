@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from contextlib import contextmanager
 
 import ray._private.ray_constants as ray_constants
@@ -30,7 +30,7 @@ def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
-    upload_fn=None,
+    upload_fn: Optional[Callable[[str, Optional[List[str]]], None]] = None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 

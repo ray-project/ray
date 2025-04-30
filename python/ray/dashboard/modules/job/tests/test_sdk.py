@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray.runtime_env.runtime_env import RuntimeEnv
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
@@ -377,6 +378,41 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
     assert (num_ids > 1) if allow_driver_on_worker_nodes else (num_ids == 1), [
         id[:5] for id in driver_node_ids
     ]
+
+
+@pytest.fixture
+def runtime_env_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        working_dir = path / "working_dir"
+        working_dir.mkdir(parents=True)
+        yield working_dir
+
+
+def test_job_submission_with_runtime_env_as_dict(runtime_env_working_dir):
+    working_dir_path = runtime_env_working_dir
+    working_dir_str = str(working_dir_path)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        job_id = client.submit_job(
+            entrypoint="echo hi", runtime_env={"working_dir": working_dir_str}
+        )
+        job_details = client.get_job_info(job_id)
+        runtime_env = job_details.runtime_env
+        assert "gcs" in runtime_env["working_dir"]
+
+
+def test_job_submission_with_runtime_env_as_object(runtime_env_working_dir):
+    working_dir_path = runtime_env_working_dir
+    working_dir_str = str(working_dir_path)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        job_id = client.submit_job(
+            entrypoint="echo hi", runtime_env=RuntimeEnv(working_dir=working_dir_str)
+        )
+        job_details = client.get_job_info(job_id)
+        runtime_env = job_details.runtime_env
+        assert "gcs" in runtime_env["working_dir"]
 
 
 if __name__ == "__main__":

@@ -185,6 +185,27 @@ def _hash_directory(
     return hash_val
 
 
+def is_path(uri_or_path: str) -> bool:
+    """Returns True if uri_or_path is a uri and False otherwise"""
+    parsed = urlparse(uri_or_path)
+    return not parsed.scheme
+
+
+def parse_path(pkg_path: str) -> None:
+    """Parse the path to ensure it is well-formed and exists. Works on Windows, Linux, and OSX.
+
+    Raises:
+        ValueError if the path does not exist or if it's a circular symlink.
+    """
+    path = Path(pkg_path)
+    try:
+        path.resolve(strict=True)
+    except OSError as e:
+        raise ValueError(
+            f"{path} is not a valid path. It could not be resolved due to {e}"
+        )
+
+
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
     Parse package uri into protocol and package name based on its format.

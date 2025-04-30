@@ -228,10 +228,10 @@ class RuntimeEnv(dict):
             image_uri="rayproject/ray:2.39.0-py312-cu123")
 
     Args:
-        py_modules: List of URIs (either in the GCS or external
+        py_modules: List of paths or URIs (either in the GCS or external
             storage), each of which is a zip file that Ray unpacks and
             inserts into the PYTHONPATH of the workers.
-        working_dir: URI (either in the GCS or external storage) of a zip
+        working_dir: Local path or URI (either in the GCS or external storage) of a zip
             file that Ray unpacks in the directory of each task/actor.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
@@ -357,8 +357,6 @@ class RuntimeEnv(dict):
             runtime_env["mpi"] = mpi
         if image_uri is not None:
             runtime_env["image_uri"] = image_uri
-        if runtime_env.get("java_jars"):
-            runtime_env["java_jars"] = runtime_env.get("java_jars")
 
         self.update(runtime_env)
 
@@ -663,7 +661,6 @@ def _merge_runtime_env(
 
     parent.update(child)
     parent_env_vars.update(child_env_vars)
-    if parent_env_vars:
-        parent["env_vars"] = parent_env_vars
+    parent["env_vars"] = parent_env_vars
 
     return parent

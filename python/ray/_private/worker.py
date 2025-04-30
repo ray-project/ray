@@ -1680,7 +1680,7 @@ def init(
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
-            job_config.set_runtime_env(runtime_env)
+            job_config.set_runtime_env(runtime_env, validate=True)
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
@@ -2477,7 +2477,7 @@ def connect(
         )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
-        job_config.set_runtime_env(runtime_env)
+        job_config.set_runtime_env(runtime_env, validate=True)
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
