@@ -34,7 +34,11 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
-from ray.serve._private.utils import generate_request_id, resolve_deployment_response
+from ray.serve._private.utils import (
+    generate_request_id,
+    resolve_deployment_response,
+    run_coroutine_or_future_threadsafe,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.util import metrics
@@ -695,12 +699,54 @@ class SingletonThreadRouter(Router):
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
-        return asyncio.run_coroutine_threadsafe(
+        """Schedules assign_request call on the internal asyncio loop.
+
+        This method uses `run_coroutine_threadsafe` to execute the actual request
+        assignment logic (`_asyncio_router.assign_request`) on the dedicated
+        asyncio event loop thread. It returns a `concurrent.futures.Future` that
+        can be awaited or queried from the calling thread.
+
+        Returns:
+            A concurrent.futures.Future resolving to the ReplicaResult representing
+            the assigned request.
+        """
+
+        def asyncio_future_callback(
+            asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
+        ):
+            """Callback attached to the asyncio Task running assign_request.
+
+            This runs when the asyncio Task finishes (completes, fails, or is cancelled).
+            Its primary goal is to propagate cancellation initiated via the
+            `concurrent_future` back to the `ReplicaResult` in situations where
+            asyncio_future didn't see the cancellation event in time. Think of it
+            like a second line of defense for cancellation of replica results.
+            """
+            # Check if the cancellation originated from the concurrent.futures.Future
+            if (
+                concurrent_future.cancelled()
+                and not asyncio_future.cancelled()
+                and asyncio_future.exception() is None
+            ):
+                result: ReplicaResult = asyncio_future.result()
+                logger.info(
+                    "Asyncio task completed despite cancellation attempt. "
+                    "Attempting to cancel the request that was assigned to a replica."
+                )
+                result.cancel()
+
+        task = self._asyncio_loop.create_task(
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
-            ),
+            )
+        )
+        # Schedule the actual request assignment coroutine on the asyncio loop thread.
+        concurrent_future = run_coroutine_or_future_threadsafe(
+            task,
             loop=self._asyncio_loop,
         )
+        task.add_done_callback(lambda _: asyncio_future_callback(_, concurrent_future))
+        return concurrent_future
 
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
