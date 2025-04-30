@@ -4285,7 +4285,7 @@
     byod:
       type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
-    cluster_compute: configs/aws.yaml  # release/<working_dir>/
+    cluster_compute: ../doc/source/ray-overview/examples/entity-recognition-with-llms/configs/aws.yaml  # release/<working_dir>/
 
   run:
     timeout: 3600
@@ -4293,8 +4293,8 @@
 
   variations:
     - __suffix__: aws  # uses default specs above
-    # - __suffix__: gce
-    #   env: gce
-    #   frequency: manual
-    #   cluster:
-    #     cluster_compute: configs/gcp.yaml  # release/<working_dir>/
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../doc/source/ray-overview/examples/entity-recognition-with-llms/configs/gcp.yaml  # release/<working_dir>/
