@@ -875,6 +875,7 @@ cdef prepare_args_internal(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
+    serialization_context = worker.get_serialization_context()
     for arg in args:
         from ray.experimental.compiled_dag_ref import CompiledDAGRef
         if isinstance(arg, CompiledDAGRef):
@@ -892,8 +893,7 @@ cdef prepare_args_internal(
 
         else:
             try:
-                serialized_arg = worker.get_serialization_context(
-                ).serialize(arg)
+                serialized_arg = serialization_context.serialize(arg)
             except TypeError as e:
                 sio = io.StringIO()
                 ray.util.inspect_serializability(arg, print_file=sio)
