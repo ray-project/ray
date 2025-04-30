@@ -9,4 +9,5 @@ runtime_env:
     USE_VLLM_V1: "1"
 
 engine_kwargs:
+  enable_chunked_prefill: true
   max_model_len: 8192

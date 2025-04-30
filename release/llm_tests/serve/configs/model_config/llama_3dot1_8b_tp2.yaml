@@ -4,5 +4,6 @@ model_loading_config:
 accelerator_type: A10G
 
 engine_kwargs:
+  enable_chunked_prefill: true
   max_model_len: 8192
   tensor_parallel_size: 2
