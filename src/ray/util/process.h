@@ -41,12 +41,11 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 namespace ray {
 
 #if !defined(_WIN32)
-/// Sets the flag FD_CLOEXEC to a file descriptor.
+/// Sets the FD_CLOEXEC flag on a file descriptor.
 /// This means when the process is forked, this fd would be closed in the child process
-/// side. Raylet forks to create core workers and we don't want the Unix Socket FDs to be
-/// inherited by the core workers. Leaking these FDs would have performance implications.
+/// side.
 ///
-/// Idempotent. Calling twice == calling once.
+/// Idempotent.
 /// Not thread safe.
 /// See https://github.com/ray-project/ray/issues/40813
 void SetFdCloseOnExec(int fd);

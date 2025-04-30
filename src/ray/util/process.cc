@@ -216,6 +216,7 @@ class ProcessFD {
     if (pid != 0 && pipefds[1] != -1) {
       close(pipefds[1]);  // not the child, so close the write end of the pipe
       pipefds[1] = -1;
+      // make sure the read end of the pipe is closed on exec
       SetFdCloseOnExec(pipefds[0]);
     }
 
@@ -233,6 +234,7 @@ class ProcessFD {
         // Parent. Close the read end of the pipe.
         close(parent_lifetime_pipe[0]);
         parent_lifetime_pipe[0] = -1;
+        // Make sure the write end of the pipe is closed on exec.
         SetFdCloseOnExec(parent_lifetime_pipe[1]);
       }
     } else {
