@@ -640,7 +640,7 @@ class Algorithm(Checkpointable, Trainable):
         else:
             self.offline_data = None
 
-        if not self.offline_data:
+        if self.config.is_online:
             # Create a set of env runner actors via a EnvRunnerGroup.
             self.env_runner_group = EnvRunnerGroup(
                 env_creator=self.env_creator,
@@ -2936,7 +2936,7 @@ class Algorithm(Checkpointable, Trainable):
         components = [
             (COMPONENT_LEARNER_GROUP, self.learner_group),
         ]
-        if not self.config.is_offline and self.env_runner:
+        if self.config.is_online:
             components.append(
                 (COMPONENT_ENV_RUNNER, self.env_runner),
             )
