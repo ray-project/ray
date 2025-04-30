@@ -5239,8 +5239,7 @@ class AlgorithmConfig(_Config):
     def is_online(self) -> bool:
         """Defines if this config is for online RL.
 
-        Note, a config can be for on- and offline training, if the algorithm is
-        for example hybrid.
+        Note, a config can be for on- and offline training at the same time.
         """
         return self._is_online
 
