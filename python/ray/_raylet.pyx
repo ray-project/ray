@@ -2531,10 +2531,7 @@ cdef void delete_spilled_objects_handler(
                 job_id=None)
 
 
-cdef c_bool cancel_async_actor_task(
-        const CTaskID &c_task_id,
-        const CRayFunction &ray_function,
-        const c_string c_name_of_concurrency_group_to_execute) nogil:
+cdef c_bool cancel_async_actor_task(const CTaskID &c_task_id) nogil:
     """Attempt to cancel a task running in this asyncio actor.
 
     Returns True if the task was currently running and was cancelled, else False.

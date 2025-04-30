@@ -4442,24 +4442,15 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     bool is_running = false;
     bool task_present = task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
     if (task_present) {
-      // Check if the task is running (present in the running_tasks_ set).
-      RayFunction func;
-      std::string concurrency_group_name;
       {
         absl::MutexLock lock(&mutex_);
-        auto it = running_tasks_.find(task_id);
-        is_running = it != running_tasks_.end();
-        if (is_running) {
-          auto spec = it->second;
-          func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
-          concurrency_group_name = spec.ConcurrencyGroupName();
-        }
+        is_running = running_tasks_.find(task_id) != running_tasks_.end();
       }
 
       // Attempt to cancel the task if it's running.
       // We can't currently interrupt running tasks for non-asyncio actors.
       if (is_running && is_async_actor) {
-        success = options_.cancel_async_actor_task(task_id, func, concurrency_group_name);
+        success = options_.cancel_async_actor_task(task_id);
       } else {
         // If the task wasn't running, it was successfully cancelled by
         // CancelQueuedActorTask. Else if this isn't an asyncio actor, return success so

@@ -180,10 +180,7 @@ struct CoreWorkerOptions {
   // Function to cancel a running asyncio actor task.
   // Should return a boolean indicating if the task was successfully cancelled or not.
   // If not, the client will retry.
-  std::function<bool(const TaskID &task_id,
-                     const RayFunction &ray_function,
-                     const std::string name_of_concurrency_group_to_execute)>
-      cancel_async_actor_task;
+  std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
