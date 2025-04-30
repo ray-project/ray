@@ -53,6 +53,9 @@ def main(
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
+    env_vars[
+        "VLLM_USE_V1"
+    ] = "1"  # V1 enabled by default in vLLM, force this setting for Ray LLM
     llm_config = get_llm_config(serve_config_file)
 
     if run_perf_profiler:
@@ -61,10 +64,11 @@ def main(
             if cluster_env is not None:
                 image_uri = f"anyscale/image/{cluster_env}:1"
 
-        submit_benchmark_vllm_job(
+        submitted_job_id, s3_storage_path = submit_benchmark_vllm_job(
             image_uri, serve_config_file, env_vars["HUGGING_FACE_HUB_TOKEN"]
         )
 
+    # Start Ray LLM Service while vLLM job is running
     with start_service(
         service_name=SERVICE_NAME,
         image_uri=image_uri,
@@ -140,6 +144,24 @@ def main(
                 )
                 record.write(verbose=True)
 
+    if run_perf_profiler:
+        anyscale.job.wait(
+            id=submitted_job_id,
+            state=anyscale.job.JobState.SUCCEEDED,
+            timeout_s=JOB_TIMEOUT_S,
+        )
+
+        # Read data from bucket and send to anyscale-dev-product's Firehose
+        # This Firehose is where databricks has access to.
+        data_for_firehose = read_from_s3(s3_storage_path)
+
+        for result in data_for_firehose:
+            record = FirehoseRecord(
+                record_name=RecordName.VLLM_PERF_TEST,
+                record_metrics=result,
+            )
+            record.write(verbose=True)
+
 
 def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: str):
     py_version = get_python_version_from_image(image_uri)
@@ -168,28 +190,13 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
             "HF_TOKEN": hf_token,
+            "VLLM_USE_V1": "1",
         },
         max_retries=0,
     )
 
     submitted_job_id = anyscale.job.submit(config=job_config)
-
-    anyscale.job.wait(
-        id=submitted_job_id,
-        state=anyscale.job.JobState.SUCCEEDED,
-        timeout_s=JOB_TIMEOUT_S,
-    )
-
-    # Read data from bucket and send to anyscale-dev-product's Firehose
-    # This Firehose is where databricks has access to.
-    data_for_firehose = read_from_s3(s3_storage_path)
-
-    for result in data_for_firehose:
-        record = FirehoseRecord(
-            record_name=RecordName.VLLM_PERF_TEST,
-            record_metrics=result,
-        )
-        record.write(verbose=True)
+    return submitted_job_id, s3_storage_path
 
 
 if __name__ == "__main__":
