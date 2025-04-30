@@ -1,7 +1,6 @@
 import pytest
 from ray import serve
 import ray
-from ray.serve.schema import ApplicationStatus, DeploymentStatus
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
@@ -130,8 +129,7 @@ class TestBuildOpenaiApp:
 
         #     print("[TEST] All deployments healthy.")
         #     return True
-        
-        
+
         def deployments_healthy():
             status_response = subprocess.check_output(["serve", "status"])
             serve_status = yaml.safe_load(status_response)["applications"][
@@ -141,7 +139,6 @@ class TestBuildOpenaiApp:
             deployment_status = serve_status["deployments"].values()
             assert all([status["status"] == "HEALTHY" for status in deployment_status])
             return True
-        
 
         p = subprocess.Popen(["serve", "run", serve_config_separate_model_config_files])
         wait_for_condition(deployments_healthy, timeout=60, retry_interval_ms=1000)
