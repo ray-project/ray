@@ -741,6 +741,8 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     """
     ray_remote_args = ray_remote_args.copy()
 
+    # TODO: Might be better to log this warning at composition-time rather than at
+    # execution. Validating inputs early is a good practice.
     if ray_remote_args.get("num_cpus") and ray_remote_args.get("num_gpus"):
         logger.warning(
             "Specifying both num_cpus and num_gpus for map tasks is experimental, "
