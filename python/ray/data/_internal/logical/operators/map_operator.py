@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union, Literal
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -73,6 +73,8 @@ class AbstractUDFMap(AbstractMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        on_error: Literal["raise", "continue"] = "raise",
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]] = None,
     ):
         """
         Args:
@@ -98,6 +100,8 @@ class AbstractUDFMap(AbstractMap):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Args to provide to :func:`ray.remote`.
+            on_error: The action to take when an error occurs.
+            error_handler: A function to handle errors.
         """
         name = self._get_operator_name(name, fn)
         super().__init__(
@@ -113,6 +117,8 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._ray_remote_args_fn = ray_remote_args_fn
+        self._on_error = on_error
+        self._error_handler = error_handler
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -159,6 +165,8 @@ class MapBatches(AbstractUDFMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        on_error: Literal["raise", "continue"] = "raise",
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]] = None,
     ):
         super().__init__(
             "MapBatches",
@@ -172,6 +180,8 @@ class MapBatches(AbstractUDFMap):
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            on_error=on_error,
+            error_handler=error_handler,
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
