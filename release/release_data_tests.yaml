@@ -478,6 +478,7 @@
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_mock_image_pipeline
+  frequency: manual
   working_dir: nightly_tests
 
   cluster:
