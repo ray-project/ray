@@ -177,6 +177,9 @@ ray_cc_library(
     name = "memory",
     srcs = ["memory.cc"],
     hdrs = ["memory.h"],
+    deps = [
+        "@boost//:asio",
+    ],
 )
 
 ray_cc_library(
