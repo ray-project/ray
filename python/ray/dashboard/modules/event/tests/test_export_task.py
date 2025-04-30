@@ -1,15 +1,8 @@
-# isort: skip_file
-# ruff: noqa: E402
 import json
 import os
 import sys
 
 import pytest
-
-# RAY_enable_export_api_write env var must be set before importing
-# `ray` so the correct value is set for RAY_enable_export_api_write
-# even outside a Ray driver.
-os.environ["RAY_enable_export_api_write"] = "1"
 
 import ray
 
@@ -19,6 +12,7 @@ async def test_task_labels(tmp_path):  # noqa: F811
     """
     Test task events are correctly generated and written to file
     """
+    os.environ["RAY_enable_export_api_write"] = "1"
     ray.init(_temp_dir=str(tmp_path))
 
     @ray.remote
