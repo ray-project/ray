@@ -543,13 +543,12 @@ class RuntimeContext(object):
 
         Returns:
             The dashboard URL string if the dashboard is running and enabled for the cluster,
-            otherwise None. Returns None if Ray is not initialized.
+            otherwise an empty string.
         """
-        assert ray.is_initialized(), "Ray is not initialized. Cannot get dashboard URL."
 
         url = getattr(self.worker, "_dashboard_url", None)
 
-        return url if url else None
+        return url if url else ""
 
 
 _runtime_context = None

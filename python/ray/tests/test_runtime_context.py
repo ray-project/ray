@@ -427,7 +427,7 @@ def test_dashboard_url_disabled(shutdown_only):
     ray.init(include_dashboard=False)
     ctx = ray.get_runtime_context()
 
-    assert ctx.get_dashboard_url() is None
+    assert ctx.get_dashboard_url() == ""
 
 
 def test_dashboard_url_override(monkeypatch, ray_start_regular):
@@ -438,7 +438,6 @@ def test_dashboard_url_override(monkeypatch, ray_start_regular):
 
     ray.init()
     ctx = ray.get_runtime_context()
-    print(ctx.get_dashboard_url())
 
     assert ctx.get_dashboard_url() == override_url
 
