@@ -668,11 +668,11 @@ class ReporterAgent(
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
+                    result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
                 except psutil.NoSuchProcess:
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
             return result
 
     def _get_raylet_proc(self):
