@@ -1946,7 +1946,7 @@ def read_tfrecords(
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
         Dataset(
            num_rows=?,
-           schema={...}
+           schema=...
         )
 
         We can also read compressed TFRecord files, which use one of the
@@ -1959,7 +1959,7 @@ def read_tfrecords(
         ... )
         Dataset(
            num_rows=?,
-           schema={...}
+           schema=...
         )
 
     Args:

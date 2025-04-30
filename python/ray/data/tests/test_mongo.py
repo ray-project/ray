@@ -8,6 +8,7 @@ import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.data.dataset import Schema as DatasetSchema
 
 # To run tests locally, make sure you install mongodb
 # and start a local service:
@@ -178,6 +179,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
 
 def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     from pymongoarrow.api import Schema
+    from pymongoarrow.types import ObjectIdType
 
     client, mongo_url = start_mongo
     foo_db = "foo-db"
@@ -218,14 +220,21 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         override_num_blocks=2,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
+
+    schema = DatasetSchema(
+        pa.schema(
+            {
+                "_id": ObjectIdType(),
+                "float_field": pa.float64(),
+                "int_field": pa.int32(),
+            }
+        )
     )
+
+    # Lazy execution
+    assert ds.schema() == schema
+    assert ds.num_blocks() == 2
+    assert ds._meta_count() == 5
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with auto-tuned parallelism.
@@ -234,14 +243,9 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
     ).materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=200,\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.schema() == schema
+    assert ds.num_blocks() == 200
+    assert ds._meta_count() == 5
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with a parallelism larger than number of rows.
@@ -251,13 +255,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
         override_num_blocks=1000,
     )
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.schema() == schema
+    assert ds._meta_count() == 5
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read a subset of the collection.
@@ -269,13 +268,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=3,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.schema() == schema
+    assert ds._meta_count() == 3
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
 
