@@ -15,9 +15,10 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -25,18 +26,6 @@
 
 namespace ray {
 namespace gcs {
-
-using rpc::ActorTableData;
-using rpc::ErrorTableData;
-using rpc::GcsNodeInfo;
-using rpc::JobTableData;
-using rpc::ObjectTableData;
-using rpc::PlacementGroupTableData;
-using rpc::ResourceUsageBatchData;
-using rpc::ScheduleData;
-using rpc::StoredConfig;
-using rpc::TaskSpec;
-using rpc::WorkerTableData;
 
 /// \class GcsTable
 ///
@@ -58,27 +47,29 @@ class GcsTable {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
+  virtual Status Put(const Key &key,
+                     const Data &value,
+                     Postable<void(ray::Status)> callback);
 
   /// Get data from the table asynchronously.
   ///
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
+  Status Get(const Key &key, Postable<void(Status, std::optional<Data>)> callback);
 
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
   /// \return Status
-  Status GetAll(const MapCallback<Key, Data> &callback);
+  Status GetAll(Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete data from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status Delete(const Key &key, const StatusCallback &callback);
+  virtual Status Delete(const Key &key, Postable<void(ray::Status)> callback);
 
   /// Delete a batch of data from the table asynchronously.
   ///
@@ -86,7 +77,7 @@ class GcsTable {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   virtual Status BatchDelete(const std::vector<Key> &keys,
-                             const StatusCallback &callback);
+                             Postable<void(ray::Status)> callback);
 
  protected:
   std::string table_name_;
@@ -113,30 +104,33 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param key The key that will be written to the table. The job id can be obtained
   /// from the key.
   /// \param value The value of the key that will be written to the table.
-  /// \param callback Callback that will be called after write finishes.
-  /// \return Status
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
+  /// \param callback Callback that will be called after write finishes, whether it
+  /// succeeds or not. \return Status for issuing the asynchronous write operation.
+  Status Put(const Key &key,
+             const Data &value,
+             Postable<void(ray::Status)> callback) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
   ///
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status GetByJobId(const JobID &job_id, const MapCallback<Key, Data> &callback);
+  Status GetByJobId(const JobID &job_id,
+                    Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete all the data of the specified job id from the table asynchronously.
   ///
   /// \param job_id The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
+  Status DeleteByJobId(const JobID &job_id, Postable<void(ray::Status)> callback);
 
   /// Delete data and index from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status Delete(const Key &key, const StatusCallback &callback) override;
+  Status Delete(const Key &key, Postable<void(ray::Status)> callback) override;
 
   /// Delete a batch of data and index from the table asynchronously.
   ///
@@ -144,10 +138,11 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   Status BatchDelete(const std::vector<Key> &keys,
-                     const StatusCallback &callback) override;
+                     Postable<void(ray::Status)> callback) override;
 
   /// Rebuild the index during startup.
-  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback);
+  Status AsyncRebuildIndexAndGetAll(
+      Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
@@ -156,30 +151,30 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   absl::flat_hash_map<JobID, absl::flat_hash_set<Key>> index_ ABSL_GUARDED_BY(mutex_);
 };
 
-class GcsJobTable : public GcsTable<JobID, JobTableData> {
+class GcsJobTable : public GcsTable<JobID, rpc::JobTableData> {
  public:
   explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::JOB);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::JOB);
   }
 };
 
-class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
+class GcsActorTable : public GcsTableWithJobId<ActorID, rpc::ActorTableData> {
  public:
   explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::ACTOR);
   }
 
  private:
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
 };
 
-class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
+class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, rpc::TaskSpec> {
  public:
-  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR_TASK_SPEC);
+  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTableWithJobId(std::move(store_client)) {
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::ACTOR_TASK_SPEC);
   }
 
  private:
@@ -187,51 +182,27 @@ class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
 };
 
 class GcsPlacementGroupTable
-    : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
+    : public GcsTable<PlacementGroupID, rpc::PlacementGroupTableData> {
  public:
   explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::PLACEMENT_GROUP);
   }
 };
 
-class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
+class GcsNodeTable : public GcsTable<NodeID, rpc::GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::NODE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::NODE);
   }
 };
 
-class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
- public:
-  explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
-  }
-};
-
-class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchData> {
- public:
-  explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::RESOURCE_USAGE_BATCH);
-  }
-};
-
-class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
+class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
  public:
   explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
-  }
-};
-
-class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
- public:
-  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::WORKERS);
   }
 };
 
@@ -248,12 +219,7 @@ class GcsTableStorage {
     actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
-    placement_group_schedule_table_ =
-        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
-    resource_usage_batch_table_ =
-        std::make_unique<GcsResourceUsageBatchTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
-    system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
 
   virtual ~GcsTableStorage() = default;
@@ -283,29 +249,14 @@ class GcsTableStorage {
     return *node_table_;
   }
 
-  GcsPlacementGroupScheduleTable &PlacementGroupScheduleTable() {
-    RAY_CHECK(placement_group_schedule_table_ != nullptr);
-    return *placement_group_schedule_table_;
-  }
-
-  GcsResourceUsageBatchTable &ResourceUsageBatchTable() {
-    RAY_CHECK(resource_usage_batch_table_ != nullptr);
-    return *resource_usage_batch_table_;
-  }
-
   GcsWorkerTable &WorkerTable() {
     RAY_CHECK(worker_table_ != nullptr);
     return *worker_table_;
   }
 
-  GcsInternalConfigTable &InternalConfigTable() {
-    RAY_CHECK(system_config_table_ != nullptr);
-    return *system_config_table_;
-  }
-
-  int GetNextJobID() {
+  Status AsyncGetNextJobID(Postable<void(int)> callback) {
     RAY_CHECK(store_client_);
-    return store_client_->GetNextJobID();
+    return store_client_->AsyncGetNextJobID(std::move(callback));
   }
 
  protected:
@@ -315,10 +266,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
-  std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
-  std::unique_ptr<GcsResourceUsageBatchTable> resource_usage_batch_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
-  std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };
 
 /// \class RedisGcsTableStorage
@@ -335,9 +283,9 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
+  explicit InMemoryGcsTableStorage()
       : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
+            std::make_unique<InMemoryStoreClient>())) {}
 };
 
 }  // namespace gcs

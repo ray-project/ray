@@ -18,17 +18,12 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/client.h"
-
-#ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
-#include <chrono>
-
-#include "absl/container/flat_hash_map.h"
-#endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 // clang-format on
 
 namespace ray {
@@ -50,6 +45,9 @@ class MockPlasmaClient : public plasma::PlasmaClientInterface {
   MOCK_METHOD1(Seal, ray::Status(const ObjectID &object_id));
 
   MOCK_METHOD1(Abort, ray::Status(const ObjectID &object_id));
+
+  MOCK_METHOD1(ExperimentalMutableObjectRegisterWriter,
+               ray::Status(const ObjectID &object_id));
 
   MOCK_METHOD2(GetExperimentalMutableObject,
                ray::Status(const ObjectID &object_id,

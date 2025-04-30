@@ -30,15 +30,20 @@ import gymnasium as gym
 import os
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray.rllib.env.policy_server_input import PolicyServerInput
-from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRAINING_ITERATION
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with
-# n workers, opening up listen ports 9900 - 990n (n = num_workers - 1)
+# n workers, opening up listen ports 9900 - 990n (n = num_env_runners - 1)
 # to each of which different clients may connect.
 SERVER_BASE_PORT = 9900  # + worker-idx - 1
 
@@ -141,7 +146,7 @@ if __name__ == "__main__":
     # `InputReader` generator (returns None if no input reader is needed on
     # the respective worker).
     def _input(ioctx):
-        # We are remote worker or we are local worker with num_workers=0:
+        # We are remote worker or we are local worker with num_env_runners=0:
         # Create a PolicyServerInput.
         if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
             return PolicyServerInput(
@@ -168,13 +173,11 @@ if __name__ == "__main__":
         )
         # DL framework to use.
         .framework(args.framework)
-        # Create a "chatty" client/server or not.
-        .callbacks(MyCallbacks if args.callbacks_verbose else None)
         # Use the `PolicyServerInput` to generate experiences.
         .offline_data(input_=_input)
         # Use n worker processes to listen on different ports.
-        .rollouts(
-            num_rollout_workers=args.num_workers,
+        .env_runners(
+            num_env_runners=args.num_workers,
             # Connectors are not compatible with the external env.
             enable_connectors=False,
         )
@@ -184,9 +187,6 @@ if __name__ == "__main__":
         .debugging(log_level="INFO")
     )
     # Disable RLModules because they need connectors
-    # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
-    #  and RL Modules here.
-    config.experimental(_enable_new_api_stack=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
@@ -253,11 +253,11 @@ if __name__ == "__main__":
             with open(checkpoint_path, "w") as f:
                 f.write(checkpoint.path)
             if (
-                results["episode_reward_mean"] >= args.stop_reward
+                results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward
                 or ts >= args.stop_timesteps
             ):
                 break
-            ts += results["timesteps_total"]
+            ts += results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
 
         algo.stop()
 
@@ -266,11 +266,13 @@ if __name__ == "__main__":
         print("Ignoring restore even if previous checkpoint is provided...")
 
         stop = {
-            "training_iteration": args.stop_iters,
-            "timesteps_total": args.stop_timesteps,
-            "episode_reward_mean": args.stop_reward,
+            TRAINING_ITERATION: args.stop_iters,
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         }
 
         tune.Tuner(
-            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+            args.run,
+            param_space=config,
+            run_config=tune.RunConfig(stop=stop, verbose=2),
         ).fit()

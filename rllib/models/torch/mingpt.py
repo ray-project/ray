@@ -193,7 +193,7 @@ def configure_gpt_optimizer(
                 no_decay.add(fpn)
 
     # validate that we considered every parameter
-    param_dict = {pn: p for pn, p in model.named_parameters()}
+    param_dict = dict(model.named_parameters())
     inter_params = decay & no_decay
     union_params = decay | no_decay
     assert (

@@ -1,14 +1,14 @@
 import shutil
 import tempfile
 import unittest
-import pytorch_lightning as pl
-from ray.train import CheckpointConfig
-import torch
-from ray.air.constants import TRAINING_ITERATION
 
+import pytorch_lightning as pl
+import torch
 from torch.utils.data import DataLoader, Dataset
 
-from ray import train, tune
+from ray import tune
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune import CheckpointConfig
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 
@@ -120,7 +120,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         checkpoint_config = CheckpointConfig(num_to_keep=100)
         tuner = tune.Tuner(
             train_fn,
-            run_config=train.RunConfig(
+            run_config=tune.RunConfig(
                 stop={TRAINING_ITERATION: 10},
                 storage_path=tmpdir,
                 checkpoint_config=checkpoint_config,
@@ -133,7 +133,8 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(sys.argv[1:] + ["-v", __file__]))

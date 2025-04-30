@@ -1,16 +1,16 @@
 """An example showing how to use Pytorch Lightning training, Ray Tune
 HPO, and MLflow autologging all together."""
+
 import os
 import tempfile
 
+import mlflow
 import pytorch_lightning as pl
 
-import mlflow
-
-from ray import train, tune
+from ray import tune
 from ray.air.integrations.mlflow import setup_mlflow
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
 
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
@@ -75,7 +75,7 @@ def tune_mnist(
             mode="min",
             num_samples=num_samples,
         ),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="tune_mnist",
         ),
         param_space=config,

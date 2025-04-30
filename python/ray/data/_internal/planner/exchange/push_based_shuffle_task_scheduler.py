@@ -13,7 +13,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, to_stats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -457,8 +457,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # processed concurrently.
         input_blocks_list = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
-                input_blocks_list.append(block)
+            input_blocks_list.extend(ref_bundle.block_refs)
         input_owned = all(b.owns_blocks for b in refs)
 
         if map_ray_remote_args is None:
@@ -644,10 +643,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                     owns_blocks=input_owned,
                 )
             )
+
         stats = {
-            "map": map_stage_metadata,
-            "merge": merge_stage_metadata,
-            "reduce": reduce_stage_metadata,
+            "map": to_stats(map_stage_metadata),
+            "merge": to_stats(merge_stage_metadata),
+            "reduce": to_stats(reduce_stage_metadata),
         }
 
         return (output, stats)
@@ -816,14 +816,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
 
 def _get_num_cpus_per_node_map() -> Dict[str, int]:
-    nodes = ray.nodes()
+    total_resources_by_node = ray.state.total_resources_per_node()
     # Map from per-node resource name to number of CPUs available on that
     # node.
     num_cpus_per_node_map = {}
-    for node in nodes:
-        resources = node["Resources"]
+    for node_id, resources in total_resources_by_node.items():
         num_cpus = int(resources.get("CPU", 0))
         if num_cpus == 0:
             continue
-        num_cpus_per_node_map[node["NodeID"]] = num_cpus
+        num_cpus_per_node_map[node_id] = num_cpus
     return num_cpus_per_node_map

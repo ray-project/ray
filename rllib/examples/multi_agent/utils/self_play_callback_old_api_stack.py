@@ -1,11 +1,12 @@
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
-@Deprecated(help="Use the example for the new RLlib API stack", error=False)
-class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
+@Deprecated(help="Use the example for the new RLlib API stack.", error=False)
+class SelfPlayCallbackOldAPIStack(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # 0=RandomPolicy, 1=1st main policy snapshot,
@@ -16,11 +17,11 @@ class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
 
     def on_train_result(self, *, algorithm, result, **kwargs):
         # Get the win rate for the train batch.
-        # Note that normally, one should set up a proper evaluation config,
+        # Note that normally, you should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
         # instead of on the already used train_batch.
-        main_rew = result["hist_stats"].pop("policy_main_reward")
-        opponent_rew = list(result["hist_stats"].values())[0]
+        main_rew = result[ENV_RUNNER_RESULTS]["hist_stats"].pop("policy_main_reward")
+        opponent_rew = list(result[ENV_RUNNER_RESULTS]["hist_stats"].values())[0]
         assert len(main_rew) == len(opponent_rew)
         won = 0
         for r_main, r_opponent in zip(main_rew, opponent_rew):
@@ -57,6 +58,9 @@ class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
                 policy_id=new_pol_id,
                 policy_cls=type(main_policy),
                 policy_mapping_fn=policy_mapping_fn,
+                config=main_policy.config,
+                observation_space=main_policy.observation_space,
+                action_space=main_policy.action_space,
             )
 
             # Set the weights of the new policy to the main policy.
@@ -66,7 +70,7 @@ class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
             new_policy.set_state(main_state)
             # We need to sync the just copied local weights (from main policy)
             # to all the remote workers as well.
-            algorithm.workers.sync_weights()
+            algorithm.env_runner_group.sync_weights()
         else:
             print("not good enough; will keep learning ...")
 

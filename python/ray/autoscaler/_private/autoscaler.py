@@ -27,7 +27,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -48,6 +47,7 @@ from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
     ResourceDict,
     get_bin_pack_residual,
+    placement_groups_to_resource_demands,
 )
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.util import (
@@ -279,9 +279,10 @@ class StandardAutoscaler:
         )
         logger.info(f"{DISABLE_NODE_UPDATERS_KEY}:{self.disable_node_updaters}")
 
-        # Disable launch config checking if true.
-        # This is set in the fake_multinode situations where there isn't any
-        # meaningful node "type" to enforce.
+        # Disable launch configuration checking if set to true.
+        # This setting is used in scenarios where there is no meaningful node type
+        # to enforce, such as in fake multinode situations. When this option is enabled,
+        # outdated nodes will not be terminated.
         self.disable_launch_config_check = self.config["provider"].get(
             DISABLE_LAUNCH_CONFIG_CHECK_KEY, False
         )
@@ -308,14 +309,6 @@ class StandardAutoscaler:
             WORKER_LIVENESS_CHECK_KEY, True
         )
         logger.info(f"{WORKER_LIVENESS_CHECK_KEY}:{self.worker_liveness_check}")
-
-        # By default, before worker node termination, the autoscaler sends an RPC to the
-        # GCS asking to kill the worker node.
-        # The worker_rpc_drain flag allows disabling this behavior in settings where
-        # another component, such as a Kubernetes operator, is responsible for worker
-        # lifecycle.
-        self.worker_rpc_drain = self.config["provider"].get(WORKER_RPC_DRAIN_KEY, True)
-        logger.info(f"{WORKER_RPC_DRAIN_KEY}:{self.worker_rpc_drain}")
 
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
@@ -410,18 +403,6 @@ class StandardAutoscaler:
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
 
-        # Update running nodes gauge
-        num_workers = len(self.non_terminated_nodes.worker_ids)
-        self.prom_metrics.running_workers.set(num_workers)
-
-        # Remove from LoadMetrics the ips unknown to the NodeProvider.
-        self.load_metrics.prune_active_ips(
-            active_ips=[
-                self.provider.internal_ip(node_id)
-                for node_id in self.non_terminated_nodes.all_node_ids
-            ]
-        )
-
         # Update status strings
         if AUTOSCALER_STATUS_LOG:
             logger.info(self.info_string())
@@ -443,6 +424,18 @@ class StandardAutoscaler:
                 if self.worker_liveness_check:
                     self.attempt_to_recover_unhealthy_nodes(now)
                 self.set_prometheus_updater_data()
+
+        # Update running nodes gauge
+        num_workers = len(self.non_terminated_nodes.worker_ids)
+        self.prom_metrics.running_workers.set(num_workers)
+
+        # Remove IPs from LoadMetrics that are not known to the NodeProvider.
+        self.load_metrics.prune_active_ips(
+            active_ips=[
+                self.provider.internal_ip(node_id)
+                for node_id in self.non_terminated_nodes.all_node_ids
+            ]
+        )
 
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -490,8 +483,11 @@ class StandardAutoscaler:
         assert self.non_terminated_nodes
         assert self.provider
 
-        last_used = self.load_metrics.last_used_time_by_ip
-        horizon = now - (60 * self.config["idle_timeout_minutes"])
+        last_used = self.load_metrics.ray_nodes_last_used_time_by_ip
+
+        idle_timeout_s = 60 * self.config["idle_timeout_minutes"]
+
+        last_used_cutoff = now - idle_timeout_s
 
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
@@ -501,11 +497,9 @@ class StandardAutoscaler:
         )
 
         # Don't terminate nodes needed by request_resources()
-        nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
-        if self.load_metrics.get_resource_requests():
-            nodes_not_allowed_to_terminate = (
-                self._get_nodes_needed_for_request_resources(sorted_node_ids)
-            )
+        nodes_not_allowed_to_terminate = self._get_nodes_needed_for_request_resources(
+            sorted_node_ids
+        )
 
         # Tracks counts of nodes we intend to keep for each node type.
         node_type_counts = defaultdict(int)
@@ -539,7 +533,8 @@ class StandardAutoscaler:
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
+
+            if node_ip in last_used and last_used[node_ip] < last_used_cutoff:
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(
@@ -615,10 +610,8 @@ class StandardAutoscaler:
         if not self.nodes_to_terminate:
             return
 
-        # Do Ray-internal preparation for termination, unless this behavior is
-        # explicitly disabled.
-        if self.worker_rpc_drain:
-            self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Drain the nodes
+        self.drain_nodes_via_gcs(self.nodes_to_terminate)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
@@ -886,8 +879,8 @@ class StandardAutoscaler:
         self, sorted_node_ids: List[NodeID]
     ) -> FrozenSet[NodeID]:
         # TODO(ameer): try merging this with resource_demand_scheduler
-        # code responsible for adding nodes for request_resources().
-        """Returns the nodes NOT allowed to terminate due to request_resources().
+        # code responsible for adding nodes for get_resource_requests() and get_pending_placement_groups().
+        """Returns the nodes NOT allowed to terminate due to get_resource_requests() and get_pending_placement_groups().
 
         Args:
             sorted_node_ids: the node ids sorted based on last used (LRU last).
@@ -900,6 +893,14 @@ class StandardAutoscaler:
         assert self.provider
 
         nodes_not_allowed_to_terminate: Set[NodeID] = set()
+
+        resource_demands, strict_spreads = placement_groups_to_resource_demands(
+            self.load_metrics.get_pending_placement_groups()
+        )
+        resource_demands.extend(self.load_metrics.get_resource_requests())
+        if not resource_demands and not strict_spreads:
+            return frozenset(nodes_not_allowed_to_terminate)
+
         static_node_resources: Dict[
             NodeIP, ResourceDict
         ] = self.load_metrics.get_static_node_resources_by_ip()
@@ -914,7 +915,7 @@ class StandardAutoscaler:
             head_node_ip = self.provider.internal_ip(self.non_terminated_nodes.head_id)
             head_node_resources = static_node_resources.get(head_node_ip, {})
 
-        max_node_resources: List[ResourceDict] = [head_node_resources]
+        node_total_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
         # Get max resources on all the non terminated nodes.
         for node_id in sorted_node_ids:
@@ -928,26 +929,35 @@ class StandardAutoscaler:
                     # Legacy yaml might include {} in the resources field.
                     node_ip = self.provider.internal_ip(node_id)
                     node_resources = static_node_resources.get(node_ip, {})
-                max_node_resources.append(node_resources)
+                node_total_resources.append(node_resources)
                 resource_demand_vector_worker_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
         # most recently used when we binpack. We assume get_bin_pack_residual
         # is following the given order here.
-        used_resource_requests: List[ResourceDict]
-        _, used_resource_requests = get_bin_pack_residual(
-            max_node_resources, self.load_metrics.get_resource_requests()
+        node_remaining_resources = copy.deepcopy(node_total_resources)
+
+        for strict_spread in strict_spreads:
+            unfulfilled, updated_node_remaining_resources = get_bin_pack_residual(
+                node_remaining_resources, strict_spread, strict_spread=True
+            )
+            if unfulfilled:
+                continue
+            node_remaining_resources = updated_node_remaining_resources
+
+        _, node_remaining_resources = get_bin_pack_residual(
+            node_remaining_resources, resource_demands
         )
         # Remove the first entry (the head node).
-        max_node_resources.pop(0)
+        node_total_resources.pop(0)
         # Remove the first entry (the head node).
-        used_resource_requests.pop(0)
+        node_remaining_resources.pop(0)
         for i, node_id in enumerate(resource_demand_vector_worker_node_ids):
             if (
-                used_resource_requests[i] == max_node_resources[i]
-                and max_node_resources[i]
+                node_remaining_resources[i] == node_total_resources[i]
+                and node_total_resources[i]
             ):
                 # No resources of the node were needed for request_resources().
-                # max_node_resources[i] is an empty dict for legacy yamls
+                # node_total_resources[i] is an empty dict for legacy yamls
                 # before the node is connected.
                 pass
             else:

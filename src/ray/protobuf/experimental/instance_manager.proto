@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc.autoscaler.im;
 
@@ -72,7 +71,7 @@ message Instance {
     RAY_STOPPING = 7;
     // Ray stopped - follows from the RAY_STOPPING/RAY_RUNNING state.
     RAY_STOPPED = 8;
-    // The instance is terminating - follows from the RAY_STOPPED state.
+    // The instance is terminating - follows from the RAY_STOPPED or ALLOCATED state.
     TERMINATING = 9;
     // The instance is terminated - follows from TERMINATING state or any other running
     // states when instance was preempted.
@@ -203,6 +202,8 @@ message TerminationRequest {
   optional uint32 max_num_nodes = 8;
   // Details of the termination.
   string details = 9;
+  // The final instance status of the instance that's going to be terminated.
+  Instance.InstanceStatus instance_status = 10;
 }
 
 message UpdateInstanceManagerStateRequest {

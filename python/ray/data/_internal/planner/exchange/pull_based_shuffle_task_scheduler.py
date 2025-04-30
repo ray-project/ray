@@ -10,6 +10,7 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
+from ray.data.block import to_stats
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # eagerly release the blocks' memory.
         input_blocks_list = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
-                input_blocks_list.append(block)
+            input_blocks_list.extend(ref_bundle.block_refs)
         input_num_blocks = len(input_blocks_list)
         input_owned = all(b.owns_blocks for b in refs)
 
@@ -143,8 +143,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 )
             )
         stats = {
-            "map": shuffle_map_metadata,
-            "reduce": new_metadata,
+            "map": to_stats(shuffle_map_metadata),
+            "reduce": to_stats(new_metadata),
         }
 
         return (output, stats)

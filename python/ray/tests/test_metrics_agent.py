@@ -3,7 +3,9 @@ import json
 import os
 import pathlib
 import sys
+import re
 import requests
+import warnings
 from collections import defaultdict
 
 from pprint import pformat
@@ -15,6 +17,7 @@ import pytest
 import ray
 from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
     SignalActor,
@@ -26,7 +29,7 @@ from ray._private.test_utils import (
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.util.metrics import Counter, Gauge, Histogram
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -59,7 +62,9 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_grpc_server_req_process_time_ms",
+    "ray_grpc_server_req_process_time_ms_sum",
+    "ray_grpc_server_req_process_time_ms_bucket",
+    "ray_grpc_server_req_process_time_ms_count",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
     "ray_grpc_server_req_finished_total",
@@ -298,10 +303,10 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
 
         for sample in metric_samples:
-            if sample.name in _METRICS:
-                assert sample.labels["SessionName"] == session_name
-            if sample.name in _DASHBOARD_METRICS:
-                assert sample.labels["SessionName"] == session_name
+            # All Ray metrics have label "Version" and "SessionName".
+            if sample.name in _METRICS or sample.name in _DASHBOARD_METRICS:
+                assert sample.labels.get("Version") == ray.__version__, sample
+                assert sample.labels["SessionName"] == session_name, sample
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
@@ -332,7 +337,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure the gRPC stats are not reported from workers. We disabled
         # it there because it has too high cardinality.
         grpc_metrics = [
-            "ray_grpc_server_req_process_time_ms",
+            "ray_grpc_server_req_process_time_ms_sum",
+            "ray_grpc_server_req_process_time_ms_bucket",
+            "ray_grpc_server_req_process_time_ms_count",
             "ray_grpc_server_req_new_total",
             "ray_grpc_server_req_handling_total",
             "ray_grpc_server_req_finished_total",
@@ -417,7 +424,6 @@ def test_metrics_export_node_metrics(shutdown_only):
         list_nodes()
 
         # Verify metrics exist.
-        avail_metrics = avail_metrics
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
@@ -425,7 +431,7 @@ def test_metrics_export_node_metrics(shutdown_only):
 
             samples = avail_metrics[metric]
             for sample in samples:
-                assert sample.labels["Component"] == "dashboard"
+                assert sample.labels["Component"].startswith("dashboard")
 
         return True
 
@@ -679,6 +685,13 @@ def test_per_func_name_stats(shutdown_only):
 
     ray.get(a.__ray_ready__.remote())
     ray.get(b.__ray_ready__.remote())
+
+    # Run a short lived task to make sure there's a ray::IDLE component.
+    @ray.remote
+    def do_nothing():
+        pass
+
+    ray.get(do_nothing.remote())
 
     def verify_components():
         metrics = raw_metrics(addr)
@@ -1026,6 +1039,36 @@ def test_metrics_disablement(_setup_cluster_for_test):
         import time
 
         time.sleep(1)
+
+
+_FAULTY_METRIC_REGEX = re.compile(".*Invalid metric name.*")
+
+
+def test_invalid_application_metric_names():
+    warnings.simplefilter("always")
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        Metric("")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("name-cannot-have-dashes")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("1namecannotstartwithnumber")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("name.cannot.have.dots")
+
+
+def test_invalid_system_metric_names(caplog):
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        MetricsAgentGauge("", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("name-cannot-have-dashes", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("1namecannotstartwithnumber", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("name.cannot.have.dots", "", "", [])
 
 
 if __name__ == "__main__":

@@ -1,7 +1,11 @@
 from ray.rllib.algorithms.sac.sac import SACConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -17,21 +21,24 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "sampler_results/episode_reward_mean": 15000,
-        "timesteps_total": 3000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 15000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
     },
     "Hopper-v4": {
-        "sampler_results/episode_reward_mean": 3500,
-        "timesteps_total": 1000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 3500,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "Humanoid-v4": {
-        "sampler_results/episode_reward_mean": 8000,
-        "timesteps_total": 10000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 8000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 10000000,
     },
-    "Ant-v4": {"sampler_results/episode_reward_mean": 5500, "timesteps_total": 3000000},
+    "Ant-v4": {
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 5500,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
+    },
     "Walker2d-v4": {
-        "sampler_results/episode_reward_mean": 6000,
-        "timesteps_total": 3000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 6000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
     },
 }
 
@@ -45,14 +52,16 @@ class BenchmarkStopper(Stopper):
     def __call__(self, trial_id, result):
         # Stop training if the mean reward is reached.
         if (
-            result["sampler_results"]["episode_reward_mean"]
-            >= self.benchmark_envs[result["env"]]["sampler_results/episode_reward_mean"]
+            result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+            >= self.benchmark_envs[result["env"]][
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+            ]
         ):
             return True
         # Otherwise check, if the total number of timesteps is exceeded.
         elif (
-            result["timesteps_total"]
-            >= self.benchmark_envs[result["env"]]["timesteps_total"]
+            result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+            >= self.benchmark_envs[result["env"]][f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
         ):
             return True
         # Otherwise continue training.
@@ -67,23 +76,23 @@ class BenchmarkStopper(Stopper):
 config = (
     SACConfig()
     .environment(env=tune.grid_search(list(benchmark_envs.keys())))
-    # Enable new API stack and use EnvRunner.
-    .experimental(_enable_new_api_stack=True)
-    .rollouts(
+    .env_runners(
         rollout_fragment_length=1,
-        env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
+        num_env_runners=0,
     )
-    .resources(
+    .learners(
         # Note, we have a sample/train ratio of 1:1 and a small train
         # batch, so 1 learner with a single GPU should suffice.
-        num_learner_workers=1,
-        num_gpus_per_learner_worker=1,
+        num_learners=1,
+        num_gpus_per_learner=1,
     )
     # TODO (simon): Adjust to new model_config_dict.
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        # Choose a smaller learning rate for the actor (policy).
+        actor_lr=3e-5,
+        critic_lr=3e-4,
+        alpha_lr=1e-4,
         target_entropy="auto",
         n_step=1,
         tau=0.005,
@@ -112,7 +121,7 @@ config = (
     .evaluation(
         evaluation_duration="auto",
         evaluation_interval=1,
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=1,
         evaluation_parallel_to_training=True,
         evaluation_config={
             "explore": False,
@@ -123,7 +132,7 @@ config = (
 tuner = tune.Tuner(
     "SAC",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_sac_mujoco",
     ),

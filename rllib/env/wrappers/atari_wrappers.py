@@ -13,7 +13,8 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
     """Returns, whether a given env object or env descriptor (str) is an Atari env.
 
     Args:
-        env: The gym.Env object or a string descriptor of the env (e.g. "ALE/Pong-v5").
+        env: The gym.Env object or a string descriptor of the env (for example,
+        "ale_py:ALE/Pong-v5").
 
     Returns:
         Whether `env` is an Atari environment.
@@ -28,9 +29,9 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
         ):
             return False
         return "AtariEnv<ALE" in str(env)
-    # If string, check for "ALE/" prefix.
+    # If string, check for "ale_py:ALE/" prefix.
     else:
-        return env.startswith("ALE/")
+        return env.startswith("ALE/") or env.startswith("ale_py:")
 
 
 @PublicAPI
@@ -326,6 +327,8 @@ def wrap_atari_for_new_api_stack(
     dim: int = 64,
     frameskip: int = 4,
     framestack: Optional[int] = None,
+    # TODO (sven): Add option to NOT grayscale, in which case framestack must be None
+    #  (b/c we are using the 3 color channels already as stacking frames).
 ) -> gym.Env:
     """Wraps `env` for new-API-stack-friendly RLlib Atari experiments.
 
@@ -334,7 +337,7 @@ def wrap_atari_for_new_api_stack(
     Args:
         env: The env object to wrap.
         dim: Dimension to resize observations to (dim x dim).
-        frameskip: Whether to skip n frames and max over them.
+        frameskip: Whether to skip n frames and max over them (keep brightest pixels).
         framestack: Whether to stack the last n (grayscaled) frames. Note that this
             step happens after(!) a possible frameskip step, meaning that if
             frameskip=4 and framestack=2, we would perform the following over this
@@ -348,7 +351,7 @@ def wrap_atari_for_new_api_stack(
     """
     # Time limit.
     env = gym.wrappers.TimeLimit(env, max_episode_steps=108000)
-    # Grayscale + resize
+    # Grayscale + resize.
     env = WarpFrame(env, dim=dim)
     # Normalize the image.
     env = NormalizedImageEnv(env)

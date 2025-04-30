@@ -54,7 +54,8 @@ def with_docker_exec(
     if env_vars:
         env_str = " ".join(["-e {env}=${env}".format(env=env) for env in env_vars])
     return [
-        "docker exec {interactive} {env} {container} /bin/bash -c {cmd} ".format(
+        "{docker_cmd} exec {interactive} {env} {container} /bin/bash -c {cmd} ".format(
+            docker_cmd=docker_cmd,
             interactive="-it" if with_interactive else "",
             env=env_str,
             container=container_name,

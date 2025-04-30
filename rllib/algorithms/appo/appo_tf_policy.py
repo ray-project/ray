@@ -17,7 +17,6 @@ from ray.rllib.algorithms.impala.impala_tf_policy import (
     VTraceClipGradients,
     VTraceOptimizer,
 )
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_bootstrap_value,
     compute_gae_for_sample_batch,
@@ -82,15 +81,10 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            # If Learner API is used, we don't need any loss-specific mixins.
-            # However, we also would like to avoid creating special Policy-subclasses
-            # for this as the entire Policy concept will soon not be used anymore with
-            # the new Learner- and RLModule APIs.
-            if not config.get("_enable_new_api_stack", False):
-                # Although this is a no-op, we call __init__ here to make it clear
-                # that base.__init__ will use the make_model() call.
-                VTraceClipGradients.__init__(self)
-                VTraceOptimizer.__init__(self)
+            # Although this is a no-op, we call __init__ here to make it clear
+            # that base.__init__ will use the make_model() call.
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
 
             # Initialize base class.
             base.__init__(
@@ -111,8 +105,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
 
-            if not config.get("_enable_new_api_stack", False):
-                GradStatsMixin.__init__(self)
+            GradStatsMixin.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
@@ -368,7 +361,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             self,
             sample_batch: SampleBatch,
             other_agent_batches: Optional[SampleBatch] = None,
-            episode: Optional["Episode"] = None,
+            episode=None,
         ):
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(

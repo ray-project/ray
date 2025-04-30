@@ -2,7 +2,7 @@ import pytest
 
 from ray import cloudpickle
 from ray._private.pydantic_compat import ValidationError
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
@@ -46,8 +46,6 @@ def test_autoscaling_config_validation():
     # target_ongoing_requests must be nonnegative
     with pytest.raises(ValidationError):
         AutoscalingConfig(target_ongoing_requests=-1)
-    with pytest.raises(ValidationError):
-        AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
     # max_replicas must be greater than or equal to min_replicas
     with pytest.raises(ValueError):
@@ -88,7 +86,7 @@ class TestDeploymentConfig:
             DeploymentConfig(num_replicas=-1)
 
         # Test dynamic default for max_ongoing_requests.
-        assert DeploymentConfig().max_ongoing_requests == 100
+        assert DeploymentConfig().max_ongoing_requests == 5
 
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
@@ -154,7 +152,6 @@ class TestReplicaConfig:
                 "num_gpus": 10,
                 "resources": {"abc": 1.0},
                 "memory": 1000000.0,
-                "object_store_memory": 1000000,
             },
         )
         with pytest.raises(TypeError):
@@ -173,12 +170,6 @@ class TestReplicaConfig:
             ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
             ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
-        with pytest.raises(TypeError):
-            ReplicaConfig.create(
-                Class, ray_actor_options={"object_store_memory": "hello"}
-            )
-        with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class, ray_actor_options={"resources": []})
 
@@ -225,7 +216,7 @@ class TestReplicaConfig:
         # Invalid: not in the range of [1, 100]
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -236,7 +227,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -247,7 +238,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -321,7 +312,7 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=("Bundles must be a non-empty list " "of resource dictionaries."),
+            match=("Bundles must be a non-empty list of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,
@@ -467,19 +458,9 @@ class TestReplicaConfig:
 class TestAutoscalingConfig:
     def test_target_ongoing_requests(self):
         autoscaling_config = AutoscalingConfig()
-        assert autoscaling_config.get_target_ongoing_requests() == 1
+        assert autoscaling_config.get_target_ongoing_requests() == 2
 
         autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
-        assert autoscaling_config.get_target_ongoing_requests() == 7
-
-        autoscaling_config = AutoscalingConfig(
-            target_num_ongoing_requests_per_replica=7
-        )
-        assert autoscaling_config.get_target_ongoing_requests() == 7
-
-        autoscaling_config = AutoscalingConfig(
-            target_ongoing_requests=7, target_num_ongoing_requests_per_replica=70
-        )
         assert autoscaling_config.get_target_ongoing_requests() == 7
 
     def test_scaling_factor(self):
@@ -609,33 +590,37 @@ def test_grpc_options():
     assert default_grpc_options.port == DEFAULT_GRPC_PORT
     assert default_grpc_options.grpc_servicer_functions == []
     assert default_grpc_options.grpc_servicer_func_callable == []
+    assert default_grpc_options.request_timeout_s is None
 
     port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     ]
+    request_timeout_s = 1
     grpc_options = gRPCOptions(
         port=port,
         grpc_servicer_functions=grpc_servicer_functions,
+        request_timeout_s=request_timeout_s,
     )
     assert grpc_options.port == port
     assert grpc_options.grpc_servicer_functions == grpc_servicer_functions
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+    assert grpc_options.request_timeout_s == request_timeout_s
 
     # Import not found should raise ModuleNotFoundError.
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
     with pytest.raises(ModuleNotFoundError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "can't be imported!" in str(exception)
 
     # Not callable should raise ValueError.
     grpc_servicer_functions = ["ray.serve._private.constants.DEFAULT_HTTP_PORT"]
     with pytest.raises(ValueError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
 
 
@@ -788,13 +773,17 @@ class TestProtoToDict:
     def test_repeated_field(self):
         """Test _proto_to_dict() to deserialize protobuf with repeated field"""
         user_configured_option_names = ["foo", "bar"]
-        proto = DeploymentConfigProto(
+        config = DeploymentConfig.from_default(
             user_configured_option_names=user_configured_option_names,
         )
+        proto_bytes = config.to_proto_bytes()
+        proto = DeploymentConfigProto.FromString(proto_bytes)
         result = _proto_to_dict(proto)
-
         # Repeated field is filled correctly as list.
-        assert result["user_configured_option_names"] == user_configured_option_names
+        assert set(result["user_configured_option_names"]) == set(
+            user_configured_option_names
+        )
+        assert isinstance(result["user_configured_option_names"], list)
 
     def test_enum_field(self):
         """Test _proto_to_dict() to deserialize protobuf with enum field"""

@@ -14,12 +14,16 @@
 
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <csignal>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
 
 namespace ray {
 
@@ -28,10 +32,12 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     std::function<void(const NodeResources &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
@@ -201,7 +207,7 @@ void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resourc
   last_idle_times_[resource_id] = absl::Now();
 }
 
-absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
+std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
   // If all the resources are idle.
   absl::Time all_idle_time = absl::InfinitePast();
 
@@ -253,9 +259,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.available = local_resources_.available.ToNodeResourceSet();
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
-  node_resources.is_draining = is_local_node_draining_;
-  node_resources.draining_deadline_timestamp_ms =
-      local_node_draining_deadline_timestamp_ms_;
+  node_resources.is_draining = IsLocalNodeDraining();
+  node_resources.draining_deadline_timestamp_ms = GetDrainingDeadline();
   return node_resources;
 }
 
@@ -284,7 +289,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
       last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::Now();
     } else {
       // Clear the idle info since we know it's being used.
-      RAY_LOG(INFO) << "Object store memory is not idle.";
+      RAY_LOG(DEBUG) << "Object store memory is not idle.";
       last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
     }
 
@@ -329,8 +334,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   }
 
   resource_view_sync_message.set_is_draining(IsLocalNodeDraining());
-  resource_view_sync_message.set_draining_deadline_timestamp_ms(
-      local_node_draining_deadline_timestamp_ms_);
+  resource_view_sync_message.set_draining_deadline_timestamp_ms(GetDrainingDeadline());
 
   for (const auto &iter : last_idle_times_) {
     if (iter.second == absl::nullopt) {
@@ -381,9 +385,9 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
-    // The node is drained.
-    RAY_LOG(INFO) << "The node is drained, exiting...";
-    raylet::ShutdownRayletGracefully();
+    RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
+    rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
+    shutdown_raylet_gracefully_(std::move(node_death_info));
   }
 
   ++version_;
@@ -391,6 +395,22 @@ void LocalResourceManager::OnResourceOrStateChanged() {
     return;
   }
   resource_change_subscriber_(ToNodeResources());
+}
+
+rpc::NodeDeathInfo LocalResourceManager::DeathInfoFromDrainRequest() {
+  rpc::NodeDeathInfo death_info;
+  RAY_CHECK(drain_request_.has_value());
+  if (drain_request_->reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+    death_info.set_reason_message(drain_request_->reason_message());
+  } else {
+    RAY_CHECK_EQ(drain_request_->reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    death_info.set_reason_message(drain_request_->reason_message());
+  }
+  return death_info;
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
@@ -444,10 +464,9 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
-  RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
-  is_local_node_draining_ = true;
-  local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
+void LocalResourceManager::SetLocalNodeDraining(
+    const rpc::DrainRayletRequest &drain_request) {
+  drain_request_ = std::make_optional(drain_request);
   OnResourceOrStateChanged();
 }
 

@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -23,7 +26,9 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/raylet_client/raylet_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -38,10 +43,9 @@ using ray::WorkerID;
 
 using ray::Language;
 
-using MessageType = ray::protocol::MessageType;
+// Maps from resource name to its allocation.
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
 namespace ray {
 
@@ -55,7 +59,7 @@ class PinObjectsInterface {
       const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
-  virtual ~PinObjectsInterface(){};
+  virtual ~PinObjectsInterface() = default;
 };
 
 /// Interface for leasing workers. Abstract for testing.
@@ -86,13 +90,20 @@ class WorkerLeaseInterface {
                                    const std::string &disconnect_worker_error_detail,
                                    bool worker_exiting) = 0;
 
+  /// Request the raylet to prestart workers. In `request` we can set the worker's owner,
+  /// runtime env info and number of workers.
+  ///
+  virtual void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) = 0;
+
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
   /// unused workers. \return ray::Status
-  virtual void ReleaseUnusedWorkers(
+  virtual void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
 
   virtual void CancelWorkerLease(
       const TaskID &task_id,
@@ -161,7 +172,7 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
-/// Inteface for getting resource reports.
+/// Interface for getting resource reports.
 class ResourceTrackingInterface {
  public:
   virtual void GetResourceLoad(
@@ -170,11 +181,53 @@ class ResourceTrackingInterface {
   virtual ~ResourceTrackingInterface(){};
 };
 
+class MutableObjectReaderInterface {
+ public:
+  /// Registers a mutable object on this node so that it can be read. Writes are performed
+  /// on a remote node. This local node creates a mapping from `object_id` ->
+  /// `reader_ref`.
+  ///
+  /// \param writer_object_id The object ID of the mutable object on the remote node that
+  /// is written to.
+  /// \param num_readers The number of readers that will read the object on this local
+  /// node.
+  /// \param reader_object_id The object ID of the mutable object that is read on this
+  /// local node.
+  /// \param callback This callback is executed to send a reply to the remote
+  /// node once the mutable object is registered.
+  virtual void RegisterMutableObjectReader(
+      const ObjectID &writer_object_id,
+      int64_t num_readers,
+      const ObjectID &reader_object_id,
+      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) = 0;
+
+  /// Handles a mutable object write that was performed on a remote node and is being
+  /// transferred to this node so that it can be read.
+  ///
+  /// \param writer_object_id The object ID of the mutable object on the remote node that
+  /// is written to. This is *not* the object ID of the corresponding mutable object on
+  /// this local node.
+  /// \param data_size The size of the data to write to the mutable object on this local
+  /// node.
+  /// \param metadata_size The size of the metadata to write to the mutable object on this
+  /// local node.
+  /// \param data The data and metadata to write. This is formatted as (data | metadata).
+  /// \param callback This callback is executed to send a reply to the remote node once
+  /// the mutable object is transferred.
+  virtual void PushMutableObject(
+      const ObjectID &writer_object_id,
+      uint64_t data_size,
+      uint64_t metadata_size,
+      void *data,
+      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
+};
+
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
-                              public ResourceTrackingInterface {
+                              public ResourceTrackingInterface,
+                              public MutableObjectReaderInterface {
  public:
   virtual ~RayletClientInterface(){};
 
@@ -197,50 +250,26 @@ class RayletClientInterface : public PinObjectsInterface,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+
+  virtual void IsLocalWorkerDead(
+      const WorkerID &worker_id,
+      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
+
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
 
 namespace raylet {
 
-class RayletConnection {
- public:
-  /// Connect to the raylet.
-  ///
-  /// \param raylet_socket The name of the socket to use to connect to the raylet.
-  /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
-  ///        additional message will be sent to register as one.
-  /// \param job_id The ID of the driver. This is non-nil if the client is a
-  ///        driver.
-  /// \return The connection information.
-  RayletConnection(instrumented_io_context &io_service,
-                   const std::string &raylet_socket,
-                   int num_retries,
-                   int64_t timeout);
-
-  ray::Status WriteMessage(MessageType type,
-                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
-  ray::Status AtomicRequestReply(MessageType request_type,
-                                 MessageType reply_type,
-                                 std::vector<uint8_t> *reply_message,
-                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
- private:
-  /// Shutdown the raylet if the local connection is disconnected.
-  void ShutdownIfLocalRayletDisconnected(const Status &status);
-  /// The connection to raylet.
-  std::shared_ptr<ServerConnection> conn_;
-  /// A mutex to protect stateful operations of the raylet client.
-  std::mutex mutex_;
-  /// A mutex to protect write operations of the raylet client.
-  std::mutex write_mutex_;
-};
-
+/// Raylet client is responsible for communication with raylet. It implements
+/// [RayletClientInterface] and works on worker registration, lease management, etc.
 class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///
+  /// \param raylet_conn connection to raylet.
   /// \param grpc_client gRPC client to the raylet.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
@@ -260,27 +289,14 @@ class RayletClient : public RayletClientInterface {
   /// provided by driver will be passed to Raylet.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
-  /// \param entrypoint The entrypoint of the job.
-  RayletClient(instrumented_io_context &io_service,
+  RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
-               const std::string &raylet_socket,
-               const WorkerID &worker_id,
-               rpc::WorkerType worker_type,
-               const JobID &job_id,
-               const int &runtime_env_hash,
-               const Language &language,
-               const std::string &ip_address,
-               Status *status,
-               NodeID *raylet_id,
-               int *port,
-               const std::string &serialized_job_config,
-               StartupToken startup_token,
-               const std::string &entrypoint);
+               const WorkerID &worker_id);
 
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+  explicit RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -298,9 +314,16 @@ class RayletClient : public RayletClientInterface {
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
-  /// \param The port.
+  /// \param port The port.
   /// \return ray::Status.
-  Status AnnounceWorkerPort(int port);
+  Status AnnounceWorkerPortForWorker(int port);
+
+  /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
+  ///
+  /// \param port The port.
+  /// \param entrypoint The entrypoint of the driver's job.
+  /// \return ray::Status.
+  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint);
 
   /// Tell the raylet that the client has finished executing a task.
   ///
@@ -328,9 +351,8 @@ class RayletClient : public RayletClientInterface {
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
-  /// \param release_resources: true if the dirct call blocking needs to release
-  /// resources. \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked();
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
@@ -348,13 +370,14 @@ class RayletClient : public RayletClientInterface {
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
-  /// \return ray::Status.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids,
-                   const std::vector<rpc::Address> &owner_addresses,
-                   int num_returns,
-                   int64_t timeout_milliseconds,
-                   const TaskID &current_task_id,
-                   WaitResultPair *result);
+  /// \return ray::StatusOr containing error status or the set of object ids that were
+  /// found.
+  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
+      int64_t timeout_milliseconds,
+      const TaskID &current_task_id);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
@@ -402,10 +425,31 @@ class RayletClient : public RayletClientInterface {
                            const std::string &disconnect_worker_error_detail,
                            bool worker_exiting) override;
 
+  /// Implements WorkerLeaseInterface.
+  void PrestartWorkers(
+      const ray::rpc::PrestartWorkersRequest &request,
+      const ray::rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override;
+
   void GetTaskFailureCause(
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override;
+
+  /// Implements MutableObjectReaderInterface.
+  void RegisterMutableObjectReader(
+      const ObjectID &writer_object_id,
+      int64_t num_readers,
+      const ObjectID &reader_object_id,
+      const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback)
+      override;
+
+  /// Implements MutableObjectReaderInterface.
+  void PushMutableObject(const ObjectID &writer_object_id,
+                         uint64_t data_size,
+                         uint64_t metadata_size,
+                         void *data,
+                         const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
+                             &callback) override;
 
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(
@@ -413,9 +457,9 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
 
   /// Implements WorkerLeaseInterface.
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override;
 
   void CancelWorkerLease(
       const TaskID &task_id,
@@ -459,6 +503,15 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      override;
+
+  void IsLocalWorkerDead(
+      const WorkerID &worker_id,
+      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override;
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;

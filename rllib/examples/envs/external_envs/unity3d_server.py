@@ -107,7 +107,7 @@ if __name__ == "__main__":
     # `InputReader` generator (returns None if no input reader is needed on
     # the respective worker).
     def _input(ioctx):
-        # We are remote worker or we are local worker with num_workers=0:
+        # We are remote worker or we are local worker with num_env_runners=0:
         # Create a PolicyServerInput.
         if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
             return PolicyServerInput(
@@ -132,10 +132,9 @@ if __name__ == "__main__":
         # DL framework to use.
         .framework(args.framework)
         # Use n worker processes to listen on different ports.
-        .rollouts(
-            num_rollout_workers=args.num_workers,
+        .env_runners(
+            num_env_runners=args.num_workers,
             rollout_fragment_length=20,
-            enable_connectors=False,
         )
         .environment(
             env=None,

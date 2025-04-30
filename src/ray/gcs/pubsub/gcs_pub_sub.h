@@ -14,9 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -39,18 +43,15 @@ class GcsPublisher {
   /// Initializes GcsPublisher with GCS based publishers.
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
-  GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
-      : publisher_(std::move(publisher)) {}
-
-  /// Test only.
-  /// TODO: remove this constructor and inject mock / fake from the other constructor.
-  explicit GcsPublisher() {}
+  explicit GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+      : publisher_(std::move(publisher)) {
+    RAY_CHECK(publisher_);
+  }
 
   virtual ~GcsPublisher() = default;
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
-  /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
-  pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
+  pubsub::Publisher &GetPublisher() const { return *publisher_; }
 
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
@@ -63,8 +64,10 @@ class GcsPublisher {
   /// TODO: Implement optimization for channels where only latest data per ID is useful.
 
   Status PublishActor(const ActorID &id,
-                      const rpc::ActorTableData &message,
+                      rpc::ActorTableData message,
                       const StatusCallback &done);
+
+  // TODO(dayshah): Look at possibility of moving all of these rpc messages
 
   Status PublishJob(const JobID &id,
                     const rpc::JobTableData &message,
@@ -100,7 +103,7 @@ class GcsPublisher {
 class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with GCS based GcsSubscribers.
-  // TODO: Support restarted GCS publisher, at the same or a different address.
+  // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
   GcsSubscriber(const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
       : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {}

@@ -19,20 +19,17 @@
 
 #include "ray/object_manager/plasma/client.h"
 
-#include <algorithm>
-#include <boost/asio.hpp>
 #include <cstring>
-#include <deque>
+#include <memory>
 #include <mutex>
-#include <tuple>
-#include <unordered_map>
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -147,6 +144,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              int64_t timeout_ms,
              ObjectBuffer *object_buffers,
              bool is_from_worker);
+
+  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
 
   Status GetExperimentalMutableObject(const ObjectID &object_id,
                                       std::unique_ptr<MutableObject> *mutable_object);
@@ -295,7 +294,7 @@ void PlasmaClient::Impl::InsertObjectInUse(const ObjectID &object_id,
 
   // Add this object ID to the hash table of object IDs in use. The
   // corresponding call to free happens in PlasmaClient::Release.
-  it->second->object = *object.release();
+  it->second->object = std::move(*object);
   // Count starts at 1 to pin the object.
   it->second->count = 1;
   it->second->is_sealed = is_sealed;
@@ -378,8 +377,8 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // they are not evicted before the writer has a chance to register the
     // object.
     // TODO(swang): GC these once they are deleted by the
-    // experimental::MutableObjectManager. This can be done by pinning the object
-    // using the shared_ptr to the memory buffer that is held by the
+    // experimental::MutableObjectManager. This can be done by pinning the object using
+    // the shared_ptr to the memory buffer that is held by the
     // experimental::MutableObjectManager.
     IncrementObjectCount(object_id);
   }
@@ -616,6 +615,31 @@ Status PlasmaClient::Impl::GetBuffers(
   return Status::OK();
 }
 
+Status PlasmaClient::Impl::ExperimentalMutableObjectRegisterWriter(
+    const ObjectID &object_id) {
+#if 0
+  plasma::ObjectBuffer object_buffer;
+  const auto wrap_buffer = [=](const ObjectID &object_id,
+                               const std::shared_ptr<Buffer> &buffer) {
+    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
+  };
+  RAY_RETURN_NOT_OK(GetBuffers(&object_id,
+                    /*num_objects=*/1,
+                    /*timeout_ms=*/-1,
+                    wrap_buffer,
+                     &object_buffer,
+                     /*is_from_worker=*/false));
+
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::Invalid(
+        "Plasma buffer for mutable object is not local.");
+  }
+#endif
+  return Status::OK();
+}
+
 Status PlasmaClient::Impl::GetExperimentalMutableObject(
     const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) {
 #if defined(_WIN32)
@@ -635,10 +659,9 @@ Status PlasmaClient::Impl::GetExperimentalMutableObject(
 
   // Pin experimental mutable object so that it is not evicted before the
   // caller has a chance to register the object.
-  // TODO(swang): GC once they are deleted by the
-  // experimental::MutableObjectManager. This can be done by pinning the object
-  // using the shared_ptr to the memory buffer that is held by the
-  // experimental::MutableObjectManager.
+  // TODO(swang): GC once they are deleted by the experimental::MutableObjectManager. This
+  // can be done by pinning the object using the shared_ptr to the memory buffer that is
+  // held by the experimental::MutableObjectManager.
   IncrementObjectCount(object_id);
 
   const auto &object = object_entry->second->object;
@@ -695,7 +718,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     // Otherwise, skip the reply to boost performance.
     // Q: since both server and client knows this fd is fallback allocated, why do we
     //    need to pass it in PlasmaReleaseRequest?
-    // A: becuase we wanna be idempotent, and in the 2nd call, the server does not know
+    // A: because we wanna be idempotent, and in the 2nd call, the server does not know
     //    about the object.
     const MEMFD_TYPE fd = object_entry->second->object.store_fd;
     bool may_unmap = object_entry->second->object.fallback_allocated;
@@ -957,6 +980,10 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+}
+
+Status PlasmaClient::ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) {
+  return impl_->ExperimentalMutableObjectRegisterWriter(object_id);
 }
 
 Status PlasmaClient::GetExperimentalMutableObject(

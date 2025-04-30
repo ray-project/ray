@@ -340,7 +340,7 @@ How can I reproduce experiments?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Reproducing experiments and experiment results means that you get the exact same
 results when running an experiment again and again. To achieve this, the
-conditions have to be exactly the same each time you run the exeriment.
+conditions have to be exactly the same each time you run the experiment.
 In terms of ML training and tuning, this mostly concerns
 the random number generators that are used for sampling in various places of the
 training and tuning lifecycle.
@@ -402,7 +402,7 @@ Here's a blueprint on how to do all this in your training code:
 For instance, if you use schedulers like ASHA or PBT, some trials might finish earlier
 than other trials, affecting the behavior of the schedulers. Which trials finish first
 can however depend on the current system load, network communication, or other factors
-in the envrionment that we cannot control with random seeds. This is also true for search
+in the environment that we cannot control with random seeds. This is also true for search
 algorithms such as Bayesian Optimization, which take previous results into account when
 sampling new configurations. This can be tackled by
 using the **synchronous modes** of PBT and Hyperband, where the schedulers wait for all trials to
@@ -450,7 +450,7 @@ your class trainable or to ``session.report()`` in your function trainable. The 
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
-to do that depending on whether you are using class or functional Trainable API. 
+to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
@@ -497,10 +497,6 @@ Look for issues with "[tune]" in the title.
 .. note::
 
     If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
-
-For project organization, Tune maintains a relatively up-to-date organization of
-issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
-Here, you can track and identify how issues are organized.
 
 
 .. _tune-reproducible:
@@ -611,7 +607,6 @@ To take multiple random samples, add ``num_samples: N`` to the experiment config
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
-    :emphasize-lines: 16
     :language: python
     :start-after: __grid_search_2_start__
     :end-before: __grid_search_2_end__
@@ -634,7 +629,7 @@ You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment var
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_.get_trial_dir>`
+:meth:`tune.get_context().get_trial_dir() <ray.tune.TuneContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

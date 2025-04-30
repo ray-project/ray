@@ -12,16 +12,19 @@ import pytest
 import ray
 import ray.util.state
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.util.debug import reset_log_once
 
 
 @pytest.fixture(scope="module")
@@ -121,7 +124,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     kwargs = aws_credentials.copy()
 
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
@@ -217,52 +220,33 @@ def assert_base_partitioned_ds():
         count=6,
         num_input_files=2,
         num_rows=6,
-        schema="{one: int64, two: string}",
-        num_computed=2,
+        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
         sorted_values=None,
-        ds_take_transform_fn=lambda taken: [[s["one"], s["two"]] for s in taken],
-        sorted_values_transform_fn=lambda sorted_values: sorted_values,
+        ds_take_transform_fn=None,
+        sorted_values_transform_fn=None,
     ):
+        if ds_take_transform_fn is None:
+            ds_take_transform_fn = lambda taken: [  # noqa: E731
+                [s["one"], s["two"]] for s in taken
+            ]
+
+        if sorted_values_transform_fn is None:
+            sorted_values_transform_fn = (  # noqa: E731
+                lambda sorted_values: sorted_values
+            )
+
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        assert ds._plan.execute()._num_computed() == 0
+        assert not ds._plan.has_started_execution
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() is not None
+        assert ds.schema() == schema
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
 
-        # For Datasets with long string representations, the format will include
-        # whitespace and newline characters, which is difficult to generalize
-        # without implementing the formatting logic again (from
-        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
-        # characters to test the string contents regardless of the string repr length.
-        def _remove_whitespace(ds_str):
-            for c in ["\n", "   ", " "]:
-                ds_str = ds_str.replace(c, "")
-            return ds_str
-
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(str(ds)), ds
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(repr(ds)), ds
-
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
-
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
         actual_sorted_values = sorted_values_transform_fn(sorted(values))
         assert (
             actual_sorted_values == sorted_values
@@ -279,13 +263,42 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
-@pytest.fixture(params=[True, False])
-def use_push_based_shuffle(request):
+@pytest.fixture
+def disable_fallback_to_object_extension(request, restore_data_context):
+    """Disables fallback to ArrowPythonObjectType"""
+    ray.data.context.DataContext.get_current().enable_fallback_to_arrow_object_ext_type = (
+        False
+    )
+
+
+@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+def configure_shuffle_method(request):
+    shuffle_strategy = request.param
+
     ctx = ray.data.context.DataContext.get_current()
-    original = ctx.use_push_based_shuffle
-    ctx.use_push_based_shuffle = request.param
+
+    original_shuffle_strategy = ctx.shuffle_strategy
+
+    ctx.shuffle_strategy = shuffle_strategy
+
     yield request.param
-    ctx.use_push_based_shuffle = original
+
+    ctx.shuffle_strategy = original_shuffle_strategy
+
+
+@pytest.fixture(params=[True, False])
+def use_polars(request):
+    use_polars = request.param
+
+    ctx = ray.data.context.DataContext.get_current()
+
+    original_use_polars = ctx.use_polars
+
+    ctx.use_polars = use_polars
+
+    yield request.param
+
+    ctx.use_polars = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -304,6 +317,12 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = request.param
     yield request.param
     ctx.enable_auto_log_stats = original
+
+
+@pytest.fixture(autouse=True)
+def reset_log_once_fixture():
+    reset_log_once()
+    yield
 
 
 @pytest.fixture(params=[1024])
@@ -386,9 +405,10 @@ def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
-    import ray._private.utils as utils
+    import ray._private.arrow_utils
 
-    utils._PYARROW_VERSION = None
+    ray._private.arrow_utils._PYARROW_INSTALLED = None
+    ray._private.arrow_utils._PYARROW_VERSION = None
     yield request.param
     pa.__version__ = orig_version
 
@@ -406,7 +426,7 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -427,7 +447,7 @@ def op_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
@@ -466,24 +486,19 @@ class CoreExecutionMetrics:
     def get_actor_count(self):
         return self.actor_count
 
-    def _assert_count_equals(self, actual_count, expected_count, ignore_extra_tasks):
+    def _assert_count_equals(self, actual_count, expected_count):
         diff = {}
         # Check that all tasks in expected tasks match those in actual task
         # count.
         for name, count in expected_count.items():
             if not equals_or_true(actual_count[name], count):
                 diff[name] = (actual_count[name], count)
-        # Check that the actual task count does not have any additional tasks.
-        if not ignore_extra_tasks:
-            for name, count in actual_count.items():
-                if name not in expected_count and count != 0:
-                    diff[name] = (count, 0)
 
         assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
             f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
         )
 
-    def assert_task_metrics(self, expected_metrics, ignore_extra_tasks):
+    def assert_task_metrics(self, expected_metrics):
         """
         Assert equality to the given { <task name>: <task count> }.
         A lambda that takes in the count and returns a bool to assert can also
@@ -491,20 +506,13 @@ class CoreExecutionMetrics:
 
         An empty dict means that we expected no tasks to run. Pass None to skip
         the check.
-
-        Default values in get_default_task_count() are also asserted.
         """
         if expected_metrics.get_task_count() is None:
             return
 
-        expected_task_count = CoreExecutionMetrics.get_default_task_count()
-        for name, count in expected_metrics.get_task_count().items():
-            expected_task_count[name] = count
-
+        expected_task_count = expected_metrics.get_task_count()
         actual_task_count = self.get_task_count()
-        self._assert_count_equals(
-            actual_task_count, expected_task_count, ignore_extra_tasks
-        )
+        self._assert_count_equals(actual_task_count, expected_task_count)
 
     def assert_object_store_metrics(self, expected_metrics):
         """
@@ -536,46 +544,15 @@ class CoreExecutionMetrics:
         if expected_metrics.get_actor_count() is None:
             return
 
-        expected_actor_count = CoreExecutionMetrics.get_default_actor_count()
-        for key, val in expected_metrics.get_actor_count().items():
-            expected_actor_count[key] = val
-
+        expected_actor_count = expected_metrics.get_actor_count()
         actual_actor_count = self.get_actor_count()
         self._assert_count_equals(actual_actor_count, expected_actor_count)
-
-    @staticmethod
-    def get_default_task_count():
-        return {
-            "AutoscalingRequester.request_resources": lambda count: count < 100,
-            "AutoscalingRequester:AutoscalingRequester.__init__": lambda count: count
-            <= 1,
-            "_StatsActor.clear_metrics": lambda count: count < 100,
-            "_StatsActor.clear_execution_metrics": lambda count: count < 100,
-            "_StatsActor.clear_iteration_metrics": lambda count: count < 100,
-            "_StatsActor.update_metrics": lambda count: count < 100,
-            "_StatsActor.update_execution_metrics": lambda count: count < 100,
-            "_StatsActor.update_iteration_metrics": lambda count: count < 100,
-            "_StatsActor.get": lambda count: True,
-            "_StatsActor.record_start": lambda count: True,
-            "_StatsActor.record_task": lambda count: True,
-            "_StatsActor.get_dataset_id": lambda count: True,
-            "_StatsActor.update_dataset": lambda count: True,
-            "_StatsActor.register_dataset": lambda count: True,
-            "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
-        }
 
     @staticmethod
     def get_default_object_store_stats():
         return {
             "spilled_bytes_total": 0,
             "restored_bytes_total": 0,
-        }
-
-    @staticmethod
-    def get_default_actor_count():
-        return {
-            "_StatsActor": lambda count: count <= 1,
-            "AutoscalingRequester": lambda count: count <= 1,
         }
 
 
@@ -687,7 +664,6 @@ def get_initial_core_execution_metrics_snapshot():
             task_count={"warmup": lambda count: True}, object_store_stats={}
         ),
         last_snapshot=None,
-        ignore_extra_tasks=True,
     )
     return last_snapshot
 
@@ -695,7 +671,6 @@ def get_initial_core_execution_metrics_snapshot():
 def assert_core_execution_metrics_equals(
     expected_metrics: CoreExecutionMetrics,
     last_snapshot=None,
-    ignore_extra_tasks=False,
 ):
     # Wait for one task per CPU to finish to prevent a race condition where not
     # all of the task metrics have been collected yet.
@@ -705,7 +680,7 @@ def assert_core_execution_metrics_equals(
         wait_for_condition(lambda: task_metrics_flushed(refs))
 
     metrics = PhysicalCoreExecutionMetrics(last_snapshot)
-    metrics.assert_task_metrics(expected_metrics, ignore_extra_tasks)
+    metrics.assert_task_metrics(expected_metrics)
     metrics.assert_object_store_metrics(expected_metrics)
     metrics.assert_actor_metrics(expected_metrics)
 
@@ -775,3 +750,8 @@ def assert_blocks_expected_in_plasma(
     )
 
     return last_snapshot
+
+
+@pytest.fixture(autouse=True, scope="function")
+def log_internal_stack_trace_to_stdout(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True

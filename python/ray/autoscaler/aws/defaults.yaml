@@ -122,9 +122,9 @@ initialization_commands: []
 # List of shell commands to run to set up nodes.
 setup_commands:
     - >-
-        (stat $HOME/anaconda3/envs/tensorflow2_p38/ &> /dev/null &&
-        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p38/bin:$PATH"' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+        (stat $HOME/anaconda3/envs/tensorflow2_p310/ &> /dev/null &&
+        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p310/bin:$PATH"' >> ~/.bashrc) || true
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

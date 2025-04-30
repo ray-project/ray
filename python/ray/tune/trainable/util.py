@@ -1,7 +1,7 @@
 import inspect
 import logging
 import types
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
 import ray
 from ray.tune.execution.placement_groups import (
@@ -45,12 +45,12 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
     .. code-block:: python
 
-        from ray import train, tune
+        from ray import tune
 
         def train_fn(config, data=None):
             for sample in data:
                 loss = update_model(sample)
-                train.report(loss=loss)
+                tune.report(dict(loss=loss))
 
         data = HugeDataset(download=True)
 

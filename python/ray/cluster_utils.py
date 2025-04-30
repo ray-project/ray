@@ -193,6 +193,7 @@ class Cluster:
             namespace=namespace,
             ignore_reinit_error=True,
             address=self.address,
+            _redis_username=self.redis_username,
             _redis_password=self.redis_password,
         )
         logger.info(output_info)
@@ -220,7 +221,6 @@ class Cluster:
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,
-            "dashboard_port": None,
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
@@ -234,12 +234,20 @@ class Cluster:
                 )
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
+                self.redis_username = node_args.get(
+                    "redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+                )
                 self.redis_password = node_args.get(
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
                 )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
+                gcs_options = GcsClientOptions.create(
+                    node.gcs_address,
+                    None,
+                    allow_cluster_id_nil=True,
+                    fetch_cluster_id_if_nil=False,
+                )
                 self.global_state._initialize_global_state(gcs_options)
                 # Write the Ray cluster address for convenience in unit
                 # testing. ray.init() and ray.init(address="auto") will connect
@@ -252,6 +260,10 @@ class Cluster:
                 ray_params.update_if_absent(include_log_monitor=False)
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
+                if "dashboard_agent_listen_port" not in node_args:
+                    # Pick a random one to not conflict
+                    # with the head node dashboard agent
+                    ray_params.dashboard_agent_listen_port = None
 
                 node = ray._private.node.Node(
                     ray_params,
@@ -347,8 +359,7 @@ class Cluster:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = self.global_state.node_table()
-            live_clients = [client for client in clients if client["Alive"]]
+            live_clients = self.global_state._live_node_ids()
 
             expected = len(self.list_all_nodes())
             if len(live_clients) == expected:

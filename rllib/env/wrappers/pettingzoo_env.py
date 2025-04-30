@@ -4,7 +4,6 @@ import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import MultiAgentDict
 
 
 @PublicAPI
@@ -125,26 +124,22 @@ class PettingZooEnv(MultiAgentEnv):
 
         self._agent_ids = set(self.env.agents)
 
-        self.observation_space = gym.spaces.Dict(
-            {aid: self.env.observation_space(aid) for aid in self._agent_ids}
-        )
-        self._obs_space_in_preferred_format = True
-        self.action_space = gym.spaces.Dict(
-            {aid: self.env.action_space(aid) for aid in self._agent_ids}
-        )
-        self._action_space_in_preferred_format = True
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
 
-    def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        sample = self.observation_space.sample()
-        if agent_ids is None:
-            return sample
-        return {aid: sample[aid] for aid in agent_ids}
+        # Set these attributes for sampling in `VectorMultiAgentEnv`s.
+        self.observation_spaces = {
+            aid: self.env.observation_space(aid) for aid in self._agent_ids
+        }
+        self.action_spaces = {
+            aid: self.env.action_space(aid) for aid in self._agent_ids
+        }
 
-    def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        sample = self.action_space.sample()
-        if agent_ids is None:
-            return sample
-        return {aid: sample[aid] for aid in agent_ids}
+        self.observation_space = gym.spaces.Dict(self.observation_spaces)
+        self.action_space = gym.spaces.Dict(self.action_spaces)
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         info = self.env.reset(seed=seed, options=options)
@@ -201,14 +196,18 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         self.par_env.reset()
         self._agent_ids = set(self.par_env.agents)
 
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
+
         self.observation_space = gym.spaces.Dict(
             {aid: self.par_env.observation_space(aid) for aid in self._agent_ids}
         )
-        self._obs_space_in_preferred_format = True
         self.action_space = gym.spaces.Dict(
             {aid: self.par_env.action_space(aid) for aid in self._agent_ids}
         )
-        self._action_space_in_preferred_format = True
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         obs, info = self.par_env.reset(seed=seed, options=options)

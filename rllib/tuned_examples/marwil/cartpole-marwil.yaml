@@ -1,3 +1,4 @@
+# @OldAPIStack
 # To generate training data, first run:
 # $ ./train.py --run=PPO --env=CartPole-v1 \
 #      --stop='{"timesteps_total": 50000}' \
@@ -12,7 +13,7 @@ cartpole-marwil:
         framework: torch
         # In order to evaluate on an actual environment, use these following
         # settings:
-        evaluation_num_workers: 1
+        evaluation_num_env_runners: 1
         evaluation_interval: 1
         evaluation_config:
             input: sampler

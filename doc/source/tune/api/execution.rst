@@ -29,10 +29,10 @@ Tuner Configuration
     :toctree: doc/
 
     TuneConfig
+    RunConfig
+    CheckpointConfig
+    FailureConfig
 
-.. seealso::
-
-    The `Tuner` constructor also takes in a :class:`RunConfig <ray.train.RunConfig>`.
 
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~
@@ -53,4 +53,6 @@ tune.run_experiments
     :toctree: doc/
 
     run_experiments
+    run
     Experiment
+    TuneError

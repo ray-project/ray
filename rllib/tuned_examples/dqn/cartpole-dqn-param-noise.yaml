@@ -1,8 +1,9 @@
+# @OldAPIStack
 cartpole-dqn-w-param-noise:
     env: CartPole-v1
     run: DQN
     stop:
-        sampler_results/episode_reward_mean: 150
+        env_runners/episode_return_mean: 150
         timesteps_total: 300000
     config:
         # Works for both torch and tf.
@@ -13,7 +14,7 @@ cartpole-dqn-w-param-noise:
             initial_stddev: 1.0
         batch_mode: complete_episodes
         lr: 0.0008
-        num_workers: 0
+        num_env_runners: 0
         model:
             fcnet_hiddens: [32, 32]
             fcnet_activation: tanh

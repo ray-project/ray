@@ -8,11 +8,12 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+    DefaultPPOTorchRLModule,
+)
 from ray.rllib.core.models.configs import MLPHeadConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
     MobileNetV2EncoderConfig,
     MOBILENET_INPUT_SHAPE,
@@ -20,8 +21,8 @@ from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
 from ray.rllib.core.models.configs import ActorCriticEncoderConfig
 
 
-class MobileNetTorchPPORLModule(PPOTorchRLModule):
-    """A PPORLModules with mobilenet v2 as an encoder.
+class MobileNetTorchPPORLModule(DefaultPPOTorchRLModule):
+    """A DefaultPPORLModule with mobilenet v2 as an encoder.
 
     The idea behind this model is to demonstrate how we can bypass catalog to
     take full control over what models and action distribution are being built.
@@ -51,15 +52,9 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
         self.pi = pi_config.build(framework="torch")
         self.vf = vf_config.build(framework="torch")
 
-        self.action_dist_cls = TorchCategorical
-
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
-    .rl_module(
-        rl_module_spec=SingleAgentRLModuleSpec(module_class=MobileNetTorchPPORLModule)
-    )
     .environment(
         RandomEnv,
         env_config={
@@ -73,11 +68,16 @@ config = (
             ),
         },
     )
-    .rollouts(num_rollout_workers=0)
+    .env_runners(num_env_runners=0)
     # The following training settings make it so that a training iteration is very
     # quick. This is just for the sake of this example. PPO will not learn properly
     # with these settings!
-    .training(train_batch_size=32, sgd_minibatch_size=16, num_sgd_iter=1)
+    .training(
+        train_batch_size_per_learner=32,
+        minibatch_size=16,
+        num_epochs=1,
+    )
+    .rl_module(rl_module_spec=RLModuleSpec(module_class=MobileNetTorchPPORLModule))
 )
 
 config.build().train()

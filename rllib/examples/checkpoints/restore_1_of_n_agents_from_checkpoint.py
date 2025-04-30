@@ -1,135 +1,171 @@
-# TODO (sven): Move this example script into the new API stack.
+"""Example demonstrating how to load module weights for 1 of n agents from a checkpoint.
 
-"""Simple example of how to restore only one of n agents from a trained
-multi-agent Algorithm using Ray tune.
+This example:
+    - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies, p0, p1, etc..
+    - Saves a checkpoint of the `MultiRLModule` every `--checkpoint-freq`
+    iterations.
+    - Stops the experiments after the agents reach a combined return of -800.
+    - Picks the best checkpoint by combined return and restores p0 from it.
+    - Runs a second experiment with the restored `RLModule` for p0 and
+    a fresh `RLModule` for the other policies.
+    - Stops the second experiment after the agents reach a combined return of -800.
 
-Control the number of agents and policies via --num-agents and --num-policies.
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2
+--checkpoint-freq=20 --checkpoint-at-end`
+
+Control the number of agents and policies (RLModules) via --num-agents and
+--num-policies.
+
+Control the number of checkpoints by setting `--checkpoint-freq` to a value > 0.
+Note that the checkpoint frequency is per iteration and this example needs at
+least a single checkpoint to load the RLModule weights for policy 0.
+If `--checkpoint-at-end` is set, a checkpoint will be saved at the end of the
+experiment.
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+You should expect a reward of -400.0 eventually being achieved by a simple
+single PPO policy. In the second run of the experiment, the MultiRLModule weights
+for policy 0 are restored from the checkpoint of the first run. The reward for a
+single agent should be -400.0 again, but the training time should be shorter
+(around 30 iterations instead of 190) due to the fact that one policy is already
+an expert from the get go.
 """
 
-import argparse
-import gymnasium as gym
-import os
-import random
+from pathlib import Path
 
-import ray
-from ray import air
-from ray import tune
-from ray.rllib.algorithms.algorithm import Algorithm
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_RL_MODULE,
+)
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    check,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls, register_env
 
-tf1, tf, tfv = try_import_tf()
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument("--num-agents", type=int, default=4)
+parser = add_rllib_example_script_args(
+    # Pendulum-v1 sum of 2 agents (each agent reaches -250).
+    default_reward=-500.0,
+)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    checkpoint_freq=1,
+    num_agents=2,
+)
+# TODO (sven): This arg is currently ignored (hard-set to 2).
 parser.add_argument("--num-policies", type=int, default=2)
-parser.add_argument("--pre-training-iters", type=int, default=5)
-parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
-)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    # Register our environment with tune.
+    if args.num_agents > 1:
+        register_env(
+            "env",
+            lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
+        )
+    else:
+        raise ValueError(
+            f"`num_agents` must be > 1, but is {args.num_agents}."
+            "Read the script docstring for more information."
+        )
 
-    # Get obs- and action Spaces.
-    single_env = gym.make("CartPole-v1")
-    obs_space = single_env.observation_space
-    act_space = single_env.action_space
-
-    # Setup PPO with an ensemble of `num_policies` different policies.
-    policies = {
-        f"policy_{i}": (None, obs_space, act_space, None)
-        for i in range(args.num_policies)
-    }
-    policy_ids = list(policies.keys())
-
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-        pol_id = random.choice(policy_ids)
-        return pol_id
-
-    config = (
-        PPOConfig()
-        .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
-        .framework(args.framework)
-        .training(num_sgd_iter=10)
-        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    assert args.checkpoint_freq > 0, (
+        "This example requires at least one checkpoint to load the RLModule "
+        "weights for policy 0."
     )
 
-    # Do some training and store the checkpoint.
-    results = tune.Tuner(
-        "PPO",
-        param_space=config.to_dict(),
-        run_config=air.RunConfig(
-            stop={"training_iteration": args.pre_training_iters},
-            verbose=1,
-            checkpoint_config=air.CheckpointConfig(
-                checkpoint_frequency=1, checkpoint_at_end=True
-            ),
-        ),
-    ).fit()
-    print("Pre-training done.")
-
-    best_checkpoint = results.get_best_result().checkpoint
-    print(f".. best checkpoint was: {best_checkpoint}")
-
-    policy_0_checkpoint = os.path.join(
-        best_checkpoint.to_directory(), "policies/policy_0"
+    base_config = (
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .environment("env")
+        .training(
+            train_batch_size_per_learner=512,
+            minibatch_size=64,
+            lambda_=0.1,
+            gamma=0.95,
+            lr=0.0003,
+            vf_clip_param=10.0,
+        )
+        .rl_module(
+            model_config=DefaultModelConfig(fcnet_activation="relu"),
+        )
     )
-    restored_policy_0 = Policy.from_checkpoint(policy_0_checkpoint)
-    restored_policy_0_weights = restored_policy_0.get_weights()
-    print("Starting new tune.Tuner().fit()")
 
-    # Start our actual experiment.
+    # Add a simple multi-agent setup.
+    if args.num_agents > 0:
+        base_config.multi_agent(
+            policies={f"p{i}" for i in range(args.num_agents)},
+            policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+        )
+
+    # Augment the base config with further settings and train the agents.
+    results = run_rllib_example_script_experiment(base_config, args, keep_ray_up=True)
+
+    # Now swap in the RLModule weights for policy 0.
+    chkpt_path = results.get_best_result().checkpoint.path
+    p_0_module_state_path = (
+        Path(chkpt_path)  # <- algorithm's checkpoint dir
+        / COMPONENT_LEARNER_GROUP  # <- learner group
+        / COMPONENT_LEARNER  # <- learner
+        / COMPONENT_RL_MODULE  # <- MultiRLModule
+        / "p0"  # <- (single) RLModule
+    )
+
+    class LoadP0OnAlgoInitCallback(DefaultCallbacks):
+        def on_algorithm_init(self, *, algorithm, **kwargs):
+            module_p0 = algorithm.get_module("p0")
+            weight_before = convert_to_numpy(next(iter(module_p0.parameters())))
+            algorithm.restore_from_path(
+                p_0_module_state_path,
+                component=(
+                    COMPONENT_LEARNER_GROUP
+                    + "/"
+                    + COMPONENT_LEARNER
+                    + "/"
+                    + COMPONENT_RL_MODULE
+                    + "/p0"
+                ),
+            )
+            # Make sure weights were updated.
+            weight_after = convert_to_numpy(next(iter(module_p0.parameters())))
+            check(weight_before, weight_after, false=True)
+
+    base_config.callbacks(LoadP0OnAlgoInitCallback)
+
+    # Define stopping criteria.
     stop = {
-        "episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800.0,
+        f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
+        TRAINING_ITERATION: 100,
     }
 
-    class RestoreWeightsCallback(DefaultCallbacks):
-        def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
-            algorithm.set_weights({"policy_0": restored_policy_0_weights})
-
-    # Make sure, the non-1st policies are not updated anymore.
-    config.policies_to_train = [pid for pid in policy_ids if pid != "policy_0"]
-    config.callbacks(RestoreWeightsCallback)
-
-    results = tune.run(
-        "PPO",
-        stop=stop,
-        config=config.to_dict(),
-        verbose=1,
-    )
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-
-    ray.shutdown()
+    # Run the experiment again with the restored MultiRLModule.
+    run_rllib_example_script_experiment(base_config, args, stop=stop)

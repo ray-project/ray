@@ -3,6 +3,7 @@ import signal
 import sys
 import time
 import logging
+import threading
 
 import numpy as np
 import pytest
@@ -18,7 +19,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     wait_for_condition,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -106,7 +107,7 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     def expect_exception(objects, exception):
         with pytest.raises(ray.exceptions.RayError) as err:
             ray.get(objects)
-        assert err.type is exception
+        assert issubclass(err.type, exception)
 
     signal1 = SignalActor.remote()
     actor = Actor.options(max_concurrency=2).remote()
@@ -305,6 +306,68 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pu
     assert len(errors) == 0, "Should not have propogated an error - {}".format(errors)
 
 
+def test_mixed_hanging_and_exception_should_not_hang(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, _id):
+            self._id = _id
+
+        def execute(self, fn) -> None:
+            return fn(self._id)
+
+    def print_and_raise_error(i):
+        print(i)
+        raise ValueError
+
+    def print_and_sleep_forever(i):
+        import time
+
+        print(i)
+        while True:
+            time.sleep(3600)
+
+    actors = [Actor.remote(i) for i in range(10)]
+    refs = [actor.execute.remote(print_and_raise_error) for actor in actors[:2]]
+
+    with pytest.raises(ValueError):
+        ray.get(refs)
+
+    refs.extend([actor.execute.remote(print_and_sleep_forever) for actor in actors[2:]])
+
+    with pytest.raises(ValueError):
+        ray.get(refs)
+
+
+def test_mixed_hanging_and_died_actor_should_not_hang(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, _id):
+            self._id = _id
+
+        def execute(self, fn) -> None:
+            return fn(self._id)
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    def print_and_sleep_forever(i):
+        import time
+
+        print(i)
+        while True:
+            time.sleep(3600)
+
+    actors = [Actor.remote(i) for i in range(10)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    error_refs = [actor.exit.remote() for actor in actors[:2]]
+
+    with pytest.raises(ActorDiedError):
+        ray.get(error_refs)
+
+    with pytest.raises(ActorDiedError):
+        ray.get([actor.execute.remote(print_and_sleep_forever) for actor in actors])
+
+
 def test_exception_chain(ray_start_regular):
     @ray.remote
     def bar():
@@ -319,6 +382,26 @@ def test_exception_chain(ray_start_regular):
         ray.get(r)
     except ZeroDivisionError as ex:
         assert isinstance(ex, RayTaskError)
+
+
+def test_baseexception_task(ray_start_regular):
+    @ray.remote
+    def task():
+        raise BaseException("abc")
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(task.remote())
+
+
+def test_baseexception_actor(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise BaseException("abc")
+
+    with pytest.raises(ActorDiedError):
+        a = Actor.remote()
+        ray.get(a.f.remote())
 
 
 @pytest.mark.skip("This test does not work yet.")
@@ -435,7 +518,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
 
     @ray.remote
     def f():
-        large_object
+        _ = large_object
 
     # Invoke the function so that the definition is exported.
     f.remote()
@@ -448,7 +531,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     @ray.remote
     class Foo:
         def __init__(self):
-            large_object
+            _ = large_object
 
     Foo.remote()
 
@@ -600,6 +683,25 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
     ray.get(obj2)
 
 
+# Previously when threading.Lock is in the exception, it causes
+# the serialization to fail. This test case is to cover that scenario.
+def test_unserializable_exception(ray_start_regular, propagate_logs):
+    class UnserializableException(Exception):
+        def __init__(self):
+            self.lock = threading.Lock()
+
+    @ray.remote
+    def func():
+        raise UnserializableException
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get(func.remote())
+
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, ray.exceptions.RayError)
+    assert "isn't serializable" in str(exc_info.value.cause)
+
+
 def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     class MyFinalException(Exception):
         def __init_subclass__(cls, /, *args, **kwargs):
@@ -631,6 +733,36 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     assert str(exc_info.value.cause) == "MyFinalException from task"
 
     caplog.clear()
+
+
+def test_transient_error_retry(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        # Inject transient errors into the RPC client. There is a 25% chance
+        # that the RPC request will fail, a 25% chance that the RPC reply
+        # will fail, and a 50% chance that the RPC will succeed. This test
+        # submits 200 tasks with infinite retries and verifies that all tasks
+        # eventually succeed in the unstable network environment.
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.PushTask=100",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(
+            num_cpus=1,
+            resources={"head": 1},
+        )
+        ray.init(address=cluster.address)
+
+        @ray.remote(max_task_retries=-1, resources={"head": 1})
+        class RetryActor:
+            def echo(self, value):
+                return value
+
+        refs = []
+        actor = RetryActor.remote()
+        for i in range(200):
+            refs.append(actor.echo.remote(i))
+        assert ray.get(refs) == list(range(200))
 
 
 if __name__ == "__main__":

@@ -1,21 +1,21 @@
 import copy
+import itertools
 import json
 import os
 import re
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import jsonschema
 import yaml
-from ray_release.test import (
-    Test,
-    TestDefinition,
-)
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
+from ray_release.test import (
+    Test,
+    TestDefinition,
+)
 from ray_release.util import DeferredEnvVar, deep_update
-
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
 DEFAULT_COMMAND_TIMEOUT = 1800
@@ -31,12 +31,17 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_FKRmeV5pA6X72aVscFALNC32",
+    "prj_6rfevmf12tbsbd6g3al5f6zssh",
 )
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
+
+RELEASE_TEST_CONFIG_FILES = [
+    "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
+]
 
 
 def read_and_validate_release_test_collection(
@@ -55,7 +60,11 @@ def read_and_validate_release_test_collection(
         with open(path, "rt") as fp:
             tests += parse_test_definition(yaml.safe_load(fp))
 
-    validate_release_test_collection(tests, schema_file=schema_file)
+    validate_release_test_collection(
+        tests,
+        schema_file=schema_file,
+        test_definition_root=test_definition_root,
+    )
     return tests
 
 
@@ -72,28 +81,117 @@ def _test_definition_invariant(
 
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    default_definition = {}
     tests = []
     for test_definition in test_definitions:
-        if "variations" not in test_definition:
-            tests.append(Test(test_definition))
+        if "matrix" in test_definition and "variations" in test_definition:
+            raise ReleaseTestConfigError(
+                "You can't specify both 'matrix' and 'variations' in a test definition"
+            )
+
+        if test_definition["name"] == "DEFAULTS":
+            default_definition = copy.deepcopy(test_definition)
             continue
-        variations = test_definition.pop("variations")
+
+        # Add default values to the test definition.
+        test_definition = deep_update(
+            copy.deepcopy(default_definition), test_definition
+        )
+
+        if "variations" in test_definition:
+            tests.extend(_parse_test_definition_with_variations(test_definition))
+        elif "matrix" in test_definition:
+            tests.extend(_parse_test_definition_with_matrix(test_definition))
+        else:
+            tests.append(Test(test_definition))
+
+    return tests
+
+
+def _parse_test_definition_with_variations(
+    test_definition: TestDefinition,
+) -> List[Test]:
+    tests = []
+
+    variations = test_definition.pop("variations")
+    _test_definition_invariant(
+        test_definition,
+        variations,
+        "variations field cannot be empty in a test definition",
+    )
+    for variation in variations:
         _test_definition_invariant(
             test_definition,
-            variations,
-            "variations field cannot be empty in a test definition",
+            "__suffix__" in variation,
+            "missing __suffix__ field in a variation",
         )
-        for variation in variations:
-            _test_definition_invariant(
-                test_definition,
-                "__suffix__" in variation,
-                "missing __suffix__ field in a variation",
-            )
-            test = copy.deepcopy(test_definition)
-            test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
-            test = deep_update(test, variation)
-            tests.append(Test(test))
+        test = copy.deepcopy(test_definition)
+        test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
+        test = deep_update(test, variation)
+        tests.append(Test(test))
+
     return tests
+
+
+def _parse_test_definition_with_matrix(test_definition: TestDefinition) -> List[Test]:
+    tests = []
+
+    matrix = test_definition.pop("matrix")
+    variables = tuple(matrix["setup"].keys())
+    combinations = itertools.product(*matrix["setup"].values())
+    for combination in combinations:
+        test = test_definition
+        for variable, value in zip(variables, combination):
+            test = _substitute_variable(test, variable, str(value))
+        tests.append(Test(test))
+
+    adjustments = matrix.pop("adjustments", [])
+    for adjustment in adjustments:
+        if not set(adjustment["with"]) == set(variables):
+            raise ReleaseTestConfigError(
+                "You need to specify all matrix variables in the adjustment."
+            )
+
+        test = test_definition
+        for variable, value in adjustment["with"].items():
+            test = _substitute_variable(test, variable, str(value))
+        tests.append(Test(test))
+
+    return tests
+
+
+def _substitute_variable(data: Dict, variable: str, replacement: str) -> Dict:
+    """Substitute a variable in the provided dictionary with a replacement value.
+
+    This function traverses dict and list values, and substitutes the variable in
+    string values. The syntax for variables is `{{variable}}`.
+
+    Args:
+        data: The dictionary to substitute the variable in.
+        variable: The variable to substitute.
+        replacement: The replacement value.
+
+    Returns:
+        A new dictionary with the variable substituted.
+
+    Examples:
+        >>> test_definition = {"name": "test-{{arg}}"}
+        >>> _substitute_variable(test_definition, "arg", "1")
+        {'name': 'test-1'}
+    """
+    # Create a copy to avoid mutating the original.
+    data = copy.deepcopy(data)
+
+    pattern = r"\{\{\s*" + re.escape(variable) + r"\s*\}\}"
+    for key, value in data.items():
+        if isinstance(value, dict):
+            data[key] = _substitute_variable(value, variable, replacement)
+        elif isinstance(value, list):
+            data[key] = [re.sub(pattern, replacement, string) for string in value]
+        elif isinstance(value, str):
+            data[key] = re.sub(pattern, replacement, value)
+
+    return data
 
 
 def load_schema_file(path: Optional[str] = None) -> Dict:
@@ -103,7 +201,9 @@ def load_schema_file(path: Optional[str] = None) -> Dict:
 
 
 def validate_release_test_collection(
-    test_collection: List[Test], schema_file: Optional[str] = None
+    test_collection: List[Test],
+    schema_file: Optional[str] = None,
+    test_definition_root: Optional[str] = None,
 ):
     try:
         schema = load_schema_file(schema_file)
@@ -121,14 +221,7 @@ def validate_release_test_collection(
             )
             num_errors += 1
 
-        error = validate_test_cluster_compute(test)
-        if error:
-            logger.error(
-                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
-            )
-            num_errors += 1
-
-        error = validate_test_cluster_env(test)
+        error = validate_test_cluster_compute(test, test_definition_root)
         if error:
             logger.error(
                 f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
@@ -153,10 +246,12 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
         return str(e)
 
 
-def validate_test_cluster_compute(test: Test) -> Optional[str]:
+def validate_test_cluster_compute(
+    test: Test, test_definition_root: Optional[str] = None
+) -> Optional[str]:
     from ray_release.template import load_test_cluster_compute
 
-    cluster_compute = load_test_cluster_compute(test)
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
     return validate_cluster_compute(cluster_compute)
 
 
@@ -180,32 +275,13 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def validate_test_cluster_env(test: Test) -> Optional[str]:
-    if test.is_byod_cluster():
-        """
-        BYOD clusters are not validated because they do not need cluster environment
-        """
-        return None
-
-    from ray_release.template import get_cluster_env_path
-
-    cluster_env_path = get_cluster_env_path(test)
-
-    if not os.path.exists(cluster_env_path):
-        raise ReleaseTestConfigError(
-            f"Cannot load yaml template from {cluster_env_path}: Path not found."
-        )
-
-    return None
-
-
 def validate_aws_config(aws_config: Dict[str, Any]) -> Optional[str]:
     for block_device_mapping in aws_config.get("BlockDeviceMappings", []):
         ebs = block_device_mapping.get("Ebs")
         if not ebs:
             continue
 
-        if not ebs.get("DeleteOnTermination", False) is True:
+        if ebs.get("DeleteOnTermination", False) is not True:
             return "Ebs volume does not have `DeleteOnTermination: true` set"
     return None
 
@@ -255,3 +331,9 @@ def get_test_cloud_id(test: Test) -> str:
     else:
         cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id
+
+
+def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
+    if default_project_id is None:
+        default_project_id = str(DEFAULT_ANYSCALE_PROJECT)
+    return test.get("cluster", {}).get("project_id", default_project_id)

@@ -19,8 +19,8 @@
 #endif
 
 #include <atomic>
-#include <boost/asio.hpp>
 #include <functional>
+#include <string>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -110,12 +110,12 @@ struct PlasmaObjectHeader {
   // num_read_releases_remaining protects against too many readers. However,
   // this allows us to throw an error as soon as the n+1-th reader begins,
   // instead of waiting to error until the n+1-th reader is done reading.
-  int64_t num_read_acquires_remaining = 0;
+  uint64_t num_read_acquires_remaining = 0;
   // The number of readers who must release the current version before a new
   // version can be written. For mutable objects, readers must decrement this
   // when they are done reading the current version. Once this value reaches 0,
   // the reader should signal to the writer that they can write again.
-  int64_t num_read_releases_remaining = 0;
+  uint64_t num_read_releases_remaining = 0;
   // The valid data and metadata size of the Ray object.
   // Not used for immutable objects.
   // For mutable objects, this should be modified when the new object has a
@@ -130,11 +130,18 @@ struct PlasmaObjectHeader {
   /// \param data_size The new data size of the object.
   /// \param metadata_size The new metadata size of the object.
   /// \param num_readers The number of readers for the object.
+  /// \param timeout_point The time point when to timeout if the semaphore is not
+  /// acquired. If this is nullptr, then there is no timeout and the method will block
+  /// indefinitely until the semaphore is acquired. If timeout_point is already passed,
+  /// then the method will try once to acquire the semaphore, and return either OK or
+  /// TimedOut immediately without blocking.
   /// \return if the acquire was successful.
   Status WriteAcquire(Semaphores &sem,
                       uint64_t data_size,
                       uint64_t metadata_size,
-                      int64_t num_readers);
+                      int64_t num_readers,
+                      const std::optional<std::chrono::steady_clock::time_point>
+                          &timeout_point = std::nullopt);
 
   /// Call after completing a write to signal that readers may read.
   /// num_readers should be set before calling this.
@@ -145,13 +152,25 @@ struct PlasmaObjectHeader {
   /// Blocks until the given version is ready to read. Returns false if the
   /// maximum number of readers have already read the requested version.
   ///
+  /// \param[in] object_id ObjectID to acquire a lock from.
   /// \param[in] sem The semaphores for this channel.
   /// \param[in] read_version The version to read.
   /// \param[out] version_read For normal immutable objects, this will be set to
   /// 0. Otherwise, the current version.
+  /// \param[in] timeout_point The time point when to timeout if the semaphore is not
+  /// acquired. If this is nullptr, then there is no timeout and the method will block
+  /// indefinitely until the semaphore is acquired. If timeout_point is already passed,
+  /// then the method will try once to acquire the semaphore, and return either OK or
+  /// TimedOut immediately without blocking.
   /// \return Whether the correct version was read and there were still
   /// reads remaining.
-  Status ReadAcquire(Semaphores &sem, int64_t version_to_read, int64_t *version_read);
+  Status ReadAcquire(const ObjectID &object_id,
+                     Semaphores &sem,
+                     int64_t version_to_read,
+                     int64_t &version_read,
+                     const std::function<Status()> &check_signals,
+                     const std::optional<std::chrono::steady_clock::time_point>
+                         &timeout_point = std::nullopt);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.
@@ -167,8 +186,18 @@ struct PlasmaObjectHeader {
   /// Helper method to acquire a semaphore while failing if the error bit is set. This
   /// method is idempotent.
   ///
-  /// \return OK if the mutex was acquired successfully.
-  Status TryToAcquireSemaphore(sem_t *sem) const;
+  /// \param sem The semaphore to acquire.
+  /// \param timeout_point The time point when to timeout if the semaphore is not
+  /// acquired. If this is nullptr, then there is no timeout and the method will block
+  /// indefinitely until the semaphore is acquired. If timeout_point is already passed,
+  /// then the method will try once to acquire the semaphore, and return either OK or
+  /// TimedOut immediately without blocking.
+  /// \return OK if the mutex was acquired successfully, TimedOut if timed out.
+  Status TryToAcquireSemaphore(
+      sem_t *sem,
+      const std::optional<std::chrono::steady_clock::time_point> &timeout_point =
+          std::nullopt,
+      const std::function<Status()> &check_signals = nullptr) const;
 
   /// Set the error bit. This is a non-blocking method.
   ///

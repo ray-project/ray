@@ -9,18 +9,18 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray import train, tune
 import ray.cloudpickle as ray_pickle
-from ray.train import (
+from ray import tune
+from ray.air._internal.uri_utils import URI
+from ray.tune import (
     Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
-    ScalingConfig,
 )
-from ray.air._internal.uri_utils import URI
+from ray.train._internal.storage import _download_from_fs_path, get_fs_and_path
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train._internal.storage import get_fs_and_path, _download_from_fs_path
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import Callback, Trainable
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
@@ -30,8 +30,6 @@ from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -80,7 +78,7 @@ def _dummy_train_fn(config):
 
 
 def _dummy_train_fn_with_report(config):
-    train.report({"score": 1})
+    tune.report({"score": 1})
 
 
 def _train_fn_sometimes_failing(config):
@@ -88,7 +86,7 @@ def _train_fn_sometimes_failing(config):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         checkpoint_dict = load_dict_checkpoint(checkpoint)
         state = {"it": checkpoint_dict["it"]}
@@ -99,7 +97,7 @@ def _train_fn_sometimes_failing(config):
         state["it"] += 1
 
         with create_dict_checkpoint(state) as checkpoint:
-            train.report(state, checkpoint=checkpoint)
+            tune.report(state, checkpoint=checkpoint)
 
     # We fail after reporting num_epochs checkpoints.
     if failing and failing.exists():
@@ -110,7 +108,7 @@ def _train_fn_sometimes_failing(config):
 
     state["it"] += 1
     with create_dict_checkpoint(state) as checkpoint:
-        train.report(state, checkpoint=checkpoint)
+        tune.report(state, checkpoint=checkpoint)
 
 
 class _ClassTrainableSometimesFailing(Trainable):
@@ -514,16 +512,6 @@ def test_tuner_restore_from_cloud_manual_path(
     )
 
 
-def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir, mock_s3_bucket_uri):
-    ray.init(num_cpus=2, configure_logging=False, storage=mock_s3_bucket_uri)
-
-    _test_tuner_restore_from_cloud(
-        tmpdir / "local",
-        configure_storage_path=None,
-        storage_path=mock_s3_bucket_uri,
-    )
-
-
 # TODO(justinvyu): [fallback_to_latest]
 @pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
 @pytest.mark.parametrize(
@@ -538,7 +526,21 @@ def test_tuner_restore_latest_available_checkpoint(
 
 @pytest.mark.parametrize("retry_num", [0, 2])
 def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
-    """Test retrying restore on a trial level by setting `TUNE_RESTORE_RETRY_NUM`."""
+    """
+    Test retrying restore on a trial level by setting `TUNE_RESTORE_RETRY_NUM`.
+
+    This unit test holds the following hyperparameters:
+    - `retry_num`: Maximum number of retry attempts for restoring a trial.
+        This value is assigned to the environment variable `TUNE_RESTORE_RETRY_NUM`.
+        If the restoration fails after retry_num attempts, the trial increments its
+        counter of total number of failures by 1.
+
+    - `retry_num_to_fail`: Number of restore attempts to fail. In this test,
+        retry_num_to_fail is set to 2, causing the first two restore attempts to fail.
+
+    - `max_failures`: Maximum allowable failures during training. Here, max_failures is
+        set to 2, meaning the training process will terminate after two total failures.
+    """
 
     class MockTrainable(Trainable):
         """A trainable that can generate one failure during training and
@@ -547,7 +549,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
         def setup(self, config):
             self.idx = 0
             self.tag_file_path = config["tag_file_path"]
-            self.retry_num_to_fail = config.get("retry_num_to_fail", 2)
+            self.retry_num_to_fail = 2
             self._is_restored = False
 
         def step(self):
@@ -593,7 +595,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
                 name="tryout_restore",
                 stop={"training_iteration": 5},
                 storage_path=str(tmpdir),
-                failure_config=FailureConfig(max_failures=1),
+                failure_config=FailureConfig(max_failures=2),
                 checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             ),
             param_space={"tag_file_path": tag_file},
@@ -613,7 +615,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     def train_func_1(config):
         data = {"data": config["data"]}
         with create_dict_checkpoint(data) as checkpoint:
-            train.report(data, checkpoint=checkpoint)
+            tune.report(data, checkpoint=checkpoint)
         raise RuntimeError("Failing!")
 
     tuner = Tuner(
@@ -629,7 +631,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     with pytest.raises(ValueError):
         tuner = Tuner.restore(
             str(tmpdir / "overwrite_trainable"),
-            trainable="__fake",
+            trainable="abcd",
             resume_errored=True,
         )
 
@@ -646,7 +648,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can technically change trainable code (not recommended!)
     def train_func_1(config):
-        checkpoint = train.get_checkpoint()
+        checkpoint = tune.get_checkpoint()
         assert checkpoint and load_dict_checkpoint(checkpoint)["data"] == config["data"]
 
     tuner = Tuner.restore(
@@ -775,7 +777,7 @@ def test_tuner_restore_from_moved_experiment_path(
     training_iteration = results[0].metrics["training_iteration"]
     assert (
         training_iteration == 1
-    ), f"Should only have 1 train.report before erroring, got {training_iteration}"
+    ), f"Should only have 1 tune.report before erroring, got {training_iteration}"
     assert results[0].checkpoint.path.endswith("checkpoint_000000")
     assert "new_exp_dir" in results[0].checkpoint.path
 
@@ -800,7 +802,7 @@ def test_tuner_restore_from_moved_experiment_path(
 
     assert len(results.errors) == 0
 
-    # Check that we restored iter=1, then made 2 calls to train.report -> iter=3
+    # Check that we restored iter=1, then made 2 calls to tune.report -> iter=3
     training_iteration = results[0].metrics["training_iteration"]
     assert training_iteration == 3, training_iteration
 
@@ -917,7 +919,8 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
         param_space["fail_epochs"] = 2
     elif trainable_type == "data_parallel":
         trainable = DataParallelTrainer(
-            _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
+            _train_fn_sometimes_failing,
+            scaling_config=ray.train.ScalingConfig(num_workers=1),
         )
         param_space = {"train_loop_config": param_space}
     else:

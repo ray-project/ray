@@ -2,34 +2,34 @@
 """
 Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
-import ray
-from ray import train, tune
-from ray.train import Checkpoint
-from ray.tune.schedulers import PopulationBasedTraining
-
 import argparse
 import os
-from filelock import FileLock
 import tempfile
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
-import numpy as np
+from filelock import FileLock
 
+import ray
+from ray import tune
+from ray.tune import Checkpoint
 from ray.tune.examples.pbt_dcgan_mnist.common import (
-    beta1,
     MODEL_PATH,
+    Discriminator,
+    Generator,
+    Net,
+    beta1,
     demo_gan,
     get_data_loader,
     plot_images,
     train_func,
     weights_init,
-    Discriminator,
-    Generator,
-    Net,
 )
+from ray.tune.schedulers import PopulationBasedTraining
 
 
 # __Train_begin__
@@ -51,7 +51,7 @@ def dcgan_train(config):
         dataloader = get_data_loader()
 
     step = 1
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
@@ -101,9 +101,9 @@ def dcgan_train(config):
                     },
                     os.path.join(tmpdir, "checkpoint.pt"),
                 )
-                train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
+                tune.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
         else:
-            train.report(metrics)
+            tune.report(metrics)
 
         step += 1
 
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     tune_iter = 5 if args.smoke_test else 300
     tuner = tune.Tuner(
         dcgan_train,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_dcgan_mnist",
             stop={"training_iteration": tune_iter},
             verbose=1,

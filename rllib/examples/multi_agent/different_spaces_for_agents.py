@@ -33,8 +33,8 @@ from ray.tune.registry import get_trainable_cls
 class BasicMultiAgentMultiSpaces(MultiAgentEnv):
     """A simple multi-agent example environment where agents have different spaces.
 
-    agent0: obs=(10,), act=Discrete(2)
-    agent1: obs=(20,), act=Discrete(3)
+    agent0: obs=Box(10,), act=Discrete(2)
+    agent1: obs=Box(20,), act=Discrete(3)
 
     The logic of the env doesn't really matter for this example. The point of this env
     is to show how to use multi-agent envs, in which the different agents utilize
@@ -42,37 +42,33 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
     """
 
     def __init__(self, config=None):
-        self.agents = {"agent0", "agent1"}
-        self._agent_ids = set(self.agents)
+        self.agents = ["agent0", "agent1"]
 
         self.terminateds = set()
         self.truncateds = set()
 
         # Provide full (preferred format) observation- and action-spaces as Dicts
         # mapping agent IDs to the individual agents' spaces.
-        self._obs_space_in_preferred_format = True
-        self.observation_space = gym.spaces.Dict(
-            {
-                "agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
-                "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,)),
-            }
-        )
-        self._action_space_in_preferred_format = True
-        self.action_space = gym.spaces.Dict(
-            {"agent0": gym.spaces.Discrete(2), "agent1": gym.spaces.Discrete(3)}
-        )
+        self.observation_spaces = {
+            "agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
+            "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,)),
+        }
+        self.action_spaces = {
+            "agent0": gym.spaces.Discrete(2),
+            "agent1": gym.spaces.Discrete(3),
+        }
 
         super().__init__()
 
     def reset(self, *, seed=None, options=None):
         self.terminateds = set()
         self.truncateds = set()
-        return {i: self.observation_space[i].sample() for i in self.agents}, {}
+        return {i: self.get_observation_space(i).sample() for i in self.agents}, {}
 
     def step(self, action_dict):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i] = self.observation_space[i].sample()
+            obs[i] = self.get_observation_space(i).sample()
             rew[i] = 0.0
             terminated[i] = False
             truncated[i] = False

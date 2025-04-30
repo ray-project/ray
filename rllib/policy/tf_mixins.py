@@ -7,10 +7,10 @@ import numpy as np
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
-from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.policy import PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils.annotations import OldAPIStack, override
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
@@ -32,9 +32,7 @@ class LearningRateSchedule:
 
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
-        # Disable any scheduling behavior related to learning if Learner API is active.
-        # Schedules are handled by Learner class.
-        if lr_schedule is None or self.config.get("_enable_new_api_stack", False):
+        if lr_schedule is None:
             self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         else:
             self._lr_schedule = PiecewiseSchedule(
@@ -49,7 +47,6 @@ class LearningRateSchedule:
                     self._lr_placeholder, read_value=False
                 )
 
-    @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
         if self._lr_schedule is not None:
@@ -64,7 +61,6 @@ class LearningRateSchedule:
                 # both TFPolicy and any TFPolicy_eager.
                 self._optimizer.learning_rate.assign(self.cur_lr)
 
-    @override(TFPolicy)
     def optimizer(self):
         if self.framework == "tf":
             return tf1.train.AdamOptimizer(learning_rate=self.cur_lr)
@@ -78,11 +74,7 @@ class EntropyCoeffSchedule:
 
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        # Disable any scheduling behavior related to learning if Learner API is active.
-        # Schedules are handled by Learner class.
-        if entropy_coeff_schedule is None or (
-            self.config.get("_enable_new_api_stack", False)
-        ):
+        if entropy_coeff_schedule is None:
             self.entropy_coeff = get_variable(
                 entropy_coeff, framework="tf", tf_name="entropy_coeff", trainable=False
             )
@@ -116,7 +108,6 @@ class EntropyCoeffSchedule:
                     self._entropy_coeff_placeholder, read_value=False
                 )
 
-    @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
         if self._entropy_coeff_schedule is not None:
@@ -190,14 +181,12 @@ class KLCoeffMixin:
         else:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
 
-    @override(Policy)
     def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff_val
         return state
 
-    @override(Policy)
     def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
@@ -214,61 +203,50 @@ class TargetNetworkMixin:
     """
 
     def __init__(self):
-        if not self.config.get("_enable_new_api_stack", False):
-            model_vars = self.model.trainable_variables()
-            target_model_vars = self.target_model.trainable_variables()
+        model_vars = self.model.trainable_variables()
+        target_model_vars = self.target_model.trainable_variables()
 
-            @make_tf_callable(self.get_session())
-            def update_target_fn(tau):
-                tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-                update_target_expr = []
-                assert len(model_vars) == len(target_model_vars), (
-                    model_vars,
-                    target_model_vars,
+        @make_tf_callable(self.get_session())
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            update_target_expr = []
+            assert len(model_vars) == len(target_model_vars), (
+                model_vars,
+                target_model_vars,
+            )
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target)
                 )
-                for var, var_target in zip(model_vars, target_model_vars):
-                    update_target_expr.append(
-                        var_target.assign(tau * var + (1.0 - tau) * var_target)
-                    )
-                    logger.debug("Update target op {}".format(var_target))
-                return tf.group(*update_target_expr)
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
 
-            # Hard initial update.
-            self._do_update = update_target_fn
-            # TODO: The previous SAC implementation does an update(1.0) here.
-            # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
-            # Also the test is not very maintainable, we need to change that unittest
-            # anyway.
-            self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
+        # Hard initial update.
+        self._do_update = update_target_fn
+        # TODO: The previous SAC implementation does an update(1.0) here.
+        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
+        # Also the test is not very maintainable, we need to change that unittest
+        # anyway.
+        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
         if not hasattr(self, "_q_func_vars"):
-            if self.config.get("_enable_new_api_stack", False):
-                self._q_func_vars = self.model.variables
-            else:
-                self._q_func_vars = self.model.variables()
+            self._q_func_vars = self.model.variables()
         return self._q_func_vars
 
     @property
     def target_q_func_vars(self):
         if not hasattr(self, "_target_q_func_vars"):
-            if self.config.get("_enable_new_api_stack", False):
-                self._target_q_func_vars = self.target_model.variables
-            else:
-                self._target_q_func_vars = self.target_model.variables()
+            self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
 
     # Support both hard and soft sync.
     def update_target(self, tau: int = None) -> None:
         self._do_update(np.float32(tau or self.config.get("tau", 1.0)))
 
-    @override(TFPolicy)
     def variables(self) -> List[TensorType]:
-        if self.config.get("_enable_new_api_stack", False):
-            return self.model.variables
-        else:
-            return self.model.variables()
+        return self.model.variables()
 
     def set_weights(self, weights):
         if isinstance(self, TFPolicy):
@@ -277,8 +255,7 @@ class TargetNetworkMixin:
             EagerTFPolicyV2.set_weights(self, weights)
         elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
             EagerTFPolicy.set_weights(self, weights)
-        if not self.config.get("_enable_new_api_stack", False):
-            self.update_target(self.config.get("tau", 1.0))
+        self.update_target(self.config.get("tau", 1.0))
 
 
 @OldAPIStack

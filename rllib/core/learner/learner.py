@@ -1,20 +1,19 @@
 import abc
 from collections import defaultdict
-from dataclasses import dataclass
-from functools import partial
-import json
+import copy
 import logging
-import pathlib
+import numpy
+import platform
 from typing import (
     Any,
     Callable,
-    DefaultDict,
+    Collection,
     Dict,
     List,
     Hashable,
+    Iterable,
     Optional,
     Sequence,
-    Set,
     Tuple,
     TYPE_CHECKING,
     Union,
@@ -24,37 +23,51 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core import (
+    COMPONENT_METRICS_LOGGER,
+    COMPONENT_OPTIMIZER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
+from ray.rllib.core.learner.training_data import TrainingData
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.utils import unflatten_dict
+from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
+    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    NUM_AGENT_STEPS_TRAINED,
+    DATASET_NUM_ITERS_TRAINED,
+    DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
+    WEIGHTS_SEQ_NO,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
+    MiniBatchRayDataIterator,
 )
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
     EpisodeType,
     LearningRateOrSchedule,
@@ -64,6 +77,8 @@ from ray.rllib.utils.typing import (
     ParamRef,
     ParamDict,
     ResultDict,
+    ShouldModuleBeUpdatedFn,
+    StateDict,
     TensorType,
 )
 from ray.util.annotations import PublicAPI
@@ -85,26 +100,11 @@ VF_LOSS_KEY = "vf_loss"
 ENTROPY_KEY = "entropy"
 
 # Additional update keys
-LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
-
-
-@dataclass
-class LearnerHyperparameters:
-    def __init_subclass__(cls, **kwargs):
-        raise ValueError(
-            "All `LearnerHyperparameters` classes have been deprecated! Instead, "
-            "the AlgorithmConfig object of your experiment is passed into the `Learner`"
-            " constructor as the `config` arg. Make sure that your custom `Learner` "
-            "class(es) can read information from this config object (e.g. instead of "
-            "using `LearnerHyperparameters.entropy_coeff`, now read the value from "
-            "`config.entropy_coeff`). All `Learner` methods that used to accept a "
-            "(module specific) `hps` argument, now take a (module specific) `config` "
-            "argument instead."
-        )
+LR_KEY = "learning_rate"
 
 
 @PublicAPI(stability="alpha")
-class Learner:
+class Learner(Checkpointable):
     """Base class for Learners.
 
     This class will be used to train RLModules. It is responsible for defining the loss
@@ -125,8 +125,8 @@ class Learner:
             If the module is a single agent module, after building the module it will
             be converted to a multi-agent module with a default key. Can be none if the
             module is provided directly via the `module` argument. Refer to
-            ray.rllib.core.rl_module.SingleAgentRLModuleSpec
-            or ray.rllib.core.rl_module.MultiAgentRLModuleSpec for more info.
+            ray.rllib.core.rl_module.RLModuleSpec
+            or ray.rllib.core.rl_module.MultiRLModuleSpec for more info.
         module: If learner is being used stand-alone, the RLModule can be optionally
             passed in directly instead of the through the `module_spec`.
 
@@ -143,7 +143,9 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
-            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+            from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+            from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
 
@@ -165,11 +167,11 @@ class Learner:
             # Add a new module, perhaps for league based training.
             learner.add_module(
                 module_id="new_player",
-                module_spec=SingleAgentRLModuleSpec(
+                module_spec=RLModuleSpec(
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64, 64]},
+                    model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
                     catalog_class=PPOCatalog,
                 )
             )
@@ -189,11 +191,11 @@ class Learner:
             # Set the state of the learner.
             learner.set_state(state)
 
-            # Get the weights of the underly multi-agent RLModule.
-            weights = learner.get_module_state()
+            # Get the weights of the underlying MultiRLModule.
+            weights = learner.get_state(components=COMPONENT_RL_MODULE)
 
-            # Set the weights of the underly multi-agent RLModule.
-            learner.set_module_state(weights)
+            # Set the weights of the underlying MultiRLModule.
+            learner.set_state({COMPONENT_RL_MODULE: weights})
 
 
     Extension pattern:
@@ -204,10 +206,12 @@ class Learner:
 
             class MyLearner(TorchLearner):
 
-               def compute_loss(self, fwd_out, batch):
-                   # compute the loss based on batch and output of the forward pass
-                   # to access the learner hyper-parameters use `self._hps`
-                   return {ALL_MODULES: loss}
+               def compute_losses(self, fwd_out, batch):
+                   # Compute the losses per module based on `batch` and output of the
+                   # forward pass (`fwd_out`). To access the (algorithm) config for a
+                   # specific RLModule, do:
+                   # `self.config.get_config_for_module([moduleID])`.
+                   return {DEFAULT_MODULE_ID: module_loss}
     """
 
     framework: str = None
@@ -217,55 +221,30 @@ class Learner:
         self,
         *,
         config: "AlgorithmConfig",
-        module_spec: Optional[
-            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
-        ] = None,
+        module_spec: Optional[Union[RLModuleSpec, MultiRLModuleSpec]] = None,
         module: Optional[RLModule] = None,
-        # Deprecated args.
-        learner_group_scaling_config=None,
-        learner_hyperparameters=None,
-        framework_hyperparameters=None,
     ):
-        if learner_group_scaling_config is not None:
-            deprecation_warning(
-                old="Learner(.., learner_group_scaling_config=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-        if learner_hyperparameters is not None:
-            deprecation_warning(
-                old="Learner(.., learner_hyperparameters=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-        if framework_hyperparameters is not None:
-            deprecation_warning(
-                old="Learner(.., framework_hyperparameters=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
         # TODO (sven): Figure out how to do this
         self.config = config.copy(copy_frozen=False)
-        self._module_spec = module_spec
-        self._module_obj = module
+        self._module_spec: Optional[MultiRLModuleSpec] = module_spec
+        self._module_obj: Optional[MultiRLModule] = module
+
+        # Make node and device of this Learner available.
+        self._node = platform.node()
         self._device = None
 
         # Set a seed, if necessary.
         if self.config.seed is not None:
             update_global_seed_if_necessary(self.framework, self.config.seed)
 
-        self._distributed = self.config.num_learner_workers > 1
-        self._use_gpu = self.config.num_gpus_per_learner_worker > 0
-        # If we are using gpu but we are not distributed, use this gpu for training.
-        self._local_gpu_idx = self.config.local_gpu_idx
-
-        # whether self.build has already been called
+        # Whether self.build has already been called.
         self._is_built = False
 
         # These are the attributes that are set during build.
 
-        # The actual MARLModule used by this Learner.
-        self._module: Optional[MultiAgentRLModule] = None
+        # The actual MultiRLModule used by this Learner.
+        self._module: Optional[MultiRLModule] = None
+        self._weights_seq_no = 0
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -275,17 +254,26 @@ class Learner:
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+        self._optimizer_name_to_module: Dict[str, ModuleID] = {}
 
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
         # to handle lr-updates entirely in user's hands.
         self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
 
-        # Registered metrics (one sub-dict per module ID) to be returned from
-        # `Learner.update()`. These metrics will be "compiled" automatically into
-        # the final results dict in the `self.compile_update_results()` method.
-        self._metrics = defaultdict(dict)
+        # The Learner's own MetricsLogger to be used to log RLlib's built-in metrics or
+        # custom user-defined ones (e.g. custom loss values). When returning from an
+        # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
+        # and return the resulting (reduced) dict.
+        self.metrics = MetricsLogger()
 
+        # In case of offline learning and multiple learners, each learner receives a
+        # repeatable iterator that iterates over a split of the streamed data.
+        self.iterator: MiniBatchRayDataIterator = None
+
+    # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
+    #  all Learner workers and then immediately builds them any ways? Unless there is
+    #  a reason related to Train worker group setup.
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def build(self) -> None:
         """Builds the Learner.
@@ -299,14 +287,19 @@ class Learner:
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        if self.config.uses_new_env_runners:
+        self._learner_connector = None
+        # If the Algorithm uses aggregation actors to run episodes through the learner
+        # connector, its Learners don't need a connector pipelines and instead learn
+        # directly from pre-loaded batches already on the GPU.
+        if self.config.num_aggregator_actors_per_learner == 0:
             # TODO (sven): Figure out which space to provide here. For now,
             #  it doesn't matter, as the default connector piece doesn't use
             #  this information anyway.
-            #  module_spec = self._module_spec.as_multi_agent()
+            #  module_spec = self._module_spec.as_multi_rl_module_spec()
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,
+                device=self._device,
             )
 
         # Build the module to be trained by this learner.
@@ -316,17 +309,28 @@ class Learner:
         # `self.module`.
         self.configure_optimizers()
 
+        # Log the number of trainable/non-trainable parameters.
+        self._log_trainable_parameters()
+
         self._is_built = True
 
     @property
     def distributed(self) -> bool:
         """Whether the learner is running in distributed mode."""
-        return self._distributed
+        return self.config.num_learners > 1
 
     @property
-    def module(self) -> MultiAgentRLModule:
-        """The multi-agent RLModule that is being trained."""
+    def module(self) -> MultiRLModule:
+        """The MultiRLModule that is being trained."""
         return self._module
+
+    @property
+    def node(self) -> Any:
+        return self._node
+
+    @property
+    def device(self) -> Any:
+        return self._device
 
     def register_optimizer(
         self,
@@ -366,6 +370,7 @@ class Learner:
 
         # Store the given optimizer under the given `module_id`.
         self._module_optimizers[module_id].append(full_registration_name)
+        self._optimizer_name_to_module[full_registration_name] = module_id
 
         # Store the optimizer instance under its full `module_id`_`optimizer_name`
         # key.
@@ -422,22 +427,21 @@ class Learner:
 
         This method is called once during building (`self.build()`).
         """
-
         # The default implementation simply calls `self.configure_optimizers_for_module`
         # on each RLModule within `self.module`.
         for module_id in self.module.keys():
-            if self._is_module_compatible_with_learner(self.module[module_id]):
+            if self.rl_module_is_compatible(self.module[module_id]):
                 config = self.config.get_config_for_module(module_id)
                 self.configure_optimizers_for_module(module_id=module_id, config=config)
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
-        This method is called for each RLModule in the Multi-Agent RLModule being
+        This method is called for each RLModule in the MultiRLModule being
         trained by the Learner, as well as any new module added during training via
         `self.add_module()`. It should configure and construct one or more optimizers
         and register them via calls to `self.register_optimizer()` along with the
@@ -453,7 +457,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         """Computes the gradients based on the given losses.
 
@@ -481,7 +485,7 @@ class Learner:
         algorithm specific gradient postprocessing steps.
 
         This default implementation calls `self.postprocess_gradients_for_module()`
-        on each of the sub-modules in our MultiAgentRLModule: `self.module` and
+        on each of the sub-modules in our MultiRLModule: `self.module` and
         returns the accumulated gradients dicts.
 
         Args:
@@ -527,7 +531,6 @@ class Learner:
         module_id: ModuleID,
         config: Optional["AlgorithmConfig"] = None,
         module_gradients_dict: ParamDict,
-        hps=None,
     ) -> ParamDict:
         """Applies postprocessing operations on the gradients of the given module.
 
@@ -546,16 +549,9 @@ class Learner:
             A dictionary with the updated gradients and the exact same (flat) structure
             as the incoming `module_gradients_dict` arg.
         """
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.postprocess_gradients_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-
         postprocessed_grads = {}
 
-        if config.grad_clip is None:
+        if config.grad_clip is None and not config.log_gradients:
             postprocessed_grads.update(module_gradients_dict)
             return postprocessed_grads
 
@@ -564,26 +560,47 @@ class Learner:
                 param_dict=module_gradients_dict,
                 optimizer=optimizer,
             )
-            # Perform gradient clipping, if configured.
-            global_norm = self._get_clip_function()(
-                grad_dict_to_clip,
-                grad_clip=config.grad_clip,
-                grad_clip_by=config.grad_clip_by,
-            )
-            if config.grad_clip_by == "global_norm":
-                self.register_metric(
-                    module_id,
-                    f"gradients_{optimizer_name}_global_norm",
-                    global_norm,
+            if config.grad_clip:
+                # Perform gradient clipping, if configured.
+                global_norm = self._get_clip_function()(
+                    grad_dict_to_clip,
+                    grad_clip=config.grad_clip,
+                    grad_clip_by=config.grad_clip_by,
                 )
-            postprocessed_grads.update(grad_dict_to_clip)
+                if config.grad_clip_by == "global_norm" or config.log_gradients:
+                    # If we want to log gradients, but do not use the global norm
+                    # for clipping compute it here.
+                    if config.log_gradients and config.grad_clip_by != "global_norm":
+                        # Compute the global norm of gradients.
+                        global_norm = self._get_global_norm_function()(
+                            # Note, `tf.linalg.global_norm` needs a list of tensors.
+                            list(grad_dict_to_clip.values()),
+                        )
+                    self.metrics.log_value(
+                        key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                        value=global_norm,
+                        window=1,
+                    )
+                postprocessed_grads.update(grad_dict_to_clip)
+            # In the other case check, if we want to log gradients only.
+            elif config.log_gradients:
+                # Compute the global norm of gradients and log it.
+                global_norm = self._get_global_norm_function()(
+                    # Note, `tf.linalg.global_norm` needs a list of tensors.
+                    list(grad_dict_to_clip.values()),
+                )
+                self.metrics.log_value(
+                    key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                    value=global_norm,
+                    window=1,
+                )
 
         return postprocessed_grads
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
-        """Applies the gradients to the MultiAgentRLModule parameters.
+        """Applies the gradients to the MultiRLModule parameters.
 
         Args:
             gradients_dict: A dictionary of gradients in the same (flat) format as
@@ -592,35 +609,9 @@ class Learner:
                 tensor references to gradient tensors.
         """
 
-    def register_metric(self, module_id: str, key: str, value: Any) -> None:
-        """Registers a single key/value metric pair for loss- and gradient stats.
-
-        Args:
-            module_id: The module_id to register the metric under. This may be
-                ALL_MODULES.
-            key: The name of the metric to register (below the given `module_id`).
-            value: The actual value of the metric. This might also be a tensor var (e.g.
-                from within a traced tf2 function).
-        """
-        self._metrics[module_id][key] = value
-
-    def register_metrics(self, module_id: str, metrics_dict: Dict[str, Any]) -> None:
-        """Registers several key/value metric pairs for loss- and gradient stats.
-
-        Args:
-            module_id: The module_id to register the metrics under. This may be
-                ALL_MODULES.
-            metrics_dict: A dict mapping names of metrics to be registered (below the
-                given `module_id`) to the actual values of these metrics. Values might
-                also be tensor vars (e.g. from within a traced tf2 function).
-                These will be automatically converted to numpy values.
-        """
-        for key, value in metrics_dict.items():
-            self.register_metric(module_id, key, value)
-
     def get_optimizer(
         self,
-        module_id: ModuleID = DEFAULT_POLICY_ID,
+        module_id: ModuleID = DEFAULT_MODULE_ID,
         optimizer_name: str = DEFAULT_OPTIMIZER,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
@@ -631,7 +622,7 @@ class Learner:
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
-                If not provided, will assume DEFAULT_POLICY_ID.
+                If not provided, will assume DEFAULT_MODULE_ID.
             optimizer_name: The name of the optimizer (registered under `module_id` via
                 `self.register_optimizer()`) to return. If not provided, will assume
                 DEFAULT_OPTIMIZER.
@@ -640,9 +631,22 @@ class Learner:
             The optimizer object, configured under the given `module_id` and
             `optimizer_name`.
         """
+        # `optimizer_name` could possibly be the full optimizer name (including the
+        # module_id under which it is registered).
+        if optimizer_name in self._named_optimizers:
+            return self._named_optimizers[optimizer_name]
+
+        # Normally, `optimizer_name` is just the optimizer's name, not including the
+        # `module_id`.
         full_registration_name = module_id + "_" + optimizer_name
-        assert full_registration_name in self._named_optimizers
-        return self._named_optimizers[full_registration_name]
+        if full_registration_name in self._named_optimizers:
+            return self._named_optimizers[full_registration_name]
+
+        # No optimizer found.
+        raise KeyError(
+            f"Optimizer not found! module_id={module_id} "
+            f"optimizer_name={optimizer_name}"
+        )
 
     def get_optimizers_for_module(
         self, module_id: ModuleID = ALL_MODULES
@@ -693,32 +697,11 @@ class Learner:
             if ref in param_dict and param_dict[ref] is not None
         }
 
-    def get_module_state(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule.
-
-        The output should be numpy-friendly for easy serialization, not framework
-        specific tensors.
-
-        Args:
-            module_ids: The ids of the modules to get the weights for. If None, all
-                modules will be returned.
-
-        Returns:
-            A dictionary that holds the state of the modules in a numpy-friendly
-            format.
-        """
-        module_states = self.module.get_state(module_ids)
-        return convert_to_numpy({k: v for k, v in module_states.items()})
-
-    @abc.abstractmethod
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
-
     @abc.abstractmethod
     def get_param_ref(self, param: Param) -> Hashable:
         """Returns a hashable reference to a trainable parameter.
 
-        This should be overriden in framework specific specialization. For example in
+        This should be overridden in framework specific specialization. For example in
         torch it will return the parameter itself, while in tf it returns the .ref() of
         the variable. The purpose is to retrieve a unique reference to the parameters.
 
@@ -733,7 +716,7 @@ class Learner:
     def get_parameters(self, module: RLModule) -> Sequence[Param]:
         """Returns the list of parameters of a module.
 
-        This should be overriden in framework specific learner. For example in torch it
+        This should be overridden in framework specific learner. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
 
         Args:
@@ -744,7 +727,13 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
+    def _convert_batch_type(
+        self,
+        batch: MultiAgentBatch,
+        to_device: bool = False,
+        pin_memory: bool = False,
+        use_stream: bool = False,
+    ) -> MultiAgentBatch:
         """Converts the elements of a MultiAgentBatch to Tensors on the correct device.
 
         Args:
@@ -756,109 +745,96 @@ class Learner:
         """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def compile_results(
-        self,
-        *,
-        batch: MultiAgentBatch,
-        fwd_out: Dict[str, Any],
-        loss_per_module: Dict[str, TensorType],
-        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Compile results from the update in a numpy-friendly format.
-
-        Args:
-            batch: The batch that was used for the update.
-            fwd_out: The output of the forward train pass.
-            loss_per_module: A dict mapping module IDs (including ALL_MODULES) to the
-                individual loss tensors as returned by calls to
-                `compute_loss_for_module(module_id=...)`.
-            metrics_per_module: The collected metrics defaultdict mapping ModuleIDs to
-                metrics dicts. These metrics are collected during loss- and
-                gradient computation, gradient postprocessing, and gradient application.
-
-        Returns:
-            A dictionary of results sub-dicts per module (including ALL_MODULES).
-        """
-        if not isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
-            )
-
-        # We compile the metrics to have the structure:
-        # top-leve key: module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
-        # Results will include all registered metrics under the respective module ID
-        # top-level key.
-        module_learner_stats = defaultdict(dict)
-        # Add the num agent|env steps trained counts for all modules.
-        module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
-
-        loss_per_module_numpy = convert_to_numpy(loss_per_module)
-
-        for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            # Report total loss per module and other registered metrics.
-            module_learner_stats[module_id].update(
-                {
-                    self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                    **convert_to_numpy(metrics_per_module[module_id]),
-                }
-            )
-            # Report registered optimizers' learning rates.
-            module_learner_stats[module_id].update(
-                {
-                    f"{optim_name}_lr": convert_to_numpy(
-                        self._get_optimizer_lr(optimizer)
-                    )
-                    for optim_name, optimizer in (
-                        self.get_optimizers_for_module(module_id=module_id)
-                    )
-                }
-            )
-
-        return dict(module_learner_stats)
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        """Add a module to the underlying MultiAgentRLModule and the Learner.
+        module_spec: RLModuleSpec,
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiRLModuleSpec:
+        """Adds a module to the underlying MultiRLModule.
+
+        Changes this Learner's config in order to make this architectural change
+        permanent wrt. to checkpointing.
 
         Args:
-            module_id: The id of the module to add.
-            module_spec: The module spec of the module to add.
-        """
-        self._check_is_built()
-        module = module_spec.build()
+            module_id: The ModuleID of the module to be added.
+            module_spec: The ModuleSpec of the module to be added.
+            config_overrides: The `AlgorithmConfig` overrides that should apply to
+                the new Module, if any.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
 
+        Returns:
+            The new MultiRLModuleSpec (after the RLModule has been added).
+        """
+        validate_module_id(module_id, error=True)
+        self._check_is_built()
+
+        # Force-set inference-only = False.
+        module_spec = copy.deepcopy(module_spec)
+        module_spec.inference_only = False
+
+        # Build the new RLModule and add it to self.module.
+        module = module_spec.build()
         self.module.add_module(module_id, module)
+
+        # Change our config (AlgorithmConfig) to contain the new Module.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        self.config.policies[module_id] = PolicySpec()
+        if config_overrides is not None:
+            self.config.multi_agent(
+                algorithm_config_overrides_per_module={module_id: config_overrides}
+            )
+        self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
+        self._module_spec = self.config.rl_module_spec
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 
         # Allow the user to configure one or more optimizers for this new module.
         self.configure_optimizers_for_module(
             module_id=module_id,
             config=self.config.get_config_for_module(module_id),
         )
+        return self.config.rl_module_spec
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the Learner.
+    def remove_module(
+        self,
+        module_id: ModuleID,
+        *,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiRLModuleSpec:
+        """Removes a module from the Learner.
 
         Args:
-            module_id: The id of the module to remove.
+            module_id: The ModuleID of the module to be removed.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiRLModuleSpec (after the RLModule has been removed).
         """
         self._check_is_built()
         module = self.module[module_id]
 
-        if self._is_module_compatible_with_learner(module):
-            # Delete the removed module's parameters.
+        # Delete the removed module's parameters and optimizers.
+        if self.rl_module_is_compatible(module):
             parameters = self.get_parameters(module)
             for param in parameters:
                 param_ref = self.get_param_ref(param)
                 if param_ref in self._params:
                     del self._params[param_ref]
-            # Delete the removed module's registered optimizers.
             for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
                 del self._optimizer_parameters[optimizer]
                 name = module_id + "_" + optimizer_name
@@ -867,7 +843,24 @@ class Learner:
                     del self._optimizer_lr_schedules[optimizer]
             del self._module_optimizers[module_id]
 
+        # Remove the module from the MultiRLModule.
         self.module.remove_module(module_id)
+
+        # Change self.config to reflect the new architecture.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        del self.config.policies[module_id]
+        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+        self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
+
+        # Remove all stats from the module from our metrics logger, so we don't report
+        # results from this module again.
+        if module_id in self.metrics.stats:
+            del self.metrics.stats[module_id]
+
+        return self.config.rl_module_spec
 
     @OverrideToImplementCustomLogic
     def should_module_be_updated(self, module_id, multi_agent_batch=None):
@@ -884,62 +877,61 @@ class Learner:
         # If None, return True (by default, all modules should be updated).
         if should_module_be_updated_fn is None:
             return True
-        # If container given, return whether `module_id` is in that container.
+        # If collection given, return whether `module_id` is in that container.
         elif not callable(should_module_be_updated_fn):
             return module_id in set(should_module_be_updated_fn)
 
         return should_module_be_updated_fn(module_id, multi_agent_batch)
 
     @OverrideToImplementCustomLogic
-    def compute_loss(
-        self,
-        *,
-        fwd_out: Union[MultiAgentBatch, NestedDict],
-        batch: Union[MultiAgentBatch, NestedDict],
-    ) -> Union[TensorType, Dict[str, Any]]:
-        """Computes the loss for the module being optimized.
+    def compute_losses(
+        self, *, fwd_out: Dict[str, Any], batch: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Computes the loss(es) for the module being optimized.
 
-        This method must be overridden by multiagent-specific algorithm learners to
-        specify the specific loss computation logic. If the algorithm is single agent
-        `compute_loss_for_module()` should be overridden instead.
-        `fwd_out` is the output of the `forward_train()` method of the underlying
-        MultiAgentRLModule. `batch` is the data that was used to compute `fwd_out`.
-        The returned dictionary must contain a key called
-        ALL_MODULES, which will be used to compute gradients. It is recommended
-        to not compute any forward passes within this method, and to use the
-        `forward_train()` outputs of the RLModule(s) to compute the required tensors for
-        loss calculations.
+        This method must be overridden by MultiRLModule-specific Learners in order to
+        define the specific loss computation logic. If the algorithm is single-agent,
+        only `compute_loss_for_module()` should be overridden instead. If the algorithm
+        uses independent multi-agent learning (default behavior for RLlib's multi-agent
+        setups), also only `compute_loss_for_module()` should be overridden, but it will
+        be called for each individual RLModule inside the MultiRLModule.
+        It is recommended to not compute any forward passes within this method, and to
+        use the `forward_train()` outputs of the RLModule(s) to compute the required
+        loss tensors.
+        See here for a custom loss function example script:
+        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py  # noqa
 
         Args:
-            fwd_out: Output from a call to the `forward_train()` method of self.module
-                during training (`self.update()`).
-            batch: The training batch that was used to compute `fwd_out`.
+            fwd_out: Output from a call to the `forward_train()` method of the
+                underlying MultiRLModule (`self.module`) during training
+                (`self.update()`).
+            batch: The train batch that was used to compute `fwd_out`.
 
         Returns:
-            A dictionary mapping module IDs to individual loss terms. The dictionary
-            must contain one protected key ALL_MODULES which will be used for computing
-            gradients through.
+            A dictionary mapping module IDs to individual loss terms.
         """
-        loss_total = None
         loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            loss = self.compute_loss_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                batch=module_batch,
-                fwd_out=module_fwd_out,
-            )
-            loss_per_module[module_id] = loss
-
-            if loss_total is None:
-                loss_total = loss
+            module = self.module[module_id].unwrapped()
+            if isinstance(module, SelfSupervisedLossAPI):
+                loss = module.compute_self_supervised_loss(
+                    learner=self,
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                )
             else:
-                loss_total += loss
-
-        loss_per_module[ALL_MODULES] = loss_total
+                loss = self.compute_loss_for_module(
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                )
+            loss_per_module[module_id] = loss
 
         return loss_per_module
 
@@ -949,303 +941,266 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
-        batch: NestedDict,
+        config: "AlgorithmConfig",
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         """Computes the loss for a single module.
 
         Think of this as computing loss for a single agent. For multi-agent use-cases
         that require more complicated computation for loss, consider overriding the
-        `compute_loss` method instead.
+        `compute_losses` method instead.
 
         Args:
             module_id: The id of the module.
             config: The AlgorithmConfig specific to the given `module_id`.
-            batch: The sample batch for this particular module.
+            batch: The train batch for this particular module.
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
             A single total loss tensor. If you have more than one optimizer on the
             provided `module_id` and would like to compute gradients separately using
             these different optimizers, simply add up the individual loss terms for
-            each optimizer and return the sum. Also, for tracking the individual loss
-            terms, you can use the `Learner.register_metric(s)` APIs.
+            each optimizer and return the sum. Also, for recording/logging any
+            individual loss terms, you can use the `Learner.metrics.log_value(
+            key=..., value=...)` or `Learner.metrics.log_dict()` APIs. See:
+            :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` for more
+            information.
         """
 
     @OverrideToImplementCustomLogic
-    def additional_update(
+    def update(
         self,
+        batch: Optional[MultiAgentBatch] = None,
+        batches: Optional[List[MultiAgentBatch]] = None,
+        batch_refs: Optional[List[ray.ObjectRef]] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+        episodes_refs: Optional[List[ray.ObjectRef]] = None,
+        data_iterators: Optional[List[ray.data.DataIterator]] = None,
+        training_data: Optional[TrainingData] = None,
         *,
-        module_ids_to_update: Optional[Sequence[ModuleID]] = None,
-        timestep: int,
-        **kwargs,
-    ) -> Dict[ModuleID, Any]:
-        """Apply additional non-gradient based updates to this Algorithm.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        Example:
-
-        .. testcode::
-
-            import gymnasium as gym
-
-            from ray.rllib.algorithms.ppo.ppo import (
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-                PPOConfig,
-            )
-            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
-                PPOTorchLearner
-            )
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule
-            )
-            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-
-            env = gym.make("CartPole-v1")
-            config = (
-                PPOConfig()
-                .training(
-                    kl_coeff=0.2,
-                    kl_target=0.01,
-                    clip_param=0.3,
-                    vf_clip_param=10.0,
-                    # Taper down entropy coeff. from 0.01 to 0.0 over 20M ts.
-                    entropy_coeff=[
-                        [0, 0.01],
-                        [20000000, 0.0],
-                    ],
-                    vf_loss_coeff=0.5,
-                )
-            )
-
-            # Create a single agent RL module spec.
-            module_spec = SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-                model_config_dict = {"hidden": [128, 128]},
-                catalog_class = PPOCatalog,
-            )
-
-            class CustomPPOLearner(PPOTorchLearner):
-                def additional_update_for_module(
-                    self, *, module_id, config, timestep, sampled_kl_values
-                ):
-
-                    results = super().additional_update_for_module(
-                        module_id=module_id,
-                        config=config,
-                        timestep=timestep,
-                        sampled_kl_values=sampled_kl_values,
-                    )
-
-                    # Try something else than the PPO paper here.
-                    sampled_kl = sampled_kl_values[module_id]
-                    curr_var = self.curr_kl_coeffs_per_module[module_id]
-                    if sampled_kl > 1.2 * self.config.kl_target:
-                        curr_var.data *= 1.2
-                    elif sampled_kl < 0.8 * self.config.kl_target:
-                        curr_var.data *= 0.4
-                    results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
-
-            # Construct the Learner object.
-            learner = CustomPPOLearner(
-                config=config,
-                module_spec=module_spec,
-            )
-            # Note: Learners need to be built before they can be used.
-            learner.build()
-
-            # Inside a training loop, we can now call the additional update as we like:
-            for i in range(100):
-                # sample = ...
-                # learner.update(sample)
-                if i % 10 == 0:
-                    learner.additional_update(
-                        timestep=i,
-                        sampled_kl_values={"default_policy": 0.5}
-                    )
-
-        Args:
-            module_ids_to_update: The ids of the modules to update. If None, all
-                modules will be updated.
-            timestep: The current timestep.
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        results_all_modules = {}
-        module_ids = (
-            module_ids_to_update
-            if module_ids_to_update is not None
-            else self.module.keys()
-        )
-        for module_id in module_ids:
-            module_results = self.additional_update_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                timestep=timestep,
-                **kwargs,
-            )
-            results_all_modules[module_id] = module_results
-
-        return results_all_modules
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
-        timestep: int,
-        hps=None,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        """Apply additional non-gradient based updates for a single module.
-
-        See `additional_update` for more details.
-
-        Args:
-            module_id: The id of the module to update.
-            config: The AlgorithmConfig specific to the given `module_id`.
-            timestep: The current global timestep (to be used with schedulers).
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.additional_update_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-
-        results = {}
-
-        # Only cover the optimizer mapped to this particular module.
-        for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
-            # Only update this optimizer's lr, if a scheduler has been registered
-            # along with it.
-            if optimizer in self._optimizer_lr_schedules:
-                new_lr = self._optimizer_lr_schedules[optimizer].update(
-                    timestep=timestep
-                )
-                self._set_optimizer_lr(optimizer, lr=new_lr)
-                # Make sure our returned results differentiate by optimizer name
-                # (if not the default name).
-                stats_name = LEARNER_RESULTS_CURR_LR_KEY
-                if optimizer_name != DEFAULT_OPTIMIZER:
-                    stats_name += "_" + optimizer_name
-                results.update({stats_name: new_lr})
-
-        return results
-
-    def update_from_batch(
-        self,
-        batch: MultiAgentBatch,
-        *,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate these in favor of config attributes for only those
-        #  algos that actually need (and know how) to do minibatching.
+        # TODO (sven): Make this a more formal structure with its own type.
+        timesteps: Optional[Dict[str, Any]] = None,
+        num_total_minibatches: int = 0,
+        num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Do `num_iters` minibatch updates given a train batch.
+        shuffle_batch_per_epoch: bool = False,
+        _no_metrics_reduce: bool = False,
+        **kwargs,
+    ) -> ResultDict:
+        """Run `num_epochs` epochs over the given train batch.
 
         You can use this method to take more than one backward pass on the batch.
-        The same `minibatch_size` and `num_iters` will be used for all module ids in
-        MultiAgentRLModule.
+        The same `minibatch_size` and `num_epochs` will be used for all module ids in
+        MultiRLModule.
 
         Args:
             batch: A batch of training data to update from.
-            reduce_fn: reduce_fn: A function to reduce the results from a list of
-                minibatch updates. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided).
+            minibatch_size: The size of minibatches to use to further split the train
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle.
 
         Returns:
-            A dictionary of results, in numpy format or a list of such dictionaries in
-            case `reduce_fn` is None and we have more than one minibatch pass.
+            A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
+            returned dict may be arbitrarily nested and must have `Stats` objects at
+            all its leafs, allowing components further downstream (i.e. a user of this
+            Learner) to further reduce these results (for example over n parallel
+            Learners).
         """
-        return self._update_from_batch_or_episodes(
-            batch=batch,
-            episodes=None,
-            reduce_fn=reduce_fn,
+        self._check_is_built()
+
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
+        if training_data is None:
+            training_data = TrainingData(
+                batch=batch,
+                batches=batches,
+                batch_refs=batch_refs,
+                episodes=episodes,
+                episodes_refs=episodes_refs,
+                data_iterators=data_iterators,
+            )
+        training_data.validate()
+        training_data.solve_refs()
+        assert training_data.batches is None, "`training_data.batches` must be None!"
+
+        self._weights_seq_no += 1
+
+        batch_iter = self._create_iterator_if_necessary(
+            training_data=training_data,
+            num_total_minibatches=num_total_minibatches,
+            num_epochs=num_epochs,
             minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+            **kwargs,
         )
 
-    def update_from_episodes(
+        self.metrics.activate_tensor_mode()
+
+        # Perform the actual looping through the minibatches or the given data iterator.
+        for iteration, tensor_minibatch in enumerate(batch_iter):
+            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+            # found in this batch. If not, throw an error.
+            unknown_module_ids = set(tensor_minibatch.policy_batches.keys()) - set(
+                self.module.keys()
+            )
+            if unknown_module_ids:
+                raise ValueError(
+                    f"Batch contains one or more ModuleIDs ({unknown_module_ids}) that "
+                    f"are not in this Learner!"
+                )
+
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            fwd_out, loss_per_module, _ = self._update(tensor_minibatch.policy_batches)
+
+            # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
+            #  cover the minibatch/epoch logic.
+            # Log all timesteps (env, agent, modules) based on given episodes/batch.
+            self._log_steps_trained_metrics(tensor_minibatch)
+
+            self._set_slicing_by_batch_id(tensor_minibatch, value=False)
+
+        if self.iterator:
+            # Record the number of batches pulled from the dataset.
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
+                iteration + 1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
+                iteration + 1,
+                reduce="sum",
+            )
+        # Log all individual RLModules' loss terms and its registered optimizers'
+        # current learning rates.
+        # Note: We do this only once for the last of the minibatch updates, b/c the
+        # window is only 1 anyways.
+        for mid, loss in loss_per_module.items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
+
+        # Call `after_gradient_based_update` to allow for non-gradient based
+        # cleanups-, logging-, and update logic to happen.
+        # TODO (simon): Check, if this should stay here, when running multiple
+        # gradient steps inside the iterator loop above (could be a complete epoch)
+        # the target networks might need to be updated earlier.
+        self.after_gradient_based_update(timesteps=timesteps or {})
+
+        self.metrics.deactivate_tensor_mode()
+
+        # Reduce results across all minibatch update steps.
+        if not _no_metrics_reduce:
+            return self.metrics.reduce()
+
+    def _create_iterator_if_necessary(
         self,
-        episodes: List[EpisodeType],
         *,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate these in favor of config attributes for only those
-        #  algos that actually need (and know how) to do minibatching.
+        training_data: TrainingData,
+        num_total_minibatches: int = 0,
+        num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        min_total_mini_batches: int = 0,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Do `num_iters` minibatch updates given a list of episodes.
+        shuffle_batch_per_epoch: bool = False,
+        **kwargs,
+    ) -> Iterable:
+        # Data iterator provided.
+        if training_data.data_iterators:
+            num_iters = kwargs.pop("num_iters", None)
+            if num_iters is None:
+                raise ValueError(
+                    "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
+                )
 
-        You can use this method to take more than one backward pass on the batch.
-        The same `minibatch_size` and `num_iters` will be used for all module ids in
-        MultiAgentRLModule.
+            def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
+                _batch = unflatten_dict(_batch)
+                _batch = MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in _batch.items()
+                    },
+                    env_steps=sum(
+                        len(next(iter(module_data.values())))
+                        for module_data in _batch.values()
+                    ),
+                )
+                _batch = self._convert_batch_type(_batch, to_device=False)
+                return self._set_slicing_by_batch_id(_batch, value=True)
 
-        Args:
-            episodes: An list of episode objects to update from.
-            reduce_fn: reduce_fn: A function to reduce the results from a list of
-                minibatch updates. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
-            min_total_mini_batches: The minimum number of mini-batches to loop through
-                (across all `num_sgd_iter` SGD iterations). It's required to set this
-                for multi-agent + multi-GPU situations in which the MultiAgentEpisodes
-                themselves are roughly sharded equally, however, they might contain
-                SingleAgentEpisodes with very lopsided length distributions. Thus,
-                without this limit it can happen that one Learner goes through a
-                different number of mini-batches than other Learners, causing deadlocks.
+            def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
+                return self._convert_batch_type(batch, to_device=True, use_stream=True)
 
-        Returns:
-            A dictionary of results, in numpy format or a list of such dictionaries in
-            case `reduce_fn` is None and we have more than one minibatch pass.
-        """
-        return self._update_from_batch_or_episodes(
-            batch=None,
-            episodes=episodes,
-            reduce_fn=reduce_fn,
-            minibatch_size=minibatch_size,
-            num_iters=num_iters,
-            min_total_mini_batches=min_total_mini_batches,
-        )
+            if not self.iterator:
+                # This iterator holds a `ray.data.DataIterator` and manages it state.
+                self.iterator = MiniBatchRayDataIterator(
+                    iterator=training_data.data_iterators[0],
+                    collate_fn=_collate_fn,
+                    finalize_fn=_finalize_fn,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    **kwargs,
+                )
+
+            batch_iter = self.iterator
+        else:
+            batch = self._make_batch_if_necessary(training_data=training_data)
+            assert batch is not None
+
+            # TODO: Move this into LearnerConnector pipeline?
+            # Filter out those RLModules from the final train batch that should not be
+            # updated.
+            for module_id in list(batch.policy_batches.keys()):
+                if not self.should_module_be_updated(module_id, batch):
+                    del batch.policy_batches[module_id]
+            if not batch.policy_batches:
+                return {}
+
+            batch = self._set_slicing_by_batch_id(batch, value=True)
+
+            if minibatch_size:
+                batch_iter_cls = MiniBatchCyclicIterator
+            elif num_epochs > 1:
+                # `minibatch_size` was not set but `num_epochs` > 1.
+                minibatch_size = batch.count
+                # Note that there is no need to shuffle here, b/c we don't have
+                # minibatches.
+                batch_iter_cls = MiniBatchCyclicIterator
+            else:
+                # `minibatch_size` and `num_epochs` are not set by the user.
+                batch_iter_cls = MiniBatchDummyIterator
+
+            batch_iter = batch_iter_cls(
+                batch,
+                num_epochs=num_epochs,
+                minibatch_size=minibatch_size,
+                shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
+                num_total_minibatches=num_total_minibatches,
+            )
+        return batch_iter
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
         self,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         **kwargs,
     ) -> Tuple[Any, Any, Any]:
         """Contains all logic for an in-graph/traceable update step.
@@ -1256,7 +1211,8 @@ class Learner:
         with all the individual results.
 
         Args:
-            batch: The train batch already converted in to a (tensor) NestedDict.
+            batch: The train batch already converted to a Dict mapping str to (possibly
+                nested) tensors.
             kwargs: Forward compatibility kwargs.
 
         Returns:
@@ -1268,61 +1224,145 @@ class Learner:
 
         """
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Set the state of the learner.
-
-        Args:
-            state: The state of the optimizer and module. Can be obtained
-                from `get_state`. State is a dictionary with two keys:
-                "module_state" and "optimizer_state". The value of each key
-                is a dictionary that can be passed to `set_module_state` and
-                `set_optimizer_state` respectively.
-
-        """
+    @override(Checkpointable)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         self._check_is_built()
 
-        module_state = state.get("module_state")
-        # TODO: once we figure out the optimizer format, we can set/get the state
-        if module_state is None:
-            raise ValueError(
-                "state must have a key 'module_state' for the module weights"
-            )
-        self.set_module_state(module_state)
+        state = {
+            "should_module_be_updated": self.config.policies_to_train,
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
+        }
 
-        optimizer_state = state.get("optimizer_state")
-        if optimizer_state is None:
-            raise ValueError(
-                "state must have a key 'optimizer_state' for the optimizer weights"
+        if self._check_component(COMPONENT_RL_MODULE, components, not_components):
+            state[COMPONENT_RL_MODULE] = self.module.get_state(
+                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                not_components=self._get_subcomponents(
+                    COMPONENT_RL_MODULE, not_components
+                ),
+                **kwargs,
             )
-        self.set_optimizer_state(optimizer_state)
+        if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
+            state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
+
+        if self._check_component(COMPONENT_METRICS_LOGGER, components, not_components):
+            # TODO (sven): Make `MetricsLogger` a Checkpointable.
+            state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
+
+        return state
+
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        self._check_is_built()
+
+        weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
+
+        if COMPONENT_RL_MODULE in state:
+            if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+                self.module.set_state(state[COMPONENT_RL_MODULE])
+
+        if COMPONENT_OPTIMIZER in state:
+            self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
+
+        # Update our weights_seq_no, if the new one is > 0.
+        if weights_seq_no > 0:
+            self._weights_seq_no = weights_seq_no
 
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
-        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
+        if "should_module_be_updated" in state:
+            self.config.multi_agent(policies_to_train=state["should_module_be_updated"])
 
-    def get_state(self) -> Dict[str, Any]:
-        """Get the state of the learner.
+        # TODO (sven): Make `MetricsLogger` a Checkpointable.
+        if COMPONENT_METRICS_LOGGER in state:
+            self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
-        Returns:
-            The state of the optimizer and module.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args,
+            {
+                "config": self.config,
+                "module_spec": self._module_spec,
+                "module": self._module_obj,
+            },  # **kwargs
+        )
 
-        """
-        self._check_is_built()
-        return {
-            "module_state": self.get_module_state(),
-            "optimizer_state": self.get_optimizer_state(),
-            "modules_to_train": self.config.policies_to_train,
-        }
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        if not self._check_is_built(error=False):
+            self.build()
+        return [
+            (COMPONENT_RL_MODULE, self.module),
+        ]
 
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of all optimizers currently registered in this Learner.
+    def _make_batch_if_necessary(self, training_data):
+        batch = training_data.batch
 
-        Args:
-            state: The state of the optimizers.
-        """
-        raise NotImplementedError
+        # Call the learner connector on the given `episodes` (if we have one).
+        if training_data.episodes is not None:
+            # If we want to learn from Episodes, we must have a LearnerConnector
+            # pipeline to translate into a train batch first.
+            if self._learner_connector is None:
+                raise ValueError(
+                    f"If episodes provided for training, Learner ({self}) must have a "
+                    "LearnerConnector pipeline (but pipeline is None)!"
+                )
 
-    def get_optimizer_state(self) -> Dict[str, Any]:
+            # Call the learner connector pipeline.
+            shared_data = {}
+            batch = self._learner_connector(
+                rl_module=self.module,
+                batch=training_data.batch if training_data.batch is not None else {},
+                episodes=training_data.episodes,
+                shared_data=shared_data,
+                metrics=self.metrics,
+            )
+            # Convert to a batch.
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {
+                    module_id: (
+                        SampleBatch(module_data, _zero_padded=True)
+                        if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                        else SampleBatch(module_data)
+                    )
+                    for module_id, module_data in batch.items()
+                },
+                env_steps=sum(len(e) for e in training_data.episodes),
+            )
+        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
+        elif isinstance(training_data.batch, SampleBatch):
+            if len(self.module) != 1:
+                raise ValueError(
+                    f"SampleBatch provided, but RLModule ({self.module}) has more than "
+                    f"one sub-RLModule! Need to provide MultiAgentBatch instead."
+                )
+
+            batch = MultiAgentBatch(
+                {next(iter(self.module.keys())): training_data.batch},
+                env_steps=len(training_data.batch),
+            )
+        # If we already have an `MultiAgentBatch` but with `numpy` array, convert to
+        # tensors.
+        elif (
+            isinstance(training_data.batch, MultiAgentBatch)
+            and training_data.batch.policy_batches
+            and isinstance(
+                next(iter(training_data.batch.policy_batches.values()))["obs"],
+                numpy.ndarray,
+            )
+        ):
+            batch = self._convert_batch_type(training_data.batch)
+
+        return batch
+
+    def _get_optimizer_state(self) -> StateDict:
         """Returns the state of all optimizers currently registered in this Learner.
 
         Returns:
@@ -1330,118 +1370,60 @@ class Learner:
         """
         raise NotImplementedError
 
-    def _update_from_batch_or_episodes(
-        self,
-        *,
-        # TODO (sven): We should allow passing in a single agent batch here
-        #  as well for simplicity.
-        batch: Optional[MultiAgentBatch] = None,
-        episodes: Optional[List[EpisodeType]] = None,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate these in favor of config attributes for only those
-        #  algos that actually need (and know how) to do minibatching.
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        min_total_mini_batches: int = 0,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        self._check_is_built()
+    def _set_optimizer_state(self, state: StateDict) -> None:
+        """Sets the state of all optimizers currently registered in this Learner.
 
-        if num_iters < 1:
-            # We must do at least one pass on the batch for training.
-            raise ValueError("`num_iters` must be >= 1")
+        Args:
+            state: The state of the optimizers.
+        """
+        raise NotImplementedError
 
-        # Call the learner connector.
-        if self._learner_connector is not None and episodes is not None:
-            batch = self._learner_connector(
-                rl_module=self.module,
-                data=batch,
-                episodes=episodes,
-                shared_data={},
-            )
-            # TODO (sven): Try to not require MultiAgentBatch anymore.
-            batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in batch.items()
-                },
-                env_steps=sum(len(e) for e in episodes),
-            )
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called before gradient-based updates are completed.
 
-        # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-        # found in this batch. If not, throw an error.
-        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        if len(unknown_module_ids) > 0:
-            raise ValueError(
-                "Batch contains one or more ModuleIDs that are not in this Learner! "
-                f"Found IDs: {unknown_module_ids}"
-            )
+        Should be overridden to implement custom preparation-, logging-, or
+        non-gradient-based Learner/RLModule update logic before(!) gradient-based
+        updates are performed.
 
-        # Filter out those RLModules from the final train batch that should not be
-        # updated.
-        for module_id in list(batch.policy_batches.keys()):
-            if not self.should_module_be_updated(module_id, batch):
-                del batch.policy_batches[module_id]
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
 
-        if minibatch_size and self._learner_connector is not None:
-            batch_iter = partial(
-                MiniBatchCyclicIterator,
-                uses_new_env_runners=True,
-                min_total_mini_batches=min_total_mini_batches,
-            )
-        elif minibatch_size:
-            batch_iter = MiniBatchCyclicIterator
-        elif num_iters > 1:
-            # `minibatch_size` was not set but `num_iters` > 1.
-            # Under the old training stack, users could do multiple sgd passes
-            # over a batch without specifying a minibatch size. We enable
-            # this behavior here by setting the minibatch size to be the size
-            # of the batch (e.g. 1 minibatch of size batch.count)
-            minibatch_size = batch.count
-            batch_iter = MiniBatchCyclicIterator
-        else:
-            # `minibatch_size` and `num_iters` are not set by the user.
-            batch_iter = MiniBatchDummyIterator
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called after gradient-based updates are completed.
 
-        results = []
-        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
-        # device (e.g. GPU). We move the batch already here to avoid having to move
-        # every single minibatch that is created in the `batch_iter` below.
-        batch = self._convert_batch_type(batch)
-        batch = self._set_slicing_by_batch_id(batch, value=True)
+        Should be overridden to implement custom cleanup-, logging-, or non-gradient-
+        based Learner/RLModule update logic after(!) gradient-based updates have been
+        completed.
 
-        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            (fwd_out, loss_per_module, metrics_per_module) = self._update(
-                nested_tensor_minibatch
-            )
-            result = self.compile_results(
-                batch=tensor_minibatch,
-                fwd_out=fwd_out,
-                loss_per_module=loss_per_module,
-                metrics_per_module=defaultdict(dict, **metrics_per_module),
-            )
-            self._check_result(result)
-            results.append(result)
-
-        self._set_slicing_by_batch_id(batch, value=False)
-
-        # Reduce results across all minibatches, if necessary.
-
-        # If we only have one result anyways, then the user will not expect a list
-        # to be reduced here (and might not provide a `reduce_fn` therefore) ->
-        # Return single results dict.
-        if len(results) == 1:
-            return results[0]
-        # If no `reduce_fn` provided, return list of results dicts.
-        elif reduce_fn is None:
-            return results
-        # Pass list of results dicts through `reduce_fn` and return a single results
-        # dict.
-        return reduce_fn(results)
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+        # Only update this optimizer's lr, if a scheduler has been registered
+        # along with it.
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                optimizer = self._named_optimizers[optimizer_name]
+                # Update and log learning rate of this optimizer.
+                lr_schedule = self._optimizer_lr_schedules.get(optimizer)
+                if lr_schedule is not None:
+                    new_lr = lr_schedule.update(
+                        timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+                    )
+                    self._set_optimizer_lr(optimizer, lr=new_lr)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already part
+                    # of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
+                    value=self._get_optimizer_lr(optimizer),
+                    window=1,
+                )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
@@ -1477,107 +1459,7 @@ class Learner:
 
         return batch
 
-    def _get_metadata(self) -> Dict[str, Any]:
-        metadata = {
-            "learner_class": serialize_type(self.__class__),
-            "ray_version": ray.__version__,
-            "ray_commit": ray.__commit__,
-            "module_state_dir": "module_state",
-            "optimizer_state_dir": "optimizer_state",
-        }
-        return metadata
-
-    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        """Save the state of the optimizer to path
-
-        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
-        will be appended to.
-
-        Args:
-            path: The path to the directory to save the state to.
-
-        """
-        pass
-
-    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        """Load the state of the optimizer from path
-
-        Args:
-            path: The path to the directory to load the state from.
-
-        """
-        pass
-
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Save the state of the learner to path
-
-        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
-        will be appended to.
-
-        the state of the learner is saved in the following format:
-
-        .. testcode::
-            :skipif: True
-
-            checkpoint_dir/
-                learner_state.json
-                module_state/
-                    module_1/
-                        ...
-                optimizer_state/
-                    optimizers_module_1/
-                        ...
-
-        Args:
-            path: The path to the directory to save the state to.
-
-        """
-        self._check_is_built()
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        self.module.save_to_checkpoint(path / "module_state")
-        self._save_optimizers(path / "optimizer_state")
-        with open(path / "learner_state.json", "w") as f:
-            metadata = self._get_metadata()
-            json.dump(metadata, f)
-
-    def load_state(
-        self,
-        path: Union[str, pathlib.Path],
-    ) -> None:
-        """Load the state of the learner from path
-
-        Note: The learner must be constructed ahead of time before its state is loaded.
-
-        Args:
-            path: The path to the directory to load the state from.
-        """
-        self._check_is_built()
-        path = pathlib.Path(path)
-        del self._module
-        # TODO (avnishn): from checkpoint doesn't currently support modules_to_load,
-        #  but it should, so we will add it later.
-        self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
-        self._reset()
-        self.build()
-        self._load_optimizers(path / "optimizer_state")
-
-    @abc.abstractmethod
-    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
-        """Check whether the module is compatible with the learner.
-
-        For example, if there is a random RLModule, it will not be a torch or tf
-        module, but rather it is a numpy module. Therefore we should not consider it
-        during gradient based optimization.
-
-        Args:
-            module: The module to check.
-
-        Returns:
-            True if the module is compatible with the learner.
-        """
-
-    def _make_module(self) -> MultiAgentRLModule:
+    def _make_module(self) -> MultiRLModule:
         """Construct the multi-agent RL module for the learner.
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
@@ -1586,11 +1468,12 @@ class Learner:
         need to happen for instantiation of the module.
 
         Returns:
-            A constructed MultiAgentRLModule.
+            A constructed MultiRLModule.
         """
         # Module was provided directly through constructor -> Use as-is.
         if self._module_obj is not None:
             module = self._module_obj
+            self._module_spec = MultiRLModuleSpec.from_module(module)
         # RLModuleSpec was provided directly through constructor -> Use it to build the
         # RLModule.
         elif self._module_spec is not None:
@@ -1598,12 +1481,42 @@ class Learner:
         # Try using our config object. Note that this would only work if the config
         # object has all the necessary space information already in it.
         else:
-            module = self.config.get_multi_agent_module_spec().build()
+            module = self.config.get_multi_rl_module_spec().build()
 
-        # If not already, convert to MultiAgentRLModule.
-        module = module.as_multi_agent()
+        # If not already, convert to MultiRLModule.
+        module = module.as_multi_rl_module()
 
         return module
+
+    def rl_module_is_compatible(self, module: RLModule) -> bool:
+        """Check whether the given `module` is compatible with this Learner.
+
+        The default implementation checks the Learner-required APIs and whether the
+        given `module` implements all of them (if not, returns False).
+
+        Args:
+            module: The RLModule to check.
+
+        Returns:
+            True if the module is compatible with this Learner.
+        """
+        return all(isinstance(module, api) for api in self.rl_module_required_apis())
+
+    @classmethod
+    def rl_module_required_apis(cls) -> list[type]:
+        """Returns the required APIs for an RLModule to be compatible with this Learner.
+
+        The returned values may or may not be used inside the `rl_module_is_compatible`
+        method.
+
+        Args:
+            module: The RLModule to check.
+
+        Returns:
+            A list of RLModule API classes that an RLModule must implement in order
+            to be compatible with this Learner.
+        """
+        return []
 
     def _check_registered_optimizer(
         self,
@@ -1622,44 +1535,24 @@ class Learner:
                 "(variables)!"
             )
 
-    def _check_result(self, result: Dict[str, Any]) -> None:
-        """Checks whether the result has the correct format.
+    def _log_trainable_parameters(self) -> None:
+        """Logs the number of trainable and non-trainable parameters to self.metrics.
 
-        All the keys should be referencing the module ids that got updated. There is a
-        special key `ALL_MODULES` that hold any extra information that is not specific
-        to a module.
-
-        Args:
-            result: The result of the update.
-
-        Raises:
-            ValueError: If the result are not in the correct format.
+        Use MetricsLogger (self.metrics) tuple-keys:
+        (ALL_MODULES, NUM_TRAINABLE_PARAMETERS) and
+        (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS) with EMA.
         """
-        if not isinstance(result, dict):
-            raise ValueError(
-                f"The result of the update must be a dictionary. Got: {type(result)}"
-            )
+        pass
 
-        if ALL_MODULES not in result:
-            raise ValueError(
-                f"The result of the update must have a key {ALL_MODULES} "
-                "that holds any extra information that is not specific to a module."
-            )
-
-        for key in result:
-            if key != ALL_MODULES:
-                if key not in self.module.keys():
-                    raise ValueError(
-                        f"The key {key} in the result of the update is not a valid "
-                        f"module id. Valid module ids are: {list(self.module.keys())}."
-                    )
-
-    def _check_is_built(self):
+    def _check_is_built(self, error: bool = True) -> bool:
         if self.module is None:
-            raise ValueError(
-                "Learner.build() must be called after constructing a "
-                "Learner and before calling any methods on it."
-            )
+            if error:
+                raise ValueError(
+                    "Learner.build() must be called after constructing a "
+                    "Learner and before calling any methods on it."
+                )
+            return False
+        return True
 
     def _reset(self):
         self._params = {}
@@ -1667,7 +1560,7 @@ class Learner:
         self._named_optimizers = {}
         self._module_optimizers = defaultdict(list)
         self._optimizer_lr_schedules = {}
-        self._metrics = defaultdict(dict)
+        self.metrics = MetricsLogger()
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
@@ -1718,4 +1611,85 @@ class Learner:
     @staticmethod
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
-        """Returns the gradient clipping function to use, given the framework."""
+        """Returns the gradient clipping function to use."""
+
+    @staticmethod
+    @abc.abstractmethod
+    def _get_global_norm_function() -> Callable:
+        """Returns the global norm function to use, given the framework."""
+
+    def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
+        """Logs this iteration's steps trained, based on given `batch`."""
+        for mid, module_batch in batch.policy_batches.items():
+            # Log weights seq no for this batch.
+            self.metrics.log_value(
+                (mid, WEIGHTS_SEQ_NO),
+                self._weights_seq_no,
+                window=1,
+            )
+
+            module_batch_size = len(module_batch)
+            # Log average batch size (for each module).
+            self.metrics.log_value(
+                key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
+                value=module_batch_size,
+            )
+            # Log module steps (for each module).
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
+            # Log module steps (sum of all modules).
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
+        # Log env steps (all modules).
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
+            batch.env_steps(),
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+            batch.env_steps(),
+            reduce="sum",
+            with_throughput=True,
+        )
+
+    @Deprecated(new="Learner.update(batch=.., ..)", error=False)
+    def update_from_batch(self, batch, **kwargs):
+        if isinstance(batch, list):
+            if isinstance(batch[0], ray.ObjectRef):
+                return self.update(batches_refs=batch, **kwargs)
+            else:
+                return self.update(batches=batch, **kwargs)
+        else:
+            return self.update(batch=batch, **kwargs)
+
+    @Deprecated(new="Learner.update(episodes=.., ..)", error=False)
+    def update_from_episodes(self, episodes, **kwargs):
+        assert isinstance(episodes, list)
+        if isinstance(episodes[0], ray.ObjectRef):
+            return self.update(episodes_refs=episodes, **kwargs)
+        else:
+            return self.update(episodes=episodes, **kwargs)
+
+    @Deprecated(new="Learner.compute_losses(...)", error=True)
+    def compute_loss(self, *args, **kwargs):
+        pass

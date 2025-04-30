@@ -26,7 +26,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/object_manager/plasma/compat.h"
+#include "ray/util/compat.h"
 
 namespace plasma {
 

@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
-from ray.air._internal.session import _get_session
 from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import (
     _ERROR_FETCH_TIMEOUT,
@@ -33,8 +32,10 @@ from ray.train.constants import (
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.error import SessionMisuseError
+from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -60,7 +61,9 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
+    driver_node_id: str
     experiment_name: Optional[str] = None
+    run_id: Optional[str] = None
 
 
 class _FutureTrainingResult:
@@ -112,11 +115,11 @@ class _TrainSession:
     def __init__(
         self,
         training_func: Callable,
-        world_rank: int,
-        local_rank: int,
-        node_rank: int,
-        local_world_size: int,
-        world_size: int,
+        world_rank: Optional[int],
+        local_rank: Optional[int],
+        node_rank: Optional[int],
+        local_world_size: Optional[int],
+        world_size: Optional[int],
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Dict[str, Dataset]] = None,
         metadata: Dict[str, Any] = None,
@@ -139,6 +142,7 @@ class _TrainSession:
         self.synchronous_result_reporting = synchronous_result_reporting
 
         # Ray Train worker properties
+        # Note: These are set to None for Tune function Trainables.
         self.dataset_shard = dataset_shard
         self.metadata = metadata
 
@@ -462,6 +466,10 @@ class _TrainSession:
         return self.trial_info.id
 
     @property
+    def run_id(self) -> str:
+        return self.trial_info.run_id
+
+    @property
     def trial_resources(self) -> "PlacementGroupFactory":
         return self.trial_info.resources
 
@@ -494,6 +502,9 @@ class _TrainSession:
 
 # Cache of resource dicts that have been checked by the launch hook already.
 _checked_resources: Set[frozenset] = set()
+
+# Global _TrainSession object initialized by Ray Tune function trainables
+# and Ray Train V1 workers.
 _session: Optional[_TrainSession] = None
 
 
@@ -640,7 +651,7 @@ def _warn_session_misuse(default_value: Any = None):
 
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            session = _get_session()
+            session = get_session()
             if not session:
                 if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
                     warnings.warn(
@@ -658,7 +669,12 @@ def _warn_session_misuse(default_value: Any = None):
 
 @PublicAPI(stability="stable")
 @_warn_session_misuse()
-def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+def report(
+    metrics: Dict,
+    *,
+    checkpoint: Optional[Checkpoint] = None,
+    checkpoint_dir_name: Optional[str] = None,
+) -> None:
     """Report metrics and optionally save a checkpoint.
 
     If a checkpoint is provided, it will be
@@ -739,14 +755,36 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
     """
+    if checkpoint_dir_name is not None:
+        logger.warning(
+            "`checkpoint_dir_name` is only supported in the new Ray Train "
+            "implementation, which can be enabled with `RAY_TRAIN_V2_ENABLED=1`. "
+            "This argument will be ignored."
+        )
 
-    _get_session().report(metrics, checkpoint=checkpoint)
+    # If we are running in a Tune function, switch to `ray.tune.report`.
+    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+    if _in_tune_session():
+        import ray.tune
+
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(
+                "`ray.train.report` should be switched to "
+                "`ray.tune.report` when running in a function "
+                "passed to Ray Tune. This will be an error in the future. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+        return ray.tune.report(metrics, checkpoint=checkpoint)
+
+    get_session().report(metrics, checkpoint=checkpoint)
 
 
 @PublicAPI(stability="stable")
 @_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
-    """Access the session's last checkpoint to resume from if applicable.
+    """Access the latest reported checkpoint to resume from if one exists.
 
     Example:
 
@@ -786,43 +824,65 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
+    # If we are running in a Tune function, switch to `ray.tune.get_checkpoint`.
+    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 
-    return _get_session().loaded_checkpoint
+    if _in_tune_session():
+        import ray.tune
+
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(
+                "`ray.train.get_checkpoint` should be switched to "
+                "`ray.tune.get_checkpoint` when running in a function "
+                "passed to Ray Tune. This will be an error in the future. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+        return ray.tune.get_checkpoint()
+
+    return get_session().loaded_checkpoint
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_metadata() -> Dict[str, Any]:
     """User metadata dict passed to the Trainer constructor."""
-    return _get_session().metadata
+    return get_session().metadata
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_experiment_name() -> str:
     """Experiment name for the corresponding trial."""
-    return _get_session().experiment_name
+    return get_session().experiment_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_name() -> str:
     """Trial name for the corresponding trial."""
-    return _get_session().trial_name
+    return get_session().trial_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_id() -> str:
     """Trial id for the corresponding trial."""
-    return _get_session().trial_id
+    return get_session().trial_id
+
+
+@PublicAPI(stability="alpha")
+@_warn_session_misuse()
+def get_run_id() -> str:
+    """Unique Train Run id for the corresponding trial."""
+    return get_session().run_id
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
     """Trial resources for the corresponding trial."""
-    return _get_session().trial_resources
+    return get_session().trial_resources
 
 
 @PublicAPI(stability="beta")
@@ -834,12 +894,12 @@ def get_trial_dir() -> str:
 
     .. testcode::
 
-        from ray import train, tune
+        import ray.tune
 
         def train_func(config):
-            print(train.get_context().get_trial_dir())
+            print(ray.tune.get_context().get_trial_dir())
 
-        tuner = tune.Tuner(train_func)
+        tuner = ray.tune.Tuner(train_func)
         tuner.fit()
 
     .. testoutput::
@@ -847,7 +907,7 @@ def get_trial_dir() -> str:
 
         /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
     """
-    return _get_session().trial_dir
+    return get_session().trial_dir
 
 
 @PublicAPI(stability="beta")
@@ -880,7 +940,7 @@ def get_world_size() -> int:
 
         ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "world_size"):
         raise RuntimeError(
             "`get_world_size` can only be called for TrainSession! "
@@ -919,7 +979,7 @@ def get_world_rank() -> int:
 
         ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "world_rank"):
         raise RuntimeError(
             "`get_world_rank` can only be called for TrainSession! "
@@ -961,7 +1021,7 @@ def get_local_rank() -> int:
 
         ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "local_rank"):
         raise RuntimeError(
             "`get_local_rank` can only be called for TrainSession! "
@@ -1000,7 +1060,7 @@ def get_local_world_size() -> int:
 
             ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "local_world_size"):
         raise RuntimeError(
             "`get_local_world_size` can only be called for TrainSession! "
@@ -1039,7 +1099,7 @@ def get_node_rank() -> int:
 
             ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "node_rank"):
         raise RuntimeError(
             "`get_node_rank` can only be called for TrainSession! "
@@ -1096,7 +1156,7 @@ def get_dataset_shard(
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "get_dataset_shard"):
         raise RuntimeError(
             "`get_dataset_shard` can only be called for TrainSession! "

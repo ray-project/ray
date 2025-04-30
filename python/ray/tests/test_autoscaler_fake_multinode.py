@@ -3,6 +3,7 @@ import platform
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
+import time
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
@@ -41,6 +42,26 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
+            "tpu_v5e_node": {
+                "resources": {
+                    "CPU": 4,
+                    "TPU": 8,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "tpu_v6e_node": {
+                "resources": {
+                    "CPU": 4,
+                    "TPU": 8,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
         },
         autoscaler_v2=autoscaler_v2,
     )
@@ -64,9 +85,15 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
         def h():
             print("tpu ok")
 
+        # Triggers the addition of a 8-chip TPU node.
+        @ray.remote(resources={"TPU": 8})
+        def i():
+            print("8-chip tpu ok")
+
         ray.get(f.remote())
         ray.get(g.remote())
         ray.get(h.remote())
+        ray.get(i.remote())
         ray.shutdown()
     finally:
         cluster.shutdown()
@@ -142,6 +169,54 @@ def test_autoscaler_cpu_task_gpu_node_up(autoscaler_v2):
 
     finally:
         cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster(request):
+    autoscaler_v2 = request.param
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 5,
+            },
+        },
+        idle_timeout_minutes=0.1,
+        autoscaler_v2=autoscaler_v2,
+    )
+    try:
+        cluster.start()
+        ray.init("auto")
+        yield cluster
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "setup_cluster", [False, True], ids=["v1", "v2"], indirect=True
+)
+def test_autoscaler_not_kill_blocking_node(setup_cluster):
+    """Tests that the autoscaler does not kill a node that
+    has worker in blocking state."""
+
+    @ray.remote(num_cpus=1)
+    def short_task():
+        time.sleep(5)
+
+    @ray.remote(num_cpus=1)
+    def long_task():
+        time.sleep(20)
+
+    @ray.remote(num_cpus=1)
+    def f():
+        future_list = [short_task.remote(), long_task.remote()]
+        ray.get(future_list)
+
+    ray.get(f.remote(), timeout=30)
 
 
 if __name__ == "__main__":

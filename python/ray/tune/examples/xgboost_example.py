@@ -1,15 +1,15 @@
 from typing import Dict, List
+
+import numpy as np
 import sklearn.datasets
 import sklearn.metrics
-import numpy as np
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import tune
-from ray.tune.schedulers import ASHAScheduler
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
-
+from ray.tune.schedulers import ASHAScheduler
 
 CHECKPOINT_FILENAME = "booster-checkpoint.json"
 

@@ -15,6 +15,7 @@
 #include "ray/common/task/task_spec.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/task/task_util.h"
 
 namespace ray {
 TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
@@ -146,6 +147,114 @@ TEST(TaskSpecTest, TestTaskSpecification) {
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategyNodeId() == node_id);
 }
 
+TEST(TaskSpecTest, TestRootDetachedActorId) {
+  ActorID actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+  TaskSpecification task_spec;
+  ASSERT_TRUE(task_spec.RootDetachedActorId().IsNil());
+  task_spec.GetMutableMessage().set_root_detached_actor_id(actor_id.Binary());
+  ASSERT_EQ(task_spec.RootDetachedActorId(), actor_id);
+}
+
+TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
+  ActorID actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+
+  {
+    TaskSpecBuilder task_spec_builder;
+    task_spec_builder.SetNormalTaskSpec(
+        0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+    ASSERT_TRUE(
+        std::move(task_spec_builder).ConsumeAndBuild().RootDetachedActorId().IsNil());
+  }
+
+  {
+    TaskSpecBuilder task_spec_builder;
+    task_spec_builder.SetNormalTaskSpec(
+        0, false, "", rpc::SchedulingStrategy(), actor_id);
+    ASSERT_EQ(std::move(task_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
+              actor_id);
+  }
+
+  {
+    TaskSpecBuilder actor_spec_builder;
+    actor_spec_builder.SetActorCreationTaskSpec(
+        actor_id,
+        /*serialized_actor_handle=*/"",
+        rpc::SchedulingStrategy(),
+        /*max_restarts=*/0,
+        /*max_task_retries=*/0,
+        /*dynamic_worker_options=*/{},
+        /*max_concurrency=*/1,
+        /*is_detached=*/false,
+        /*name=*/"",
+        /*ray_namespace=*/"",
+        /*is_asyncio=*/false,
+        /*concurrency_groups=*/{},
+        /*extension_data=*/"",
+        /*execute_out_of_order=*/false,
+        /*root_detached_actor_id=*/ActorID::Nil());
+    ASSERT_TRUE(
+        std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId().IsNil());
+  }
+
+  {
+    TaskSpecBuilder actor_spec_builder;
+    actor_spec_builder.SetActorCreationTaskSpec(actor_id,
+                                                /*serialized_actor_handle=*/"",
+                                                rpc::SchedulingStrategy(),
+                                                /*max_restarts=*/0,
+                                                /*max_task_retries=*/0,
+                                                /*dynamic_worker_options=*/{},
+                                                /*max_concurrency=*/1,
+                                                /*is_detached=*/true,
+                                                /*name=*/"",
+                                                /*ray_namespace=*/"",
+                                                /*is_asyncio=*/false,
+                                                /*concurrency_groups=*/{},
+                                                /*extension_data=*/"",
+                                                /*execute_out_of_order=*/false,
+                                                /*root_detached_actor_id=*/actor_id);
+    ASSERT_EQ(std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
+              actor_id);
+  }
+}
+
+TEST(TaskSpecTest, TestCallerAddress) {
+  rpc::Address caller_address;
+  NodeID caller_node_id = NodeID::FromRandom();
+  WorkerID caller_worker_id = WorkerID::FromRandom();
+  caller_address.set_raylet_id(caller_node_id.Binary());
+  caller_address.set_worker_id(caller_worker_id.Binary());
+  TaskSpecBuilder task_spec_builder;
+  task_spec_builder.SetCommonTaskSpec(
+      TaskID::Nil(),
+      "dummy_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      caller_address,
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  task_spec_builder.SetNormalTaskSpec(
+      0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+  TaskSpecification task_spec = std::move(task_spec_builder).ConsumeAndBuild();
+  ASSERT_EQ(task_spec.CallerNodeId(), caller_node_id);
+  ASSERT_EQ(task_spec.CallerWorkerId(), caller_worker_id);
+}
+
 TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   rpc::SchedulingStrategy scheduling_strategy_1;
   auto expr_1 = scheduling_strategy_1.mutable_node_label_scheduling_strategy()
@@ -197,8 +306,3 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
                std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
 }
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

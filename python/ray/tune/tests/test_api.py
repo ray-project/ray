@@ -9,67 +9,60 @@ from collections import Counter
 from functools import partial
 from unittest.mock import patch
 
-import gymnasium as gym
 import numpy as np
 import pytest
 
 import ray
-from ray import train, tune
-from ray.train import CheckpointConfig
+from ray import tune
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
-from ray.rllib import _register_all
+from ray.tune import CheckpointConfig
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import (
     StorageContext,
-    get_fs_and_path,
     _create_directory,
+    get_fs_and_path,
 )
 from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
+    Stopper,
+    Trainable,
+    TuneError,
     register_env,
     register_trainable,
     run,
     run_experiments,
-    Trainable,
-    TuneError,
-    Stopper,
 )
 from ray.tune.callback import Callback
-from ray.tune.experiment import Experiment
-from ray.tune.trainable import wrap_function
-from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.execution.tune_controller import TuneController
+from ray.tune.experiment import Experiment, Trial
+from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.result import (
-    TIMESTEPS_TOTAL,
     DONE,
+    EPISODES_TOTAL,
+    EXPERIMENT_TAG,
     HOSTNAME,
     NODE_IP,
     PID,
-    EPISODES_TOTAL,
-    TIMESTEPS_THIS_ITER,
     TIME_TOTAL_S,
+    TIMESTEPS_THIS_ITER,
+    TIMESTEPS_TOTAL,
     TRIAL_ID,
-    EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import (
-    TrialScheduler,
-    FIFOScheduler,
-    AsyncHyperBandScheduler,
-)
+from ray.tune.schedulers import AsyncHyperBandScheduler, FIFOScheduler, TrialScheduler
 from ray.tune.schedulers.pb2 import PB2
-from ray.tune.stopper import (
-    MaximumIterationStopper,
-    TrialPlateauStopper,
-    ExperimentPlateauStopper,
-)
-from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimiter
+from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, grid_search
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.experiment import Trial
-from ray.tune.execution.tune_controller import TuneController
+from ray.tune.stopper import (
+    ExperimentPlateauStopper,
+    MaximumIterationStopper,
+    TrialPlateauStopper,
+)
+from ray.tune.trainable import wrap_function
 from ray.tune.utils import flatten_dict
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -79,7 +72,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
+        # _register_all()  # re-register the evicted objects
         shutil.rmtree(self.tmpdir)
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
@@ -124,7 +117,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for result in function_results:
                 if sleep_per_iter:
                     time.sleep(sleep_per_iter)
-                train.report(result)
+                tune.report(result)
 
         class_trainable_name = "class_trainable"
         register_trainable(class_trainable_name, _WrappedTrainable)
@@ -195,10 +188,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testRegisterEnvOverwrite(self):
         def train_fn(config):
-            train.report(dict(timesteps_total=100, done=True))
+            tune.report(dict(timesteps_total=100, done=True))
 
         def train_fn2(config):
-            train.report(dict(timesteps_total=200, done=True))
+            tune.report(dict(timesteps_total=200, done=True))
 
         register_trainable("f1", train_fn)
         register_trainable("f1", train_fn2)
@@ -241,7 +234,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testTrainableCallable(self):
         def dummy_fn(config, steps):
-            train.report(dict(timesteps_total=steps, done=True))
+            tune.report(dict(timesteps_total=steps, done=True))
 
         steps = 500
         register_trainable("test", partial(dummy_fn, steps=steps))
@@ -338,7 +331,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testRewriteEnv(self):
         def train_fn(config):
-            train.report(dict(timesteps_total=1))
+            tune.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
 
@@ -355,7 +348,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testConfigPurity(self):
         def train_fn(config):
             assert config == {"a": "b"}, config
-            train.report(dict(timesteps_total=1))
+            tune.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
         run_experiments(
@@ -369,7 +362,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLongFilename(self):
         def train_fn(config):
-            train.report(dict(timesteps_total=1))
+            tune.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
 
@@ -428,50 +421,32 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
-    def testBadParams5(self):
-        def f():
-            run_experiments({"foo": {"run": "__fake", "stop": {"asdf": 1}}})
-
-        self.assertRaises(TuneError, f)
-
     def testBadParams6(self):
-        def f():
-            run_experiments({"foo": {"run": "PPO", "resources_per_trial": {"asdf": 1}}})
-
-        self.assertRaises(TuneError, f)
-
-    def testBadStoppingReturn(self):
-        def train_fn(config):
-            train.report(dict(a=1))
-
-        register_trainable("f1", train_fn)
+        register_trainable("f1", lambda x: x)
 
         def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "stop": {"time": 10},
-                    }
-                }
-            )
+            run_experiments({"foo": {"run": "f1", "invalid_key": {"asdf": 1}}})
 
         self.assertRaises(TuneError, f)
 
     def testNestedStoppingReturn(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test={"test1": {"test2": i}}))
+                tune.report(dict(test={"test1": {"test2": i}}))
 
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"test": {"test1": {"test2": 6}}}).trials
+        [trial] = tune.run(train_fn, stop={"test": {"test1": {"test2": 6}}}).trials
+        self.assertTrue(
+            "test" in trial.last_result
+            and "test1" in trial.last_result["test"]
+            and "test2" in trial.last_result["test"]["test1"]
+        )
         [trial] = tune.run(train_fn, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
     def testStoppingFunction(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test=i))
+                tune.report(dict(test=i))
 
         def stop(trial_id, result):
             return result["test"] > 6
@@ -482,7 +457,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testStoppingMemberFunction(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test=i))
+                tune.report(dict(test=i))
 
         class Stopclass:
             def stop(self, trial_id, result):
@@ -494,7 +469,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testStopper(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test=i))
+                tune.report(dict(test=i))
 
         class CustomStopper(Stopper):
             def __init__(self):
@@ -516,7 +491,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testEarlyStopping(self):
         def train_fn(config):
-            train.report(dict(test=0))
+            tune.report(dict(test=0))
 
         top = 3
 
@@ -557,7 +532,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testBadStoppingFunction(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test=i))
+                tune.report(dict(test=i))
 
         class CustomStopper:
             def stop(self, result):
@@ -574,7 +549,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testMaximumIterationStopper(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(it=i))
+                tune.report(dict(it=i))
 
         stopper = MaximumIterationStopper(max_iter=6)
 
@@ -583,11 +558,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testTrialPlateauStopper(self):
         def train_fn(config):
-            train.report(dict(_metric=10.0))
-            train.report(dict(_metric=11.0))
-            train.report(dict(_metric=12.0))
+            tune.report(dict(_metric=10.0))
+            tune.report(dict(_metric=11.0))
+            tune.report(dict(_metric=12.0))
             for i in range(10):
-                train.report(dict(_metric=20.0))
+                tune.report(dict(_metric=20.0))
 
         # num_results = 4, no other constraints --> early stop after 7
         stopper = TrialPlateauStopper(metric="_metric", num_results=4)
@@ -612,7 +587,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testCustomTrialDir(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test=i))
+                tune.report(dict(test=i))
 
         custom_name = "TRAIL_TRIAL"
 
@@ -632,7 +607,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testTrialDirRegression(self):
         def train_fn(config):
             for i in range(10):
-                train.report(dict(test=i))
+                tune.report(dict(test=i))
 
         trials = tune.run(
             train_fn,
@@ -647,7 +622,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testEarlyReturn(self):
         def train_fn(config):
-            train.report(dict(timesteps_total=100, done=True))
+            tune.report(dict(timesteps_total=100, done=True))
             time.sleep(99999)
 
         register_trainable("f1", train_fn)
@@ -683,7 +658,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 raise ValueError
             for i in range(10):
                 time.sleep(0.1)
-                train.report(dict(hello=123))
+                tune.report(dict(hello=123))
 
         config = dict(
             name="hi-2",
@@ -698,51 +673,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
         new_trials = tune.run(test, resume="AUTO+ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
-        self.assertTrue(all(t.last_result.get("hello") == 123 for t in new_trials))
-
-    def testRerunRlLib(self):
-        class TestEnv(gym.Env):
-            counter = 0
-
-            def __init__(self, config):
-                self.observation_space = gym.spaces.Discrete(1)
-                self.action_space = gym.spaces.Discrete(1)
-                TestEnv.counter += 1
-
-            def reset(self):
-                return 0
-
-            def step(self, act):
-                return [0, 1, True, {}]
-
-        class FailureInjectionCallback(Callback):
-            def on_step_end(self, **info):
-                raise RuntimeError
-
-        with self.assertRaises(Exception):
-            tune.run(
-                "PPO",
-                config={
-                    "env": TestEnv,
-                    "framework": "torch",
-                    "num_workers": 0,
-                },
-                name="my_experiment",
-                callbacks=[FailureInjectionCallback()],
-                stop={"training_iteration": 1},
-            )
-        trials = tune.run(
-            "PPO",
-            config={
-                "env": TestEnv,
-                "framework": "torch",
-                "num_workers": 0,
-            },
-            name="my_experiment",
-            resume="AUTO+ERRORED_ONLY",
-            stop={"training_iteration": 1},
-        ).trials
-        assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
@@ -769,11 +699,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testTrialInfoAccessFunction(self):
         def train_fn(config):
-            train.report(
+            tune.report(
                 dict(
-                    name=train.get_context().get_trial_name(),
-                    trial_id=train.get_context().get_trial_id(),
-                    trial_resources=train.get_context().get_trial_resources(),
+                    name=tune.get_context().get_trial_name(),
+                    trial_id=tune.get_context().get_trial_id(),
+                    trial_resources=tune.get_context().get_trial_resources(),
                 )
             )
 
@@ -790,11 +720,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
 
         def track_train(config):
-            train.report(
+            tune.report(
                 dict(
-                    name=train.get_context().get_trial_name(),
-                    trial_id=train.get_context().get_trial_id(),
-                    trial_resources=train.get_context().get_trial_resources(),
+                    name=tune.get_context().get_trial_name(),
+                    trial_id=tune.get_context().get_trial_id(),
+                    trial_resources=tune.get_context().get_trial_resources(),
                 )
             )
 
@@ -983,13 +913,13 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testDurableTrainableFunction(self):
         def test_train(config):
             state = {"hi": 1, "iter": 0}
-            if train.get_checkpoint():
-                state = load_dict_checkpoint(train.get_checkpoint())
+            if tune.get_checkpoint():
+                state = load_dict_checkpoint(tune.get_checkpoint())
 
             for i in range(4):
                 state["iter"] += 1
                 with create_dict_checkpoint(state) as checkpoint:
-                    train.report(
+                    tune.report(
                         {
                             "timesteps_this_iter": 1,
                             "metric": state["iter"],
@@ -1074,10 +1004,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testLogToFile(self):
         def train_fn(config):
             import sys
+
             from ray import logger
 
             for i in range(10):
-                train.report(dict(timesteps_total=i))
+                tune.report(dict(timesteps_total=i))
             print("PRINT_STDOUT")
             print("PRINT_STDERR", file=sys.stderr)
             logger.info("LOG_STDERR")
@@ -1141,12 +1072,13 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertIn("LOG_STDERR", content)
 
     def testTimeout(self):
-        from ray.tune.stopper import TimeoutStopper
         import datetime
+
+        from ray.tune.stopper import TimeoutStopper
 
         def train_fn(config):
             for i in range(20):
-                train.report(dict(metric=i))
+                tune.report(dict(metric=i))
                 time.sleep(1)
 
         register_trainable("f1", train_fn)
@@ -1179,7 +1111,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testInfiniteTrials(self):
         def train_fn(config):
             time.sleep(0.5)
-            train.report(dict(_metric=np.random.uniform(-10.0, 10.0)))
+            tune.report(dict(_metric=np.random.uniform(-10.0, 10.0)))
 
         start = time.time()
         out = tune.run(train_fn, num_samples=-1, time_budget_s=10)
@@ -1195,7 +1127,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testMetricCheckingEndToEnd(self):
         def train_fn(config):
-            train.report(dict(val=4, second=8))
+            tune.report(dict(val=4, second=8))
 
         def train2(config):
             return
@@ -1515,7 +1447,7 @@ class SerializabilityTest(unittest.TestCase):
 
         def train_fn(config):
             print(lock)
-            train.report(dict(val=4, second=8))
+            tune.report(dict(val=4, second=8))
 
         with self.assertRaisesRegex(TypeError, "RAY_PICKLE_VERBOSE_DEBUG"):
             # The trial runner raises a ValueError, but the experiment fails
@@ -1530,7 +1462,7 @@ class SerializabilityTest(unittest.TestCase):
 
         def train_fn(config):
             print(lock)
-            train.report(dict(val=4, second=8))
+            tune.report(dict(val=4, second=8))
 
         with self.assertRaises(TypeError) as cm:
             # The trial runner raises a ValueError, but the experiment fails
@@ -1593,7 +1525,7 @@ class ApiTestFast(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-        _register_all()
+        # _register_all()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -1619,7 +1551,7 @@ class ApiTestFast(unittest.TestCase):
 
         def train_fn(config):
             for i in range(100):
-                train.report(create_result(i))
+                tune.report(create_result(i))
 
         algo = _MockSuggestionAlgorithm()
         scheduler = _MockScheduler()
@@ -1639,15 +1571,22 @@ class ApiTestFast(unittest.TestCase):
         self.assertTrue(
             all(set(result) >= set(flattened_keys) for result in algo.results)
         )
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"1/2/3": 20})
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"test": 1}).trials
+        # Test, whether non-existent stop criteria do NOT cause an error anymore (just
+        # a warning).
+        [trial] = tune.run(train_fn, stop={"1/2/3": 20}).trials
+        self.assertFalse("1" in trial.last_result)
+        [trial] = tune.run(train_fn, stop={"test": 1}).trials
+        self.assertTrue(
+            "test" in trial.last_result
+            and "1" in trial.last_result["test"]
+            and "2" in trial.last_result["test"]["1"]
+            and "3" in trial.last_result["test"]["1"]["2"]
+        )
 
     def testIterationCounter(self):
         def train_fn(config):
             for i in range(100):
-                train.report(dict(itr=i, timesteps_this_iter=1))
+                tune.report(dict(itr=i, timesteps_this_iter=1))
 
         register_trainable("exp", train_fn)
         config = {
@@ -1684,7 +1623,7 @@ class ApiTestFast(unittest.TestCase):
     def testSuccess(self):
         def train_fn(config):
             for i in range(100):
-                train.report(dict(timesteps_total=i))
+                tune.report(dict(timesteps_total=i))
 
         register_trainable("f1", train_fn)
         [trial] = run_experiments(
@@ -1716,7 +1655,7 @@ class ApiTestFast(unittest.TestCase):
     def testReportInfinity(self):
         def train_fn(config):
             for _ in range(100):
-                train.report(dict(mean_accuracy=float("inf")))
+                tune.report(dict(mean_accuracy=float("inf")))
 
         register_trainable("f1", train_fn)
         [trial] = run_experiments(
@@ -1745,7 +1684,7 @@ class ApiTestFast(unittest.TestCase):
 
         with patch("ray.tune.tune.TuneController", MockTuneController):
             tune.run(
-                lambda config: train.report(dict(metric=1)),
+                lambda config: tune.report(dict(metric=1)),
                 search_alg="random",
                 scheduler="async_hyperband",
                 metric="metric",
@@ -1765,7 +1704,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-        _register_all()
+        # _register_all()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -1775,7 +1714,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
     def testMaxConcurrentTrials(self):
         def train_fn(config):
-            train.report(dict(metric=1))
+            tune.report(dict(metric=1))
 
         capture = {}
 
@@ -1854,26 +1793,19 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 # TODO(justinvyu): [Deprecated] Remove this test once the configs are removed.
 def test_local_dir_deprecation(ray_start_2_cpus, tmp_path, monkeypatch):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(lambda _: None).fit()[0]
-        assert any("RAY_AIR_LOCAL_CACHE_DIR" in str(r.message) for r in record)
-        assert not result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("RAY_AIR_LOCAL_CACHE_DIR")
 
     monkeypatch.setenv("TUNE_RESULT_DIR", str(tmp_path))
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(lambda _: None).fit()[0]
-        assert any("TUNE_RESULT_DIR" in str(r.message) for r in record)
-        assert not result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("TUNE_RESULT_DIR")
 
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(
-            lambda _: None, run_config=ray.train.RunConfig(local_dir=str(tmp_path))
-        ).fit()[0]
-        assert any("local_dir" in str(r.message) for r in record)
-        # storage_path should fall back to local_dir during the migration period
-        assert result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(
+            lambda _: None, run_config=ray.tune.RunConfig(local_dir=str(tmp_path))
+        )
 
 
 if __name__ == "__main__":

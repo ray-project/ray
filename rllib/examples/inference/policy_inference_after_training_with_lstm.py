@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 Example showing how you can use your trained policy for inference
 (computing actions) in an environment.
@@ -11,9 +12,15 @@ import numpy as np
 import os
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -75,6 +82,10 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
         .framework(args.framework)
@@ -91,19 +102,19 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     print("Training policy until desired reward/timesteps/iterations. ...")
     tuner = tune.Tuner(
         args.run,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=2,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=1,
                 checkpoint_at_end=True,
             ),
@@ -130,7 +141,7 @@ if __name__ == "__main__":
     # Set LSTM's initial internal state.
     lstm_cell_size = config["model"]["lstm_cell_size"]
     # range(2) b/c h- and c-states of the LSTM.
-    if algo.config._enable_new_api_stack:
+    if algo.config.enable_rl_module_and_learner:
         init_state = state = algo.get_policy().model.get_initial_state()
     else:
         init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]

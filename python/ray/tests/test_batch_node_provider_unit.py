@@ -22,6 +22,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_REPLICA_INDEX,
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
 )
@@ -39,11 +40,8 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False,
     ) -> None:
-        BatchingNodeProvider.__init__(
-            self, provider_config, cluster_name, _allow_multiple
-        )
+        BatchingNodeProvider.__init__(self, provider_config, cluster_name)
         # Fake cluster manager state:
         self._node_data_dict: Dict[NodeID, NodeData] = {}
 
@@ -57,6 +55,9 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         self.num_non_terminated_nodes_calls += 1
         return self._node_data_dict
+
+    def set_node_replica_index(self, node_id, replica_index):
+        self._node_data_dict[node_id].replica_index = replica_index
 
     def submit_scale_request(self, scale_request: ScaleRequest) -> None:
         """Simulate modification of cluster state by an external cluster manager."""
@@ -113,7 +114,6 @@ class BatchingNodeProviderTester:
                 FOREGROUND_NODE_LAUNCH_KEY: True,
             },
             cluster_name="test-cluster",
-            _allow_multiple=True,
         )
         # Maps node types to expected node counts.
         self.expected_node_counts = defaultdict(int)
@@ -380,7 +380,6 @@ def test_terminate_safeguards():
             FOREGROUND_NODE_LAUNCH_KEY: True,
         },
         cluster_name="test-cluster",
-        _allow_multiple=True,
     )
     nodes = node_provider.non_terminated_nodes({})
     assert len(nodes) == 1
@@ -413,6 +412,71 @@ def test_terminate_safeguards():
     nodes = node_provider.non_terminated_nodes({})
     # Second terminate request was ignored.
     assert len(nodes) == 1
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
+def test_terminate_node_in_multihost_replica():
+    """Test multi-host replica deletion logic for KubeRay.
+
+    Tests manually deleting a node in a multi-host replica
+    and verifying that the entire replica is scaled down.
+    Nodes belonging to the same multi-host replica are identified
+    through a replicaIndex label set by a GKE webhook.
+    """
+    # create 4 TPU nodes with MockBatchingNodeProvider
+    node_provider = MockBatchingNodeProvider(
+        provider_config={
+            DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+            DISABLE_NODE_UPDATERS_KEY: True,
+            FOREGROUND_NODE_LAUNCH_KEY: True,
+        },
+        cluster_name="test-cluster",
+    )
+
+    num_tpu_workers = 4
+    for i in range(num_tpu_workers):
+        node_provider._add_node(node_type="TPU", node_kind=NODE_KIND_WORKER)
+
+    # Set replica_index in node_data for all workers
+    workers = node_provider.non_terminated_nodes(
+        tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+    )
+    assert len(workers) == num_tpu_workers
+    for index, node_id in enumerate(workers):
+        if index < num_tpu_workers // 2:
+            node_provider.set_node_replica_index(node_id, "tpu-group-0")
+        else:
+            node_provider.set_node_replica_index(node_id, "tpu-group-1")
+
+    # Verify RAY_REPLICA_INDEX tag has been set
+    replicaIndexFilter = {TAG_RAY_REPLICA_INDEX: "tpu-group-0"}
+    replicaWorkers1 = node_provider.non_terminated_nodes(tag_filters=replicaIndexFilter)
+    assert len(replicaWorkers1) == num_tpu_workers // 2
+
+    replicaIndexFilter[TAG_RAY_REPLICA_INDEX] = "tpu-group-1"
+    replicaWorkers2 = node_provider.non_terminated_nodes(tag_filters=replicaIndexFilter)
+    assert len(replicaWorkers2) == num_tpu_workers // 2
+
+    # Verify replica_to_nodes mapping has been populated
+    assert (
+        len(node_provider.replica_index_to_nodes["tpu-group-0"]) == num_tpu_workers // 2
+    )
+    assert (
+        len(node_provider.replica_index_to_nodes["tpu-group-1"]) == num_tpu_workers // 2
+    )
+
+    worker_0 = replicaWorkers1[0]  # tpu-group-0
+    worker_2 = replicaWorkers2[0]  # tpu-group-1
+    # Manually delete one TPU worker in tpu-group-0
+    # BatchingNodeProvider should scale down all nodes in the replica
+    assert worker_0 in node_provider.node_data_dict
+    node_provider.terminate_node(worker_0)
+    assert len(node_provider.scale_request.workers_to_delete) == num_tpu_workers // 2
+
+    # Scale down the tpu-group-1 replica
+    assert worker_2 in node_provider.node_data_dict
+    node_provider.terminate_node(worker_2)
+    assert len(node_provider.scale_request.workers_to_delete) == num_tpu_workers
 
 
 if __name__ == "__main__":

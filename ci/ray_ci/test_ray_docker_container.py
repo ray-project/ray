@@ -7,6 +7,7 @@ import pytest
 
 from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
+from ci.ray_ci.docker_container import GPU_PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
@@ -28,22 +29,39 @@ class TestRayDockerContainer(RayCITestBase):
         ):
             sha = "123456"
             ray_ci_build_id = "123"
+            cuda = "cu12.4.1-cudnn"
 
             # Run with default python version and ray image
             self.cmds = []
             v = DEFAULT_PYTHON_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
-            container = RayDockerContainer(v, "cu11.8.0", "ray")
+            container = RayDockerContainer(v, cuda, "ray")
             container.run()
             cmd = self.cmds[-1]
             assert cmd == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-cu11.8.0-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
                 "requirements_compiled.txt "
-                f"rayproject/ray:{sha}-{pv}-cu118 "
-                f"ray:{sha}-{pv}-cu118_pip-freeze.txt"
+                f"rayproject/ray:{sha}-{pv}-cu124 "
+                f"ray:{sha}-{pv}-cu124_pip-freeze.txt"
+            )
+
+            # Run with specific python version and ray-llm image
+            v = "3.11"
+            cv = self.get_cpp_version(v)
+            pv = self.get_python_version(v)
+            container = RayDockerContainer(v, cuda, "ray-llm")
+            container.run()
+            cmd = self.cmds[-1]
+            assert cmd == (
+                "./ci/build/build-ray-docker.sh "
+                f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
+                "requirements_compiled.txt "
+                f"rayproject/ray-llm:{sha}-{pv}-cu124 "
+                f"ray-llm:{sha}-{pv}-cu124_pip-freeze.txt"
             )
 
             # Run with non-default python version and ray-ml image
@@ -87,26 +105,54 @@ class TestRayDockerContainer(RayCITestBase):
             v = DEFAULT_PYTHON_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
-            container = RayDockerContainer(v, "cu11.8.0", "ray")
+            cuda = "cu12.1.1-cudnn8"
+            container = RayDockerContainer(v, cuda, "ray")
             container.run()
             assert len(self.cmds) == 19
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-cu11.8.0-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
                 "requirements_compiled.txt "
-                f"rayproject/ray:{sha}-{pv}-cu118 "
-                f"ray:{sha}-{pv}-cu118_pip-freeze.txt"
+                f"rayproject/ray:{sha}-{pv}-cu121 "
+                f"ray:{sha}-{pv}-cu121_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
             )
             for i in range(3, 11):  # check nightly.date.sha alias
-                assert f"nightly.{formatted_date}.{sha}" in self.cmds[i]
+                assert f"/ray:nightly.{formatted_date}.{sha}" in self.cmds[i]
             for i in range(11, len(self.cmds)):  # check nightly alias
-                assert "nightly-" in self.cmds[i]
+                assert "/ray:nightly-" in self.cmds[i]
+
+            # Run with specific python version and ray-llm image
+            self.cmds = []
+            v = "3.11"
+            cv = self.get_cpp_version(v)
+            pv = self.get_python_version(v)
+            cuda = "cu12.4.1-cudnn"
+            container = RayDockerContainer(v, cuda, "ray-llm")
+            container.run()
+            assert len(self.cmds) == 7
+            assert self.cmds[0] == (
+                "./ci/build/build-ray-docker.sh "
+                f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
+                "requirements_compiled.txt "
+                f"rayproject/ray-llm:{sha}-{pv}-cu124 "
+                f"ray-llm:{sha}-{pv}-cu124_pip-freeze.txt"
+            )
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
+            assert (
+                self.cmds[2]
+                == "python .buildkite/copy_files.py --destination docker_login"
+            )
+            for i in range(3, 5):  # check nightly.date.sha alias
+                assert f"/ray-llm:nightly.{formatted_date}.{sha}" in self.cmds[i]
+            for i in range(5, len(self.cmds)):  # check nightly alias
+                assert "/ray-llm:nightly-" in self.cmds[i]
 
             # Run with non-default python version and ray-ml image
             self.cmds = []
@@ -124,15 +170,15 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
             )
             for i in range(3, 5):  # check nightly.date.sha alias
-                assert f"nightly.{formatted_date}.{sha}" in self.cmds[i]
+                assert f"/ray-ml:nightly.{formatted_date}.{sha}" in self.cmds[i]
             for i in range(5, len(self.cmds)):  # check nightly alias
-                assert "nightly-" in self.cmds[i]
+                assert "/ray-ml:nightly-" in self.cmds[i]
 
     def test_run_daytime(self) -> None:
         def _mock_run_script(input: List[str]) -> None:
@@ -152,22 +198,41 @@ class TestRayDockerContainer(RayCITestBase):
         ):
             sha = "123456"
             ray_ci_build_id = "123"
+            cuda = "cu11.8.0-cudnn8"
 
             # Run with default python version and ray image
             self.cmds = []
             v = DEFAULT_PYTHON_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
-            container = RayDockerContainer(v, "cu11.8.0", "ray")
+            container = RayDockerContainer(v, cuda, "ray")
             container.run()
             assert len(self.cmds) == 1
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-cu11.8.0-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu118 "
                 f"ray:{sha}-{pv}-cu118_pip-freeze.txt"
+            )
+
+            # Run with specific python version and ray-llm image
+            self.cmds = []
+            v = DEFAULT_PYTHON_VERSION
+            cuda = "cu12.4.1-cudnn"
+            cv = self.get_cpp_version(v)
+            pv = self.get_python_version(v)
+            container = RayDockerContainer(v, cuda, "ray-llm")
+            container.run()
+            assert len(self.cmds) == 1
+            assert self.cmds[0] == (
+                "./ci/build/build-ray-docker.sh "
+                f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
+                "requirements_compiled.txt "
+                f"rayproject/ray-llm:{sha}-{pv}-cu124 "
+                f"ray-llm:{sha}-{pv}-cu124_pip-freeze.txt"
             )
 
             # Run with non-default python version and ray-ml image
@@ -200,8 +265,8 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cpu", "ray", "aarch64")
         assert container._get_canonical_tag() == f"{sha}-{pv}-cpu-aarch64"
 
-        container = RayDockerContainer(v, "cu11.8.0", "ray-ml")
-        assert container._get_canonical_tag() == f"{sha}-{pv}-cu118"
+        container = RayDockerContainer(v, GPU_PLATFORM, "ray-ml")
+        assert container._get_canonical_tag() == f"{sha}-{pv}-cu121"
 
         with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
             container = RayDockerContainer(v, "cpu", "ray")
@@ -266,22 +331,36 @@ class TestRayDockerContainer(RayCITestBase):
                 "rayproject/ray:nightly",
             ]
 
-        v = self.get_non_default_python()
+        v = "3.11"
         pv = self.get_python_version(v)
-        container = RayDockerContainer(v, "cu11.8.0", "ray-ml")
+        container = RayDockerContainer(v, "cu12.4.1-cudnn", "ray-llm")
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
             assert container._get_image_names() == [
-                f"rayproject/ray-ml:{sha}-{pv}-cu118",
+                f"rayproject/ray-llm:{sha}-{pv}-cu124",
+            ]
+
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-{pv}-cu124",
+                f"rayproject/ray-llm:nightly-{pv}-cu124",
+            ]
+
+        v = self.get_non_default_python()
+        pv = self.get_python_version(v)
+        container = RayDockerContainer(v, "cu12.1.1-cudnn8", "ray-ml")
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray-ml:{sha}-{pv}-cu121",
                 f"rayproject/ray-ml:{sha}-{pv}-gpu",
                 f"rayproject/ray-ml:{sha}-{pv}",
             ]
 
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
             assert container._get_image_names() == [
-                f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}-cu118",
+                f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}-cu121",
                 f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}-gpu",
                 f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}",
-                f"rayproject/ray-ml:nightly-{pv}-cu118",
+                f"rayproject/ray-ml:nightly-{pv}-cu121",
                 f"rayproject/ray-ml:nightly-{pv}-gpu",
                 f"rayproject/ray-ml:nightly-{pv}",
             ]
@@ -311,8 +390,20 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cpu", "ray")
         assert container.get_platform_tag() == "-cpu"
 
-        container = RayDockerContainer(v, "cu11.8.0", "ray")
+        container = RayDockerContainer(v, "cu11.8.0-cudnn8", "ray")
         assert container.get_platform_tag() == "-cu118"
+
+        container = RayDockerContainer(v, "cu12.3.2-cudnn9", "ray")
+        assert container.get_platform_tag() == "-cu123"
+
+        container = RayDockerContainer(v, "cu12.4.1-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu124"
+
+        container = RayDockerContainer(v, "cu12.5.1-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu125"
+
+        container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu128"
 
     def test_should_upload(self) -> None:
         v = DEFAULT_PYTHON_VERSION
@@ -379,4 +470,4 @@ class TestRayDockerContainer(RayCITestBase):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

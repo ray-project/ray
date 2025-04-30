@@ -1,97 +1,34 @@
 # coding: utf-8
-import signal
-import subprocess
-from collections import Counter
 import multiprocessing
 import os
-from pathlib import Path
-
-import pytest
 import shutil
+import signal
+import subprocess
 import tempfile
 import threading
 import time
-from typing import List
 import unittest
+from collections import Counter
+from typing import List
 from unittest import mock
+
+import pytest
 
 import ray
 import ray.train
 from ray import tune
-from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
-from ray.train import CheckpointConfig, Checkpoint
+from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError
-from ray.rllib import _register_all
+from ray.tune import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.search.basic_variant import BasicVariantGenerator
-from ray.tune.search import Searcher
-from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
+from ray.tune.experiment import Trial
+from ray.tune.search import Searcher
+from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
-
-
-class TuneRestoreTest(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=1, num_gpus=0, local_mode=True)
-        tmpdir = tempfile.mkdtemp()
-        test_name = "TuneRestoreTest"
-        tune.run(
-            "PPO",
-            name=test_name,
-            stop={"training_iteration": 1},
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            storage_path=tmpdir,
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
-        logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
-        self.logdir = logdir
-        self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
-        self.checkpoint_parent = Path(self.checkpoint_path).parent
-
-    def tearDown(self):
-        shutil.rmtree(self.logdir)
-        ray.shutdown()
-        _register_all()
-
-    def testTuneRestore(self):
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
-        tune.run(
-            "PPO",
-            name="TuneRestoreTest",
-            stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            restore=self.checkpoint_parent,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
-    def testPostRestoreCheckpointExistence(self):
-        """Tests that checkpoint restored from is not deleted post-restore."""
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
-        tune.run(
-            "PPO",
-            name="TuneRestoreTest",
-            stop={"training_iteration": 2},
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=1,
-                checkpoint_frequency=1,
-            ),
-            restore=self.checkpoint_parent,
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
 # Defining the callbacks at the file level, so they can be pickled and spawned
@@ -109,7 +46,7 @@ class SteppingCallback(Callback):
 def _run(local_dir, driver_semaphore, trainer_semaphore):
     def _train(config):
         for i in range(7):
-            ray.train.report(dict(val=i))
+            ray.tune.report(dict(val=i))
 
     tune.run(
         _train,
@@ -177,7 +114,7 @@ class TuneInterruptionTest(unittest.TestCase):
         def run_in_thread():
             def _train(config):
                 for i in range(7):
-                    ray.train.report(dict(val=i))
+                    ray.tune.report(dict(val=i))
 
             tune.run(_train)
             event.set()
@@ -546,18 +483,19 @@ class TuneExampleTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()
 
     def testPBTKeras(self):
-        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.keras.datasets import cifar10
+
+        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
 
     def testPyTorchMNIST(self):
-        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
+        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
@@ -572,12 +510,11 @@ class TuneExampleTest(unittest.TestCase):
 class AutoInitTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertFalse(ray.is_initialized())
-        tune.run("__fake", name="TestAutoInit", stop={"training_iteration": 1})
+        tune.run(MyTrainableClass, name="TestAutoInit", stop={"training_iteration": 1})
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()
 
 
 class SearcherTest(unittest.TestCase):
@@ -624,7 +561,7 @@ class TrainableCrashWithFailFast(unittest.TestCase):
         should bubble up."""
 
         def f(config):
-            ray.train.report({"a": 1})
+            ray.tune.report({"a": 1})
             time.sleep(0.1)
             raise RuntimeError("Error happens in trainable!!")
 
@@ -681,14 +618,14 @@ def test_resume_options(tmp_path, resume):
     tmp_path.joinpath("dummy_ckpt").mkdir()
 
     def train_fn(config):
-        checkpoint = ray.train.get_checkpoint()
+        checkpoint = ray.tune.get_checkpoint()
         if not checkpoint:
-            ray.train.report(
+            ray.tune.report(
                 {"finish_marker": False},
                 checkpoint=Checkpoint.from_directory(tmp_path / "dummy_ckpt"),
             )
             raise RuntimeError("failing on the first run!!")
-        ray.train.report({"finish_marker": True})
+        ray.tune.report({"finish_marker": True})
 
     analysis = tune.run(
         train_fn,

@@ -1,4 +1,5 @@
-"""Example of handling variable length and/or parametric action spaces.
+# @OldAPIStack
+"""Example of handling variable length or parametric action spaces.
 
 This is a toy example of the action-embedding based approach for handling large
 discrete action spaces (potentially infinite in size), similar to this:
@@ -18,7 +19,8 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.examples.envs.classes.parametric_actions_cartpole import (
     ParametricActionsCartPoleNoEmbeddings,
 )
@@ -26,6 +28,11 @@ from ray.rllib.examples._old_api_stack.models.parametric_actions_model import (
     ParametricActionsModelThatLearnsEmbeddings,
 )
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
@@ -61,6 +68,8 @@ if __name__ == "__main__":
             # defined a custom DistributionalQModel that is aware of masking.
             "hiddens": [],
             "dueling": False,
+            "enable_rl_module_and_learner": False,
+            "enable_env_runner_and_connector_v2": False,
         }
     else:
         cfg = {}
@@ -73,22 +82,22 @@ if __name__ == "__main__":
             },
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "num_workers": 0,
+            "num_env_runners": 0,
             "framework": args.framework,
             "action_mask_key": "valid_avail_actions_mask",
         },
-        **cfg
+        **cfg,
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     results = tune.Tuner(
         args.run,
-        run_config=air.RunConfig(stop=stop, verbose=2),
+        run_config=tune.RunConfig(stop=stop, verbose=2),
         param_space=config,
     ).fit()
 

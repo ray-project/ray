@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_context.h"
 
@@ -41,7 +44,7 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
     redis_reply_array_elements[0] = &redis_reply_string1;
     redis_reply_array_elements[1] = &redis_reply_string2;
     redis_reply_array.element = redis_reply_array_elements;
-    CallbackReply callback_reply(&redis_reply_array);
+    CallbackReply callback_reply(redis_reply_array);
     ASSERT_EQ(
         callback_reply.ReadAsStringArray(),
         (std::vector<std::optional<std::string>>{std::optional<std::string>(string1),
@@ -68,12 +71,36 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
     redis_reply_array_elements[1] = &redis_reply_string1;
     redis_reply_array_elements[2] = &redis_reply_nil2;
     redis_reply_array.element = redis_reply_array_elements;
-    CallbackReply callback_reply(&redis_reply_array);
+    CallbackReply callback_reply(redis_reply_array);
     ASSERT_EQ(
         callback_reply.ReadAsStringArray(),
         (std::vector<std::optional<std::string>>{std::optional<std::string>(),
                                                  std::optional<std::string>(string1),
                                                  std::optional<std::string>()}));
+  }
+
+  {
+    redisReply redis_reply_cursor;
+    redis_reply_cursor.type = REDIS_REPLY_STRING;
+    std::string num_str = "18446744073709551614";
+    redis_reply_cursor.str = num_str.data();
+    redis_reply_cursor.len = num_str.size();
+
+    redisReply redis_reply_array;
+    redis_reply_array.type = REDIS_REPLY_ARRAY;
+    redis_reply_array.elements = 0;
+    redis_reply_array.element = NULL;
+
+    redisReply redis_reply_test;
+    redis_reply_test.type = REDIS_REPLY_ARRAY;
+    redis_reply_test.elements = 2;
+    redisReply *redis_reply_test_elements[2];
+    redis_reply_test_elements[0] = &redis_reply_cursor;
+    redis_reply_test_elements[1] = &redis_reply_array;
+    redis_reply_test.element = redis_reply_test_elements;
+    CallbackReply callback_reply(redis_reply_test);
+    std::vector<std::string> scan_array;
+    ASSERT_EQ(callback_reply.ReadAsScanArray(&scan_array), 18446744073709551614u);
   }
 }
 }  // namespace ray::gcs

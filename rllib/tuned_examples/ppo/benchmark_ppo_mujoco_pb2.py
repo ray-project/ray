@@ -1,8 +1,8 @@
 import time
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.schedulers.pb2 import PB2
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -18,27 +18,27 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "Hopper-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "InvertedPendulum-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "InvertedDoublePendulum-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
-    "Reacher-v4": {"timesteps_total": 1000000},
-    "Swimmer-v4": {"timesteps_total": 1000000},
+    "Reacher-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000},
+    "Swimmer-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000},
     "Walker2d-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
 }
 
 pb2_scheduler = PB2(
-    time_attr="timesteps_total",
-    metric="episode_reward_mean",
+    time_attr=f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
+    metric="env_runners/episode_return_mean",
     mode="max",
     perturbation_interval=50000,
     # Copy bottom % with top % weights.
@@ -51,8 +51,8 @@ pb2_scheduler = PB2(
         "vf_loss_coeff": [0.01, 1.0],
         "clip_param": [0.1, 0.3],
         "kl_target": [0.01, 0.03],
-        "sgd_minibatch_size": [512, 4096],
-        "num_sgd_iter": [6, 32],
+        "minibatch_size": [512, 4096],
+        "num_epochs": [6, 32],
         "vf_share_layers": [False, True],
         "use_kl_loss": [False, True],
         "kl_coeff": [0.1, 0.4],
@@ -69,21 +69,18 @@ for env, stop_criteria in benchmark_envs.items():
     config = (
         PPOConfig()
         .environment(env=env)
-        # Enable new API stack and use EnvRunner.
-        .experimental(_enable_new_api_stack=True)
-        .rollouts(
+        .env_runners(
             rollout_fragment_length=1,
-            env_runner_cls=SingleAgentEnvRunner,
-            num_rollout_workers=num_rollout_workers,
+            num_env_runners=num_rollout_workers,
             # TODO (sven, simon): Add resources.
         )
-        .resources(
+        .learners(
             # Let's start with a small number of learner workers and
             # add later a tune grid search for these resources.
             # TODO (simon): Either add tune grid search here or make
             # an extra script to only test scalability.
-            num_learner_workers=1,
-            num_gpus_per_learner_worker=1,
+            num_learners=1,
+            num_gpus_per_learner=1,
         )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
@@ -94,15 +91,15 @@ for env, stop_criteria in benchmark_envs.items():
             vf_loss_coeff=tune.uniform(0.01, 1.0),
             clip_param=tune.uniform(0.1, 0.3),
             kl_target=tune.uniform(0.01, 0.03),
-            sgd_minibatch_size=tune.choice([512, 1024, 2048, 4096]),
-            num_sgd_iter=tune.randint(6, 32),
+            minibatch_size=tune.choice([512, 1024, 2048, 4096]),
+            num_epochs=tune.randint(6, 32),
             vf_share_layers=tune.choice([True, False]),
             use_kl_loss=tune.choice([True, False]),
             kl_coeff=tune.uniform(0.1, 0.4),
             vf_clip_param=tune.choice([10.0, 40.0, float("inf")]),
             grad_clip=tune.choice([None, 40, 100, 200]),
             train_batch_size=tune.sample_from(
-                lambda spec: spec.config["sgd_minibatch_size"] * num_rollout_workers
+                lambda spec: spec.config["minibatch_size"] * num_rollout_workers
             ),
             model={
                 "fcnet_hiddens": [64, 64],
@@ -117,7 +114,7 @@ for env, stop_criteria in benchmark_envs.items():
         .evaluation(
             evaluation_duration="auto",
             evaluation_interval=1,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_parallel_to_training=True,
             evaluation_config={
                 # PPO learns stochastic policy.
@@ -129,7 +126,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_ppo_mujoco_pb2_" + env,
         ),
@@ -152,7 +149,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "PPO",
         param_space=best_result.config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_ppo_mujoco_pb2_" + env + "_best",
         ),

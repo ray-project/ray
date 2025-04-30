@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -27,7 +28,6 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
-#include "ray/util/container_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -107,6 +107,16 @@ struct SchedulingClassDescriptor {
     buffer << "}}";
     return buffer.str();
   }
+
+  std::string ResourceSetStr() const {
+    std::stringstream buffer;
+    buffer << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}";
+    return buffer.str();
+  }
 };
 }  // namespace ray
 
@@ -131,74 +141,74 @@ struct hash<ray::rpc::LabelOperator> {
 template <>
 struct hash<ray::rpc::LabelMatchExpression> {
   size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
-    size_t hash = std::hash<std::string>()(expression.key());
-    hash ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
-    return hash;
+    size_t hash_val = std::hash<std::string>()(expression.key());
+    hash_val ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::rpc::LabelMatchExpressions> {
   size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
-    size_t hash = 0;
+    size_t hash_val = 0;
     for (const auto &expression : expressions.expressions()) {
-      hash ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
+      hash_val ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
     }
-    return hash;
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::rpc::SchedulingStrategy> {
   size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
-    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    size_t hash_val = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
     if (scheduling_strategy.scheduling_strategy_case() ==
         ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
+      hash_val ^= std::hash<std::string>()(
           scheduling_strategy.node_affinity_scheduling_strategy().node_id());
       // soft returns a bool
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().fail_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
+      hash_val ^= std::hash<std::string>()(
           scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_bundle_index();
+      hash_val ^= scheduling_strategy.placement_group_scheduling_strategy()
+                      .placement_group_bundle_index();
       // placement_group_capture_child_tasks returns a bool
-      hash ^=
+      hash_val ^=
           static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
                                   .placement_group_capture_child_tasks());
     } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
       if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
           0) {
-        hash ^= std::hash<std::string>()("hard");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+        hash_val ^= std::hash<std::string>()("hard");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
             scheduling_strategy.node_label_scheduling_strategy().hard());
       }
       if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
           0) {
-        hash ^= std::hash<std::string>()("soft");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+        hash_val ^= std::hash<std::string>()("soft");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
             scheduling_strategy.node_label_scheduling_strategy().soft());
       }
     }
-    return hash;
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::SchedulingClassDescriptor> {
   size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash ^= sched_cls.function_descriptor->Hash();
-    hash ^= sched_cls.depth;
-    hash ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
-    return hash;
+    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash_val ^= sched_cls.function_descriptor->Hash();
+    hash_val ^= sched_cls.depth;
+    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
+    return hash_val;
   }
 };
 }  // namespace std
@@ -266,7 +276,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param message The protobuf message.
   explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
@@ -287,17 +297,19 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
+  ActorID RootDetachedActorId() const;
+
   TaskID SubmitterTaskId() const;
 
   size_t ParentCounter() const;
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
+  [[nodiscard]] const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
 
-  std::string SerializedRuntimeEnv() const;
+  const std::string &SerializedRuntimeEnv() const;
 
-  rpc::RuntimeEnvConfig RuntimeEnvConfig() const;
+  const rpc::RuntimeEnvConfig &RuntimeEnvConfig() const;
 
   bool HasRuntimeEnv() const;
 
@@ -430,6 +442,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
+  std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;
@@ -442,6 +456,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   WorkerID CallerWorkerId() const;
 
+  NodeID CallerNodeId() const;
+
   uint64_t ActorCounter() const;
 
   ObjectID ActorCreationDummyObjectId() const;
@@ -451,8 +467,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool IsAsyncioActor() const;
 
   bool IsDetachedActor() const;
-
-  ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
 
@@ -478,7 +492,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Concurrency groups of the actor.
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
 
-  std::string ConcurrencyGroupName() const;
+  const std::string &ConcurrencyGroupName() const;
 
   bool ExecuteOutOfOrder() const;
 
@@ -503,6 +517,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
+  int runtime_env_hash_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
@@ -515,58 +530,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
-/// \class WorkerCacheKey
-///
-/// Class used to cache workers, keyed by runtime_env.
-class WorkerCacheKey {
- public:
-  /// Create a cache key with the given environment variable overrides and serialized
-  /// runtime_env.
-  ///
-  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker. \param required_resources The required resouce.
-  /// worker. \param is_actor Whether the worker will be an actor. This is set when
-  ///         task type isolation between workers is enabled.
-  /// worker. \param iis_gpu Whether the worker will be using GPUs. This is set when
-  ///         resource type isolation between workers is enabled.
-  WorkerCacheKey(const std::string serialized_runtime_env,
-                 const absl::flat_hash_map<std::string, double> &required_resources,
-                 bool is_actor,
-                 bool is_gpu);
-
-  bool operator==(const WorkerCacheKey &k) const;
-
-  /// Check if this worker's environment is empty (the default).
-  ///
-  /// \return true if there are no environment variables set and the runtime env is the
-  /// empty string (protobuf default) or a JSON-serialized empty dict.
-  bool EnvIsEmpty() const;
-
-  /// Get the hash for this worker's environment.
-  ///
-  /// \return The hash of the serialized runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
-
- private:
-  std::size_t CalculateHash() const;
-
-  /// The JSON-serialized runtime env for this worker.
-  const std::string serialized_runtime_env;
-  /// The required resources for this worker.
-  const absl::flat_hash_map<std::string, double> required_resources;
-  /// Whether the worker is for an actor.
-  const bool is_actor;
-  /// Whether the worker is to use a GPU.
-  const bool is_gpu;
-  /// The hash of the worker's environment.  This is set to 0
-  /// for unspecified or empty environments.
-  const std::size_t hash_ = 0;
-};
+// Get a Hash for the runtime environment string.
+// "" and "{}" have the same hash.
+// Other than that, only compare literal strings. i.e. '{"a": 1, "b": 2}' and '{"b": 2,
+// "a": 1}' have different hashes.
+int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env);
 
 }  // namespace ray

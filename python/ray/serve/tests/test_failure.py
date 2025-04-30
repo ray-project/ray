@@ -1,4 +1,6 @@
+import ctypes
 import os
+import random
 import sys
 import time
 
@@ -8,8 +10,15 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.test_utils import (
+    Counter,
+    check_num_replicas_eq,
+    get_deployment_details,
+    tlog,
+)
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -252,6 +261,66 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         # Signal the replica to finish starting; request should complete.
         ray.get(finish_starting_actor.send.remote())
         assert ray.get(blocked_ref) == "hi"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="ActorDiedError not raised properly on windows."
+)
+@pytest.mark.parametrize("die_during_request", [False, True])
+def test_replica_actor_died(serve_instance, die_during_request):
+    """Test replica death paired with delayed handle notification.
+
+    If a replica died, but controller hasn't health-checked it and
+    broadcasted it to handle routers yet, the router should be able
+    to remove it from its replica set.
+    """
+
+    counter = Counter.remote(2)
+
+    @serve.deployment
+    class Dummy:
+        def __call__(self, crash: bool = False):
+            if crash:
+                ctypes.string_at(0)
+
+            return os.getpid()
+
+        def check_health(self):
+            ray.get(counter.inc.remote())
+
+    h = serve.run(Dummy.options(num_replicas=2, health_check_period_s=1000).bind())
+
+    deployment_details = get_deployment_details("Dummy", _client=serve_instance)
+    replicas = [r["actor_name"] for r in deployment_details["replicas"]]
+
+    # Wait for controller to health check both replicas
+    ray.get(counter.wait.remote(), timeout=1)
+    tlog("Controller has health checked both replicas")
+
+    # Send some requests, both replicas should be up and running
+    assert len({h.remote().result() for _ in range(10)}) == 2
+    tlog("Sent 10 warmup requests.")
+
+    # Kill one replica.
+    if die_during_request:
+        with pytest.raises(RayActorError):
+            h.remote(crash=True).result()
+    else:
+        replica_to_kill = random.choice(replicas)
+        tlog(f"Killing replica {replica_to_kill}")
+        ray.kill(ray.get_actor(replica_to_kill, namespace="serve"))
+
+    wait_for_condition(check_num_replicas_eq, name="Dummy", target=1)
+
+    # The controller just health checked both of them, so it should not
+    # be able to health check and notify the handle router in time. Then
+    # we test that router can properly recognize that the replica has
+    # died and not send requests to that replica.
+    pids_returned = set()
+    for _ in range(10):
+        pids_returned.add(h.remote().result())
+
+    assert len(pids_returned) == 1
 
 
 if __name__ == "__main__":

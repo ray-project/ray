@@ -10,7 +10,6 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.policy import Policy, PolicyState
@@ -173,44 +172,20 @@ def _traced_eager_policy(eager_policy_cls):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[Episode]] = None,
+            episodes=None,
             **kwargs,
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
             # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False and not self._no_tracing:
-                if self.config.get("_enable_new_api_stack"):
-                    self._compute_actions_helper_rl_module_explore = (
-                        _convert_eager_inputs(
-                            tf.function(
-                                super(
-                                    TracedEagerPolicy, self
-                                )._compute_actions_helper_rl_module_explore,
-                                autograph=True,
-                                reduce_retracing=True,
-                            )
-                        )
+                self._compute_actions_helper = _convert_eager_inputs(
+                    tf.function(
+                        super(TracedEagerPolicy, self)._compute_actions_helper,
+                        autograph=False,
+                        reduce_retracing=True,
                     )
-                    self._compute_actions_helper_rl_module_inference = (
-                        _convert_eager_inputs(
-                            tf.function(
-                                super(
-                                    TracedEagerPolicy, self
-                                )._compute_actions_helper_rl_module_inference,
-                                autograph=True,
-                                reduce_retracing=True,
-                            )
-                        )
-                    )
-                else:
-                    self._compute_actions_helper = _convert_eager_inputs(
-                        tf.function(
-                            super(TracedEagerPolicy, self)._compute_actions_helper,
-                            autograph=False,
-                            reduce_retracing=True,
-                        )
-                    )
+                )
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's
@@ -442,16 +417,10 @@ def _build_eager_tf_policy(
             # action).
             self._lock = threading.RLock()
 
-            if self.config.get("_enable_new_api_stack", False):
-                # Maybe update view_requirements, e.g. for recurrent case.
-                self.view_requirements = self.model.update_default_view_requirements(
-                    self.view_requirements
-                )
-            else:
-                # Auto-update model's inference view requirements, if recurrent.
-                self._update_model_view_requirements_from_init_state()
-                # Combine view_requirements for Model and Policy.
-                self.view_requirements.update(self.model.view_requirements)
+            # Auto-update model's inference view requirements, if recurrent.
+            self._update_model_view_requirements_from_init_state()
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(self.model.view_requirements)
 
             self.exploration = self._create_exploration()
             self._state_inputs = self.model.get_initial_state()
@@ -492,7 +461,7 @@ def _build_eager_tf_policy(
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[Episode]] = None,
+            episodes=None,
             **kwargs,
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             if not self.config.get("eager_tracing") and not tf1.executing_eagerly():
@@ -541,7 +510,7 @@ def _build_eager_tf_policy(
             prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
             prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["Episode"]] = None,
+            episodes: Optional[List] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs,
@@ -754,7 +723,7 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            if not self.config.get("_enable_new_api_stack", False) and self.exploration:
+            if self.exploration:
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 state["_exploration_state"] = self.exploration.get_state()
@@ -1056,18 +1025,14 @@ def _build_eager_tf_policy(
         def _stats(self, outputs, samples, grads):
             fetches = {}
             if stats_fn:
-                fetches[LEARNER_STATS_KEY] = {
-                    k: v for k, v in stats_fn(outputs, samples).items()
-                }
+                fetches[LEARNER_STATS_KEY] = dict(stats_fn(outputs, samples))
             else:
                 fetches[LEARNER_STATS_KEY] = {}
 
             if extra_learn_fetches_fn:
-                fetches.update({k: v for k, v in extra_learn_fetches_fn(self).items()})
+                fetches.update(dict(extra_learn_fetches_fn(self)))
             if grad_stats_fn:
-                fetches.update(
-                    {k: v for k, v in grad_stats_fn(self, samples, grads).items()}
-                )
+                fetches.update(dict(grad_stats_fn(self, samples, grads)))
             return fetches
 
         def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):

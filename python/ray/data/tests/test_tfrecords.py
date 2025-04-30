@@ -1,18 +1,22 @@
 import json
 import os
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-import tensorflow as tf
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def tf_records_partial():
@@ -738,15 +742,15 @@ def test_read_with_invalid_schema(
     )
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     ray.data.range(100, override_num_blocks=20).write_tfrecords(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         dataset = tf.data.TFRecordDataset(os.path.join(tmp_path, filename))
-        assert len(list(dataset)) == num_rows_per_file
+        assert len(list(dataset)) == min_rows_per_file
 
 
 def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
@@ -763,5 +767,9 @@ def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))

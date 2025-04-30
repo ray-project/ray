@@ -1,5 +1,6 @@
+# @OldAPIStack
 hopper_cql:
-    env: 
+    env:
         grid_search:
             #- ray.rllib.examples.envs.classes.d4rl_env.hopper_random
             - ray.rllib.examples.envs.classes.d4rl_env.hopper_medium
@@ -33,7 +34,7 @@ hopper_cql:
           actor_learning_rate: 0.0001
           critic_learning_rate: 0.0003
           entropy_learning_rate: 0.0001
-        num_workers: 0
+        num_env_runners: 0
         num_gpus: 1
         clip_actions: false
         normalize_actions: true
@@ -47,4 +48,3 @@ hopper_cql:
         lagrangian: False
         evaluation_config:
             input: sampler
-

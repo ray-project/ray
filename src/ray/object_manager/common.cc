@@ -14,7 +14,10 @@
 
 #include "ray/object_manager/common.h"
 
-#include "absl/strings/str_format.h"
+#include <string>
+
+#include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -66,24 +69,56 @@ Status PlasmaObjectHeader::CheckHasError() const {
   // We do an acquire load so that no loads/stores are reordered before the load to
   // `has_error`. This acquire load pairs with the release store in `SetErrorUnlocked()`.
   if (has_error.load(std::memory_order_acquire)) {
-    return Status::IOError("Channel closed.");
+    return Status::ChannelError("Channel closed.");
   }
   return Status::OK();
 }
 
 #if defined(__APPLE__) || defined(__linux__)
 
-Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+Status PlasmaObjectHeader::TryToAcquireSemaphore(
+    sem_t *sem,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point,
+    const std::function<Status()> &check_signals) const {
   // Check `has_error` first to avoid blocking forever on the semaphore.
   RAY_RETURN_NOT_OK(CheckHasError());
-  RAY_CHECK_EQ(sem_wait(sem), 0);
+
+  if (!timeout_point) {
+    RAY_CHECK_EQ(sem_wait(sem), 0);
+  } else {
+    bool got_sem = false;
+    const auto check_signal_interval = std::chrono::milliseconds(
+        RayConfig::instance().get_check_signal_interval_milliseconds());
+    auto last_signal_check_time = std::chrono::steady_clock::now();
+    // try to acquire the semaphore at least once even if the timeout_point is passed
+    do {
+      // macOS does not support sem_timedwait, so we implement a unified,
+      // spinning-based solution here
+      // TODO(dayshah): use new semaphore with c++20 upgrade for with universal try_until
+      if (sem_trywait(sem) == 0) {
+        got_sem = true;
+        break;
+      }
+      if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                               check_signal_interval) {
+        RAY_RETURN_NOT_OK(check_signals());
+        last_signal_check_time = std::chrono::steady_clock::now();
+      }
+    } while (std::chrono::steady_clock::now() < *timeout_point);
+    if (!got_sem) {
+      return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
+    }
+  }
+
   // Check `has_error` again so that no more than one thread is ever in the critical
   // section after `SetErrorUnlocked()` has been called. One thread could be in the
   // critical section when that is called, but no additional thread will enter the
   // critical section.
-  RAY_RETURN_NOT_OK(CheckHasError());
-
-  return Status::OK();
+  Status s = CheckHasError();
+  if (!s.ok()) {
+    RAY_CHECK_EQ(sem_post(sem), 0);
+  }
+  return s;
 }
 
 void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
@@ -97,25 +132,26 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   // be more than one writer.
   RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
 
-  // Increment `sem.header_sem` by `num_readers` since there could potentially be that
-  // many readers blocked on `sem_wait()`.
-  for (int64_t i = 0; i < num_readers; i++) {
-    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-  }
+  // Increment `header_sem` to unblock any readers and/or the writer.
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
 }
 
-Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
-                                        uint64_t write_data_size,
-                                        uint64_t write_metadata_size,
-                                        int64_t write_num_readers) {
+Status PlasmaObjectHeader::WriteAcquire(
+    Semaphores &sem,
+    uint64_t write_data_size,
+    uint64_t write_metadata_size,
+    int64_t write_num_readers,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.object_sem);
   RAY_CHECK(sem.header_sem);
 
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem, timeout_point));
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  RAY_CHECK_EQ(num_read_acquires_remaining, 0);
-  RAY_CHECK_EQ(num_read_releases_remaining, 0);
+  RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
+  RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
 
   version++;
   is_sealed = false;
@@ -128,6 +164,8 @@ Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
 }
 
 Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   is_sealed = true;
@@ -139,26 +177,51 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   return Status::OK();
 }
 
-Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
-                                       int64_t version_to_read,
-                                       int64_t *version_read) {
+Status PlasmaObjectHeader::ReadAcquire(
+    const ObjectID &object_id,
+    Semaphores &sem,
+    int64_t version_to_read,
+    int64_t &version_read,
+    const std::function<Status()> &check_signals,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.header_sem);
 
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
+  // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
+
+  const auto check_signal_interval = std::chrono::milliseconds(
+      RayConfig::instance().get_check_signal_interval_milliseconds());
+  auto last_signal_check_time = std::chrono::steady_clock::now();
   while (version < version_to_read || !is_sealed) {
+    if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                             check_signal_interval) {
+      RAY_RETURN_NOT_OK(check_signals());
+      last_signal_check_time = std::chrono::steady_clock::now();
+    }
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-    RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+    sched_yield();
+    // We need to get the desired version before timeout
+    if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
+      return Status::ChannelTimeoutError(absl::StrCat(
+          "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
+    }
+    // Unlike other header, this is used for busy waiting, so we need to apply
+    // timeout_point and check signals.
+    RAY_RETURN_NOT_OK(
+        TryToAcquireSemaphore(sem.header_sem, timeout_point, check_signals));
   }
 
   bool success = false;
   if (num_readers == -1) {
     // Object is a normal immutable object. Read succeeds.
-    *version_read = 0;
+    version_read = 0;
     success = true;
   } else {
-    *version_read = version;
+    version_read = version;
     if (version == version_to_read && num_read_acquires_remaining > 0) {
       // This object is at the right version and still has reads remaining. Read
       // succeeds.
@@ -187,8 +250,9 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
       << " at read start";
 
   if (num_readers != -1) {
+    RAY_CHECK_GT(num_read_releases_remaining, 0UL);
     num_read_releases_remaining--;
-    RAY_CHECK_GE(num_read_releases_remaining, 0);
+    RAY_CHECK_GE(num_read_releases_remaining, 0UL);
     all_readers_done = !num_read_releases_remaining;
   }
 
@@ -201,16 +265,21 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
 
 #else  // defined(__APPLE__) || defined(__linux__)
 
-Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+Status PlasmaObjectHeader::TryToAcquireSemaphore(
+    sem_t *sem,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point,
+    const std::function<Status()> &check_signals) const {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
 void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {}
 
-Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
-                                        uint64_t write_data_size,
-                                        uint64_t write_metadata_size,
-                                        int64_t write_num_readers) {
+Status PlasmaObjectHeader::WriteAcquire(
+    Semaphores &sem,
+    uint64_t write_data_size,
+    uint64_t write_metadata_size,
+    int64_t write_num_readers,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -218,9 +287,13 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
-                                       int64_t version_to_read,
-                                       int64_t *version_read) {
+Status PlasmaObjectHeader::ReadAcquire(
+    const ObjectID &object_id,
+    Semaphores &sem,
+    int64_t version_to_read,
+    int64_t &version_read,
+    const std::function<Status()> &check_signals,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

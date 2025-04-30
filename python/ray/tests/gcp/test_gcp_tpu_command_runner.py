@@ -242,7 +242,7 @@ def test_max_active_connections_env_var():
     cmd_runner = TPUCommandRunner(**args)
     os.environ[ray_constants.RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR] = "1"
     num_connections = cmd_runner.num_connections
-    assert type(num_connections) == int
+    assert type(num_connections) is int
     assert num_connections == 1
 
 

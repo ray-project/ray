@@ -1,25 +1,26 @@
 import copy
 import itertools
 import os
-from pathlib import Path
 import uuid
-from typing import Dict, List, Optional, Union, TYPE_CHECKING
 import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
 import numpy as np
 
 from ray.air._internal.usage import tag_searcher
 from ray.tune.error import TuneError
-from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
-from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
+from ray.tune.experiment.config_parser import _create_trial_from_spec, _make_parser
+from ray.tune.search.sample import _BackwardsCompatibleNumpyRng, np_random_generator
+from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.variant_generator import (
-    _count_variants,
     _count_spec_samples,
-    generate_variants,
-    format_vars,
+    _count_variants,
     _flatten_resolved_vars,
     _get_preset_variants,
+    format_vars,
+    generate_variants,
 )
-from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 from ray.util import PublicAPI
 

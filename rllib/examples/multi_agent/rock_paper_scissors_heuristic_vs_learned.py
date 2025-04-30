@@ -26,19 +26,22 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
+
 import random
 
 import gymnasium as gym
 from pettingzoo.classic import rps_v2
 
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.tune.result import TRAINING_ITERATION
+from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -55,6 +58,10 @@ parser = add_rllib_example_script_args(
     default_timesteps=200000,
     default_reward=6.0,
 )
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+)
 parser.add_argument(
     "--use-lstm",
     action="store_true",
@@ -64,7 +71,7 @@ parser.add_argument(
 
 
 register_env(
-    "RockPaperScissors",
+    "pettingzoo_rps",
     lambda _: ParallelPettingZooEnv(rps_v2.parallel_env()),
 )
 
@@ -73,20 +80,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.num_agents == 2, "Must set --num-agents=2 when running this script!"
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("RockPaperScissors")
-        .rollouts(
+        .environment("pettingzoo_rps")
+        .env_runners(
             env_to_module_connector=lambda env: (
-                AddObservationsFromEpisodesToBatch(),
-                # Only flatten obs for the learning RLModul
+                # `agent_ids=...`: Only flatten obs for the learning RLModule.
                 FlattenObservations(multi_agent=True, agent_ids={"player_0"}),
-                WriteObservationsToEpisodes(),
             ),
         )
         .multi_agent(
@@ -103,45 +105,50 @@ if __name__ == "__main__":
             policies_to_train=["learned"],
         )
         .training(
-            model={
-                "use_lstm": args.use_lstm,
-                # Use a simpler FCNet when we also have an LSTM.
-                "fcnet_hiddens": [32] if args.use_lstm else [256, 256],
-                "lstm_cell_size": 256,
-                "max_seq_len": 15,
-                "vf_share_layers": True,
-            },
             vf_loss_coeff=0.005,
         )
         .rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs={
-                    "always_same": SingleAgentRLModuleSpec(
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs={
+                    "always_same": RLModuleSpec(
                         module_class=AlwaysSameHeuristicRLM,
                         observation_space=gym.spaces.Discrete(4),
                         action_space=gym.spaces.Discrete(3),
                     ),
-                    "beat_last": SingleAgentRLModuleSpec(
+                    "beat_last": RLModuleSpec(
                         module_class=BeatLastHeuristicRLM,
                         observation_space=gym.spaces.Discrete(4),
                         action_space=gym.spaces.Discrete(3),
                     ),
-                    "learned": SingleAgentRLModuleSpec(),
+                    "learned": RLModuleSpec(
+                        model_config=DefaultModelConfig(
+                            use_lstm=args.use_lstm,
+                            # Use a simpler FCNet when we also have an LSTM.
+                            fcnet_hiddens=[32] if args.use_lstm else [256, 256],
+                            lstm_cell_size=256,
+                            max_seq_len=15,
+                            vf_share_layers=True,
+                        ),
+                    ),
                 }
-            )
+            ),
         )
     )
 
     # Make `args.stop_reward` "point" to the reward of the learned policy.
     stop = {
-        "training_iteration": args.stop_iters,
-        "sampler_results/policy_reward_mean/learned": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/learned": args.stop_reward,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
         base_config,
         args,
         stop=stop,
-        success_metric="sampler_results/policy_reward_mean/learned",
+        success_metric={
+            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/learned": (
+                args.stop_reward
+            ),
+        },
     )

@@ -1,17 +1,16 @@
 import logging
 import os
-from typing import Collection, List, Optional, Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Collection, List, Optional, Type, Union
 
 from ray.tune.callback import Callback, CallbackList
-
 from ray.tune.logger import (
-    CSVLoggerCallback,
     CSVLogger,
-    JsonLoggerCallback,
+    CSVLoggerCallback,
     JsonLogger,
+    JsonLoggerCallback,
     LegacyLoggerCallback,
-    TBXLoggerCallback,
     TBXLogger,
+    TBXLoggerCallback,
 )
 
 logger = logging.getLogger(__name__)

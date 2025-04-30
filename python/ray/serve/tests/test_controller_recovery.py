@@ -14,7 +14,6 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -26,17 +25,26 @@ from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
 
 
-def test_recover_start_from_replica_actor_names(serve_instance):
+@pytest.mark.parametrize(
+    "deployment_options",
+    [
+        {"num_replicas": 2},
+        {"autoscaling_config": {"min_replicas": 2, "max_replicas": 2}},
+    ],
+)
+def test_recover_start_from_replica_actor_names(serve_instance, deployment_options):
     """Test controller is able to recover starting -> running replicas from
     actor names.
     """
 
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
-    @serve.deployment(name="recover_start_from_replica_actor_names", num_replicas=2)
+    @serve.deployment(
+        name="recover_start_from_replica_actor_names", **deployment_options
+    )
     class TransientConstructorFailureDeployment:
         def __init__(self):
-            return True
+            pass
 
         def __call__(self, *args):
             return "hii"
@@ -55,8 +63,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
 
     replica_version_hash = None
     for replica in deployment_dict[id]:
-        ref = replica.actor_handle._get_metadata.remote()
-        _, version = ray.get(ref)
+        ref = replica.actor_handle.initialize_and_get_metadata.remote()
+        _, version, _, _ = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -107,8 +115,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Ensure recovered replica version has are the same
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
-        ref = actor_handle._get_metadata.remote()
-        _, version = ray.get(ref)
+        ref = actor_handle.initialize_and_get_metadata.remote()
+        _, version, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
         ), "Replica version hash should be the same after recover from actor names"
@@ -156,32 +164,25 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     serve._run(V2.bind(), _blocking=False, name="app")
 
     # One replica of the old version should be stuck in stopping because
-    # of the blocked request.
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        # Two replicas of the new version should be brought up without
-        # waiting for the old replica to stop.
-        wait_for_condition(
-            check_replica_counts,
-            controller=serve_instance._controller,
-            deployment_id=DeploymentID(name="test", app_name="app"),
-            total=3,
-            by_state=[
-                (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
-                (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
-            ],
-        )
+    # of the blocked request. Two replicas of the new version should be
+    # brought up without waiting for the old replica to stop.
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=DeploymentID(name="test", app_name="app"),
+        total=3,
+        by_state=[
+            (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
+            (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
+        ],
+    )
 
-        # All new requests should be sent to the new running replicas
-        refs = [h.remote() for _ in range(10)]
-        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
-        assert versions.count("2") == 10
-        pids2 = set(pids)
-        assert len(pids2 & initial_pids) == 0
-    else:
-        with pytest.raises(TimeoutError):
-            serve_instance._wait_for_application_running("app", timeout_s=0.1)
-
-        refs = [h.remote() for _ in range(10)]
+    # All new requests should be sent to the new running replicas
+    refs = [h.remote() for _ in range(10)]
+    versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
+    assert versions.count("2") == 10
+    pids2 = set(pids)
+    assert len(pids2 & initial_pids) == 0
 
     # Kill the controller
     ray.kill(serve.context._global_client._controller, no_restart=False)
@@ -191,11 +192,6 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     val, pid = blocked_ref.result()
     assert val == "1"
     assert pid in initial_pids
-
-    if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
-        assert versions.count("1") == 10
-        assert len(set(pids) & initial_pids)
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
@@ -478,7 +474,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     resp = requests.get("http://127.0.0.1:8000")
     assert resp.status_code == 200
     wait_for_condition(
-        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET 200.*']
+        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
     )
 
 

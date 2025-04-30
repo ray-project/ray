@@ -2,9 +2,9 @@
 | Template Specification | Description |
 | ---------------------- | ----------- |
 | Summary | This template, demonstrates how to perform fine-tuning (full parameter or LoRA) for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
-| Time to Run | ~14 min. for 7B for 1 epoch on 3.5M tokens. ~26 min for 13B for 1 epoch.  |
+| Time to Run | 1 epoch (3.5M tokens) training wall-clock time: ~14 min. for 7B, ~26 min. for 13B, and ~190 min. for 70B (see the setup details below)  |
 | Minimum Compute Requirements | 16xg5.4xlarge for worker nodes for 7B model, 4xg5.12xlarge nodes for 13B model, and 4xg5.48xlarge (or 2xp4de.24xlarge) nodes for 70B|
-| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). |
+| Cluster Environment | This template uses a Docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview?utm_source=ray_docs&utm_medium=docs&utm_campaign=finetuning_llms). |
 
 ## Getting Started
 
@@ -66,7 +66,7 @@ aws s3 ls s3://<bucket_path>/checkpoint_00000
 └── tokenizer_config.json
 ```
 
-After training we can use [Aviary](https://github.com/ray-project/aviary) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
+After training we can use [RayLLM](https://github.com/ray-project/ray-llm) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
 
 ### Creating the dataset
 
@@ -124,7 +124,7 @@ To launch a full fine-tuning you can use the following command:
 
 ### Launching LoRA fine-tuning
 
-You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more effecient model serving.
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more efficient model serving.
 To launch a LoRA fine-tuning, you can use the following command or similar commands for other model sizes:
 
 ```
@@ -211,13 +211,13 @@ So availability of enough CPU RAM is very important when using optimizer state o
 
 2. CPU RAM requirement during checkpointing
 
-During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard indepedently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
+During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard independently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
 
 Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM on rank 0 machine where M is the model size. This would mean that for 70B we need 280GB of CPU on top of what we needed before (e.g. due to CPU offloading). This requirement is only for rank 0 though and not any other machine. So it's important to schedule this process on a machine with this much of RAM while the other processes can get scheduled on machines with lower RAM requirements. 
 
 For example, for 70B model, with 32-way sharding on a machine with 8xA10Gs (g5.48xlarge), you need 280G (because of checkpointing) and 315 GB (because of optimizer state offloading) making the total memory requirement ~595 GB.
 
-Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom lable for those machines that satisifies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requiremnet for the `trainer` actor which is in the same machine that rank zero process will get executed on.
+Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom label for those machines that satisfies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requirement for the `trainer` actor which is in the same machine that rank zero process will get executed on.
 
 ```
 scaling_config=air.ScalingConfig(

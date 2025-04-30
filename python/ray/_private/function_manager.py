@@ -13,6 +13,7 @@ from collections import defaultdict, namedtuple
 from typing import Optional, Callable
 
 import ray
+from ray.remote_function import RemoteFunction
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -288,7 +289,6 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
-
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.
@@ -382,7 +382,12 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            function = object._function
+            # Directly importing from local may break function with dynamic ray.remote,
+            # such as the _start_controller function utilized for the Ray service.
+            if isinstance(object, RemoteFunction):
+                function = object._function
+            else:
+                function = object
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,
@@ -563,9 +568,7 @@ class FunctionActorManager:
                     )
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
-                    actor_method_name,
-                    actor_method,
-                    actor_imported=True,
+                    actor_method_name, actor_method
                 )
                 self._function_execution_info[method_id] = FunctionExecutionInfo(
                     function=executor,
@@ -660,9 +663,7 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(
-        self, method_name: str, method, actor_imported: bool
-    ):
+    def _make_actor_method_executor(self, method_name: str, method):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
@@ -671,9 +672,6 @@ class FunctionActorManager:
             method: The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
                 instance of the actor as the first argument.
-            actor_imported: Whether the actor has been imported.
-                Checkpointing operations will not be run if this is set to
-                False.
         Returns:
             A function that executes the given actor method on the worker's
                 stored instance of the actor. The function also updates the

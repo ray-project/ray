@@ -1,12 +1,102 @@
+"""
+[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
+Luo et al. 2020
+https://arxiv.org/pdf/1912.00167
+"""
+from collections import deque
+import threading
+import time
+
+import numpy as np
+
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.annotations import OldAPIStack
 
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
 
 
-# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
+class CircularBuffer:
+    """A circular batch-wise buffer as described in [1] for APPO.
+
+    The buffer holds at most N batches, which are sampled at random (uniformly).
+    If full and a new batch is added, the oldest batch is discarded. Also, each batch
+    currently in the buffer can be sampled at most K times (after which it is also
+    discarded).
+    """
+
+    def __init__(self, num_batches: int, iterations_per_batch: int):
+        # N from the paper (buffer size).
+        self.num_batches = num_batches
+        # K ("replay coefficient") from the paper.
+        self.iterations_per_batch = iterations_per_batch
+
+        self._NxK = self.num_batches * self.iterations_per_batch
+        self._num_added = 0
+
+        self._buffer = deque([None for _ in range(self._NxK)], maxlen=self._NxK)
+        self._indices = set()
+        self._offset = self._NxK
+        self._lock = threading.Lock()
+
+        self._rng = np.random.default_rng()
+
+    def add(self, batch):
+        # Add buffer and k=0 information to the deque.
+        with self._lock:
+            dropped_entry = self._buffer[0]
+            for _ in range(self.iterations_per_batch):
+                self._buffer.append(batch)
+                self._indices.add(self._offset)
+                self._indices.discard(self._offset - self._NxK)
+                self._offset += 1
+            self._num_added += 1
+
+        # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
+        dropped_ts = 0
+        if dropped_entry is not None:
+            dropped_ts = dropped_entry.env_steps()
+
+        return dropped_ts
+
+    def sample(self):
+        # Only initially, the buffer may be empty -> Just wait for some time.
+        while len(self) == 0:
+            time.sleep(0.0001)
+
+        # Sample a random buffer index.
+        with self._lock:
+            idx = self._rng.choice(list(self._indices))
+            actual_buffer_idx = idx - self._offset + self._NxK
+            batch = self._buffer[actual_buffer_idx]
+            assert batch is not None, (
+                idx,
+                actual_buffer_idx,
+                self._offset,
+                self._indices,
+                [b is None for b in self._buffer],
+            )
+            self._buffer[actual_buffer_idx] = None
+            self._indices.discard(idx)
+
+        # Return the sampled batch.
+        return batch
+
+    @property
+    def filled(self):
+        """Whether the buffer has been filled once with at least `self.num_batches`."""
+        with self._lock:
+            return self._num_added >= self.num_batches
+
+    def __len__(self) -> int:
+        """Returns the number of actually valid (non-expired) batches in the buffer."""
+        with self._lock:
+            return len(self._indices)
+
+
+@OldAPIStack
 def make_appo_models(policy) -> ModelV2:
     """Builds model and target model for APPO.
 
