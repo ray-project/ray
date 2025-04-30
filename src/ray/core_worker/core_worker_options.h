@@ -179,6 +179,7 @@ struct CoreWorkerOptions {
   std::function<bool(const TaskID &task_id)> kill_main;
   // Function to cancel a running asyncio actor task.
   // Should return a boolean indicating if the task was successfully cancelled or not.
+  // If not, the client will retry.
   std::function<bool(const TaskID &task_id,
                      const RayFunction &ray_function,
                      const std::string name_of_concurrency_group_to_execute)>
