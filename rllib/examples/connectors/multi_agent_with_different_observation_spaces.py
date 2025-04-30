@@ -44,6 +44,22 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
+You should see the algo reach an episode return of slightly above 20.0, which proves
+that both agents learn how to utilize the other agents' row-index (0 or 1) in order
+to collide with the other agent and receive an extra +5 reward. Without this collision
+during the episode (if one agent reaches its goal, it's removed from the scene and no
+collision can occur any longer), the maximum return per agent is under 10.0.
+
++--------------------------------------+------------+-----------------+--------+
+| Trial name                           | status     | loc             |   iter |
+|--------------------------------------+------------+-----------------+--------+
+| PPO_DoubleRowCorridorEnv_ba678_00000 | TERMINATED | 127.0.0.1:73310 |     37 |
++--------------------------------------+------------+-----------------+--------+
++------------------+-------+-------------------+-------------+-------------+
+|   total time (s) |    ts |   combined return |   return p1 |   return p0 |
+|------------------+-------+-------------------+-------------+-------------|
+|          41.5389 | 19998 |            23.072 |      11.418 |      11.654 |
++------------------+-------+-------------------+-------------+-------------+
 """
 from ray.rllib.examples.envs.classes.multi_agent.double_row_corridor_env import (
     DoubleRowCorridorEnv,
@@ -77,10 +93,6 @@ parser.set_defaults(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)
