@@ -4459,8 +4459,6 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       }
     }
 
-    // NOTE: requested_task_running is not used by the client for actor tasks, only
-    // normal tasks, so we always set it to false.
     on_canceled(success, is_running);
   };
 
