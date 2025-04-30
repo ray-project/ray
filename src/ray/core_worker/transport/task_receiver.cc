@@ -299,7 +299,7 @@ bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
 
   // Return false if either:
   //   (1) there is no scheduling queue for the caller
-  //   (2) the specified task_id was not found in the scheduling queue.
+  //   (2) the specified task_id was not found in the scheduling queue
   return task_found;
 }
 
