@@ -1,6 +1,5 @@
 import pytest
 from ray import serve
-import ray
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
@@ -21,6 +20,7 @@ import os
 import tempfile
 import signal
 import sys
+import re
 
 from ray._private.test_utils import wait_for_condition
 
@@ -97,47 +97,28 @@ class TestBuildOpenaiApp:
     ):
         """Test `build_openai_app` can be used in serve config."""
 
-        # Initialize Ray cluster so that the serve run attaches to the same cluster.
-        # and so that serve.status() works.
-        ray.init()
-
-        # def deployments_healthy():
-        #     status = serve.status()
-        #     app_status = status.applications.get("llm-endpoint")
-        #     if not app_status or app_status.status != ApplicationStatus.RUNNING:
-        #         print(
-        #             f"[TEST] Application 'llm-endpoint' not running yet. Status: {app_status}"
-        #         )
-        #         return False
-
-        #     deployments = app_status.deployments
-        #     if len(deployments) != 2:
-        #         print(f"[TEST] Expected 2 deployments, found {len(deployments)}")
-        #         return False
-
-        #     all_healthy = all(
-        #         dep.status == DeploymentStatus.HEALTHY for dep in deployments.values()
-        #     )
-        #     if not all_healthy:
-        #         unhealthy_deployments = {
-        #             name: dep.status
-        #             for name, dep in deployments.items()
-        #             if dep.status != DeploymentStatus.HEALTHY
-        #         }
-        #         print(f"[TEST] Not all deployments healthy: {unhealthy_deployments}")
-        #         return False
-
-        #     print("[TEST] All deployments healthy.")
-        #     return True
-
         def deployments_healthy():
             status_response = subprocess.check_output(["serve", "status"])
-            serve_status = yaml.safe_load(status_response)["applications"][
-                "llm-endpoint"
-            ]
-            assert len(serve_status["deployments"]) == 2
-            deployment_status = serve_status["deployments"].values()
-            assert all([status["status"] == "HEALTHY" for status in deployment_status])
+            print("[TEST] Status response: ", status_response)
+            applications = extract_applications_from_output(status_response)
+
+            if "llm-endpoint" not in applications:
+                print("[TEST] Application 'llm-endpoint' not found.")
+                return False
+
+            llm_endpoint_status = applications["llm-endpoint"]
+            if len(llm_endpoint_status["deployments"]) != 2:
+                print(
+                    f"[TEST] Expected 2 deployments, found {len(llm_endpoint_status['deployments'])}"
+                )
+                return False
+
+            deployment_status = llm_endpoint_status["deployments"].values()
+            if not all([status["status"] == "HEALTHY" for status in deployment_status]):
+                print(f"[TEST] Not all deployments healthy: {deployment_status}")
+                return False
+
+            print("[TEST] All deployments healthy.")
             return True
 
         p = subprocess.Popen(["serve", "run", serve_config_separate_model_config_files])
@@ -203,6 +184,26 @@ class TestBuildVllmDeployment:
         app = build_llm_deployment(llm_config_with_mock_engine)
         assert isinstance(app, serve.Application)
         serve.run(app)
+
+
+def extract_applications_from_output(output: bytes) -> dict:
+    """
+    Extracts the 'applications' block from mixed output and returns it as a dict.
+    """
+    # 1. Decode bytes to string
+    text = output.decode("utf-8", errors="ignore")
+
+    # 2. Regex to find the 'applications:' block and its indented content
+    #    This matches 'applications:' and all following lines that are indented (YAML block)
+    match = re.search(r"(^applications:\n(?:^(?: {2,}|\t).*\n?)+)", text, re.MULTILINE)
+    if not match:
+        raise ValueError("Could not find 'applications:' block in output.")
+
+    applications_block = match.group(1)
+
+    # 3. Parse the YAML block
+    applications_dict = yaml.safe_load(applications_block)
+    return applications_dict["applications"]
 
 
 if __name__ == "__main__":
