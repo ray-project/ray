@@ -40,12 +40,7 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 
 namespace ray {
 
-#if defined(_WIN32)
-// Don't care what exact type is in windows... Looks like to be an asio specific type.
-template <typename NativeHandleType>
-void SetFdCloseOnExec(const NativeHandleType &handle);
-#else
-
+#if !defined(_WIN32)
 /// Sets the flag FD_CLOEXEC to a file descriptor.
 /// This means when the process is forked, this fd would be closed in the child process
 /// side. Raylet forks to create core workers and we don't want the Unix Socket FDs to be
