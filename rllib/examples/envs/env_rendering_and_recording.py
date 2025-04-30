@@ -149,7 +149,9 @@ class EnvRenderCallback(RLlibCallback):
         # See below:
         # `on_episode_end()`: We compile the video and maybe store it).
         # `on_sample_end()` We log the best and worst video to the `MetricsLogger`.
-        episode.add_temporary_timestep_data("render_images", image)
+        if "render_images" not in episode.custom_data:
+            episode.custom_data["render_images"] = []
+        episode.custom_data["render_images"].append(image)
 
     def on_episode_end(
         self,
@@ -183,7 +185,7 @@ class EnvRenderCallback(RLlibCallback):
             or episode_return < self.worst_episode_and_return[1]
         ):
             # Pull all images from the temp. data of the episode.
-            images = episode.get_temporary_timestep_data("render_images")
+            images = episode.custom_data["render_images"]
             # `images` is now a list of 3D ndarrays
 
             # Create a video from the images by simply stacking them AND

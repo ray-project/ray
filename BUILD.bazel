@@ -685,7 +685,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":raylet_lib",
+        ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -886,30 +886,6 @@ proto_library(
 cc_proto_library(
     name = "extra_actions_cc_proto_lib",
     deps = [":extra_actions_base_proto_lib"],
-)
-
-filegroup(
-    name = "iwyu_sh",
-    srcs = ["ci/run/iwyu.sh"],
-)
-
-action_listener(
-    name = "iwyu_cpp",
-    extra_actions = [":iwyu_action"],
-    mnemonics = ["CppCompile"],
-)
-
-extra_action(
-    name = "iwyu_action",
-    cmd = "$(location :iwyu_sh) postbuild $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE) > $(output $(ACTION_ID).iwyu.txt)",
-    out_templates = [
-        "$(ACTION_ID).iwyu.txt",
-    ],
-    tools = [
-        ":extra_actions_base_proto",
-        ":iwyu_sh",
-        "@com_google_protobuf//:protoc",
-    ],
 )
 
 ray_cc_library(
