@@ -82,3 +82,7 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
+
+    @classmethod
+    def is_read_op(cls):
+        return False
