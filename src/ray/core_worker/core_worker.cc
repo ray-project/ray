@@ -3300,7 +3300,7 @@ Status CoreWorker::ExecuteTask(
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_tasks_.emplace(task_spec.TaskId(), task_spec);
+    running_tasks_.emplace(task_spec.TaskId(), task_spec);
     if (resource_ids.has_value()) {
       resource_ids_ = std::move(*resource_ids);
     }
@@ -3429,9 +3429,9 @@ Status CoreWorker::ExecuteTask(
   }
   {
     absl::MutexLock lock(&mutex_);
-    auto it = current_tasks_.find(task_spec.TaskId());
-    RAY_CHECK(it != current_tasks_.end());
-    current_tasks_.erase(it);
+    auto it = running_tasks_.find(task_spec.TaskId());
+    RAY_CHECK(it != running_tasks_.end());
+    running_tasks_.erase(it);
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -4436,40 +4436,40 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                  caller_worker_id,
                  on_canceled = std::move(on_canceled),
                  is_async_actor]() {
+    // If the task was still queued (not running yet), `CancelQueuedActorTask` will cancel
+    // it. If it is already running, we attempt to cancel it.
     bool success = false;
-
-    // If the task was still queued (not executing yet), `CancelQueuedActorTask` will cancel it.
-    // If it was executing, we need to attempt to cancel it.
-    bool task_found =
-        task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
-    if (task_found) {
-      if (!is_async_actor) {
-        // NOTE: we can't currently interrupt executing tasks for non-asyncio actors.
-        // Return success even if the task is running so the client doesn't retry.
-        success = task_found;
-      } else {
-        bool is_running = false;
-        RayFunction func;
-        std::string concurrency_group_name;
-        {
-          absl::MutexLock lock(&mutex_);
-          auto it = current_tasks_.find(task_id);
-          is_running = it != current_tasks_.end();
-          if (is_running) {
-            auto spec = it->second;
-            func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
-            concurrency_group_name = spec.ConcurrencyGroupName();
-          }
-        }
+    bool is_running = false;
+    bool task_present = task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
+    if (task_present) {
+      // Check if the task is running (present in the running_tasks_ set).
+      RayFunction func;
+      std::string concurrency_group_name;
+      {
+        absl::MutexLock lock(&mutex_);
+        auto it = running_tasks_.find(task_id);
+        is_running = it != running_tasks_.end();
         if (is_running) {
-          success = options_.cancel_async_task(task_id, func, concurrency_group_name);
+          auto spec = it->second;
+          func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
+          concurrency_group_name = spec.ConcurrencyGroupName();
         }
+      }
+
+      // Attempt to cancel the task if it's running.
+      // We can't currently interrupt running tasks for non-asyncio actors.
+      if (is_running && is_async_actor) {
+        success = options_.cancel_async_task(task_id, func, concurrency_group_name);
+      } else {
+        // If the task wasn't running, it was successfully cancelled by CancelQueuedActorTask.
+        // Else if this isn't an asyncio actor, return success so the client won't retry.
+        success = true;
       }
     }
 
     // NOTE: requested_task_running is not used by the client for actor tasks, only
     // normal tasks, so we always set it to false.
-    on_canceled(/*success=*/success, /*requested_task_running=*/false);
+    on_canceled(success, is_running);
   };
 
   if (is_async_actor) {
@@ -4569,7 +4569,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
-  stats->set_num_running_tasks(current_tasks_.size());
+  stats->set_num_running_tasks(running_tasks_.size());
   auto *used_resources_map = stats->mutable_used_resources();
   for (auto const &[resource_name, resource_allocations] : resource_ids_) {
     rpc::ResourceAllocations allocations;
@@ -4598,7 +4598,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
 
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply, limit);
-    for (const auto &current_running_task : current_tasks_) {
+    for (const auto &current_running_task : running_tasks_) {
       reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
     }
   }
@@ -5044,16 +5044,16 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
 void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
                                             const bool is_debugger_paused) {
   absl::MutexLock lock(&mutex_);
-  auto current_task_it = current_tasks_.find(task_id);
-  RAY_CHECK(current_task_it != current_tasks_.end())
-      << "We should have set the current task spec before executing the task.";
-  RAY_LOG(DEBUG).WithField(current_task_it->second.TaskId())
+  auto running_task_it = running_tasks_.find(task_id);
+  RAY_CHECK(running_task_it != running_tasks_.end())
+      << "We should have set the running task spec before executing the task.";
+  RAY_LOG(DEBUG).WithField(running_task_it->second.TaskId())
       << "Task is paused by debugger set to " << is_debugger_paused;
   RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_.GetCurrentJobID(),
-      current_task_it->second.AttemptNumber(),
-      current_task_it->second,
+      running_task_it->second.AttemptNumber(),
+      running_task_it->second,
       rpc::TaskStatus::NIL,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));

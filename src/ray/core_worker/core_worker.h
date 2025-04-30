@@ -1844,9 +1844,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
-  /// The currently executing task spec. We have to track this separately since
-  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
-  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ ABSL_GUARDED_BY(mutex_);
+  /// Set of currently-running tasks. For single-threaded, non-asyncio actors this will
+  /// contain at most one task ID.
+  ///
+  /// We have to track this separately because we cannot access the thread-local worker
+  /// contexts from GetCoreWorkerStats().
+  absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
