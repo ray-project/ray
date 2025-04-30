@@ -143,7 +143,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context="spawn",
+            multiprocessing_context="forkserver",
         )
 
         return self.create_batch_iterator(dataloader, device)
@@ -197,6 +197,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context="spawn",
+            multiprocessing_context="forkserver",
         )
         return self.create_batch_iterator(dataloader, device)
