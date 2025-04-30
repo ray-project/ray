@@ -119,7 +119,7 @@ logger.info("Export complete. Models saved to model_repository/stable_diffusion/
 ```
 From the script, the outputs are `text_encoder.onnx`, `unet.onnx` `vae_decoder.onnx`.
 
-After the ONNX model exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
+After the ONNX model is exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
 
 ```bash
 # Convert text encoder
