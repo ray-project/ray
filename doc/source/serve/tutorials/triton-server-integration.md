@@ -5,7 +5,13 @@ orphan: true
 This guide shows how to build an application with stable diffusion model using [NVIDIA Triton Server](https://github.com/triton-inference-server/server) in Ray Serve.
 
 ## Preparation
-Serving a model with Triton Inference Server isn't as straightforward. Compared to vanilla Ray Serve, it requires jumping through quite a few hoops:
+NVIDIA Triton provides a python API for integration with Ray Serve. This can allow users to leverage inference optimizations available in Triton with the development experience and multi-model capabilities of Ray Serve. These are the steps required to prepare your model for using Triton with Ray Serve, with the TensorRT backend:
+1. Set up a local or remote model repository.
+2. Convert your model into the ONNX format.
+3. After exporting to ONNX, convert it into a TensorRT engine serialized file.
+4. Setup inference with Ray Serve with a custom image
+
+Alternatively, you can also consider and compare other inference optimizations techniques like `torch.compile` to use with Ray Serve.
 1. Set up a local or remote model repository (it's not optional, details buried deeper in the tutorial).
 2. Manually convert your model into the ONNX format, regardless of what framework you originally used.
 3. After exporting to ONNX, convert it into a TensorRT engine serialized file.
