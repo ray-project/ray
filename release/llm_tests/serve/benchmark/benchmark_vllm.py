@@ -247,6 +247,7 @@ def main(pargs):
         "service_name": "",
         "py_version": pargs.py_version,
         "tag": tag,
+        "vllm_engine": f"V{os.environ.get('VLLM_USE_V1', '')}",
     }
 
     # Post the results to S3

@@ -33,6 +33,7 @@ CLOUD = "serve_release_tests_cloud"
 JOB_NAME = "rayllm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
 SERVICE_NAME = "llm_serving_release_test"
+VLLM_USE_V1 = "0"  # V1 enabled by default in vLLM, force this setting for Ray LLM
 
 
 @click.command()
@@ -53,9 +54,7 @@ def main(
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
-    env_vars[
-        "VLLM_USE_V1"
-    ] = "1"  # V1 enabled by default in vLLM, force this setting for Ray LLM
+    env_vars["VLLM_USE_V1"] = VLLM_USE_V1
     llm_config = get_llm_config(serve_config_file)
 
     if run_perf_profiler:
@@ -139,6 +138,7 @@ def main(
                         "service_name": SERVICE_NAME,
                         "py_version": get_python_version_from_image(image_uri),
                         "tag": tag,
+                        "vllm_engine": f"V{VLLM_USE_V1}",
                         **result,
                     },
                 )
@@ -190,7 +190,7 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
             "HF_TOKEN": hf_token,
-            "VLLM_USE_V1": "1",
+            "VLLM_USE_V1": VLLM_USE_V1,
         },
         max_retries=0,
     )
