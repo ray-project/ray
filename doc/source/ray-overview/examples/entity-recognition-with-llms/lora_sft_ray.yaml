@@ -33,7 +33,7 @@ ray_storage_path: /mnt/cluster_storage/viggo/saves  # should be somewhere worker
 ray_num_workers: 4
 resources_per_worker:
   GPU: 1
-  anyscale/accelerator_shape:4xA10G: 1  # Use this to specify a specific node shape,
+  anyscale/accelerator_shape:4xL4: 0.001  # Use this to specify a specific node shape,
   # accelerator_type:A10G: 1           # Or use this to simply specify a GPU type.
   # see https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types
 placement_strategy: PACK
