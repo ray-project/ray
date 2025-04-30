@@ -4461,8 +4461,9 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       if (is_running && is_async_actor) {
         success = options_.cancel_async_actor_task(task_id, func, concurrency_group_name);
       } else {
-        // If the task wasn't running, it was successfully cancelled by CancelQueuedActorTask.
-        // Else if this isn't an asyncio actor, return success so the client won't retry.
+        // If the task wasn't running, it was successfully cancelled by
+        // CancelQueuedActorTask. Else if this isn't an asyncio actor, return success so
+        // the client won't retry.
         success = true;
       }
     }
