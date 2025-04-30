@@ -5,7 +5,6 @@ model_loading_config:
 accelerator_type: A10G
 
 engine_kwargs:
-  enable_chunked_prefill: true
   max_model_len: 2048
   enable_lora: true
 

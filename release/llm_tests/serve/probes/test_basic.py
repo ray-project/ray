@@ -152,9 +152,12 @@ async def test_bad_completions_request(
 @pytest.mark.parametrize("model", model_loader.model_ids())
 @pytest.mark.parametrize("stream", [True, False])
 @pytest.mark.asyncio
-async def test_too_long_completion_request(
+async def test_completion_request_too_long_to_succeed(
     model: str, stream: bool, test_id: str, openai_async_client
 ):
+    """If the given prompt is too long (longer than max_model_len),
+    it should fail.
+    """
     deterministic_query = TextGenerationProbeQuerier(
         openai_async_client, {"temperature": 0.0}
     )
@@ -167,7 +170,7 @@ async def test_too_long_completion_request(
     # Send a too long prompt
     print(f"Sending long prompt request to {model}")
 
-    error_type = openai.BadRequestError
+    error_type = openai.InternalServerError
     with pytest.raises(error_type):
         long_request_should_fail = asyncio.create_task(
             deterministic_query.query(
