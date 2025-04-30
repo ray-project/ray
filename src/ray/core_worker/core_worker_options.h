@@ -95,7 +95,7 @@ struct CoreWorkerOptions {
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
-        cancel_async_task(nullptr),
+        cancel_async_actor_task(nullptr),
         is_local_mode(false),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
@@ -183,7 +183,7 @@ struct CoreWorkerOptions {
   std::function<bool(const TaskID &task_id,
                      const RayFunction &ray_function,
                      const std::string name_of_concurrency_group_to_execute)>
-      cancel_async_task;
+      cancel_async_actor_task;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.

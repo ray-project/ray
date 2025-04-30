@@ -2533,7 +2533,7 @@ cdef void delete_spilled_objects_handler(
                 job_id=None)
 
 
-cdef void cancel_async_task(
+cdef c_bool cancel_async_actor_task(
         const CTaskID &c_task_id,
         const CRayFunction &ray_function,
         const c_string c_name_of_concurrency_group_to_execute) nogil:
@@ -2548,11 +2548,11 @@ cdef void cancel_async_task(
         eventloop, _ = worker.core_worker.get_event_loop(
             function_descriptor, name_of_concurrency_group_to_execute)
         future = worker.core_worker.get_queued_future(task_id)
-        if future is not None:
-            future.cancel()
-        # else, the task is already finished. If the task
-        # wasn't finished (task is queued on a client or server side),
-        # this method shouldn't have been called.
+        if future is None:
+            return False
+
+        future.cancel()
+        return True
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -3004,7 +3004,7 @@ cdef class CoreWorker:
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
-        options.cancel_async_task = cancel_async_task
+        options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
