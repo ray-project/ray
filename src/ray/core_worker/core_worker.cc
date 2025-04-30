@@ -4440,7 +4440,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
 
     // If the task was still queued (not executing yet), `CancelQueuedActorTask` will cancel it.
     // If it was executing, we need to attempt to cancel it.
-    bool task_found = 
+    bool task_found =
         task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
     if (task_found) {
       if (!is_async_actor) {
