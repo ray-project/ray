@@ -4867,13 +4867,7 @@ class Dataset:
             >>> ds
             Dataset(
                num_rows=?,
-               schema={
-                  sepal length (cm): double,
-                  sepal width (cm): double,
-                  petal length (cm): double,
-                  petal width (cm): double,
-                  target: int64
-               }
+               schema=...
             )
 
             If your model accepts a single tensor as input, specify a single feature column.
@@ -5612,13 +5606,7 @@ class Dataset:
 
                 Dataset(
                    num_rows=?,
-                   schema={
-                      sepal length (cm): double,
-                      sepal width (cm): double,
-                      petal length (cm): double,
-                      petal width (cm): double,
-                      target: int64
-                   }
+                   schema=...
                 )
 
 
