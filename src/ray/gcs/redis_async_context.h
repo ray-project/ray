@@ -48,7 +48,7 @@ struct RedisContextDeleter {
   RedisContextDeleter(){};
 
   void operator()(redisContext *context) { redisFree(context); }
-  void operator()(redisAsyncContext *context) { redisAsyncFree(context); }
+  void operator()(redisAsyncContext *context) { redisAsyncDisconnect(context); }
 };
 
 /// \class RedisAsyncContext
@@ -71,9 +71,6 @@ class RedisAsyncContext {
   ///
   /// \return redisAsyncContext *
   redisAsyncContext *GetRawRedisAsyncContext();
-
-  /// Reset the raw 'redisAsyncContext' pointer to nullptr.
-  void ResetRawRedisAsyncContext();
 
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
