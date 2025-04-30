@@ -275,10 +275,11 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
-    def shutdown(self, force: bool = False):
-        # We kill all actors in the pool on shutdown, even if they are busy doing work.
+    def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
-        super().shutdown(force)
+        # NOTE: It's critical for Actor Pool to release actors before calling into
+        #       the base method that will attempt to cancel and join pending.
+        super()._do_shutdown(force)
 
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
