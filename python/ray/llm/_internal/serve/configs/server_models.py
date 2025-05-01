@@ -141,8 +141,8 @@ class ModelLoadingConfig(BaseModelExtended):
         default=None,
         description=(
             "Where to obtain the model weights from. "
-            "Should be a HuggingFace model ID, S3 mirror config, or GCS "
-            "mirror config. When omitted, defaults to the model_id as a "
+            "Should be a HuggingFace model ID, S3 mirror config, GCS mirror config, "
+            "or a local path. When omitted, defaults to the model_id as a "
             "HuggingFace model ID."
         ),
     )
@@ -945,3 +945,4 @@ class GenerationRequest(BaseModelExtended):
     prompt: Union[str, List[int], List[str]]
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
+    stream: bool = False

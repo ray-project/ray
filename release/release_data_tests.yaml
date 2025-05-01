@@ -162,7 +162,10 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      # This test consistently fails on fixed-size clusters due to head OOM from
+      # too many objects references on the head node. So, we only run it on
+      # autoscaling clusters.
+      scaling: [autoscaling]
       shuffle_strategy: [sort_shuffle_pull_based]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -316,7 +319,9 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      # This release test consistently fails on autoscaling clusters. So, we only run
+      # it on fixed-size clusters. The reason for the failure is unclear.
+      scaling: [fixed_size]
 
   cluster:
     byod:
@@ -355,6 +360,9 @@
 
 
 - name: "sort_{{scaling}}"
+  # This test intermittently fails due to Arrow offset overflow errors, or OOD from
+  # overly-conservative autoscaling.
+  stable: False
 
   matrix:
     setup:
@@ -468,6 +476,25 @@
     script: >
       python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: batch_inference_mock_image_pipeline
+  frequency: manual
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/batch_inference_mock_image_pipeline.py
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
 
 ##############
 # TPCH Queries

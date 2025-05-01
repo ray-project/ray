@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import inspect
+import logging
 import queue
 from threading import Thread
 from types import GeneratorType
@@ -35,6 +36,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
     Project,
+    StreamingRepartition,
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.util import _truncated_repr
@@ -49,6 +51,9 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+
+
+logger = logging.getLogger(__name__)
 
 
 class _MapActorContext:
@@ -108,7 +113,7 @@ def plan_project_op(
                 )
             return block
         except Exception as e:
-            _handle_debugger_exception(e)
+            _handle_debugger_exception(e, block)
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
@@ -128,7 +133,7 @@ def plan_project_op(
 
 
 def plan_streaming_repartition_op(
-    op: Project,
+    op: StreamingRepartition,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
@@ -165,7 +170,7 @@ def plan_filter_op(
             try:
                 return block.filter(expression)
             except Exception as e:
-                _handle_debugger_exception(e)
+                _handle_debugger_exception(e, block)
 
         transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
@@ -285,7 +290,7 @@ def _parse_op_fn(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _handle_debugger_exception(e)
+                    _handle_debugger_exception(e, item)
 
         else:
 
@@ -299,7 +304,7 @@ def _parse_op_fn(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _handle_debugger_exception(e)
+                    _handle_debugger_exception(e, item)
 
     else:
 
@@ -307,7 +312,7 @@ def _parse_op_fn(op: AbstractUDFMap):
             try:
                 return op_fn(item, *fn_args, **fn_kwargs)
             except Exception as e:
-                _handle_debugger_exception(e)
+                _handle_debugger_exception(e, item)
 
         def init_fn():
             pass
@@ -315,15 +320,18 @@ def _parse_op_fn(op: AbstractUDFMap):
     return fn, init_fn
 
 
-def _handle_debugger_exception(e: Exception):
+def _handle_debugger_exception(e: Exception, item: Any = None):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
+    error_message = f"Failed to process the following data block: {item}"
+
     ctx = ray.data.DataContext.get_current()
     if _is_ray_debugger_post_mortem_enabled() or ctx.raise_original_map_exception:
+        logger.error(error_message)
         raise e
     else:
-        raise UserCodeException() from e
+        raise UserCodeException(error_message) from e
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.

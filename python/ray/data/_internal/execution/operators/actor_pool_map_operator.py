@@ -176,7 +176,7 @@ class ActorPoolMapOperator(MapOperator):
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
         )
-        res_ref = actor.get_location.remote()
+        res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
@@ -227,7 +227,7 @@ class ActorPoolMapOperator(MapOperator):
             )
             gen = actor.submit.options(
                 num_returns="streaming",
-                name=self.name,
+                name=f"{self.name}.submit",
                 **self._ray_actor_task_remote_args,
             ).remote(
                 self.data_context,
@@ -275,10 +275,11 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
-    def shutdown(self, force: bool = False):
-        # We kill all actors in the pool on shutdown, even if they are busy doing work.
+    def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
-        super().shutdown(force)
+        # NOTE: It's critical for Actor Pool to release actors before calling into
+        #       the base method that will attempt to cancel and join pending.
+        super()._do_shutdown(force)
 
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
@@ -301,12 +302,27 @@ class ActorPoolMapOperator(MapOperator):
             )
         return "[locality off]"
 
-    def base_resource_usage(self) -> ExecutionResources:
-        min_workers = self._actor_pool.min_size()
-        return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * min_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        min_actors = self._actor_pool.min_size()
+        assert min_actors is not None, min_actors
+
+        num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
+        num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
+        memory_per_actor = self._ray_remote_args.get("memory", 0)
+
+        min_resource_usage = ExecutionResources(
+            cpu=num_cpus_per_actor * min_actors,
+            gpu=num_gpus_per_actor * min_actors,
+            memory=memory_per_actor * min_actors,
+            # To ensure that all actors are utilized, reserve enough resource budget
+            # to launch one task for each worker.
+            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            * min_actors,
         )
+
+        return min_resource_usage, ExecutionResources.for_limits()
 
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.

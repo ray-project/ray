@@ -224,6 +224,7 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 
 cimport cpython
@@ -275,22 +276,6 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
-
-
-class DynamicObjectRefGenerator:
-    def __init__(self, refs):
-        # TODO(swang): As an optimization, can also store the generator
-        # ObjectID so that we don't need to keep individual ref counts for the
-        # inner ObjectRefs.
-        self._refs = refs
-
-    def __iter__(self):
-        while self._refs:
-            yield self._refs.pop(0)
-
-    def __len__(self):
-        return len(self._refs)
-
 
 class ObjectRefGenerator:
     """A generator to obtain object references
@@ -890,6 +875,7 @@ cdef prepare_args_internal(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
+    serialization_context = worker.get_serialization_context()
     for arg in args:
         from ray.experimental.compiled_dag_ref import CompiledDAGRef
         if isinstance(arg, CompiledDAGRef):
@@ -907,8 +893,7 @@ cdef prepare_args_internal(
 
         else:
             try:
-                serialized_arg = worker.get_serialization_context(
-                ).serialize(arg)
+                serialized_arg = serialization_context.serialize(arg)
             except TypeError as e:
                 sio = io.StringIO()
                 ray.util.inspect_serializability(arg, print_file=sio)
@@ -2979,7 +2964,7 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3034,6 +3019,7 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
+        options.enable_resource_isolation = enable_resource_isolation
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
