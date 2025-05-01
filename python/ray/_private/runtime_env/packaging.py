@@ -196,10 +196,8 @@ def parse_path(pkg_path: str) -> None:
     path = Path(pkg_path)
     try:
         path.resolve(strict=True)
-    except OSError as e:
-        raise ValueError(
-            f"{path} is not a valid path. It could not be resolved due to {e}"
-        )
+    except OSError:
+        raise ValueError(f"{path} is not a valid path.")
 
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:

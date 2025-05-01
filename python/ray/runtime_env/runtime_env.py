@@ -231,10 +231,10 @@ class RuntimeEnv(dict):
             image_uri="rayproject/ray:2.39.0-py312-cu123")
 
     Args:
-        py_modules: List of paths or URIs (either in the GCS or external
+        py_modules: List of local paths or remote URIs (either in the GCS or external
             storage), each of which is a zip file that Ray unpacks and
             inserts into the PYTHONPATH of the workers.
-        working_dir: Local path or URI (either in the GCS or external storage) of a zip
+        working_dir: Local path or remote URI (either in the GCS or external storage) of a zip
             file that Ray unpacks in the directory of each task/actor.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
