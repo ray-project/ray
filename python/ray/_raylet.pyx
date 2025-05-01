@@ -2545,6 +2545,7 @@ cdef c_bool cancel_async_actor_task(const CTaskID &c_task_id) nogil:
         worker = ray._private.worker.global_worker
         fut = worker.core_worker.get_future_for_running_task(task_id)
         if fut is None:
+            # Either the task hasn't started executing yet or already finished.
             return False
 
         fut.cancel()
