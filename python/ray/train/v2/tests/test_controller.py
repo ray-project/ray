@@ -12,13 +12,13 @@ from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
-    InitializingState,
-    SchedulingState,
-    ReschedulingState,
-    RunningState,
-    RestartingState,
-    ResizingState,
     ErroredState,
+    InitializingState,
+    ReschedulingState,
+    ResizingState,
+    RestartingState,
+    RunningState,
+    SchedulingState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
@@ -28,12 +28,11 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
-
 from ray.train.v2.tests.util import (
-    DummyWorkerGroup,
     DummyObjectRefWrapper,
-    MockScalingPolicy,
+    DummyWorkerGroup,
     MockFailurePolicy,
+    MockScalingPolicy,
 )
 
 
