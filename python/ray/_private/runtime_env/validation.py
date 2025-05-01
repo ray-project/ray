@@ -70,7 +70,9 @@ def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of paths or uris.
+    """Parses and validates a 'py_modules' option.
+    
+    Expects py_modules to be a list of paths or uris.
 
     Raises:
         TypeError if py_modules is not a list or if any item in the list is not a string.

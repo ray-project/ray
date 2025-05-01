@@ -202,7 +202,7 @@ def parse_path(pkg_path: str) -> None:
         path.resolve(strict=True)
     except OSError as e:
         raise ValueError(
-            f"{path} is not a valid path. It could not be resolved due to {e}"
+            f"{path} is not a valid path."
         )
 
 
