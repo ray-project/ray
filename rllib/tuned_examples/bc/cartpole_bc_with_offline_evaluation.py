@@ -16,6 +16,34 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(enable_new_api_stack=True)
+
+parser.add_argument(
+    "--offline_evaluation_interval",
+    type=int,
+    default=1,
+    help=(
+        "The interval in which offline evaluation should run in relation "
+        "to training iterations, e.g. if 1 offline evaluation runs in each "
+        "iteration, if 3 it runs each 3rd training iteration."
+    ),
+)
+parser.add_argument(
+    "--num_offline_eval_runners",
+    type=int,
+    default=2,
+    help=(
+        "The number of offline evaluation runners to be used in " "offline evaluation."
+    ),
+)
+parser.add_argument(
+    "--num-gpus-per-offline-eval-runner",
+    type=int,
+    default=0,
+    help=(
+        "The number of GPUs to be used in offline evaluation per offline "
+        "evaluation runner."
+    ),
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -72,7 +100,8 @@ config = (
         evaluation_interval=1,
         evaluation_parallel_to_training=False,
         offline_evaluation_interval=1,
-        num_offline_eval_runners=2,
+        num_offline_eval_runners=args.num_offline_eval_runners,
+        num_gpus_per_offline_eval_runner=args.num_gpus_per_offline_eval_runner,
         offline_eval_batch_size_per_runner=128,
     )
 )
