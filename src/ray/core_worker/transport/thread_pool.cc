@@ -37,6 +37,7 @@ BoundedExecutor::BoundedExecutor(
         releaser = initialize_thread_callback();
       }
       init_promise.set_value();
+      // `io_context_.run()` will block until `work_guard_.reset()` is called.
       io_context_.run();
       if (releaser) {
         releaser();
