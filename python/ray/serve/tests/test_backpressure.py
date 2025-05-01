@@ -5,6 +5,8 @@ from typing import Tuple
 import grpc
 import pytest
 import requests
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from starlette.requests import Request
 
 import ray
@@ -12,8 +14,6 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
 
 
 def test_handle_backpressure(serve_instance):
