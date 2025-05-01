@@ -71,8 +71,8 @@ class LabelSelector {
 
   void AddConstraint(const std::string &key, const std::string &value);
 
-  void AddConstraint(const LabelConstraint &constraint) {
-    constraints_.push_back(constraint);
+  void AddConstraint(LabelConstraint constraint) {
+    constraints_.push_back(std::move(constraint));
   }
 
   std::vector<LabelConstraint> GetConstraints() const { return constraints_; }
