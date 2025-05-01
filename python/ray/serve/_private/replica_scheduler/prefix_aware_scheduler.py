@@ -984,89 +984,59 @@ class PrefixAwareReplicaScheduler(
     async def on_response_received(
         self, pending_request: PendingRequest, chosen_replica: RunningReplica, result
     ):
-        import ray
-        print(f"[on_response_received] result: {result}") # <ray.serve._private.replica_result.ActorReplicaResult object at 0x71f8f8567a50>
-        print(f"[on_response_received] result._obj_ref: {result._obj_ref}") # None
-        print(f"[on_response_received] result._obj_ref_gen: {result._obj_ref_gen}") # <ray._raylet.ObjectRefGenerator object at 0x71f8f839bc50>
-        print(f"[on_response_received] result._is_streaming: {result._is_streaming}") # True
-        print(f"[on_response_received] result._request_id: {result._request_id}") # 04df34c1-a768-4c06-bdc5-9fdc63e1920b
-        obj_ref_gen = result._obj_ref_gen
-        print(f"[on_response_received] obj_ref_gen: {obj_ref_gen}")
-        first_result_waiting = await obj_ref_gen.__anext__() # or next(obj_ref_gen)
-        print(f"[on_response_received] first_result_waiting: {first_result_waiting}")
-        first_result_gotten = ray.get(first_result_waiting)
-        print(f"[on_response_received] first_result_gotten: {first_result_gotten}")
-        wrapped_obj_ref_gen = PrefixAwareObjectRefGenerator(obj_ref_gen, first_result_waiting)
-        print(f"[on_response_received] wrapped_obj_ref_gen: {wrapped_obj_ref_gen}")
-        result._obj_ref_gen = wrapped_obj_ref_gen
-        print(f"[on_response_received] result._obj_ref_gen: {result._obj_ref_gen}")
+        orig_obj_ref_gen = result._obj_ref_gen
+        wrapped = PrefixAwareObjectRefGenerator(self.get_input_text(pending_request), orig_obj_ref_gen, self._tree_deployment, chosen_replica.replica_id)
+        result._obj_ref_gen = wrapped
         return result
-        # pass
-    
-# async def wrapped_generator(generator, first_response):
-#     print(f"[wrapped_generator] first_response: {first_response}")
-#     yield first_response
-#     print(f"[wrapped_generator] entering generator: {generator}")
-#     async for response in generator:
-#         print(f"[wrapped_generator] response: {response}")
-#         yield response
-#     print(f"[wrapped_generator] exiting generator")
 
-# you don’t strictly need to import ObjectRefGenerator,
-# but this shows your intention
-from ray._raylet import ObjectRefGenerator  
+import ray
+from typing import Any, AsyncGenerator
 
 class PrefixAwareObjectRefGenerator:
-    def __init__(self, real_gen, first_ref):
-        self._real = real_gen
-        self._first = first_ref
-        self._first_yielded = False
-        print(f"[PrefixAwareObjectRefGenerator] self._real: {self._real}")
-        print(f"[PrefixAwareObjectRefGenerator] self._first: {self._first}")
-        print(f"[PrefixAwareObjectRefGenerator] self._first_yielded: {self._first_yielded}")
+    """
+    Wraps a Ray ObjectRefGenerator so that every time __anext__ is called,
+    we pull the real chunk, extract its text, update our prefix tree, and
+    then hand the same ObjectRef back to Serve.
+    """
 
-    # synchronous iterator protocol
-    def __iter__(self):
-        print(f"[PrefixAwareObjectRefGenerator] __iter__")
-        return self
+    def __init__(self, prompt_text: str, orig_gen: Any, tree: Any, tenant_id: str):
+        self._orig = orig_gen
+        self._tree = tree
+        self._tenant = tenant_id
+        self._accum = prompt_text  # accumulate the full response so far
+        print(f"[PrefixAwareObjectRefGenerator.__init__] _orig: {self._orig}, _tree: {self._tree}, _tenant: {self._tenant}, _accum: {self._accum}")
 
-    def __next__(self):
-        print(f"[PrefixAwareObjectRefGenerator] __next__")
-        if not self._first_yielded:
-            self._first_yielded = True
-            return self._first
-        return next(self._real)
-
-    # asynchronous iterator protocol
-    def __aiter__(self):
-        print(f"[PrefixAwareObjectRefGenerator] __aiter__")
+    def __aiter__(self) -> AsyncGenerator:
+        print(f"[PrefixAwareObjectRefGenerator.__aiter__]")
         return self
 
     async def __anext__(self):
-        print(f"[PrefixAwareObjectRefGenerator] __anext__")
-        if not self._first_yielded:
-            self._first_yielded = True
-            return self._first
-        return await self._real.__anext__()
+        print(f"[PrefixAwareObjectRefGenerator.__anext__]")
+        # 1) get the next ObjectRef from the underlying generator
+        obj_ref = await self._orig.__anext__()
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] obj_ref: {obj_ref}")
+        # 2) fetch the real chunk (e.g. a CompletionResponse)
+        resp = ray.get(obj_ref)
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] resp: {resp}")
+        # 3) pull out just the text piece
+        chunk = self._extract_text(resp)
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] chunk: {chunk}")
+        self._accum += chunk
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] self._accum: {self._accum}")
+        # 4) send the updated prompt+response back to your prefix‐tree actor
+        await self._tree.insert.remote(self._accum, tenant=self._tenant)
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] after insert")
 
-    # Ray generator–specific APIs
-    def completed(self):
-        print(f"[PrefixAwareObjectRefGenerator] completed")
-        return self._real.completed()
+        # 5) return the original ObjectRef so Serve can stream it unchanged
+        return obj_ref
 
-    def _on_completed(self, callback):
-        print(f"[PrefixAwareObjectRefGenerator] _on_completed")
-        return self._real._on_completed(callback)
+    def __getattr__(self, name: str):
+        print(f"[PrefixAwareObjectRefGenerator.__getattr__] name: {name}")
+        # forward *every other* attribute/method (including completed(),
+        # _on_completed(), __next__(), etc.) back to the original generator
+        return getattr(self._orig, name)
 
-    # the blocking “next” that Ray exposes
-    def _next_sync(self, timeout_s=None):
-        print(f"[PrefixAwareObjectRefGenerator] _next_sync")
-        if not self._first_yielded:
-            self._first_yielded = True
-            return self._first
-        return self._real._next_sync(timeout_s)
-
-    # let ANY other attribute just pass through
-    def __getattr__(self, name):
-        print(f"[PrefixAwareObjectRefGenerator] __getattr__ with name: {name}")
-        return getattr(self._real, name)
+    @staticmethod
+    def _extract_text(resp: Any) -> str:
+        # adapt to your LLM chunk type; e.g.:
+        return resp.choices[0].text
