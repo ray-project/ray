@@ -50,11 +50,11 @@ def _handle_local_deps_requirement_file(requirements_file: str):
 
 
 def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
-    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of uris.
+    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of URIs.
 
     Raises:
         TypeError if py_modules is not a list or if any item in the list is not a string.
-        ValueError if any module is not a valid path or uri.
+        ValueError if any module is not a valid path or URI.
     """
     if not isinstance(py_modules_uris, list):
         raise TypeError(
@@ -440,9 +440,11 @@ OPTION_TO_VALIDATION_FN = {
     "container": parse_and_validate_container,
 }
 
-# Certain RuntimeEnv options must only contain
-# URIs. This maps those options to functions to
-# validate them.
+# RuntimeEnv can be created with local paths
+# for these options. However, after the packages
+# for these options have been uploaded to GCS,
+# they must be URIs. These functions provide the ability
+# to validate that these options only contain well-formed URIs.
 OPTION_TO_NO_PATH_VALIDATION_FN = {
     "working_dir": validate_working_dir_uri,
     "py_modules": validate_py_modules_uris,

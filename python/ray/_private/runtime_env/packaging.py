@@ -186,16 +186,16 @@ def _hash_directory(
 
 
 def is_path(uri_or_path: str) -> bool:
-    """Returns True if uri_or_path is a uri and False otherwise"""
+    """Returns True if uri_or_path is a URI and False otherwise"""
     parsed = urlparse(uri_or_path)
     return not parsed.scheme
 
 
 def parse_path(pkg_path: str) -> None:
-    """Parse the path to ensure it is well-formed and exists. Works on Windows, Linux, and OSX.
+    """Parse the path to check it is well-formed and exists.
 
     Raises:
-        ValueError if the path does not exist or if it's a circular symlink.
+        ValueError if the path does not exist or if it is a circular symlink.
     """
     path = Path(pkg_path)
     try:

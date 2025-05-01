@@ -389,30 +389,42 @@ def runtime_env_working_dir():
         yield working_dir
 
 
-def test_job_submission_with_runtime_env_as_dict(runtime_env_working_dir):
-    working_dir_path = runtime_env_working_dir
-    working_dir_str = str(working_dir_path)
-    with _ray_start(num_cpus=1):
-        client = JobSubmissionClient()
-        job_id = client.submit_job(
-            entrypoint="echo hi", runtime_env={"working_dir": working_dir_str}
-        )
-        job_details = client.get_job_info(job_id)
-        runtime_env = job_details.runtime_env
-        assert "gcs" in runtime_env["working_dir"]
+@pytest.fixture
+def py_module_whl():
+    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
+        yield tmp_file.name
 
 
-def test_job_submission_with_runtime_env_as_object(runtime_env_working_dir):
-    working_dir_path = runtime_env_working_dir
-    working_dir_str = str(working_dir_path)
+def test_job_submission_with_runtime_env_as_dict(
+    runtime_env_working_dir, py_module_whl
+):
+    working_dir_str = str(runtime_env_working_dir)
     with _ray_start(num_cpus=1):
         client = JobSubmissionClient()
-        job_id = client.submit_job(
-            entrypoint="echo hi", runtime_env=RuntimeEnv(working_dir=working_dir_str)
-        )
+        runtime_env = {"working_dir": working_dir_str, "py_modules": [py_module_whl]}
+        job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
         job_details = client.get_job_info(job_id)
-        runtime_env = job_details.runtime_env
-        assert "gcs" in runtime_env["working_dir"]
+        parsed_runtime_env = job_details.runtime_env
+        assert "gcs://" in parsed_runtime_env["working_dir"]
+        assert len(parsed_runtime_env["py_modules"]) == 1
+        assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_job_submission_with_runtime_env_as_object(
+    runtime_env_working_dir, py_module_whl
+):
+    working_dir_str = str(runtime_env_working_dir)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        runtime_env = RuntimeEnv(
+            working_dir=working_dir_str, py_modules=[py_module_whl]
+        )
+        job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        job_details = client.get_job_info(job_id)
+        parsed_runtime_env = job_details.runtime_env
+        assert "gcs://" in parsed_runtime_env["working_dir"]
+        assert len(parsed_runtime_env["py_modules"]) == 1
+        assert "gcs://" in parsed_runtime_env["py_modules"][0]
 
 
 if __name__ == "__main__":
