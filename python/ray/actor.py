@@ -147,7 +147,11 @@ class ActorMethod:
             should call the function that was passed into the decorator and
             return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
+        _tensor_transport: The tensor transport protocol to use for the actor method.
+            The valid values are "nccl", "gloo", or None.
     """
+
+    valid_transports = ["nccl", "gloo"]
 
     def __init__(
         self,
@@ -162,7 +166,7 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
-        tensor_transport=None,
+        tensor_transport: Optional[Literal["nccl", "gloo"]] = None,
     ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
@@ -195,6 +199,14 @@ class ActorMethod:
         else:
             self._actor_hard_ref = None
 
+        # Validate and set the tensor transport protocol
+        if (
+            tensor_transport is not None
+            and tensor_transport not in self.valid_transports
+        ):
+            raise ValueError(
+                f"tensor_transport must be one of {self.valid_transports} or None"
+            )
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
@@ -356,6 +368,7 @@ class ActorMethod:
             )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
+        assert tensor_transport is None or tensor_transport in self.valid_transports
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
@@ -435,7 +448,6 @@ class ActorMethod:
 
         obj_ref = invocation(args, kwargs)
         if tensor_transport is not None:
-            assert tensor_transport == "nccl"
             assert num_returns == 1
 
             def get_tensor_sizes(self, obj_id):
