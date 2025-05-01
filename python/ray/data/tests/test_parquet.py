@@ -394,7 +394,6 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert not ds._plan.has_started_execution
     assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert not ds._plan.has_started_execution
 
     # Schema isn't available, so we do a partial read.
     assert not ds._plan.has_computed_output()
