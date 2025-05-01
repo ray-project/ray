@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 import ray.data
 import ray.train
@@ -12,7 +13,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.tests.util import DummyWorkerGroup, DummyObjectRefWrapper
+from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
 
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
 

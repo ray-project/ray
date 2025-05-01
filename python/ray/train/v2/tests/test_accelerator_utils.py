@@ -12,11 +12,11 @@ from ray.train.v2._internal.callbacks.accelerators import (
     _get_visible_accelerator_ids_per_worker,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
-from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
+from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 
