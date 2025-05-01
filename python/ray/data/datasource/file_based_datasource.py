@@ -107,9 +107,6 @@ class FileBasedDatasource(Datasource):
     # If zero or negative, reading will be performed in the main thread.
     _NUM_THREADS_PER_TASK = 0
 
-    # List of column names that must be used.
-    _REQUIRED_COLUMN_NAMES = []
-
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -124,7 +121,6 @@ class FileBasedDatasource(Datasource):
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
-        column_names: Optional[Dict[str, str]] = None,
     ):
         _check_pyarrow_version()
 
@@ -202,25 +198,6 @@ class FileBasedDatasource(Datasource):
         # the paths rather than the paths themselves.
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
-
-        self._column_names = {}
-        required_column_names = self._REQUIRED_COLUMN_NAMES.copy()
-        if self._include_paths:
-            required_column_names.append("path")
-        for name in required_column_names:
-            if (
-                column_names is not None
-                and name in column_names
-                and len(column_names[name]) > 0
-            ):
-                self._column_names[name] = column_names[name]
-            else:
-                self._column_names[name] = name
-        if len(self._column_names.values()) != len(set(self._column_names.values())):
-            raise ValueError(
-                "Column names must be unique. Here is what you provided"
-                f"{list(self._column_names.values())}"
-            )
 
     def _paths(self) -> List[str]:
         return ray.get(self._paths_ref)
@@ -497,19 +474,13 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     import pyarrow as pa
     import pyarrow.fs
 
-    wrap_retries = False
-    fs_to_be_wrapped = filesystem  # Only unwrap for S3FileSystemWrapper
-    retryable_errors = []
-    if isinstance(fs_to_be_wrapped, RetryingPyFileSystem):
-        wrap_retries = True
-        retryable_errors = fs_to_be_wrapped.retryable_errors
-        fs_to_be_wrapped = fs_to_be_wrapped.unwrap()
-    if isinstance(fs_to_be_wrapped, pa.fs.S3FileSystem):
-        return _S3FileSystemWrapper(
-            fs_to_be_wrapped,
-            wrap_retries=wrap_retries,
-            retryable_errors=retryable_errors,
-        )
+    base_fs = filesystem
+    if isinstance(filesystem, RetryingPyFileSystem):
+        base_fs = filesystem.unwrap()
+
+    if isinstance(base_fs, pa.fs.S3FileSystem):
+        return _S3FileSystemWrapper(filesystem)
+
     return filesystem
 
 
@@ -517,26 +488,23 @@ def _unwrap_s3_serialization_workaround(
     filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
-        wrap_retries = filesystem._wrap_retries
-        retryable_errors = filesystem._retryable_erros
         filesystem = filesystem.unwrap()
-        if wrap_retries:
-            filesystem = RetryingPyFileSystem.wrap(
-                filesystem, retryable_errors=retryable_errors
-            )
     return filesystem
 
 
 class _S3FileSystemWrapper:
-    def __init__(
-        self,
-        fs: "pyarrow.fs.S3FileSystem",
-        wrap_retries: bool = False,
-        retryable_errors: List[str] = tuple(),
-    ):
+    """pyarrow.fs.S3FileSystem wrapper that can be deserialized safely.
+
+    Importing pyarrow.fs during reconstruction triggers the pyarrow
+    S3 subsystem initialization.
+
+    NOTE: This is only needed for pyarrow<14.0.0 and should be removed
+        once the minimum supported pyarrow version exceeds that.
+        See https://github.com/apache/arrow/pull/38375 for context.
+    """
+
+    def __init__(self, fs: "pyarrow.fs.FileSystem"):
         self._fs = fs
-        self._wrap_retries = wrap_retries
-        self._retryable_erros = retryable_errors
 
     def unwrap(self):
         return self._fs
@@ -551,19 +519,6 @@ class _S3FileSystemWrapper:
 
     def __reduce__(self):
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
-
-
-def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
-    if "filesystem" in kwargs:
-        kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
-
-    return kwargs
-
-
-def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
-    if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
-        kwargs["filesystem"] = kwargs["filesystem"].unwrap()
-    return kwargs
 
 
 def _resolve_kwargs(
