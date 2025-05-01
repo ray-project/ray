@@ -141,7 +141,7 @@ trtexec --onnx=model_repository/stable_diffusion/1/vae_decoder.onnx \
 ```
 
 ## Part 2: Serving
-It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image (or later versions) which has the Triton Server python API library installed, and install the ray serve lib by `pip install "ray[serve]"` inside the image.
+It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image (or later versions) which has the Triton Server python API library installed, and install Ray Serve by running `pip install "ray[serve]"` inside the image.
 
 ### Prepare the model repository
 Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or remote blob store (e.g. AWS S3) containing the model configuration and the model files.
