@@ -70,6 +70,7 @@ def test_deploy_basic(serve_instance, use_handle):
         ("component^name", "component_name"),
         ("component&name", "component_name"),
         ("component*name", "component_name"),
+        ("component�������name", "component_name"),
     ],
 )
 def test_deploy_with_special_characters(serve_instance, component_name, expected_name):
