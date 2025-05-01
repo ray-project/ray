@@ -14,21 +14,54 @@
 
 #include "ray/core_worker/transport/thread_pool.h"
 
+#include <future>
 #include <memory>
 
 namespace ray {
 namespace core {
 
-BoundedExecutor::BoundedExecutor(int max_concurrency) {
+BoundedExecutor::BoundedExecutor(
+    int max_concurrency,
+    std::function<std::function<void()>()> initialize_thread_callback)
+    : work_guard_(boost::asio::make_work_guard(io_context_)) {
   RAY_CHECK(max_concurrency > 0) << "max_concurrency must be greater than 0";
-  pool_ = std::make_unique<boost::asio::thread_pool>(max_concurrency);
+  threads_.reserve(max_concurrency);
+  for (int i = 0; i < max_concurrency; i++) {
+    std::promise<void> init_promise;
+    auto init_future = init_promise.get_future();
+    threads_.emplace_back([this, initialize_thread_callback, &init_promise]() {
+      std::function<void()> releaser;
+      if (initialize_thread_callback) {
+        releaser = initialize_thread_callback();
+      }
+      init_promise.set_value();
+      io_context_.run();
+      if (releaser) {
+        releaser();
+      }
+    });
+    init_future.wait();
+  }
+}
+
+void BoundedExecutor::Post(std::function<void()> fn) {
+  boost::asio::post(io_context_, std::move(fn));
 }
 
 /// Stop the thread pool.
-void BoundedExecutor::Stop() { pool_->stop(); }
+void BoundedExecutor::Stop() {
+  work_guard_.reset();
+  io_context_.stop();
+}
 
 /// Join the thread pool.
-void BoundedExecutor::Join() { pool_->join(); }
+void BoundedExecutor::Join() {
+  for (auto &thread : threads_) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+}
 
 }  // namespace core
 }  // namespace ray

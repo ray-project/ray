@@ -14,11 +14,15 @@
 
 #pragma once
 
+#include <boost/asio/executor_work_guard.hpp>
+#include <boost/asio/io_context.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
 #include <functional>
 #include <memory>
+#include <thread>
 #include <utility>
+#include <vector>
 
 #include "ray/util/logging.h"
 
@@ -37,10 +41,12 @@ class BoundedExecutor {
     return max_concurrency_in_default_group > 1 || has_other_concurrency_groups;
   }
 
-  explicit BoundedExecutor(int max_concurrency);
+  explicit BoundedExecutor(
+      int max_concurrency,
+      std::function<std::function<void()>()> initialize_thread_callback);
 
   /// Posts work to the pool
-  void Post(std::function<void()> fn) { boost::asio::post(*pool_, std::move(fn)); }
+  void Post(std::function<void()> fn);
 
   /// Stop the thread pool.
   void Stop();
@@ -49,8 +55,9 @@ class BoundedExecutor {
   void Join();
 
  private:
-  /// The underlying thread pool for running tasks.
-  std::unique_ptr<boost::asio::thread_pool> pool_;
+  boost::asio::io_context io_context_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+  std::vector<std::thread> threads_;
 };
 
 }  // namespace core

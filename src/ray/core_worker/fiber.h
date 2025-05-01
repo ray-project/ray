@@ -101,7 +101,7 @@ class FiberState {
     return true;
   }
 
-  explicit FiberState(int max_concurrency)
+  explicit FiberState(int max_concurrency, std::function<std::function<void()>()>)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {
