@@ -1,6 +1,3 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
-
 # Head node
 head_node_type:
   name: head
