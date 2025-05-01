@@ -238,7 +238,7 @@ def range(
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
     This function allows for easy creation of synthetic datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. Column name defaults to "id".
 
     Examples:
 
@@ -248,8 +248,6 @@ def range(
         Dataset(num_rows=10000, schema={id: int64})
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
         [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
-
-        Column name defaults to "id".
 
     Args:
         n: The upper bound of the range of integers.
@@ -294,7 +292,7 @@ def range_tensor(
     [0...n].
 
     This function allows for easy creation of synthetic tensor datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. Colum name defaults to "data".
 
     Examples:
 
@@ -306,8 +304,6 @@ def range_tensor(
         [{'data': array([[0, 0],
                [0, 0]])}, {'data': array([[2, 2],
                [2, 2]])}]
-
-        Colum name defaults to data.
 
     Args:
         n: The upper bound of the range of tensor records.
@@ -452,7 +448,7 @@ def read_audio(
     override_num_blocks: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
-    """Creates a :class:`~ray.data.Dataset` from audio files.
+    """Creates a :class:`~ray.data.Dataset` from audio files. Column names default to "amplitude" and "sample_rate".
 
     Examples:
         >>> import ray
@@ -463,8 +459,6 @@ def read_audio(
         ------       ----
         amplitude    numpy.ndarray(shape=(1, 191760), dtype=float)
         sample_rate  int64
-
-        Column names default to "amplitude" and "sample_rate".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -545,6 +539,7 @@ def read_videos(
     """Creates a :class:`~ray.data.Dataset` from video files.
 
     Each row in the resulting dataset represents a video frame.
+    Column names default to "frame", "frame_index" and "frame_timestamp".
 
     Examples:
         >>> import ray
@@ -555,8 +550,6 @@ def read_videos(
         ------       ----
         frame        numpy.ndarray(shape=(720, 1280, 3), dtype=uint8)
         frame_index  int64
-
-        Column names default to "frame", "frame_index" and "frame_timestamp".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -989,7 +982,7 @@ def read_images(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from image files.
+    """Creates a :class:`~ray.data.Dataset` from image files. Column name defaults to "image".
 
     Examples:
         >>> import ray
@@ -1034,8 +1027,6 @@ def read_images(
         ------  ----
         image   numpy.ndarray(shape=(224, 224, 3), dtype=uint8)
         class   string
-
-        Column name defaults to "image".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1613,7 +1604,7 @@ def read_text(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from lines stored in text files.
+    """Create a :class:`~ray.data.Dataset` from lines stored in text files. Column names default to "text".
 
     Examples:
         Read a file in remote storage.
@@ -1629,8 +1620,6 @@ def read_text(
 
         >>> ray.data.read_text( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
-
-        Column names default to "text".
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1837,7 +1826,7 @@ def read_numpy(
     override_num_blocks: Optional[int] = None,
     **numpy_load_args,
 ) -> Dataset:
-    """Create an Arrow dataset from numpy files.
+    """Create an Arrow dataset from numpy files. Column name defaults to "data".
 
     Examples:
         Read a directory of files in remote storage.
@@ -1853,8 +1842,6 @@ def read_numpy(
 
         >>> ray.data.read_numpy( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
-
-        Column name defaults to "data".
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -2838,7 +2825,7 @@ def from_pandas_refs(
 
 @PublicAPI
 def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDataset:
-    """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays.
+    """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays. Column name defaults to "data".
 
     Examples:
         >>> import numpy as np
@@ -2851,8 +2838,6 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
 
         >>> ray.data.from_numpy([arr, arr])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
-
-        Column name defaults to "data".
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
@@ -2871,7 +2856,7 @@ def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
 ) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
-    NumPy ndarrays.
+    NumPy ndarrays. Column name defaults to "data".
 
     Examples:
         >>> import numpy as np
@@ -2884,8 +2869,6 @@ def from_numpy_refs(
 
         >>> ray.data.from_numpy_refs([arr_ref, arr_ref])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
-
-        Column name defaults to "data".
 
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
@@ -3334,9 +3317,7 @@ def from_torch(
 
     .. note::
         The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.
-        The data will be sequentially streamed with one single read task.
-
-    The column name defaults to "data".
+        The data will be sequentially streamed with one single read task. The column name defaults to "data".
 
     Examples:
         >>> import ray
