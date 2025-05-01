@@ -1,4 +1,6 @@
+import contextvars
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Dict, List
 
 from ray.serve._private.common import ReplicaID, RunningReplicaInfo
@@ -7,8 +9,6 @@ from ray.serve._private.replica_scheduler.common import (
     ReplicaQueueLengthCache,
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
-from dataclasses import dataclass
-import contextvars
 
 
 @dataclass()

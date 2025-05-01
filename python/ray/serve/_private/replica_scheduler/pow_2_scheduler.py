@@ -40,8 +40,8 @@ from ray.serve._private.replica_scheduler.common import (
 from ray.serve._private.replica_scheduler.replica_scheduler import (
     ReplicaScheduler,
     _get_request_scheduling_context,
-    _set_request_scheduling_context,
     _RequestSchedulingContext,
+    _set_request_scheduling_context,
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.util import metrics
