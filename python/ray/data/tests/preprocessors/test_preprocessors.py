@@ -185,6 +185,11 @@ def test_transform_all_configs():
             assert len(data["value"]) == batch_size
             return data
 
+        def _transform_pandas(self, data):
+            raise RuntimeError(
+                "Pandas transform should not be called with numpy batch format."
+            )
+
         def _determine_transform_to_use(self):
             return "numpy"
 
