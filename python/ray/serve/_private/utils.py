@@ -42,6 +42,8 @@ try:
 except ImportError:
     np = None
 
+FILE_NAME_REGEX = r"[^a-zA-Z0-9_-]"
+
 MESSAGE_PACK_OFFSET = 9
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
     "Streaming deployment handle results cannot be passed to "
@@ -560,8 +562,6 @@ def get_component_file_name(
     suffix: str = "",
 ) -> str:
     """Get the component's file name. Replaces special characters with underscores."""
-    FILE_NAME_REGEX = r"[^a-zA-Z0-9_-]"
-
     component_name = re.sub(FILE_NAME_REGEX, "_", component_name)
     component_id = re.sub(FILE_NAME_REGEX, "_", component_id)
 
