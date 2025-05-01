@@ -17,7 +17,6 @@ Alternatively, you can also consider and compare other inference optimizations t
 3. After exporting to ONNX, convert it into a TensorRT engine serialized file.
 4. Finally, once everything is properly formatted and in place, you can load the model for serving.
 
-TL;DR, there's a lot of extra setup and preprocessing before you get to the actual serving part.
 
 ## Part I: Convert and serialize the model
 The encoder, unet and decoder are all converted using onnx format and serialized using TensorRT in this part.
