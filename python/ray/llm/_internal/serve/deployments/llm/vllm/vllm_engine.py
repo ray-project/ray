@@ -95,6 +95,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
         **{
             "model": model,
             "distributed_executor_backend": "ray",
+            "guided_decoding_backend": "xgrammar",
             "disable_log_stats": False,
             **engine_config.get_initialization_kwargs(),
         }
