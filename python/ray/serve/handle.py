@@ -750,6 +750,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         """
 
         future, request_metadata = self._remote(args, kwargs)
+        print(f"[remote] future: {future}, request_metadata: {request_metadata}, self.handle_options.stream: {self.handle_options.stream}")
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:

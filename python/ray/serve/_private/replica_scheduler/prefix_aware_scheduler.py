@@ -809,7 +809,7 @@ class PrefixAwareReplicaScheduler(
         #     # pending_request.metadata
         # )
         matched_pending_request = pending_request
-        if matched_pending_request is not None:
+        if matched_pending_request is not None and matched_pending_request in self._pending_requests_to_fulfill:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -974,3 +974,99 @@ class PrefixAwareReplicaScheduler(
             raise e from None
 
         return replica
+
+    async def on_request_scheduled(
+        self, pending_request: PendingRequest, chosen_replica: RunningReplica
+    ) -> None:
+        text = self.get_input_text(pending_request)
+        await self._tree_deployment.insert.remote(text, tenant=chosen_replica.replica_id)
+
+    async def on_response_received(
+        self, pending_request: PendingRequest, chosen_replica: RunningReplica, result
+    ):
+        import ray
+        print(f"[on_response_received] result: {result}") # <ray.serve._private.replica_result.ActorReplicaResult object at 0x71f8f8567a50>
+        print(f"[on_response_received] result._obj_ref: {result._obj_ref}") # None
+        print(f"[on_response_received] result._obj_ref_gen: {result._obj_ref_gen}") # <ray._raylet.ObjectRefGenerator object at 0x71f8f839bc50>
+        print(f"[on_response_received] result._is_streaming: {result._is_streaming}") # True
+        print(f"[on_response_received] result._request_id: {result._request_id}") # 04df34c1-a768-4c06-bdc5-9fdc63e1920b
+        obj_ref_gen = result._obj_ref_gen
+        print(f"[on_response_received] obj_ref_gen: {obj_ref_gen}")
+        first_result_waiting = await obj_ref_gen.__anext__() # or next(obj_ref_gen)
+        print(f"[on_response_received] first_result_waiting: {first_result_waiting}")
+        first_result_gotten = ray.get(first_result_waiting)
+        print(f"[on_response_received] first_result_gotten: {first_result_gotten}")
+        wrapped_obj_ref_gen = PrefixAwareObjectRefGenerator(obj_ref_gen, first_result_waiting)
+        print(f"[on_response_received] wrapped_obj_ref_gen: {wrapped_obj_ref_gen}")
+        result._obj_ref_gen = wrapped_obj_ref_gen
+        print(f"[on_response_received] result._obj_ref_gen: {result._obj_ref_gen}")
+        return result
+        # pass
+    
+# async def wrapped_generator(generator, first_response):
+#     print(f"[wrapped_generator] first_response: {first_response}")
+#     yield first_response
+#     print(f"[wrapped_generator] entering generator: {generator}")
+#     async for response in generator:
+#         print(f"[wrapped_generator] response: {response}")
+#         yield response
+#     print(f"[wrapped_generator] exiting generator")
+
+# you don’t strictly need to import ObjectRefGenerator,
+# but this shows your intention
+from ray._raylet import ObjectRefGenerator  
+
+class PrefixAwareObjectRefGenerator:
+    def __init__(self, real_gen, first_ref):
+        self._real = real_gen
+        self._first = first_ref
+        self._first_yielded = False
+        print(f"[PrefixAwareObjectRefGenerator] self._real: {self._real}")
+        print(f"[PrefixAwareObjectRefGenerator] self._first: {self._first}")
+        print(f"[PrefixAwareObjectRefGenerator] self._first_yielded: {self._first_yielded}")
+
+    # synchronous iterator protocol
+    def __iter__(self):
+        print(f"[PrefixAwareObjectRefGenerator] __iter__")
+        return self
+
+    def __next__(self):
+        print(f"[PrefixAwareObjectRefGenerator] __next__")
+        if not self._first_yielded:
+            self._first_yielded = True
+            return self._first
+        return next(self._real)
+
+    # asynchronous iterator protocol
+    def __aiter__(self):
+        print(f"[PrefixAwareObjectRefGenerator] __aiter__")
+        return self
+
+    async def __anext__(self):
+        print(f"[PrefixAwareObjectRefGenerator] __anext__")
+        if not self._first_yielded:
+            self._first_yielded = True
+            return self._first
+        return await self._real.__anext__()
+
+    # Ray generator–specific APIs
+    def completed(self):
+        print(f"[PrefixAwareObjectRefGenerator] completed")
+        return self._real.completed()
+
+    def _on_completed(self, callback):
+        print(f"[PrefixAwareObjectRefGenerator] _on_completed")
+        return self._real._on_completed(callback)
+
+    # the blocking “next” that Ray exposes
+    def _next_sync(self, timeout_s=None):
+        print(f"[PrefixAwareObjectRefGenerator] _next_sync")
+        if not self._first_yielded:
+            self._first_yielded = True
+            return self._first
+        return self._real._next_sync(timeout_s)
+
+    # let ANY other attribute just pass through
+    def __getattr__(self, name):
+        print(f"[PrefixAwareObjectRefGenerator] __getattr__ with name: {name}")
+        return getattr(self._real, name)

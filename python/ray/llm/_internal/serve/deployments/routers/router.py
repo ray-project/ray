@@ -298,6 +298,7 @@ class LLMRouter:
 
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
+            # yield response, model_handle
 
     async def model(self, model_id: str) -> Optional[ModelData]:
         if model_id in self._llm_configs:
@@ -371,10 +372,15 @@ class LLMRouter:
         Returns:
             A response object with completions.
         """
+        print(f"[completions] body: {body}")
         async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+            # results, model_handle = self._get_response(body=body, call_method="completions")
             results = self._get_response(body=body, call_method="completions")
+            print(f"[completions] results: {results}")
             if body.stream:
                 first_response, wrapper = await _peek_at_openai_json_generator(results)
+                print(f"[completions] first_response: {first_response}")
+                print(f"[completions] wrapper: {wrapper}")
                 if isinstance(first_response, ErrorResponse):
                     raise OpenAIHTTPException(
                         message=first_response.message,
@@ -384,6 +390,11 @@ class LLMRouter:
                 return StreamingResponse(wrapper, media_type="text/event-stream")
 
             result = await results.__anext__()
+            print(f"[completions] result = await results.__anext__(): {result}")
+
+            # scheduler = model_handle._router._replica_scheduler
+            # await scheduler.on_response_received(chosen_replica_id, result)
+
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
                     message=result.message,
@@ -392,7 +403,9 @@ class LLMRouter:
                 )
 
             if isinstance(result, CompletionResponse):
-                return JSONResponse(content=result.model_dump())
+                json_response = JSONResponse(content=result.model_dump())
+                print(f"[completions] json_response: {json_response}")
+                return json_response
 
     @fastapi_router_app.post("/v1/chat/completions")
     async def chat(self, body: ChatCompletionRequest) -> Response:
@@ -404,6 +417,7 @@ class LLMRouter:
         """
 
         async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+            # results, model_handle = self._get_response(body=body, call_method="chat")
             results = self._get_response(body=body, call_method="chat")
             if body.stream:
                 first_response, wrapper = await _peek_at_openai_json_generator(results)

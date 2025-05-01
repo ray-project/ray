@@ -33,6 +33,22 @@ class ReplicaScheduler(ABC):
         pass
 
     @abstractmethod
+    async def on_request_scheduled(
+        self, pending_request: PendingRequest, chosen_replica: RunningReplica
+    ) -> None:
+        """Called *after* we’ve chosen which replica to drive the request to,
+        but *before* we actually send it.  Use this for e.g. `tree.insert(input)`.
+        """
+    
+    @abstractmethod
+    async def on_response_received(
+        self, pending_request: PendingRequest, chosen_replica: RunningReplica, result
+    ):
+        """Called *after* the replica returns a result (or error).  Use this
+        for e.g. `tree.insert(output)`.  Must not block the client.”
+        """
+
+    @abstractmethod
     def create_replica_wrapper(
         self, replica_info: RunningReplicaInfo
     ) -> RunningReplica:

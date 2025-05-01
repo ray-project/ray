@@ -921,3 +921,13 @@ class PowerOfTwoChoicesReplicaScheduler(
             raise e from None
 
         return replica
+    
+    async def on_request_scheduled(
+        self, pending_request: PendingRequest, chosen_replica: RunningReplica
+    ) -> None:
+        pass
+
+    async def on_response_received(
+        self, pending_request: PendingRequest, chosen_replica: RunningReplica, result
+    ):
+        return result
