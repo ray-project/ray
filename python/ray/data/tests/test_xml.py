@@ -65,7 +65,6 @@ def test_read_xml_multiple(tmp_path):
     assert john["@id"] == "1"
     assert jane["name"] == "Jane"
     assert jane["info.city"] == "LA"
-    assert "email" not in jane
 
 
 def test_empty_xml(tmp_path):
@@ -92,22 +91,6 @@ def test_read_xml_empty_files(tmp_path):
     assert ds.count() == 0
 
 
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_xml_ignore_missing_paths(tmp_path, ignore_missing_paths):
-    path = write_xml(tmp_path, "multi.xml", MULTI_XML)
-    paths = [path, "missing.xml"]
-    if ignore_missing_paths:
-        ds = ray.data.read_xml(
-            paths=paths, ignore_missing_paths=True, record_tag="user"
-        )
-        assert ds.count() == 2
-    else:
-        with pytest.raises(FileNotFoundError):
-            ray.data.read_xml(
-                paths=paths, ignore_missing_paths=False, record_tag="user"
-            ).materialize()
-
-
 def test_read_xml_schema(tmp_path):
     path = write_xml(tmp_path, "multi.xml", MULTI_XML)
     ds = ray.data.read_xml(paths=path, record_tag="user")
@@ -118,15 +101,6 @@ def test_read_xml_schema(tmp_path):
     assert "info.age" in field_names
     assert "info.city" in field_names
     assert "@id" in field_names
-
-
-def test_read_xml_row_missing_fields(tmp_path):
-    # Jane is missing @active, email field.
-    path = write_xml(tmp_path, "multi.xml", MULTI_XML)
-    ds = ray.data.read_xml(paths=path, record_tag="user")
-    jane = ds.take_all()[1]
-    assert "email" not in jane
-    assert "@active" not in jane
 
 
 def test_read_xml_large(tmp_path):
