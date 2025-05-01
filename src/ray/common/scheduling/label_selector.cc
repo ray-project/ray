@@ -19,9 +19,7 @@ namespace ray {
 // Constructor to parse LabelSelector data type from proto.
 LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
-  for (const auto &pair : label_selector) {
-    const std::string &key = pair.first;
-    const std::string &value = pair.second;
+  for (const auto &[key,value] : label_selector) {
 
     if (key.empty()) {
       throw std::invalid_argument("Label selector key must be a non-empty string.");
