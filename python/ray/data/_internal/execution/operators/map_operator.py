@@ -492,7 +492,7 @@ class MapOperator(OneToOneOperator, ABC):
     def min_max_resource_requirements(
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:
