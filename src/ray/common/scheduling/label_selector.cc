@@ -32,7 +32,7 @@ LabelSelector::LabelSelector(
 void LabelSelector::AddConstraint(const std::string &key, const std::string &value) {
   auto [op, values] = ParseLabelSelectorValue(key, value);
   LabelConstraint constraint(key, op, values);
-  AddConstraint(constraint);
+  AddConstraint(std::move(constraint));
 }
 
 std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
