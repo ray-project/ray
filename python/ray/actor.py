@@ -162,7 +162,7 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
-        tensor_transport = None,
+        tensor_transport=None,
     ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
@@ -374,8 +374,11 @@ class ActorMethod:
 
                     def send(self, obj_id, dst_rank):
                         import torch.distributed as dist
+
                         worker = ray._private.worker.global_worker
-                        assert obj_id in worker.in_actor_object_store, worker.in_actor_object_store
+                        assert (
+                            obj_id in worker.in_actor_object_store
+                        ), worker.in_actor_object_store
                         tensors = worker.in_actor_object_store[obj_id]
                         for tensor in tensors:
                             dist.send(tensor, dst_rank)
@@ -383,6 +386,7 @@ class ActorMethod:
                     def recv(self, obj_id, src_rank, tensor_meta):
                         import torch
                         import torch.distributed as dist
+
                         worker = ray._private.worker.global_worker
                         tensors = []
                         for meta in tensor_meta:
@@ -436,7 +440,9 @@ class ActorMethod:
 
             def get_tensor_sizes(self, obj_id):
                 worker = ray._private.worker.global_worker
-                return [(t.shape, t.dtype) for t in worker.in_actor_object_store[obj_id]]
+                return [
+                    (t.shape, t.dtype) for t in worker.in_actor_object_store[obj_id]
+                ]
 
             actor = self._actor_hard_ref or self._actor_ref()
             tensor_meta = actor.__ray_call__.remote(get_tensor_sizes, obj_ref.hex())

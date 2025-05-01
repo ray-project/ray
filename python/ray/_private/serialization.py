@@ -257,6 +257,7 @@ class SerializationContext:
         # TODO(swang): self.get_outer_object_ref() is set to ObjectID::Nil.
         worker = ray._private.worker.global_worker
         from ray.experimental.channel import ChannelContext
+
         ctx = ChannelContext.get_current().serialization_context
         for obj_ref, tensors in worker.in_actor_object_store.items():
             ctx.reset_out_of_band_tensors(tensors)
@@ -550,7 +551,7 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value, obj_id = None):
+    def serialize(self, value, obj_id=None):
         """Serialize an object.
 
         Args:
@@ -563,6 +564,7 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             from ray.experimental.channel import ChannelContext
+
             ctx = ChannelContext.get_current().serialization_context
             # TODO(swang): Only set the external transport flag if
             # this is the output of an actor method that was
@@ -578,7 +580,7 @@ class SerializationContext:
             tensors, _ = ctx.reset_out_of_band_tensors([])
             if tensors:
                 assert obj_id is not None
-                obj_id = obj_id.decode('ascii')
+                obj_id = obj_id.decode("ascii")
                 worker = ray._private.worker.global_worker
                 worker.in_actor_object_store[obj_id] = tensors
 
