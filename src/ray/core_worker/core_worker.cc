@@ -2420,10 +2420,13 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    const ray::rpc::LabelSelector &label_selector) {
+    const std::unordered_map<std::string, std::string> &label_selector_dict) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
+
+  // Parse label selector strings to LabelSelector data type.
+  auto label_selector = ray::LabelSelector(label_selector_dict);
 
   bool returns_dynamic = num_returns == -1;
   if (returns_dynamic) {
@@ -2469,7 +2472,7 @@ void CoreWorker::BuildCommonTaskSpec(
       concurrency_group_name,
       enable_task_events,
       labels,
-      label_selector);
+      std::make_shared<LabelSelector>(label_selector));
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);

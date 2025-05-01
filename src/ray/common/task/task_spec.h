@@ -26,6 +26,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
 
@@ -381,7 +382,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// this task on.
   ///
   /// \return The labels that are required for the execution of this task on a node.
-  const rpc::LabelSelector &GetLabelSelector() const;
+  const LabelSelector &GetLabelSelector() const;
 
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
@@ -523,6 +524,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   SchedulingClass sched_cls_id_ = 0;
   int runtime_env_hash_ = 0;
 
+  // Field storing label selector for scheduling Task on a node.
+  std::shared_ptr<LabelSelector> label_selector_  = std::make_shared<LabelSelector>();
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;

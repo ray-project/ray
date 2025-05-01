@@ -84,11 +84,10 @@ message LabelMatchExpressions {
 // TODO (ryanaoleary): replace LabelOperator once NodeLabelSchedulingStrategy
 // is deprecated.
 enum LabelSelectorOperator {
-  LABEL_OPERATOR_UNSPECIFIED = 0;
   // This is to support equality or in semantics.
-  LABEL_OPERATOR_IN = 1;
+  IN = 0;
   // This is to support not equal or not in semantics.
-  LABEL_OPERATOR_NOT_IN = 2;
+  NOT_IN = 1;
 }
 
 // A node label constraint with a key, one or a list of values and an operator.

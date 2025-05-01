@@ -221,7 +221,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
-    const rpc::LabelSelector &label_selector,
+    const LabelSelector &label_selector,
     const rpc::SchedulingStrategy &scheduling_strategy,
     bool requires_object_store_memory,
     bool actor_creation,
@@ -274,7 +274,7 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 bool ClusterResourceScheduler::IsSchedulableOnNode(
     scheduling::NodeID node_id,
     const absl::flat_hash_map<std::string, double> &shape,
-    const rpc::LabelSelector &label_selector,
+    const LabelSelector &label_selector,
     bool requires_object_store_memory) {
   auto resource_request =
       ResourceMapToResourceRequest(shape, requires_object_store_memory);
@@ -325,7 +325,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
       auto resource_request = ResourceMapToResourceRequest(
           task_spec.GetRequiredPlacementResources().GetResourceMap(),
           requires_object_store_memory);
-      resource_request.SetLabelSelector(task_spec.GetLabelSelector());
+      const auto &selector = task_spec.GetLabelSelector();
+      resource_request.SetLabelSelector(selector);
       if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
                                                           resource_request)) {
         *is_infeasible = false;

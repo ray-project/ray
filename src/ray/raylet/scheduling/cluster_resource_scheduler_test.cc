@@ -309,7 +309,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
       remote_node_id.Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
   auto node_id_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -323,7 +323,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
       local_node_id.Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
   auto node_id_2 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -337,7 +337,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
       NodeID::FromRandom().Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
   auto node_id_3 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -351,7 +351,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
       NodeID::FromRandom().Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
   auto node_id_4 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -375,7 +375,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
       local_node_id.Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
   auto node_id_5 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -389,7 +389,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
       local_node_id.Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
   auto node_id_6 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -417,7 +417,7 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_spread_scheduling_strategy();
   auto node_id_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -429,7 +429,7 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       node_id_1, resource_total, resource_available);
   auto node_id_2 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -459,7 +459,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   scheduling_strategy.mutable_default_scheduling_strategy();
   // Select node with the remote node preferred.
   auto node_id_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -471,7 +471,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
 
   // If no preferred node specified, then still prefer the local one.
   auto node_id_2 = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                             rpc::LabelSelector(),
+                                                             LabelSelector(),
                                                              scheduling_strategy,
                                                              false,
                                                              false,
@@ -1078,7 +1078,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
   scheduling_strategy.mutable_default_scheduling_strategy();
   ASSERT_EQ(scheduling::NodeID(node_id.Binary()),
             resource_scheduler.GetBestSchedulableNode(resource,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1091,7 +1091,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
       .WillOnce(::testing::Return(nullptr));
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource,
-                                          rpc::LabelSelector(),
+                                          LabelSelector(),
                                           scheduling_strategy,
                                           false,
                                           false,
@@ -1304,7 +1304,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   scheduling_strategy.mutable_default_scheduling_strategy();
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource_spec,
-                                          rpc::LabelSelector(),
+                                          LabelSelector(),
                                           scheduling_strategy,
                                           false,
                                           false,
@@ -1321,7 +1321,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
       remote_feasible, resource_spec, {{"CPU", 0.}});
   ASSERT_EQ(remote_feasible,
             resource_scheduler.GetBestSchedulableNode(resource_spec,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1337,7 +1337,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
       remote_available, resource_spec, resource_spec);
   ASSERT_EQ(remote_available,
             resource_scheduler.GetBestSchedulableNode(resource_spec,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1462,7 +1462,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       for (int j = 0; j < num_slots_available; j++) {
         ASSERT_EQ(remote,
                   resource_scheduler.GetBestSchedulableNode(task_spec,
-                                                            rpc::LabelSelector(),
+                                                            LabelSelector(),
                                                             scheduling_strategy,
                                                             false,
                                                             false,
@@ -1476,7 +1476,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
       ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec,
-                                                          rpc::LabelSelector(),
+                                                          LabelSelector(),
                                                           scheduling_strategy,
                                                           false,
                                                           false,
@@ -1506,7 +1506,7 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   scheduling_strategy.mutable_default_scheduling_strategy();
 
   auto result = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                          rpc::LabelSelector(),
+                                                          LabelSelector(),
                                                           scheduling_strategy,
                                                           false,
                                                           false,
@@ -1520,7 +1520,7 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
       scheduling::ResourceID("custom123"), {0., 1.0, 1.0});
 
   result = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                     rpc::LabelSelector(),
+                                                     LabelSelector(),
                                                      scheduling_strategy,
                                                      false,
                                                      false,
@@ -1532,7 +1532,7 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
 
   resource_request["custom123"] = 3;
   result = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                     rpc::LabelSelector(),
+                                                     LabelSelector(),
                                                      scheduling_strategy,
                                                      false,
                                                      false,
@@ -1547,7 +1547,7 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("custom123"), {1.0, 1.0, 1.0});
   result = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                     rpc::LabelSelector(),
+                                                     LabelSelector(),
                                                      scheduling_strategy,
                                                      false,
                                                      false,
@@ -1560,7 +1560,7 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   resource_scheduler.GetLocalResourceManager().DeleteLocalResource(
       scheduling::ResourceID("custom123"));
   result = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                     rpc::LabelSelector(),
+                                                     LabelSelector(),
                                                      scheduling_strategy,
                                                      false,
                                                      false,
@@ -1605,7 +1605,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   scheduling_strategy.mutable_default_scheduling_strategy();
   // Normally we prefer local.
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1617,7 +1617,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   // If spillback is forced, we try to spill to remote, but only if there is a
   // schedulable node.
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1630,7 +1630,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       node_ids[50], resource_spec, {});
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1642,7 +1642,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       node_ids[51], resource_spec, resource_spec);
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec,
-                                                      rpc::LabelSelector(),
+                                                      LabelSelector(),
                                                       scheduling_strategy,
                                                       false,
                                                       false,
@@ -1798,7 +1798,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   bool is_infeasible;
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
-  rpc::LabelSelector label_selector = rpc::LabelSelector();
+  LabelSelector label_selector;
   // Schedule node
   auto best_node_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
                                                                label_selector,
@@ -1813,10 +1813,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   ASSERT_FALSE(is_infeasible);
 
   // Create label constraint and add second node
-  auto label_constraint = label_selector.add_label_constraints();
-  label_constraint->set_label_key("ray.io/accelerator-type");
-  label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
-  label_constraint->add_label_values("A100");
+  label_selector.AddConstraint("ray.io/accelerator-type", "A100");
 
   // Add label selector to TaskSpec and confirm node is no longer schedulable
   TaskSpecBuilder label_selector_spec;

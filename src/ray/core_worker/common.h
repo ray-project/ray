@@ -22,6 +22,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -72,7 +73,7 @@ struct TaskOptions {
               std::string serialized_runtime_env_info_p = "{}",
               bool enable_task_events_p = kDefaultTaskEventEnabled,
               std::unordered_map<std::string, std::string> labels_p = {},
-              ray::rpc::LabelSelector label_selector_p = ray::rpc::LabelSelector())
+              std::unordered_map<std::string, std::string> label_selector_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -104,7 +105,7 @@ struct TaskOptions {
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
-  ray::rpc::LabelSelector label_selector;
+  std::unordered_map<std::string, std::string> label_selector;
 };
 
 /// Options for actor creation tasks.
@@ -128,7 +129,7 @@ struct ActorCreationOptions {
       int32_t max_pending_calls_p = -1,
       bool enable_task_events_p = kDefaultTaskEventEnabled,
       std::unordered_map<std::string, std::string> labels_p = {},
-      ray::rpc::LabelSelector label_selector_p = ray::rpc::LabelSelector())
+      std::unordered_map<std::string, std::string> label_selector_p = {})
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -204,7 +205,7 @@ struct ActorCreationOptions {
   const bool enable_task_events = kDefaultTaskEventEnabled;
   const std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this actor.
-  ray::rpc::LabelSelector label_selector;
+  const std::unordered_map<std::string, std::string> label_selector;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

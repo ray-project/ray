@@ -169,6 +169,7 @@ ray_cc_library(
         "placement_group.h",
         "scheduling/cluster_resource_data.h",
         "scheduling/fixed_point.h",
+        "scheduling/label_selector.h",
         "scheduling/resource_instance_set.h",
         "scheduling/resource_set.h",
         "scheduling/scheduling_ids.h",

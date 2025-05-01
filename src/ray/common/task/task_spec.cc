@@ -306,8 +306,9 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
-const rpc::LabelSelector &TaskSpecification::GetLabelSelector() const {
-  return message_->label_selector();
+const LabelSelector &TaskSpecification::GetLabelSelector() const {
+  RAY_CHECK(label_selector_ != nullptr) << "label_selector_ is not initialized";
+  return *label_selector_;
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {

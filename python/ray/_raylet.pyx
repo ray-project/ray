@@ -107,9 +107,6 @@ from ray.includes.common cimport (
     CLabelExists,
     CLabelDoesNotExist,
     CLabelOperator,
-    CLabelSelectorOperator,
-    CLabelConstraint,
-    CLabelSelector,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -756,42 +753,21 @@ cdef int prepare_labels(
     return 0
 
 cdef int prepare_label_selector(
-        dict label_dict,
-        CLabelSelector *label_selector) except -1:
+        dict label_selector_dict,
+        unordered_map[c_string, c_string] *label_selector) except -1:
 
-    if label_dict is None:
+    if label_selector_dict is None:
         return 0
 
-    for key, value in label_dict.items():
+    for key, value in label_selector_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Label key must be string, but got {type(key)}")
+            raise ValueError(f"Label selector key must be string, but got {type(key)}")
         if not isinstance(value, str):
-            raise ValueError(f"Label value must be string, but got {type(value)}")
-
-        constraint = label_selector.add_label_constraints()
-        constraint.set_label_key(key.encode("utf-8"))
-
-        val = value.strip()
-        is_negated = val.startswith("!")
-
-        if is_negated:
-            val = val[1:].strip()
-
-        if val.startswith("in(") and val.endswith(")"):
-            values = val[3:-1].split(",")
-            values = [v.strip() for v in values if v.strip()]
-            if not values:
-                raise ValueError(f"No values provided for key '{key}'")
-            constraint.set_operator_(CLabelSelectorOperator.LABEL_OPERATOR_NOT_IN if is_negated else CLabelSelectorOperator.LABEL_OPERATOR_IN)
-            for v in values:
-                constraint.add_label_values(v.encode("utf-8"))
-        elif "," in val:
-            raise ValueError(f"Invalid multi-value label format for key '{key}': '{value}'")
-        else:
-            constraint.set_operator_(CLabelSelectorOperator.LABEL_OPERATOR_NOT_IN if is_negated else CLabelSelectorOperator.LABEL_OPERATOR_IN)
-            constraint.add_label_values(val.encode("utf-8"))
+            raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
+
 
 cdef int prepare_resources(
         dict resource_dict,
@@ -3754,7 +3730,7 @@ cdef class CoreWorker:
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
-            CLabelSelector c_label_selector
+            unordered_map[c_string, c_string] c_label_selector
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3857,7 +3833,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
-            CLabelSelector c_label_selector
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -4016,7 +3992,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
-            CLabelSelector c_label_selector
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
