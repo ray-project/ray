@@ -291,8 +291,8 @@ def test_invalid_join_not_matching_key_columns(
     assert (
         str(exc_info.value)
         == "Key columns are expected to be present and have the same types in both "
-           "left and right operands of the join operation: left has None, but right "
-           "has Column  Type\n------  ----\nid      int64"
+        "left and right operands of the join operation: left has None, but right "
+        "has Column  Type\n------  ----\nid      int64"
     )
 
     # Case 2: Check mismatching key column
@@ -312,9 +312,9 @@ def test_invalid_join_not_matching_key_columns(
     assert (
         str(exc_info.value)
         == "Key columns are expected to be present and have the same types in both "
-           "left and right operands of the join operation: left has "
-           "Column  Type\n------  ----\nid      int64, but right has "
-           "Column  Type\n------  ----\nid      double"
+        "left and right operands of the join operation: left has "
+        "Column  Type\n------  ----\nid      int64, but right has "
+        "Column  Type\n------  ----\nid      double"
     )
 
 
@@ -341,10 +341,10 @@ def test_default_shuffle_aggregator_args():
     )
 
     assert {
-               "num_cpus": 0.125,
-               "memory": 939524096,
-               "scheduling_strategy": "SPREAD",
-           } == args
+        "num_cpus": 0.125,
+        "memory": 939524096,
+        "scheduling_strategy": "SPREAD",
+    } == args
 
     # - 4 partitions per aggregator
     # - No partition size hint
@@ -355,10 +355,10 @@ def test_default_shuffle_aggregator_args():
     )
 
     assert {
-               "num_cpus": 0.5,
-               "memory": 1744830464,
-               "scheduling_strategy": "SPREAD",
-           } == args
+        "num_cpus": 0.5,
+        "memory": 1744830464,
+        "scheduling_strategy": "SPREAD",
+    } == args
 
     # - 4 partitions per aggregator
     # - No partition size hint
@@ -369,10 +369,10 @@ def test_default_shuffle_aggregator_args():
     )
 
     assert {
-               "num_cpus": 0.5,
-               "memory": 13958643712,
-               "scheduling_strategy": "SPREAD",
-           } == args
+        "num_cpus": 0.5,
+        "memory": 13958643712,
+        "scheduling_strategy": "SPREAD",
+    } == args
 
 
 if __name__ == "__main__":
