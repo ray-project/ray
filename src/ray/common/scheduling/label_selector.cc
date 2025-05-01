@@ -27,10 +27,6 @@ LabelSelector::LabelSelector(
       throw std::invalid_argument("Label selector key must be a non-empty string.");
     }
 
-    if (value.empty()) {
-      throw std::invalid_argument("Label selector value must be a non-empty string.");
-    }
-
     AddConstraint(key, value);
   }
 }
