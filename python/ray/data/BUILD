@@ -311,6 +311,21 @@ py_test(
 )
 
 py_test(
+    name = "test_join",
+    size = "medium",
+    srcs = ["tests/test_join.py"],
+    tags = [
+        "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_binary",
     size = "small",
     srcs = ["tests/test_binary.py"],
@@ -580,20 +595,6 @@ py_test(
     name = "test_path_util",
     size = "small",
     srcs = ["tests/test_path_util.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_task_pool_map_operator",
-    size = "small",
-    srcs = ["tests/test_task_pool_map_operator.py"],
     tags = [
         "exclusive",
         "team:data",
