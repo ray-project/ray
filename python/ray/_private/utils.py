@@ -1636,7 +1636,9 @@ def get_runtime_env_info(
     return json_format.MessageToJson(proto_runtime_env_info)
 
 
-def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
+def parse_runtime_env_for_task_or_actor(
+    runtime_env: Optional[Union[Dict, "RuntimeEnv"]]
+):
     from ray.runtime_env import RuntimeEnv
     from ray.runtime_env.runtime_env import _validate_no_local_paths
 

@@ -12,12 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def validate_path(path: str) -> None:
-    """Parse the path to ensure it is well-formed and exists. Works on Windows, Linux, and OSX.
-
-    Raises:
-        TypeError if path is not a string.
-        ValueError if path does not exist or is a circular symlink.
-    """
+    """Parse the path to ensure it is well-formed and exists."""
     parse_path(path)
 
 
@@ -50,11 +45,9 @@ def _handle_local_deps_requirement_file(requirements_file: str):
 
 
 def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
-    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of URIs.
+    """Parses and validates a 'py_modules' option.
 
-    Raises:
-        TypeError if py_modules is not a list or if any item in the list is not a string.
-        ValueError if any module is not a valid path or URI.
+    Expects py_modules to be a list of URIs.
     """
     if not isinstance(py_modules_uris, list):
         raise TypeError(
@@ -70,11 +63,9 @@ def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a 'py_modules' option. Expects py_modules to be a list of paths or uris.
+    """Parses and validates a 'py_modules' option.
 
-    Raises:
-        TypeError if py_modules is not a list or if any item in the list is not a string.
-        ValueError if any module is not a valid path or uri.
+    Expects py_modules to be a list of local paths or URIs.
     """
     if not isinstance(py_modules, list):
         raise TypeError(
@@ -95,12 +86,7 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
 
 
 def validate_working_dir_uri(working_dir_uri: str) -> str:
-    """Parses and validates a 'working_dir' option.
-
-    Raises:
-        TypeError if working_dir_uri is not a string.
-        ValueError if working_dir_uri is not well-formed.
-    """
+    """Parses and validates a 'working_dir' option."""
     if not isinstance(working_dir_uri, str):
         raise TypeError(
             "`working_dir` must be a string, got " f"{type(working_dir_uri)}."

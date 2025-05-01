@@ -621,13 +621,7 @@ class RuntimeEnv(dict):
 
 
 def _validate_no_local_paths(runtime_env: RuntimeEnv):
-    """Checks that options such as working_dir and py_modules only contain
-    URIs that are well-formed.
-
-    Raises:
-        TypeError if an option does not have the correct type
-        ValueError if an option is not well-formed
-    """
+    """Checks that options such as working_dir and py_modules only contain URIs."""
     if not isinstance(runtime_env, RuntimeEnv):
         raise TypeError(
             f"Expected type to be RuntimeEnv but received {type(runtime_env)} instead."
