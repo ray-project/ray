@@ -8,7 +8,6 @@ import json
 
 from subprocess import Popen, PIPE, STDOUT, list2cmdline
 from typing import List
-from pathlib import Path
 import pytest
 
 import ray.cloudpickle as pickle
