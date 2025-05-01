@@ -148,7 +148,7 @@ def from_items(
     parallelism: int = -1,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
+    """Create a :class:`~ray.data.Dataset` from a list of local Python objects. Column name default to "item".
 
     Use this method to create small datasets from data that fits in memory.
 
@@ -162,8 +162,6 @@ def from_items(
         Column  Type
         ------  ----
         item    int64
-
-        Column name defaults to "item".
 
     Args:
         items: List of local Python objects.
@@ -1604,7 +1602,7 @@ def read_text(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from lines stored in text files. Column names default to "text".
+    """Create a :class:`~ray.data.Dataset` from lines stored in text files. Column name default to "text".
 
     Examples:
         Read a file in remote storage.
