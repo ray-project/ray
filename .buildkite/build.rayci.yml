@@ -24,6 +24,8 @@ steps:
       - oss
     instance_type: medium
     commands:
+      - sleep 80000
+      # TODO
       - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
       - manylinux
