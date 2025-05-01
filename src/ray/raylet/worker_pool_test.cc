@@ -937,11 +937,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
 
   // NOTE: in all test cases the request has job_1_detached_actor_1 as its root detached
   // actor.
-  auto job_1_detached_actor_1_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
+  auto detached_actor_id_1_job_1 = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
   auto task_spec_job_1_detached_actor_1 =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
   task_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
-      job_1_detached_actor_1_id.Binary());
+      detached_actor_id_1_job_1.Binary());
 
   // Case 1 (match):
   //   worker has no root detached actor ID and no job ID
@@ -993,11 +993,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   //   worker has mismatched detached actor ID and mismatched job ID
   auto worker_job_2_detached_actor_3 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_2_id);
-  auto job_2_detached_actor_3_id = ActorID::Of(job_2_id, TaskID::FromRandom(job_2_id), 0);
+  auto detached_actor_3_id_job_2 = ActorID::Of(job_2_id, TaskID::FromRandom(job_2_id), 0);
   auto task_spec_job_2_detached_actor_3 =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
   task_spec_job_2_detached_actor_3.GetMutableMessage().set_root_detached_actor_id(
-      job_2_detached_actor_3_id.Binary());
+      detached_actor_3_id_job_2.Binary());
   RayTask job_2_detached_actor_3_task(task_spec_job_2_detached_actor_3);
   worker_job_2_detached_actor_3->SetAssignedTask(job_2_detached_actor_3_task);
   worker_job_2_detached_actor_3->AssignTaskId(TaskID::Nil());
@@ -1014,11 +1014,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   //   worker has mismatched detached actor ID and matching job ID
   auto worker_job_1_detached_actor_2 =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
-  auto job_1_detached_actor_2_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 1);
+  auto detached_actor_id_2_job_1 = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 1);
   auto task_spec_job_1_detached_actor_2 =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
   task_spec_job_1_detached_actor_2.GetMutableMessage().set_root_detached_actor_id(
-      job_1_detached_actor_2_id.Binary());
+      detached_actor_id_2_job_1.Binary());
   RayTask job_1_detached_actor_2_task(task_spec_job_1_detached_actor_2);
   worker_job_1_detached_actor_2->SetAssignedTask(job_1_detached_actor_2_task);
   worker_job_1_detached_actor_2->AssignTaskId(TaskID::Nil());
@@ -1042,7 +1042,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   auto task_spec_job_2_detached_actor_1 =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_2_id);
   task_spec_job_2_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
-      job_1_detached_actor_1_id.Binary());
+      detached_actor_id_1_job_1.Binary());
   RayTask job_2_detached_actor_1_task(task_spec_job_2_detached_actor_1);
   worker_job_2_detached_actor_1->SetAssignedTask(job_2_detached_actor_1_task);
   worker_job_2_detached_actor_1->AssignTaskId(TaskID::Nil());
@@ -1070,9 +1070,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRootDetachedActorID) {
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_1_id);
   auto task_spec_job_1_detached_actor_1 =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_1_id);
-  auto job_1_detached_actor_1_id = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
+  auto detached_actor_id_1_job_1 = ActorID::Of(job_1_id, TaskID::FromRandom(job_1_id), 0);
   task_spec_job_1_detached_actor_1.GetMutableMessage().set_root_detached_actor_id(
-      job_1_detached_actor_1_id.Binary());
+      detached_actor_id_1_job_1.Binary());
   RayTask job_1_detached_actor_1_task(task_spec_job_1_detached_actor_1);
   worker_job_1_detached_actor_1->SetAssignedTask(job_1_detached_actor_1_task);
   worker_job_1_detached_actor_1->AssignTaskId(TaskID::Nil());
