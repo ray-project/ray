@@ -3,6 +3,8 @@ import numpy as np
 from typing import Dict, Union, Callable
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
+
+from constants import DatasetKey
 from image_classification.imagenet import (
     get_transform,
     IMAGENET_WNID_TO_ID,
@@ -12,8 +14,9 @@ IMAGENET_PARQUET_SPLIT_S3_ROOT = (
     "s3://ray-benchmark-data-internal/imagenet/parquet_split"
 )
 IMAGENET_PARQUET_SPLIT_S3_DIRS = {
-    split: f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/{split}"
-    for split in ["train", "val", "test"]
+    DatasetKey.TRAIN: f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/train",
+    DatasetKey.VALID: f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/val",
+    DatasetKey.TEST: f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/test",
 }
 
 
