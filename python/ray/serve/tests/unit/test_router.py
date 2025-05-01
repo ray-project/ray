@@ -1,17 +1,17 @@
 import asyncio
+import concurrent.futures
 import random
 import sys
+import threading
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
-import concurrent.futures
-import threading
 
 import ray
-from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
+from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
