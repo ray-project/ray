@@ -157,9 +157,11 @@ NodeManager::NodeManager(
           config.enable_resource_isolation),
       client_call_manager_(io_service),
       worker_rpc_pool_([this](const rpc::Address &addr) {
-        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
-          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
-        });
+        return std::make_shared<rpc::CoreWorkerClient>(
+            addr,
+            client_call_manager_,
+            rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                gcs_client_.get(), &worker_rpc_pool_, &client_call_manager_, addr));
       }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,

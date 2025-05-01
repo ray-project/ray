@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/raylet_client/raylet_client.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -251,32 +250,9 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
       [this, worker_id, node_id, owner_address](
           const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
         if (!status.ok()) {
-          const auto *node_info = gcs_client_->Nodes().Get(node_id, true);
-          if (node_info == nullptr) {
-            RAY_LOG(INFO)
-                << "UpdateObjectLocationBatch failed to node already marked dead. Node: "
-                << node_id;
-            location_buffers_.erase(worker_id);
-            owner_client_pool_->Disconnect(worker_id);
-            return;
-          }
-          raylet::RayletClient node_manager_client(
-              rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                                 node_info->node_manager_port(),
-                                                 client_call_manager_));
-          node_manager_client.IsLocalWorkerDead(
-              worker_id,
-              [this, node_id, worker_id](const Status &status,
-                                         rpc::IsLocalWorkerDeadReply &&reply) {
-                if (status.ok() && reply.is_dead()) {
-                  RAY_LOG(INFO)
-                      << "UpdateObjectLocationBatch failed to worker already marked "
-                         "dead. Node: "
-                      << node_id << ", worker: " << worker_id;
-                  location_buffers_.erase(worker_id);
-                  owner_client_pool_->Disconnect(worker_id);
-                }
-              });
+          RAY_LOG(ERROR).WithField(worker_id)
+              << "Failed to get object location update. This should not happen, this "
+                 "should not happen because this is using the retryable grpc client.";
         }
         auto in_flight_request_it = in_flight_requests_.find(worker_id);
         RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
