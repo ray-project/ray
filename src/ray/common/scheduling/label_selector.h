@@ -43,7 +43,7 @@ class LabelConstraint {
 
   LabelSelectorOperator GetOperator() const { return op_; }
 
-  absl::flat_hash_set<std::string> GetLabelValues() const { return values_; }
+  const absl::flat_hash_set<std::string> &GetLabelValues() const { return values_; }
 
   void SetLabelKey(const std::string &key) { key_ = key; }
 
