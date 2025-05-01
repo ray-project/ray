@@ -130,10 +130,11 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
               gcs_client_mock_,
               subscriber_.get(),
               &client_pool,
-              /*max_object_report_batch_size=*/20,
               [this](const ObjectID &object_id, const rpc::ErrorType &error_type) {
                 MarkAsFailed(object_id, error_type);
-              }) {}
+              }) {
+    obod_.kMaxObjectReportBatchSize = 20;
+  }
 
   void TearDown() { owner_client->Reset(); }
 
