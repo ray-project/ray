@@ -457,6 +457,7 @@ def concat_tensors_to_device(
             result[row_start:row_end].copy_(t)
         row_start = row_end
 
+    assert isinstance(result, torch.Tensor), "Result must be a torch.Tensor"
     return result
 
 
@@ -469,12 +470,7 @@ def move_tensors_to_device(
         Dict[str, List[torch.Tensor]],
     ],
     device: Optional[str] = None,
-) -> Union[
-    torch.Tensor,
-    List[torch.Tensor],
-    Dict[str, torch.Tensor],
-    Dict[str, List[torch.Tensor]],
-]:
+) -> Union[torch.Tensor, Dict[str, torch.Tensor],]:
     """Move tensors to the specified device.
 
     Args:
@@ -487,6 +483,7 @@ def move_tensors_to_device(
 
     Returns:
         The input tensors moved to the specified device, maintaining the same structure.
+        Note that any lists of tensors will be concatenated into a single tensor.
     """
     if device is None:
         return batch
@@ -508,5 +505,15 @@ def move_tensors_to_device(
             batch = batch.to(device=device, non_blocking=True)
         else:
             batch = batch.to(device=device)
+
+    if isinstance(batch, dict):
+        assert all(isinstance(v, torch.Tensor) for v in batch.values()), (
+            "All values in dict must be tensors, got: "
+            f"{[type(v) for v in batch.values()]}"
+        )
+    else:
+        assert isinstance(
+            batch, torch.Tensor
+        ), "Batch must be a Tensor or dict of Tensors"
 
     return batch
