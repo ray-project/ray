@@ -49,7 +49,9 @@ class LabelConstraint {
 
   void SetOperator(LabelSelectorOperator op) { op_ = op; }
 
-  void SetLabelValues(const absl::flat_hash_set<std::string> &values) { values_ = values; }
+  void SetLabelValues(const absl::flat_hash_set<std::string> &values) {
+    values_ = values;
+  }
 
  private:
   std::string key_;
@@ -73,16 +75,14 @@ class LabelSelector {
     constraints_.push_back(constraint);
   }
 
-  std::vector<LabelConstraint> GetConstraints() const {
-    return constraints_;
-  }
+  std::vector<LabelConstraint> GetConstraints() const { return constraints_; }
 
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
 
   LabelSelector &operator=(const LabelSelector &other) {
     if (this != &other) {
-        constraints_ = other.constraints_;
+      constraints_ = other.constraints_;
     }
     return *this;
   }

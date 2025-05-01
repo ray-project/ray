@@ -1,13 +1,12 @@
-#include "gtest/gtest.h"
 #include "ray/common/scheduling/label_selector.h"
+
+#include "gtest/gtest.h"
 
 namespace ray {
 
 TEST(LabelSelectorTest, BasicConstruction) {
   std::unordered_map<std::string, std::string> label_selector_dict = {
-      {"market-type", "spot"},
-      {"region", "us-east"}
-  };
+      {"market-type", "spot"}, {"region", "us-east"}};
 
   LabelSelector selector(label_selector_dict);
   auto constraints = selector.GetConstraints();
@@ -69,8 +68,10 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
 }
 
 TEST(LabelSelectorTest, ThrowsOnEmptyKeyOrValue) {
-  EXPECT_THROW(LabelSelector(std::unordered_map<std::string, std::string>{{"", "value"}}), std::invalid_argument);
-  EXPECT_THROW(LabelSelector(std::unordered_map<std::string, std::string>{{"key", ""}}), std::invalid_argument);
+  EXPECT_THROW(LabelSelector(std::unordered_map<std::string, std::string>{{"", "value"}}),
+               std::invalid_argument);
+  EXPECT_THROW(LabelSelector(std::unordered_map<std::string, std::string>{{"key", ""}}),
+               std::invalid_argument);
 }
 
 TEST(LabelSelectorTest, ThrowsOnEmptyInList) {

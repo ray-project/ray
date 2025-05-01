@@ -124,8 +124,7 @@ bool NodeResources::HasRequiredLabels(const LabelSelector &label_selector) const
   return true;
 }
 
-bool NodeResources::NodeLabelMatchesConstraint(
-    const LabelConstraint &constraint) const {
+bool NodeResources::NodeLabelMatchesConstraint(const LabelConstraint &constraint) const {
   const auto &key = constraint.GetLabelKey();
   const auto &match_operator = constraint.GetOperator();
   const auto &values = constraint.GetLabelValues();
