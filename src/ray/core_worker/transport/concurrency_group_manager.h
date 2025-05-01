@@ -75,9 +75,6 @@ class ConcurrencyGroupManager final {
   // The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
 
-  // A vector of language-specific functions used to release the executors.
-  std::vector<std::optional<std::function<void()>>> executor_releasers_;
-
   friend class ConcurrencyGroupManagerTest;
 };
 

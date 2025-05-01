@@ -199,7 +199,10 @@ class TestThreadingLocalData:
     """
     This test verifies that synchronous tasks can access thread-local data that
     was set by previous synchronous tasks when the concurrency group has only
-    one thread.
+    one thread. For concurrency groups with multiple threads, it doesn't promise
+    access to the same thread-local data because Ray currently doesn't expose APIs
+    for users to specify which thread the task will be scheduled on in the same
+    concurrency group.
     """
 
     def test_tasks_on_default_executor(self, ray_start_regular_shared):
