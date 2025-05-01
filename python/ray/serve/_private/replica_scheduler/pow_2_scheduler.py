@@ -807,7 +807,8 @@ class PowerOfTwoChoicesReplicaScheduler(
                 backoff_index = 0
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
                 async for candidates in self.choose_replicas(
-                    request_metadata, _RequestSchedulingContext()
+                    request_metadata=request_metadata,
+                    request_scheduling_context=_RequestSchedulingContext(),
                 ):
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
