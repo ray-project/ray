@@ -1307,7 +1307,7 @@ opencensus-context==0.1.3
     # via opencensus
 opencensus-proto==0.1.0
     # via opentelemetry-exporter-opencensus
-opencv-python-headless==4.8.1.78
+opencv-python-headless==4.9.0.80
     # via -r python/requirements/ml/rllib-test-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
