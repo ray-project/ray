@@ -319,7 +319,6 @@ html_theme_options = {
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
     "secondary_sidebar_items": [
-        "community-card.html",
         "page-toc",
         "edit-on-github",
     ],
