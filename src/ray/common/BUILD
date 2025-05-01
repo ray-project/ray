@@ -156,6 +156,7 @@ ray_cc_library(
         "placement_group.cc",
         "scheduling/cluster_resource_data.cc",
         "scheduling/fixed_point.cc",
+        "scheduling/label_selector.cc",
         "scheduling/resource_instance_set.cc",
         "scheduling/resource_set.cc",
         "scheduling/scheduling_ids.cc",

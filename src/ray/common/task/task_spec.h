@@ -524,8 +524,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   SchedulingClass sched_cls_id_ = 0;
   int runtime_env_hash_ = 0;
 
-  // Field storing label selector for scheduling Task on a node.
-  std::shared_ptr<LabelSelector> label_selector_  = std::make_shared<LabelSelector>();
+  // Field storing label selector for scheduling Task on a node. Initialized in constuctor
+  // in ComputeResources() call.
+  std::shared_ptr<LabelSelector> label_selector_;
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;

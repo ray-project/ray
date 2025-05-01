@@ -113,9 +113,6 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
 }
 
 bool NodeResources::HasRequiredLabels(const LabelSelector &label_selector) const {
-  // Verify LabelSelector has been set
-  RAY_CHECK(label_selector.IsInitialized());
-
   // Check if node labels satisfy all label constraints
   const auto constraints = label_selector.GetConstraints();
   for (const auto &constraint : constraints) {
@@ -134,12 +131,12 @@ bool NodeResources::NodeLabelMatchesConstraint(
   const auto &values = constraint.GetLabelValues();
 
   const auto &node_labels = this->labels;
-  if (match_operator == ray::rpc::LabelSelectorOperator::IN) {
+  if (match_operator == LabelSelectorOperator::IN) {
     // Check for equals or in() labels
     if (node_labels.contains(key) && values.contains(node_labels.at(key))) {
       return true;
     }
-  } else if (match_operator == ray::rpc::LabelSelectorOperator::NOT_IN) {
+  } else if (match_operator == LabelSelectorOperator::NOT_IN) {
     // Check for not equals (!) or not in (!in()) labels
     if (!(node_labels.contains(key) && values.contains(node_labels.at(key)))) {
       return true;

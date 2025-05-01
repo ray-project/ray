@@ -128,6 +128,10 @@ void TaskSpecification::ComputeResources() {
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
+
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 }
 
 // Task specification getter methods.
@@ -307,7 +311,6 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
 }
 
 const LabelSelector &TaskSpecification::GetLabelSelector() const {
-  RAY_CHECK(label_selector_ != nullptr) << "label_selector_ is not initialized";
   return *label_selector_;
 }
 

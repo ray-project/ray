@@ -61,12 +61,8 @@ class ResourceRequest {
 
   const LabelSelector &GetLabelSelector() const { return label_selector_; }
 
-  void SetLabelSelector(const LabelSelector &selector) {
-    RAY_CHECK(selector.IsInitialized()) << "Selector is uninitialized!";
-
-    RAY_LOG(INFO) << "Assigning LabelSelector with "
-              << selector.GetConstraints().size() << " constraints";
-    label_selector_ = selector;
+  void SetLabelSelector(const LabelSelector &label_selector) {
+    label_selector_ = label_selector;
   }
 
   FixedPoint Get(ResourceID resource_id) const { return resources_.Get(resource_id); }
@@ -136,7 +132,7 @@ class ResourceRequest {
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
   // Label selector to schedule this request on a node.
-  LabelSelector label_selector_ = LabelSelector();
+  LabelSelector label_selector_;
 };
 
 /// Represents a resource set that contains the per-instance resource values.
