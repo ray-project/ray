@@ -240,6 +240,39 @@ class TestThreadingLocalData:
         assert value == "f2"
 
 
+def test_multiple_threads_in_same_group(ray_start_regular_shared):
+    """
+    This test verifies that all threads in the same concurrency group are still
+    alive from the Python interpreter's perspective even if Ray tasks have finished, so that
+    thread-local data will not be garbage collected.
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.data = 0
+            self._thread_local_data = threading.local()
+
+        def set_thread_local(self, value: Any) -> int:
+            # If the thread-local data were garbage collected after the previous
+            # task on the same thread finished, `self.data` would be incremented
+            # more than once for the same thread.
+            if not hasattr(self._thread_local_data, "value"):
+                self._thread_local_data.value = self.data
+                self.data += 1
+            assert self._thread_local_data.value <= self.data
+
+        def get_data(self) -> int:
+            return self.data
+
+    max_concurrency = 5
+    a = Actor.options(max_concurrency=max_concurrency).remote()
+    for _ in range(200):
+        for i in range(max_concurrency):
+            ray.get(a.set_thread_local.remote(i))
+    assert ray.get(a.get_data.remote()) == max_concurrency
+
+
 def test_invalid_concurrency_group():
     """Verify that when a concurrency group has max concurrency set to 0,
     an error is raised when the actor is created. This test uses
