@@ -60,7 +60,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2._internal.logging.logging import configure_controller_logger
-from ray.train.v2._internal.util import time_monotonic, ObjectRefWrapper
+from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
