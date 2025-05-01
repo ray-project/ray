@@ -58,6 +58,7 @@ void BoundedExecutor::Stop() {
 
 /// Join the thread pool.
 void BoundedExecutor::Join() {
+  work_guard_.reset();
   for (auto &thread : threads_) {
     if (thread.joinable()) {
       thread.join();

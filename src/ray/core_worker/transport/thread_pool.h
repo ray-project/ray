@@ -41,7 +41,7 @@ class BoundedExecutor {
 
   explicit BoundedExecutor(
       int max_concurrency,
-      std::function<std::function<void()>()> initialize_thread_callback);
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr);
 
   /// Posts work to the pool
   void Post(std::function<void()> fn);
