@@ -901,7 +901,10 @@ class ServeController:
             A deployment config object if the deployment id exist,
             None otherwise.
         """
-        return self.deployment_state_manager.get_deployment_infos().get(deployment_id)
+        deployment_info = self.deployment_state_manager.get_deployment_infos().get(
+            deployment_id
+        )
+        return deployment_info.deployment_config if deployment_info else None
 
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
