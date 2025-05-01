@@ -439,6 +439,11 @@ def test_cancel_recursive_chain(shutdown_only, recursive):
 
 
 def test_concurrent_submission_and_cancellation(shutdown_only):
+    """Test submitting and then cancelling many tasks concurrently.
+
+    This is a regression test for race conditions such as:
+        https://github.com/ray-project/ray/issues/52628.
+    """
     NUM_TASKS = 2500
 
     @ray.remote(num_cpus=0)
