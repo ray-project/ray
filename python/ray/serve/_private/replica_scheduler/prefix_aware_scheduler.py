@@ -991,7 +991,7 @@ class PrefixAwareReplicaScheduler(
 
 import ray
 from typing import Any, AsyncGenerator
-
+from ray._raylet import ObjectRefGenerator
 class PrefixAwareObjectRefGenerator:
     """
     Wraps a Ray ObjectRefGenerator so that every time __anext__ is called,
@@ -999,7 +999,7 @@ class PrefixAwareObjectRefGenerator:
     then hand the same ObjectRef back to Serve.
     """
 
-    def __init__(self, prompt_text: str, orig_gen: Any, tree: Any, tenant_id: str):
+    def __init__(self, prompt_text: str, orig_gen: ObjectRefGenerator, tree: Any, tenant_id: str):
         self._orig = orig_gen
         self._tree = tree
         self._tenant = tenant_id
