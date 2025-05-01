@@ -75,7 +75,7 @@ time_in_queue_histogram = metrics.Histogram(
 )
 
 V1_TOO_LONG_PATTERN = re.compile(
-    r"Prompt length of (\d+) is longer than the maximum model length of (\d+)."
+    r".* (\d+).* is longer than the maximum model length of (\d+).*"
 )
 
 
