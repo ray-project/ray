@@ -94,17 +94,12 @@ class ActorReplicaWrapper(ReplicaWrapper):
     async def send_request_python(
         self, pr: PendingRequest, with_rejection: bool
     ) -> Tuple[ActorReplicaResult, Optional[ReplicaQueueLengthInfo]]:
-        print(f"[send_request_python] pr: {pr}")
         obj_ref_gen = self._send_request_python(pr, with_rejection=with_rejection)
-        print(f"[send_request_python] obj_ref_gen: {obj_ref_gen}")
-        
         if not with_rejection:
             return ActorReplicaResult(obj_ref_gen, pr.metadata), None
 
         try:
             first_ref = await obj_ref_gen.__anext__()
-            print(f"[send_request_python] first_ref: {first_ref}")
-            print(f"[send_request_python] ray.get(first_ref): {ray.get(first_ref)}")
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
             return ActorReplicaResult(obj_ref_gen, pr.metadata), queue_len_info
         except asyncio.CancelledError as e:

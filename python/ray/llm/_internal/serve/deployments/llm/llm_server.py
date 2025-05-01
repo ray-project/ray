@@ -647,7 +647,6 @@ class LLMServer(_LLMServerBase):
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )
-
 class LLMDeployment(LLMServer):
     # Note (genesu): We are separating the LLMServer and LLMDeployment just
     # to give developers an ability to test the implementation outside the Ray Serve.

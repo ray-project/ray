@@ -532,20 +532,16 @@ class AsyncioRouter:
         # never reject requests in this code path.
         if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
             result, _ = await r.send_request(pr, with_rejection=False)
-            # await self._replica_scheduler.on_response_received(pr, r, result)
-            # wrapped_result = await self._replica_scheduler.on_response_received(pr, r, result)
+            wrapped_result = await self._replica_scheduler.on_response_received(pr, r, result)
             return wrapped_result, r.replica_id
-            # return result, r.replica_id
         while True:
             result = None
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
                 if queue_info.accepted:
-                    # await self._replica_scheduler.on_response_received(pr, r, result)
                     wrapped_result = await self._replica_scheduler.on_response_received(pr, r, result)
                     return wrapped_result, r.replica_id
-                    # return result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
@@ -637,7 +633,6 @@ class AsyncioRouter:
                         response_id,
                     )
                     replica_result.add_done_callback(callback)
-                print(f"[assign_request] replica_result after add_done_callback: {replica_result}")
                 return replica_result
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because

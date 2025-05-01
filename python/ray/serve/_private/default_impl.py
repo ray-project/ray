@@ -143,7 +143,6 @@ def create_scheduler(
     is_inside_ray_client_context: bool,
     replica_scheduler: Optional[ReplicaScheduler] = None
 ):
-    print(f"create_scheduler: replica_scheduler: {replica_scheduler}")
     # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
     node_id, availability_zone = _get_node_id_and_az()
 
@@ -194,7 +193,6 @@ def create_router(
     # replica_scheduler = cfg.get_replica_scheduler()
     # End of injected code to get the replica scheduler from the deployment config
 
-    print(f"create_router: replica_scheduler: {replica_scheduler}")
     
     replica_scheduler_instance = create_scheduler(
         actor_id,
