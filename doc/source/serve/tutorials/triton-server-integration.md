@@ -116,7 +116,7 @@ torch.onnx.export(
 logger.info("VAE decoder exported successfully")
 logger.info("Export complete. Models saved to model_repository/stable_diffusion/1/")
 ```
-From the script, the outputs are `text_encoder.onnx`, `unet.onnx` `vae_decoder.onnx`.
+From the script, the outputs are `text_encoder.onnx`, `unet.onnx`, and `vae_decoder.onnx`.
 
 After the ONNX model is exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
 
