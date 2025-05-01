@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <future>
 #include "ray/core_worker/transport/thread_pool.h"
+
 #include <gtest/gtest.h>
+
 #include <atomic>
+#include <future>
 
 namespace ray {
 namespace core {
@@ -25,7 +27,8 @@ TEST(BoundedExecutorTest, InitializeThreadCallbackAndReleaserAreCalled) {
   std::atomic<int> init_count{0};
   std::atomic<int> release_count{0};
 
-  // The callback increments init_count and returns a releaser that increments release_count.
+  // The callback increments init_count and returns a releaser that increments
+  // release_count.
   auto initialize_thread_callback = [&]() {
     init_count++;
     return [&]() { release_count++; };
