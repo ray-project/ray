@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Dict, Any, Optional, Type, Union
 
 # Third-party imports
-from pydantic import ValidationError as PydanticValidationError
 from ray import serve
 from ray._common.utils import import_attr
 
@@ -14,9 +13,6 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
-)
-from ray.llm._internal.serve.configs.error_handling import (
-    ValidationErrorWithPydantic,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
@@ -47,15 +43,12 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    VLLMGenerationRequest,
-    VLLMSamplingParams,
-)
 from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
 )
@@ -472,9 +465,11 @@ class LLMServer(_LLMServerBase):
         self.response_postprocessor = ResponsePostprocessor()
 
     @property
-    def _get_engine_class(self) -> VLLMEngine:
-        """Helper to load the engine class from the environment variable if existed
-        else it will fallback to the default engine class.
+    def _get_engine_class(self) -> Type[LLMEngine]:
+        """Helper to load the engine class from the environment variable.
+
+        This is used for testing or escape-hatch for patching purposes.
+        If env variable is not set, it will fallback to the default engine class.
         """
         engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
         if engine_cls_path:
@@ -485,7 +480,6 @@ class LLMServer(_LLMServerBase):
                     f"Failed to import engine class {engine_cls_path}. "
                     f"Using the default engine class {self._engine_cls}."
                 )
-
         return self._engine_cls
 
     async def _start_engine(self):
@@ -511,50 +505,24 @@ class LLMServer(_LLMServerBase):
         """
 
         logger.info(f"Received streaming request {request_id}")
-        try:
-            multiplexed_model_id = serve.get_multiplexed_model_id()
+        multiplexed_model_id = serve.get_multiplexed_model_id()
 
-            if multiplexed_model_id:
-                assert (
-                    self._llm_config.lora_config is not None
-                ), "Must setup lora config for multiplexed requests."
-                disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
-            else:
-                disk_lora_model = None
+        if multiplexed_model_id:
+            assert (
+                self._llm_config.lora_config is not None
+            ), "Must setup lora config for multiplexed requests."
+            disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
+        else:
+            disk_lora_model = None
 
-            prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
+        llm_request = await self.engine.prepare_request(
+            request_id=request_id,
+            prompt=prompt,
+            stream=stream,
+            disk_lora_model=disk_lora_model,
+        )
 
-            sampling_params = VLLMSamplingParams.from_prompt(prompt)
-            prompt_text = prompt_output.text
-            image_input = prompt_output.image
-            image = []
-            if not self._llm_config.supports_vision and image_input:
-                raise RuntimeError(
-                    "You provided image input while the engine is not set up to handle images. "
-                    "Did you forget to set `input_modality` to image in yaml file?"
-                )
-
-            if self._llm_config.supports_vision and image_input:
-                for _image in image_input:
-                    image_url = _image.image_url
-                    image.append(await self.image_retriever.get(image_url))
-
-            request_params = {
-                "prompt": prompt_text,
-                "request_id": request_id,
-                "sampling_params": sampling_params,
-                "disk_multiplex_config": disk_lora_model,
-                "serve_request_context": serve.context._serve_request_context.get(),
-            }
-            if image:
-                request_params["multi_modal_data"] = {"image": image}
-            vllm_request = VLLMGenerationRequest(**request_params)
-        except PydanticValidationError as e:
-            # Wrap the PydanticValidationError in a ValidationErrorWithPydantic
-            # so that it can be used in a RayActorError
-            # See https://github.com/ray-project/ray/issues/43401
-            raise ValidationErrorWithPydantic(e) from None
-        async for llm_response in self.engine.generate(vllm_request, stream):
+        async for llm_response in self.engine.generate(llm_request):
             yield llm_response
 
     async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
@@ -598,8 +566,8 @@ class LLMServer(_LLMServerBase):
             model=self._llm_config.model_id, gen=gen, stream=stream
         )
 
-    async def check_health(self):
-        """Check the health of the vllm engine."""
+    async def check_health(self) -> bool:
+        """Check the health of the llm engine."""
         return await self.engine.check_health()
 
     async def _load_model(self, lora_model_id: str) -> DiskMultiplexConfig:

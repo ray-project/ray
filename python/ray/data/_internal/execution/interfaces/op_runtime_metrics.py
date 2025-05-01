@@ -57,6 +57,7 @@ class MetricDefinition:
     # TODO: Let's refactor this parameter so it isn't tightly coupled with a specific
     # operator type (MapOperator).
     map_only: bool = False
+    internal_only: bool = False  # do not expose this metric to the user
 
 
 def metric_field(
@@ -64,6 +65,7 @@ def metric_field(
     description: str,
     metrics_group: str,
     map_only: bool = False,
+    internal_only: bool = False,  # do not expose this metric to the user
     **field_kwargs,
 ):
     """A dataclass field that represents a metric."""
@@ -83,6 +85,7 @@ def metric_property(
     description: str,
     metrics_group: str,
     map_only: bool = False,
+    internal_only: bool = False,  # do not expose this metric to the user
 ):
     """A property that represents a metric."""
 
@@ -92,6 +95,7 @@ def metric_property(
             description=description,
             metrics_group=metrics_group,
             map_only=map_only,
+            internal_only=internal_only,
         )
 
         _METRICS.append(metric)
@@ -413,11 +417,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def get_metrics(self) -> List[MetricDefinition]:
         return list(_METRICS)
 
-    def as_dict(self):
+    def as_dict(self, skip_internal_metrics: bool = False) -> Dict[str, Any]:
         """Return a dict representation of the metrics."""
         result = []
         for metric in self.get_metrics():
             if not self._is_map and metric.map_only:
+                continue
+            if skip_internal_metrics and metric.internal_only:
                 continue
             value = getattr(self, metric.name)
             result.append((metric.name, value))
