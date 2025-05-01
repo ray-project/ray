@@ -21,6 +21,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
@@ -890,6 +891,17 @@ class ServeController:
             id: (info, self.endpoint_state.get_endpoint_route(id))
             for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
+
+    def get_deployment_config(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentConfig]:
+        """Get the deployment config for the given deployment id.
+
+        Returns:
+            A deployment config object if the deployment id exist,
+            None otherwise.
+        """
+        return self.deployment_state_manager.get_deployment_infos().get(deployment_id)
 
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""

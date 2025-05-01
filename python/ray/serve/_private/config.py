@@ -6,6 +6,7 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private import ray_option_utils
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -14,10 +15,9 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    validator,
     PrivateAttr,
+    validator,
 )
-from ray._common.utils import import_attr
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
@@ -26,8 +26,8 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
-    MAX_REPLICAS_PER_NODE_MAX_VALUE,
     DEFAULT_REPLICA_SCHEDULER,
+    MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
@@ -243,9 +243,9 @@ class DeploymentConfig(BaseModel):
     def serialize_replica_scheduler(self) -> None:
         """Serialize replica scheduler with cloudpickle.
 
-        Import the replica scheduler if it's passed in as a string import path. Then
-        cloudpickle the replica scheduler and set `_serialized_replica_scheduler_def`
-        if not already set.
+        Import the replica scheduler if it's passed in as a string import path.
+        Then cloudpickle the replica scheduler and set
+        `_serialized_replica_scheduler_def` if not already set.
         """
         values = self.dict()
         replica_scheduler = values.get("_replica_scheduler")
@@ -266,7 +266,7 @@ class DeploymentConfig(BaseModel):
             )
         self._replica_scheduler = replica_scheduler_path
 
-    def get_replica_scheduler(self) -> Callable:
+    def get_replica_scheduler_class(self) -> Callable:
         """Deserialize replica scheduler from cloudpickled bytes."""
         return cloudpickle.loads(self._serialized_replica_scheduler_def)
 

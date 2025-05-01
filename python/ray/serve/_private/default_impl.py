@@ -30,6 +30,7 @@ from ray.serve._private.deployment_scheduler import (
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
@@ -146,11 +147,12 @@ def create_scheduler(
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
     is_inside_ray_client_context: bool,
+    replica_scheduler_class: ReplicaScheduler = PowerOfTwoChoicesReplicaScheduler,
 ):
     # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
     node_id, availability_zone = _get_node_id_and_az()
 
-    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+    replica_scheduler = replica_scheduler_class(
         deployment_id=deployment_id,
         handle_source=handle_options._source,
         self_node_id=node_id,
@@ -179,6 +181,9 @@ def create_router(
     actor_id = get_current_actor_id()
 
     controller_handle = _get_global_client()._controller
+    deployment_config = ray.get(
+        controller_handle.get_deployment_config.remote(deployment_id)
+    )
     is_inside_ray_client_context = inside_ray_client_context()
 
     replica_scheduler = create_scheduler(
@@ -186,6 +191,7 @@ def create_router(
         deployment_id,
         handle_options,
         is_inside_ray_client_context,
+        deployment_config.get_replica_scheduler_class(),
     )
 
     return SingletonThreadRouter(
