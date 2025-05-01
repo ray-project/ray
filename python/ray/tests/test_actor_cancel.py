@@ -444,9 +444,9 @@ def test_concurrent_submission_and_cancellation(shutdown_only):
     @ray.remote(num_cpus=0)
     class Worker:
         async def sleep(self, i: int):
-            # NOTE: all tasks should be cancelled, so this won't actually sleep for 30s
-            # if the test is passing.
-            await asyncio.sleep(5)
+            # NOTE: all tasks should be cancelled, so this won't actually sleep for the
+            # full duration if the test is passing.
+            await asyncio.sleep(30)
 
     worker = Worker.remote()
 
