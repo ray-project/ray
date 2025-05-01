@@ -513,6 +513,8 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
+    ray.shutdown()
+
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()
