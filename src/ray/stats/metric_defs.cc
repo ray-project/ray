@@ -189,6 +189,13 @@ DEFINE_stats(grpc_server_req_finished,
              (),
              ray::stats::COUNT);
 
+/// GRPC Client Failures
+DEFINE_stats(grpc_client_req_failures,
+             "Number of gRPC client failures.",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,
              "Number of bytes pushed or received by type {PushedFromLocalPlasma, "

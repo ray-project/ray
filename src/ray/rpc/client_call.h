@@ -30,6 +30,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -104,6 +105,9 @@ class ClientCallImpl : public ClientCall {
     {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
+    }
+    if (!status.ok()) {
+      stats::STATS_grpc_client_failures.Record(1.0, stats_handle_->event_name);
     }
     if (callback_ != nullptr) {
       // This should be only called once.
