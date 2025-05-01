@@ -34,10 +34,10 @@ class LabelConstraint {
  public:
   LabelConstraint() = default;
 
-  LabelConstraint(const std::string &key,
+  LabelConstraint(std::string key,
                   LabelSelectorOperator op,
-                  const absl::flat_hash_set<std::string> &values)
-      : key_(key), op_(op), values_(values) {}
+                 absl::flat_hash_set<std::string> values)
+      : key_(std::move(key)), op_(op), values_(std::move(values)) {}
 
   const std::string &GetLabelKey() const { return key_; }
 
