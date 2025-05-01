@@ -473,17 +473,23 @@ class VLLMEngine(LLMEngine):
 
         _clear_current_platform_cache()
 
-        additional_metrics_logger = vllm.engine.metrics.RayPrometheusStatLogger(
-            local_interval=0.5,
-            labels={"model_name": engine_args.model},
-            vllm_config=vllm_config,
-        )
-        return vllm.engine.async_llm_engine.AsyncLLMEngine(
+        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
-            stat_loggers={"ray": additional_metrics_logger}
         )
+
+        if self.llm_config.enable_prometheus_metrics:
+            from vllm.engine.metrics import RayPrometheusStatLogger
+
+            ray_metrics_logger = RayPrometheusStatLogger(
+                local_interval=0.5,
+                labels={"model_name": engine_args.model},
+                vllm_config=vllm_config,
+            )
+            self.engine.add_logger("ray", ray_metrics_logger)
+
+        return engine
 
     async def prepare_request(
         self,
