@@ -456,7 +456,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
             reserved_for_outputs = ExecutionResources(
-                0, 0, default_reserved.object_store_memory / 2
+                0, 0, max(default_reserved.object_store_memory / 2, 1)
             )
 
             min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
