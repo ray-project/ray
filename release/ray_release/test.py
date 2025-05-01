@@ -426,6 +426,8 @@ class Test(dict):
             "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
             # To make ray data compatible across multiple pyarrow versions.
             "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE": "1",
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
+            "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
         }
         default.update(
             _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
