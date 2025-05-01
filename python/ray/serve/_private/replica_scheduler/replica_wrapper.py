@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import pickle
 from abc import ABC, abstractmethod
 from typing import Optional, Set, Tuple, Union
@@ -16,8 +17,6 @@ from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
-
-import logging
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
