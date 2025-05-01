@@ -251,8 +251,8 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
           const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR).WithField(worker_id)
-              << "Failed to get object location update. This should not happen, this "
-                 "should not happen because this is using the retryable grpc client.";
+              << "Failed to get object location update. This should not happen because "
+                 "this rpc is using the retryable grpc client.";
         }
         auto in_flight_request_it = in_flight_requests_.find(worker_id);
         RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
