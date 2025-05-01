@@ -17,6 +17,7 @@
 #include <boost/asio/post.hpp>
 #include <future>
 #include <memory>
+#include <utility>
 
 namespace ray {
 namespace core {
