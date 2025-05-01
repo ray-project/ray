@@ -108,14 +108,14 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
             gamma = config.gamma
             # Get critic/ENN output to calculate TD loss.
             critic_output = batch[CRITIC_OUTPUTS]
-            base_critic_out = critic_output["critic_output_base"]
-            enn_out = critic_output["critic_output_enn"]
+            base_critic_out = critic_output["critic_output_base"]  # (256, 1)
+            enn_out = critic_output["critic_output_enn"]  # (256, 1)
             # Current value of base network and epinet - detach base so we can do the epinet loss.
-            ENN_total_output = base_critic_out.clone().detach() + enn_out
+            ENN_total_output = (base_critic_out.clone().detach() + enn_out).squeeze(-1)
             # Next state's value.
             next_critic_output = batch[NEXT_CRITIC_OUTPUTS]
-            next_critic_out = next_critic_output["critic_output_base"]
-            next_enn_out = next_critic_output["critic_output_enn"]
+            next_critic_out = next_critic_output["critic_output_base"].squeeze(-1)
+            next_enn_out = next_critic_output["critic_output_enn"].squeeze(-1)
             next_value = next_critic_out + next_enn_out
             ENN_target = rewards + gamma * (next_value.clone().detach()) * (
                 1 - dones.float()
@@ -127,7 +127,7 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
                 next_critic_out.clone().detach()
             ) * (1 - dones.float())
             base_critic_loss = nn.functional.mse_loss(
-                base_critic_out, base_critic_target
+                base_critic_out.squeeze(-1), base_critic_target
             )
             # Add both losses together to get final value function loss.
             vf_loss = enn_loss + base_critic_loss

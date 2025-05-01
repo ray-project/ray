@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -16,6 +16,9 @@ from ray.rllib.examples.learners.classes.epinet_learner import (
 )
 from ray.rllib.examples.learners.classes.epinet_rlm import EpinetTorchRLModule
 from ray.rllib.utils.annotations import override
+
+from ray.rllib.utils.typing import EnvType
+import gymnasium as gym
 
 
 class PPOConfigWithEpinet(PPOConfig):
@@ -55,20 +58,25 @@ class PPOConfigWithEpinet(PPOConfig):
         return PPOTorchLearnerWithEpinetLoss
 
     @override(AlgorithmConfig)
-    def get_rl_module_spec(self) -> RLModuleSpec:
-        # Return the custom RLModule spec.
-        return RLModuleSpec(module_class=EpinetTorchRLModule)
+    def get_rl_module_spec(
+        self,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[str, gym.Space]] = None,
+        inference_only: Optional[bool] = None,
+    ) -> RLModuleSpec:
+        spec = super().get_rl_module_spec(env, spaces, inference_only)
+        spec.module_class = EpinetTorchRLModule
+        return spec
 
     @override(PPOConfig)
     def training(self, *, enn_network, z_dim, **kwargs) -> "PPOConfigWithEpinet":
         # Call `super`'s `training` method for PPO's parameters and unpack them.
         super().training(**kwargs)
         # Add custom parameters to have access during the training loop
-        if enn_network is NotProvided:
+        if enn_network is not NotProvided:
             self.enn_network = enn_network
-        if z_dim is NotProvided:
+        if z_dim is not NotProvided:
             self.z_dim = z_dim
-
         return self
 
     @override(AlgorithmConfig)
@@ -84,6 +92,7 @@ class PPOConfigWithEpinet(PPOConfig):
             input_action_space=input_action_space,
             device=device,
         )
+
         # Insert the new_obs to the training batch
         pipeline.insert_after(
             name_or_class=AddObservationsFromEpisodesToBatch,
@@ -101,6 +110,7 @@ class PPOConfigWithEpinet(PPOConfig):
     def _model_config_auto_includes(self) -> Dict[str, Any]:
         # Alters the self.model_config dict to contain the components for the epinet.
         return super()._model_config_auto_includes | {
+            "initializer": "xavier_normal_",
             "z_dim": self.z_dim,
             "enn_network": self.enn_network,
             "fcnet_hiddens": [128, 128],

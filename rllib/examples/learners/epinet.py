@@ -73,28 +73,45 @@ generally converge slower than a basic network, but it still will converge. For 
 are not good testing environments since their physics are deterministic and the uncertainty is mainly from
 the model's weights (aleatoric uncertainty).
 """
-from ray.air.constants import TRAINING_ITERATION
+import gymnasium as gym
 from ray.rllib.examples.learners.classes.epinet_config import (
     PPOConfigWithEpinet,
-)
-from ray.rllib.utils.metrics import (
-    EVALUATION_RESULTS,
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
+from ray.tune.registry import register_env
+from ray.rllib.core.rl_module import RLModuleSpec
+from ray.rllib.examples.learners.classes.epinet_rlm import EpinetTorchRLModule
+
 
 torch, _ = try_import_torch()
 
 
-parser = add_rllib_example_script_args(
-    default_reward=500.0,
-    default_timesteps=10_000_000,
-)
+class RewardWrapper(gym.RewardWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def reward(self, reward):
+        # Scale rewards -- helps environment converge easier.
+        if reward >= 99.0 or reward <= -99.0:
+            return reward / 10
+        return reward
+
+
+def create_quadx_waypoints_env(env_config):
+    import PyFlyt.gym_envs
+    from PyFlyt.gym_envs import FlattenWaypointEnv
+
+    env = gym.make("PyFlyt/QuadX-Waypoints-v4")
+    # Wrap Environment to use max 10 and -10 for rewards
+    env = RewardWrapper(env)
+
+    return FlattenWaypointEnv(env, context_length=1)
+
+
+parser = add_rllib_example_script_args()
 parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--enn_network",
@@ -117,7 +134,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
+    register_env("QuadX_waypoints", env_creator=create_quadx_waypoints_env)
     assert (
         args.enable_new_api_stack
     ), "Must set --enable-new-api-stack when running this script!"
@@ -126,24 +143,44 @@ if __name__ == "__main__":
     base_config = (
         PPOConfigWithEpinet()
         .environment(
-            env="HalfCheetah-v5",
+            env="QuadX_waypoints",
+            env_config={
+                "sparse_reward": False,
+                "num_targets": 4,
+                "angle_representation": "quaternion",
+            },
         )
         .env_runners(num_env_runners=5)
+        .api_stack(enable_rl_module_and_learner=True)
         .training(
+            train_batch_size_per_learner=2048,
+            minibatch_size=256,
             lr=args.lr,
             gamma=0.99,
+            lambda_=0.95,
             enn_network=args.enn_network,
             z_dim=args.z_dim,
             num_epochs=20,
-            vf_loss_coeff=0.1,
+            vf_loss_coeff=0.5,
             clip_param=0.2,
-            minibatch_size=500,
+            vf_clip_param=10,
         )
+        .rl_module(
+            rl_module_spec=RLModuleSpec(
+                module_class=EpinetTorchRLModule,
+            )
+        )
+        .resources(num_gpus=1)
+        .env_runners(preprocessor_pref="rllib")
+        .reporting(keep_per_episode_custom_metrics=True)
     )
 
-    stop = {
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
-        TRAINING_ITERATION: 1000,
-    }
-
-    run_rllib_example_script_experiment(base_config=base_config, args=args, stop=stop)
+algo = base_config.build()
+total_timesteps = 0
+default_timesteps = 200_000
+default_reward = 250
+for iteration in range(1000):
+    result = algo.train()
+    reward = result["env_runners"]["module_episode_returns_mean"]["default_policy"]
+    print(f"iteration: {iteration} with reward mean: {reward}")
+algo.stop()

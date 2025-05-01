@@ -37,18 +37,11 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         model_config: Optional[dict] = None,
         catalog_class: Optional[type] = None,
     ) -> None:
-        super().__init__(
-            observation_space=observation_space,
-            action_space=action_space,
-            inference_only=inference_only,
-            learner_only=learner_only,
-            model_config=model_config,
-        )
 
         initializer = model_config["initializer"]
         self.enn_network = model_config["enn_network"]
         self.fcnet_hiddens = model_config["fcnet_hiddens"]
-        activation_str = self.model_config["fcnet_activation"]
+        activation_str = model_config["fcnet_activation"]
         # Epinet variables.
         self.std = 1.0
         self.mean = 0.0
@@ -65,7 +58,17 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         self.enn_output = 0.0
         self.base_output = 0.0
 
+        super().__init__(
+            observation_space=observation_space,
+            action_space=action_space,
+            inference_only=inference_only,
+            learner_only=learner_only,
+            model_config=model_config,
+        )
+
+    @override(TorchRLModule)
     def setup(self):
+        super().setup()
         obs_dim = self.observation_space.shape[0]
         hidden_dim = self.model_config["fcnet_hiddens"][0]
 
@@ -104,7 +107,7 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         self.last_layer_critic = nn.Linear(hidden_dim, 1)
         # Make sure initializer is the same for the last layer.
         self.initializer(self.last_layer_critic.weight)
-        self.initializer(self.last_layer_critic.bias)
+        nn.init.zeros_(self.last_layer_critic.bias)
 
         # Build small lightweight epinet.
         self.learnable_layers = nn.Sequential(
@@ -160,7 +163,6 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
                 activation_fn=self.activation_fn if final_activation else None,
             )
         )
-
         return layers
 
     @override(RLModule)
@@ -239,8 +241,10 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         obs = batch[Columns.OBS]
-        assert Columns.NEXT_OBS in batch, f"No {Columns.NEXT_OBS} in batch."
-        next_obs = batch[Columns.NEXT_OBS]
+        if Columns.NEXT_OBS not in batch:
+            next_obs = obs
+        else:
+            next_obs = batch[Columns.NEXT_OBS]
         action_logits = self.policy(obs)
         value_function_out = self.compute_values(batch)
 
