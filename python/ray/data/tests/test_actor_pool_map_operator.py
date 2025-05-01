@@ -455,7 +455,7 @@ class TestActorPool(unittest.TestCase):
         assert res3 is None
 
 
-def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_context):
+def test_min_max_resource_requirements(restore_data_context):
     data_context = ray.data.DataContext.get_current()
     op = ActorPoolMapOperator(
         map_transformer=MagicMock(),
