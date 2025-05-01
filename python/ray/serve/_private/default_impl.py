@@ -1,6 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 import ray
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -15,10 +16,10 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
@@ -39,7 +40,6 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.util.placement_group import PlacementGroup
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 # NOTE: Please read carefully before changing!
 #

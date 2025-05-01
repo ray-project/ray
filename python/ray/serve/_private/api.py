@@ -13,12 +13,12 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.default_impl import get_controller_impl
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
-from ray.serve._private.default_impl import get_controller_impl
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
