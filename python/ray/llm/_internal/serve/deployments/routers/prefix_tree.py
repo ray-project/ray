@@ -1,7 +1,7 @@
 from ray import serve
 import time
 from collections import defaultdict
-from threading import Lock
+from threading import RLock
 from typing import Optional, List, Tuple, Dict
 
 
@@ -40,10 +40,22 @@ class PrefixTree:
         self.tenant_char_count: Dict[str, int] = defaultdict(
             int
         )  # Maps tenant -> character count
-        self.lock: Lock = Lock()  # For operations that need to lock the entire tree
+        self.lock: RLock = RLock()  # For operations that need to lock the entire tree
         self.tenant_nodes: Dict[str, List[Node]] = defaultdict(
             list
         )  # Maps tenant -> list of nodes it belongs to
+
+    def get_root(self) -> Node:
+        return self.root
+
+    def get_tenant_char_count(self) -> Dict[str, int]:
+        return self.tenant_char_count
+
+    def get_tenant_nodes(self) -> Dict[str, List[Node]]:
+        return self.tenant_nodes
+
+    def to_string(self) -> str:
+        return f"PrefixTree(root={self.root.__str__()}, tenant_char_count={self.tenant_char_count}, tenant_nodes={self.tenant_nodes})"
 
     @staticmethod
     def shared_prefix_count(a: str, b: str) -> int:
@@ -202,61 +214,68 @@ class PrefixTree:
         """Get the tenant with the smallest total character count."""
         with self.lock:
             if not self.tenant_char_count:
-                # Return first worker if no data yet
                 return None
 
             return min(self.tenant_char_count.items(), key=lambda x: x[1])[0]
-
-    # def evict_tenant_by_size(self, max_size: int) -> None:
-    #     """Evict nodes for tenants that exceed the maximum tree size."""
-    #     with self.lock:
-    #         # Get total tree size
-    #         total_size: int = sum(self.tenant_char_count.values())
-
-    #         # If tree is smaller than max size, no need to evict
-    #         if total_size <= max_size:
-    #             return
-
-    #         # Calculate how much we need to evict
-    #         excess: int = total_size - max_size
-
-    #         # Sort tenants by size (largest first)
-    #         sorted_tenants: List[Tuple[str, int]] = sorted(
-    #             self.tenant_char_count.items(),
-    #             key=lambda x: x[1],
-    #             reverse=True
-    #         )
-
-    #         # Evict from largest tenants first
-    #         for tenant, size in sorted_tenants:
-    #             # If we've evicted enough, stop
-    #             if excess <= 0:
-    #                 break
-
-    #             # Calculate how much to evict from this tenant
-    #             # Evict at most half of the tenant's size
-    #             evict_amount: int = min(excess, size // 2)
-
-    #             if evict_amount > 0:
-    #                 # print(f"Evicting {evict_amount} chars from tenant {tenant}")
-    #                 self.tenant_char_count[tenant] -= evict_amount
-    #                 excess -= evict_amount
-
-    #         # print(f"Tree eviction complete. New size: {sum(self.tenant_char_count.values())}")
 
     def get_tenant_char_count(self) -> Dict[str, int]:
         """Get character count for each tenant."""
         with self.lock:
             return dict(self.tenant_char_count)
 
-    def remove_tenant(self, tenant: str) -> None:
-        """Remove all nodes belonging to a tenant."""
-        # Would require a traversal of the tree and removing the tenant
-        # from tenant_last_access_time. Simplifying for now.
+    def remove_tenant_entirely(self, tenant: str) -> int:
+        """Remove all nodes belonging to a tenant, returns the number of characters removed. Also removes the tenant from tenant_char_count and tenant_nodes."""
         with self.lock:
-            for node in self.tenant_nodes[tenant]:
-                node.tenant_last_access_time.pop(tenant, None)
-                if not node.tenant_last_access_time:
-                    node.parent.children.pop(node.text[0], None)
-            self.tenant_char_count.pop(tenant, None)
+            total_chars_removed: int = 0
+            for node in self.tenant_nodes[tenant].copy():
+                total_chars_removed += self.remove_tenant_single_node(tenant, node)
             self.tenant_nodes.pop(tenant, None)
+            self.tenant_char_count.pop(tenant, None)
+            return total_chars_removed
+
+    def remove_tenant_single_node(self, tenant: str, node: Node) -> int:
+        """Remove a single node belonging to a tenant, returns the number of characters removed."""
+        with self.lock:
+            removed_chars_len: int = len(node.text)
+            self.tenant_char_count[tenant] -= removed_chars_len
+            self.tenant_nodes[tenant].remove(node)
+            node.tenant_last_access_time.pop(tenant, None)
+
+            # If this node has no more tenants, remove it from the parent
+            if not node.tenant_last_access_time:
+                node.parent.children.pop(node.text[0], None)
+
+            return removed_chars_len
+
+    def evict_tenant(self, tenant: str, min_remove_size: int) -> int:
+        """Evict nodes from a tenant until the removed character count is at least min_remove_size.
+
+        Args:
+            tenant: The tenant to evict nodes from
+            min_remove_size: Minimum number of characters to remove
+
+        Returns:
+            int: The actual number of characters removed
+        """
+        with self.lock:
+            if tenant not in self.tenant_nodes or not self.tenant_nodes[tenant]:
+                return 0
+
+            # Sort nodes by last access time (oldest first)
+            nodes_to_evict = sorted(
+                self.tenant_nodes[tenant],
+                key=lambda node: node.tenant_last_access_time.get(tenant, 0),
+            )
+
+            total_chars_removed: int = 0
+
+            # Remove nodes until we've reached the minimum removal size
+            for node in nodes_to_evict.copy():
+                # Use existing function to remove tenant from node
+                total_chars_removed += self.remove_tenant_single_node(tenant, node)
+
+                # Check if we've removed enough characters
+                if total_chars_removed >= min_remove_size:
+                    break
+
+            return total_chars_removed
