@@ -875,8 +875,8 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     "fs,data_path,endpoint_url",
     [
         (None, lazy_fixture("local_path"), None),
-        # (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        # (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
 def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):

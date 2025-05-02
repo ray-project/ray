@@ -136,7 +136,7 @@ class _FileDatasink(Datasink[None]):
         skip_create_dir_for_s3 = is_s3_uri and not self._data_context.s3_try_create_dir
 
         if self.try_create_dir and not skip_create_dir_for_s3:
-            if self.filesystem.get_file_info(dest).type is FileType.NotFound:
+            if self._get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
                 tmp = add_creatable_buckets_param_if_s3_uri(dest)
