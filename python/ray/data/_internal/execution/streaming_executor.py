@@ -31,10 +31,10 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState, Timer
-from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._last_debug_log_time = 0
 
-        register_dataset_logger(self._dataset_id)
+        self._data_context.set_dataset_logger_id(
+            register_dataset_logger(self._dataset_id)
+        )
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -239,13 +241,17 @@ class StreamingExecutor(Executor, threading.Thread):
 
             self._autoscaler.on_executor_shutdown()
 
-            unregister_dataset_logger(self._dataset_id)
-
             dur = time.perf_counter() - start
 
             logger.debug(
                 f"Shut down executor for dataset {self._dataset_id} "
                 f"(took {round(dur, 3)}s)"
+            )
+
+            # Unregister should be called after all operators are shut down to
+            # capture as many logs as possible.
+            self._data_context.set_dataset_logger_id(
+                unregister_dataset_logger(self._dataset_id)
             )
 
     def run(self):
@@ -491,7 +497,8 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
 
     base_usage = ExecutionResources(cpu=1)
     for op in walk(dag):
-        base_usage = base_usage.add(op.base_resource_usage())
+        min_resource_usage, _ = op.min_max_resource_requirements()
+        base_usage = base_usage.add(min_resource_usage)
 
     if not base_usage.satisfies_limit(limits):
         error_message = (
