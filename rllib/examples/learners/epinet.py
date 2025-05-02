@@ -163,7 +163,7 @@ if __name__ == "__main__":
             num_epochs=20,
             vf_loss_coeff=0.5,
             clip_param=0.2,
-            vf_clip_param=10,
+            vf_clip_param=100,
         )
         .rl_module(
             rl_module_spec=RLModuleSpec(

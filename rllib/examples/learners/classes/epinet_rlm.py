@@ -55,8 +55,6 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         self.distribution = Normal(
             torch.full((self.z_dim,), self.mean), torch.full((self.z_dim,), self.std)
         )
-        self.enn_output = 0.0
-        self.base_output = 0.0
 
         super().__init__(
             observation_space=observation_space,
