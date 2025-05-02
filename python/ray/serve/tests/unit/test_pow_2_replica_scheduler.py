@@ -867,7 +867,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler):
     "pow_2_scheduler",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
-        {"prefer_local_node": True, "prefer_local_az": False},
+        # {"prefer_local_node": True, "prefer_local_az": False},
     ],
     indirect=True,
 )

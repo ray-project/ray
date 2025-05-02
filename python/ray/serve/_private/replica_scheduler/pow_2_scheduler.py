@@ -130,7 +130,7 @@ class LocalityScheduleMixin:
             # node or AZ, consider all available replicas.
             candidate_replica_ids = self._replica_id_set
             _set_request_scheduling_context(should_backoff=True)
-        # print(f"locality decision {candidate_replica_ids=}")
+        print(f"locality decision {candidate_replica_ids=}")
         return candidate_replica_ids
 
 
@@ -508,6 +508,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         entered_backoff = False
         try:
             backoff_index = 0
+            multiplexed_start_matching_time = time.time()
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
@@ -525,7 +526,6 @@ class PowerOfTwoChoicesReplicaScheduler(
                         extra={"log_to_stderr": False},
                     )
 
-                multiplexed_start_matching_time = time.time()
                 if (
                     request_metadata is not None
                     and request_metadata.multiplexed_model_id
@@ -540,13 +540,13 @@ class PowerOfTwoChoicesReplicaScheduler(
                     # Get candidates for locality preference.
                     candidate_replica_ids = self.apply_locality_scheduling()
 
-                # print(f"in choose_replicas {candidate_replica_ids=}")
+                print(f"in choose_replicas {candidate_replica_ids=}")
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
                         list(candidate_replica_ids),
                         k=min(2, len(candidate_replica_ids)),
                     )
-                    # print(f"{chosen_ids=}")
+                    print(f"in candidate_replica_ids loop {chosen_ids=}")
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
                 # We have a slight unintended behavior when enabled locality routing
