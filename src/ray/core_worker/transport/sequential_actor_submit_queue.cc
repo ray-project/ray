@@ -97,7 +97,8 @@ void SequentialActorSubmitQueue::OnClientConnected() {
   auto head = requests.begin();
   if (head != requests.end()) {
     RAY_CHECK(head->first >= next_task_reply_position);
-    RAY_LOG(INFO) << "[debug] OnClientConnected next_task_reply_position old: " << next_task_reply_position << " new: " << head->first;
+    RAY_LOG(INFO) << "[debug] OnClientConnected next_task_reply_position old: "
+                  << next_task_reply_position << " new: " << head->first;
     next_task_reply_position = head->first;
   }
 }
@@ -120,7 +121,8 @@ void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,
     if (min_completed_task->first == next_task_reply_position) {
       next_task_reply_position++;
       // increment the iterator and erase the old value
-      RAY_LOG(INFO) << "[debug] MarkSeqnoCompleted Erase sequence_no: " << min_completed_task->first;
+      RAY_LOG(INFO) << "[debug] MarkSeqnoCompleted Erase sequence_no: "
+                    << min_completed_task->first;
       out_of_order_completed_tasks.erase(min_completed_task++);
     } else {
       break;
