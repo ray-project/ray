@@ -629,12 +629,19 @@ class JobManager:
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
+        job_finished = False
         async for lines in self._log_client.tail_logs(job_id):
             if lines is None:
-                # Return if the job has exited and there are no new log lines.
-                status = await self.get_job_status(job_id)
-                if status.is_terminal():
+                if job_finished:
+                    # Job has already finished and we have read EOF afterwards,
+                    # it's guaranteed that we won't get any more logs.
                     return
+                else:
+                    status = await self.get_job_status(job_id)
+                    if status.is_terminal():
+                        job_finished = True
+                        # Continue tailing logs generated between the
+                        # last EOF read and the finish of the job.
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:

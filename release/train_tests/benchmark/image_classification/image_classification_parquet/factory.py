@@ -11,6 +11,7 @@ import ray.data
 import ray.train
 
 # Local imports
+from constants import DatasetKey
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
@@ -49,7 +50,8 @@ class ImageClassificationParquetRayDataLoaderFactory(
         # Create training dataset with image decoding and transforms
         train_ds = (
             ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
+                IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN],
+                columns=["image", "label"],
             )
             .limit(self.benchmark_config.limit_training_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
@@ -58,13 +60,17 @@ class ImageClassificationParquetRayDataLoaderFactory(
         # Create validation dataset without random transforms
         val_ds = (
             ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
+                IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN],
+                columns=["image", "label"],
             )
             .limit(self.benchmark_config.limit_validation_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
         )
 
-        return {"train": train_ds, "val": val_ds}
+        return {
+            DatasetKey.TRAIN: train_ds,
+            DatasetKey.VALID: val_ds,
+        }
 
 
 class ImageClassificationParquetTorchDataLoaderFactory(
@@ -89,7 +95,7 @@ class ImageClassificationParquetTorchDataLoaderFactory(
         S3ParquetReader.__init__(
             self
         )  # Initialize S3ParquetReader to set up _s3_client
-        self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
+        self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN]
         self._cached_datasets: Optional[Dict[str, IterableDataset]] = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
@@ -126,7 +132,10 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             limit_rows_per_worker=limit_validation_rows_per_worker,
         )
 
-        self._cached_datasets = {"train": train_ds, "val": val_ds}
+        self._cached_datasets = {
+            DatasetKey.TRAIN: train_ds,
+            DatasetKey.VALID: val_ds,
+        }
         return self._cached_datasets
 
 

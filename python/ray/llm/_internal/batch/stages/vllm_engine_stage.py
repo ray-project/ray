@@ -172,8 +172,9 @@ class vLLMEngineWrapper:
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
             **kwargs,
-            disable_log_requests=True,
         )
+        # create_engine_config will set default values including `max_num_seqs`.
+        self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
         # Determine the generate function based on vLLM v0 or v1.
@@ -412,12 +413,17 @@ class vLLMEngineWrapper:
             logger.info("Shutting down vLLM engine")
             self.engine.shutdown()
 
+    def get_scheduler_config(self):
+        return self._vllm_config.scheduler_config
+
 
 class vLLMEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
         expected_input_keys: List[str],
+        batch_size: int,
+        max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
@@ -467,10 +473,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             disable_log_stats=False,
+            disable_log_requests=True,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
         )
+
+        max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
+        if batch_size * max_concurrent_batches < max_num_seqs:
+            logger.warning(
+                f"The product of batch_size ({batch_size}) and "
+                f"max_concurrent_batches ({max_concurrent_batches}) is too small "
+                "to saturate vLLM engine. This may lead to suboptimal "
+                "throughput. Please increase max_concurrent_batches to at least "
+                f"{math.ceil(max_num_seqs / batch_size)}."
+            )
 
     def normalize_engine_kwargs(
         self,
