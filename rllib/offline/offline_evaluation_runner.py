@@ -349,11 +349,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 rl_module_state = state[COMPONENT_RL_MODULE]
                 if isinstance(rl_module_state, ray.ObjectRef):
                     rl_module_state = ray.get(rl_module_state)
-                if (
-                    isinstance(rl_module_state, dict)
-                    and DEFAULT_MODULE_ID in rl_module_state
-                ):
-                    rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
                 self.module.set_state(rl_module_state)
 
             # Update our weights_seq_no, if the new one is > 0.
@@ -426,12 +421,14 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     @override(Runner)
     def make_module(self):
         try:
+            from ray.rllib.env import INPUT_ENV_SPACES
+
             if not self._module_spec:
                 self.__module_spec = self.config.get_multi_rl_module_spec(
                     # Note, usually we have no environemnt in case of offline evaluation.
-                    env=None,
+                    env=self.config.env,
                     spaces={
-                        DEFAULT_MODULE_ID: (
+                        INPUT_ENV_SPACES: (
                             self.config.observation_space,
                             self.config.action_space,
                         )
