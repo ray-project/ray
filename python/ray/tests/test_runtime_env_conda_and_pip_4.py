@@ -76,59 +76,34 @@ def test_multiple_pip_installs(start_cluster, monkeypatch):
     assert all(ray.get([f.remote(), f2.remote(), f3.remote()]))
 
 
-class TestGC:
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
+@pytest.mark.parametrize("field", ["pip"])
+def test_pip_ray_is_overwritten(start_cluster, field):
+    cluster, address = start_cluster
+    ray.init(address)
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa: F401
+
+    # Test an unconstrained "ray" dependency (should work).
+    ray.get(f.options(runtime_env={"pip": ["pip-install-test==0.5", "ray"]}).remote())
+
+    # Test a constrained "ray" dependency that matches the env (should work).
+    ray.get(
+        f.options(runtime_env={"pip": ["pip-install-test==0.5", "ray>=2.0"]}).remote()
     )
-    @pytest.mark.parametrize("field", ["pip"])
-    def test_pip_ray_is_overwritten(self, start_cluster, field):
-        cluster, address = start_cluster
 
-        # It should be OK to install packages with ray dependency.
-        ray.init(address, runtime_env={"pip": ["pip-install-test==0.5", "ray"]})
-
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa: F401
-
-            return True
-
-        # Ensure that the runtime env has been installed.
-        assert ray.get(f.remote())
-
-        ray.shutdown()
-
-        # It should be OK if cluster ray meets the installing ray version.
-        ray.init(address, runtime_env={"pip": ["pip-install-test==0.5", "ray>=1.12.0"]})
-
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa: F401
-
-            return True
-
-        # Ensure that the runtime env has been installed.
-        assert ray.get(f.remote())
-
-        ray.shutdown()
-
-        # It will raise exceptions if ray is overwritten.
-        with pytest.raises(Exception):
-            ray.init(
-                address, runtime_env={"pip": ["pip-install-test==0.5", "ray<=1.6.0"]}
-            )
-
-            @ray.remote
-            def f():
-                import pip_install_test  # noqa: F401
-
-                return True
-
-            # Ensure that the runtime env has been installed.
-            assert ray.get(f.remote())
-
-        ray.shutdown()
+    # Test a constrained "ray" dependency that doesn't match the env (shouldn't work).
+    with pytest.raises(Exception):
+        ray.get(
+            f.options(
+                runtime_env={"pip": ["pip-install-test==0.5", "ray<2.0"]}
+            ).remote()
+        )
 
 
 # pytest-virtualenv doesn't support Python 3.12 as of now, see more details here:
