@@ -229,6 +229,7 @@ class ProcessFD {
         // Child. Close sthe write end of the pipe from child.
         close(parent_lifetime_pipe[1]);
         parent_lifetime_pipe[1] = -1;
+        SetFdCloseOnExec(parent_lifetime_pipe[0]);
       }
       if (pid != 0 && parent_lifetime_pipe[0] != -1) {
         // Parent. Close the read end of the pipe.
