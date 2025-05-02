@@ -7,16 +7,16 @@ explanation of epistemic neural networks @ page 74.
 
 The epinet (epistemic neural network) is a very efficient means of exploration for agents in high
 epistemic environments. For example, an agent that is playing against another agent has a high-level
-of uncertainty since it doesn't know about the environment, but it also doesn't know the adversary's 
-policy. Therefore, the epinet does very well in adversarial enviornments. 
+of uncertainty since it doesn't know about the environment, but it also doesn't know the adversary's
+policy. Therefore, the epinet does very well in adversarial enviornments.
 
-The epinet takes, in this example, the critic's features and puts them against a z-number of priors. 
+The epinet takes, in this example, the critic's features and puts them against a z-number of priors.
 For example, if there is a z-dim of 3 then we are changing the prior distribution  three times and
 asking the network "are you sure?" over these three. If the network returns a close estimate in all
 three scenarious the agent is "certain" and there is little exploration needed / epistemic uncertainty.
 However, if the critic's returns are sporadic then this tells the agent something here is off and it
-is uncertain of this given state. So explore this area more. This can be seen as "jostling" or 
-"perturbing" the agent's state so it encompasses a wider latent space during training. 
+is uncertain of this given state. So explore this area more. This can be seen as "jostling" or
+"perturbing" the agent's state so it encompasses a wider latent space during training.
 
 As investigated in [Osband et al., 2021] from DeepMind's Efficient Agent Team, this exploration technique
 typically will largely outperform large ensemble of models in image classification tasks. This is seen
@@ -26,16 +26,16 @@ models do not.
 Paper: https://arxiv.org/pdf/2107.08924
 
 Moving into RL realm with DQN, [Osband et al., 2023] again showed that the typical very lightweight epinet
-was able to achieve similar, if not better, results compared to large ensemble models at a fraction of the 
-computation cost (~100 FLOPs vs ~3 FLOPs). Again, this was achieved because of joint predictions as seen 
+was able to achieve similar, if not better, results compared to large ensemble models at a fraction of the
+computation cost (~100 FLOPs vs ~3 FLOPs). Again, this was achieved because of joint predictions as seen
 by the normalized test log-loss which evaluates the quality of marginal and joint predictions of testing
 environments.
 
 Paper: https://arxiv.org/pdf/2302.09205
 
 Key difference: While the paper uses DQN for discrete action spaces, this implementation took it a step further
-and integrated it with PPO/continuous action spaces. This was rigorously tested in adversarial flight environments 
-and showed a 3100%+ reward increase and a reduction of convergence time by 45%. 
+and integrated it with PPO/continuous action spaces. This was rigorously tested in adversarial flight environments
+and showed a 3100%+ reward increase and a reduction of convergence time by 45%.
 Note: in terms of open-source, a basic scenario can be from PyFlyt's dogfighting environment seen here:
 https://taijunjet.com/PyFlyt/documentation/pz_envs/ma_fixedwing_dogfight_env.html
 
@@ -47,9 +47,9 @@ tune between 25, 50, 75, but 50 has been shown to have generally good results.
 
 The parameter --z_dim is the number of dimensions for the z-index (from the paper). This is the number of "priors"
 that the agent is tested over and this is the direct parameter combines states to depend on one another. This
-is a hyperparameter and can be on a wide range of 3 - 25, but generally 3-7 is a good starting point. For simple 
+is a hyperparameter and can be on a wide range of 3 - 25, but generally 3-7 is a good starting point. For simple
 enviornments (MuJoCo) the recommendation is 3. For more complex environmnets like League play or SMAC it is recommended
-to start at 5. 
+to start at 5.
 
 This example shows:
     - how to subclass an existing (torch) Learner and override its `compute_loss_for_module()` method.
@@ -85,6 +85,9 @@ from ray.tune.registry import register_env
 from ray.rllib.core.rl_module import RLModuleSpec
 from ray.rllib.examples.learners.classes.epinet_rlm import EpinetTorchRLModule
 
+import PyFlyt.gym_envs  # noqa: F401
+from PyFlyt.gym_envs import FlattenWaypointEnv
+
 
 torch, _ = try_import_torch()
 
@@ -101,9 +104,6 @@ class RewardWrapper(gym.RewardWrapper):
 
 
 def create_quadx_waypoints_env(env_config):
-    import PyFlyt.gym_envs
-    from PyFlyt.gym_envs import FlattenWaypointEnv
-
     env = gym.make("PyFlyt/QuadX-Waypoints-v4")
     # Wrap Environment to use max 10 and -10 for rewards
     env = RewardWrapper(env)
