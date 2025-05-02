@@ -726,47 +726,7 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
                            -1);
   }
 
-  // Cancel lease requests that are waiting for workers
-  // to free the acquired pg bundle resources
-  // so that pg bundle can be returned.
-  local_task_manager_->CancelTasks(
-      [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
-               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
-      },
-      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      "The lease request is cancelled because it uses placement group bundles that are "
-      "not "
-      "registered to GCS. It can happen upon GCS restart.");
-
-  // Kill all workers that are currently associated with the unused bundles.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_unused_bundles` separately.
-  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
-  for (const auto &worker_it : leased_workers_) {
-    auto &worker = worker_it.second;
-    const auto &bundle_id = worker->GetBundleId();
-    // We need to filter out the workers used by placement group.
-    if (!bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id)) {
-      workers_associated_with_unused_bundles.emplace_back(worker);
-    }
-  }
-
-  for (const auto &worker : workers_associated_with_unused_bundles) {
-    RAY_LOG(DEBUG)
-            .WithField(worker->GetBundleId().first)
-            .WithField(worker->GetAssignedTaskId())
-            .WithField(worker->GetActorId())
-            .WithField(worker->WorkerId())
-        << "Destroying worker since its bundle was unused, bundle index: "
-        << worker->GetBundleId().second;
-    DestroyWorker(worker,
-                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                  "Worker exits because it uses placement group bundles that are not "
-                  "registered to GCS. It can happen upon GCS restart.");
-  }
+  // TODO(jjyao) Unused bundles must not be COMMITTED since we have the PREPARED state.
 
   // Return unused bundle resources.
   placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles);
@@ -2116,18 +2076,18 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveRequest request,
     rpc::CancelResourceReserveReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  // This PRC is only called when the placement group is removed.
+  const auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
-  // Cancel lease requests that are waiting for workers
-  // to free the acquired pg bundle resources
-  // so that pg bundle can be returned.
+  // The PG bundle resource must be committed before a lease request asking for it
+  // can be added to local_task_manager and the only reason why we cancel
+  // a committed bundle is when the placement group is removed.
   local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return (bundle_id.first == bundle_spec.PlacementGroupId()) &&
-               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
+        return (bundle_id.first == bundle_spec.PlacementGroupId());
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
       absl::StrCat("Required placement group ",
