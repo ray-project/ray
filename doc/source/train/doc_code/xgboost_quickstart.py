@@ -2,15 +2,17 @@
 # isort: skip_file
 
 # __xgboost_start__
+import pandas as pd
 import xgboost
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
 
 # 1. Load your data as an `xgboost.DMatrix`.
-data = load_iris(as_frame=True)
-train_X, eval_X, train_y, eval_y = train_test_split(
-    data["data"], data["target"], test_size=0.2
-)
+train_df = pd.read_csv("s3://ray-example-data/iris/train/1.csv")
+eval_df = pd.read_csv("s3://ray-example-data/iris/val/1.csv")
+
+train_X = train_df.drop("target", axis=1)
+train_y = train_df["target"]
+eval_X = eval_df.drop("target", axis=1)
+eval_y = eval_df["target"]
 
 dtrain = xgboost.DMatrix(train_X, label=train_y)
 deval = xgboost.DMatrix(eval_X, label=eval_y)
@@ -36,16 +38,13 @@ bst = xgboost.train(
 
 # __xgboost_ray_start__
 import xgboost
-from sklearn.datasets import load_iris
 
 import ray.train
 from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
 
 # 1. Load your data as a Ray Data Dataset.
-data = load_iris(as_frame=True).frame
-dataset = ray.data.from_pandas(data)
-train_dataset, eval_dataset = dataset.train_test_split(test_size=0.2)
-
+train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris/train")
+eval_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris/val")
 
 def train_func():
     # 2. Load your data shard as an `xgboost.DMatrix`.
@@ -58,7 +57,6 @@ def train_func():
     train_df = train_shard.materialize().to_pandas()
     eval_df = eval_shard.materialize().to_pandas()
 
-    # Extract features and labels
     train_X = train_df.drop("target", axis=1)
     train_y = train_df["target"]
     eval_X = eval_df.drop("target", axis=1)
@@ -90,7 +88,7 @@ def train_func():
 
 
 # 5. Configure scaling and resource requirements.
-scaling_config = ray.train.ScalingConfig(num_workers=2, resources_per_worker={"CPU": 4})
+scaling_config = ray.train.ScalingConfig(num_workers=2, resources_per_worker={"CPU": 2})
 
 # 6. Launch distributed training job.
 trainer = XGBoostTrainer(
