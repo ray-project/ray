@@ -8,12 +8,13 @@ import numpy as np
 
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
+from ray.util.annotations import DeveloperAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 class Stats:
     """A container class holding a number of values and executing reductions over them.
 
@@ -64,15 +65,25 @@ class Stats:
         check(stats.peek(), 3)
         stats.push(3)
         check(stats.peek(), 6)
-        # So far, we have stored all values (1, 2, and 3).
-        check(stats.values, [1, 2, 3])
-        # Let's call the `reduce()` method to actually reduce these values
-        # to a single item of value=6:
-        stats = stats.reduce()
-        check(stats.peek(), 6)
+        # For efficiency, we keep the internal values in a reduced state for all Stats
+        # with c'tor options reduce!=mean and infinite window.
         check(stats.values, [6])
 
-        # "min" and "max" work analogous to "sum". But let's try with a `window` now:
+        # "min" or "max" work analogous to "sum".
+        stats = Stats(reduce="min")
+        stats.push(10)
+        check(stats.peek(), 10)
+        stats.push(20)
+        check(stats.peek(), 10)
+        stats.push(5)
+        check(stats.peek(), 5)
+        stats.push(100)
+        check(stats.peek(), 5)
+        # For efficiency, we keep the internal values in a reduced state for all Stats
+        # with c'tor options reduce!=mean and infinite window.
+        check(stats.values, [5])
+
+        # Let's try min/max/sum with a `window` now:
         stats = Stats(reduce="max", window=2)
         stats.push(2)
         check(stats.peek(), 2)
@@ -124,9 +135,9 @@ class Stats:
             time.sleep(1.0)
         assert 2.2 > stats.peek() > 1.8
         # When calling `reduce()`, the internal values list gets cleaned up.
-        check(len(stats.values), 2)  # still both deltas in the values list
+        check(len(stats.values), 1)  # holds the sum of both deltas in the values list
         stats = stats.reduce()
-        check(len(stats.values), 1)  # got reduced to one value (the sum)
+        check(len(stats.values), 1)  # nothing changed (still one sum value)
         assert 2.2 > stats.values[0] > 1.8
     """
 
@@ -247,9 +258,11 @@ class Stats:
                 (`self.values`).
         """
         self.values.append(value)
-        # For inf-windows EMA, always reduce right away, b/c it's cheap and avoids
-        # long lists, which would be expensive to reduce.
-        if self._ema_coeff is not None and self._inf_window:
+        # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
+        # cheap and avoids long lists, which would be expensive to reduce.
+        if self._inf_window and (
+            self._ema_coeff is not None or self._reduce_method != "mean"
+        ):
             self._set_values(self._reduced_values()[1])
 
     def __enter__(self) -> "Stats":
@@ -343,7 +356,19 @@ class Stats:
         self._set_values(values)
 
         # Shift historic reduced valued by one in our hist-tuple.
-        self._hist.append(reduced)
+        # But don't ever put tensors into the history.
+        if not (
+            torch
+            and (
+                (
+                    self._reduce_method is None
+                    and len(reduced) > 0
+                    and torch.is_tensor(reduced[0])
+                )
+                or (self._reduce_method is not None and torch.is_tensor(reduced))
+            )
+        ):
+            self._hist.append(reduced)
 
         # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
         # (from after the reduction). Also, set `self`'s values to empty.
@@ -354,7 +379,7 @@ class Stats:
         # a new Stats object.
         else:
             values = copy.deepcopy(self.values)
-        return Stats.similar_to(self, init_value=values)
+        return Stats.similar_to(self, init_value=self._numpy_if_necessary(values))
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         # Make sure `others` have same reduction settings.
@@ -488,7 +513,7 @@ class Stats:
             # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
             # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [1, 4, 2, 5, 0, 6, 3])
+            check(stats.values, [15, 6])  # 6 from `stats1` and 15 from `stats2`
             check(stats.peek(), 21)
 
             # Parallel-merge two "concat" (reduce=None) stats with no window.
@@ -550,19 +575,13 @@ class Stats:
 
         self._set_values(list(reversed(new_values)))
 
-    def set_to_numpy_values(self, values) -> None:
-        """Converts `self.values` from tensors to actual numpy values.
-
-        Args:
-            values: The (numpy) values to set `self.values` to.
-        """
-        numpy_values = convert_to_numpy(values)
-        if self._reduce_method is None:
-            assert isinstance(values, list) and len(self.values) >= len(values)
-            self.values = numpy_values
-        else:
-            assert len(self.values) > 0
-            self._set_values(force_list(numpy_values))
+    @staticmethod
+    def _numpy_if_necessary(values):
+        # Torch tensor handling. Convert to CPU/numpy first.
+        if torch and len(values) > 0 and torch.is_tensor(values[0]):
+            # Convert all tensors to numpy values.
+            values = [v.cpu().numpy() for v in values]
+        return values
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -616,12 +635,13 @@ class Stats:
 
     def get_state(self) -> Dict[str, Any]:
         return {
-            "values": convert_to_numpy(self.values),
+            "values": self.values,
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
             "_hist": list(self._hist),
+            "_throughput": self._throughput,
         }
 
     @staticmethod
@@ -632,6 +652,7 @@ class Stats:
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
+            throughput=state.get("_throughput", False),
         )
         stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
         return stats
@@ -713,14 +734,11 @@ class Stats:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
-        # Do non-EMA reduction (possibly using a window).
+        # Non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                assert all(torch.is_tensor(v) for v in values), values
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
+                # Only one item in the
                 if len(values[0].shape) == 0:
                     reduced = values[0]
                 else:
@@ -729,22 +747,6 @@ class Stats:
                     if self._reduce_method == "mean":
                         reduce_in = reduce_in.float()
                     reduced = reduce_meth(reduce_in)
-            elif tf and tf.is_tensor(values[0]):
-                # TODO (sven): Currently, tensor metrics only work with window=1.
-                #  We might want o enforce it more formally, b/c it's probably not a
-                #  good idea to have MetricsLogger or Stats tinker with the actual
-                #  computation graph that users are trying to build in their loss
-                #  functions.
-                assert len(values) == 1
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
-                    reduced = values[0]
-                else:
-                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                    reduced = reduce_meth(values)
-
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)

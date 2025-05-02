@@ -105,7 +105,7 @@ class ProgressBar:
 
         # Include as many operators as possible without approximately
         # exceeding `MAX_NAME_LENGTH`. Always include the first and
-        # last operator names soit is easy to identify the DAG.
+        # last operator names so it is easy to identify the DAG.
         truncated_op_names = [op_names[0]]
         for op_name in op_names[1:-1]:
             if (

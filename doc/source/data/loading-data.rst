@@ -218,7 +218,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
-        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+        `S3 Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -229,7 +229,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             pip install gcsfs
 
-        Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
+        Then, create a ``GCSFileSystem`` and specify URIs with the ``gs://`` scheme.
 
         .. testcode::
             :skipif: True
@@ -238,7 +238,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "gcs://anonymous@ray-example-data/iris.parquet",
+                "gs://...",
                 filesystem=filesystem
             )
 
@@ -256,7 +256,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
-        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+        `GCS Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 
@@ -469,7 +469,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -479,6 +479,30 @@ Ray Data interoperates with distributed data processing frameworks like
     create a GitHub issue `here <https://github.com/ray-project/ray/issues>`__.
 
 .. tab-set::
+
+    .. tab-item:: Daft
+
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_, call
+        :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
+        by your Daft query.
+
+        .. testcode::
+
+            import daft
+            import ray
+
+            ray.init()
+
+            df = daft.from_pydict({"int_col": [i for i in range(10000)], "str_col": [str(i) for i in range(10000)]})
+            ds = ray.data.from_daft(df)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'int_col': 0, 'str_col': '0'}
+            {'int_col': 1, 'str_col': '1'}
+            {'int_col': 2, 'str_col': '2'}
 
     .. tab-item:: Dask
 

@@ -18,11 +18,12 @@ import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
+from ray.data.context import DataContext
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -88,7 +89,7 @@ class DataIterator(abc.ABC):
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
         """
-        raise NotImplementedError
+        ...
 
     @PublicAPI
     def iter_batches(
@@ -222,12 +223,16 @@ class DataIterator(abc.ABC):
     @PublicAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def schema(self) -> "Schema":
         """Return the schema of the dataset iterated over."""
-        raise NotImplementedError
+        ...
+
+    @abc.abstractmethod
+    def get_context(self) -> DataContext:
+        ...
 
     @PublicAPI
     def iter_torch_batches(
@@ -676,16 +681,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(
-               num_rows=?,
-               schema={
-                  sepal length (cm): double,
-                  sepal width (cm): double,
-                  petal length (cm): double,
-                  petal width (cm): double,
-                  target: int64
-               }
-            ))
+            DataIterator(Dataset(num_rows=?, schema=...))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -707,16 +703,7 @@ class DataIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
-            +- Dataset(
-                  num_rows=?,
-                  schema={
-                     sepal length (cm): double,
-                     sepal width (cm): double,
-                     petal length (cm): double,
-                     petal width (cm): double,
-                     target: int64
-                  }
-               ))
+            +- Dataset(num_rows=?, schema=...))
             >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -912,7 +899,7 @@ class DataIterator(abc.ABC):
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats)
+        execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
             execution_plan._context,

@@ -52,7 +52,7 @@ Callback Hooks
 Stateful Callbacks
 ~~~~~~~~~~~~~~~~~~
 
-The following methods must be overriden for stateful callbacks to be saved/restored
+The following methods must be overridden for stateful callbacks to be saved/restored
 properly by Tune.
 
 .. autosummary::

@@ -86,6 +86,7 @@ message LoggingConfig {
   string log_level = 2;
   string logs_dir = 3;
   bool enable_access_log = 4;
+  repeated string additional_log_standard_attrs = 5;
 }
 
 //[End] Logging Config

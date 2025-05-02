@@ -14,8 +14,14 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "ray/util/thread_checker.h"
@@ -37,7 +43,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
                             rpc::NodeManagerClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
-                            instrumented_io_context &io_context);
+                            instrumented_io_context &io_context,
+                            GcsPublisher *gcs_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -146,6 +153,24 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// more details. This is requested through autoscaler SDK for request_resources().
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
+  /// \brief Get the autoscaler infeasible request resource shapes for each node.
+  /// \return a map of node id to the corresponding infeasible resource requests shapes.
+  ///
+  /// The function takes the infeasible requests from `autoscaling_state_` and maps the
+  /// corresponding resource shapes to the ResourceLoad of each node in
+  /// `node_resource_info_` to get the infeasible requests per node.
+  /// The resource shapes that meets the following criteria are added to the map:
+  /// (1) It is in the `infeasible_resource_requests` of the `autoscaling_state_`.
+  /// (2) The `num_infeasible_requests_queued` in the `ResourceDemand` of the shape in
+  ///    corresponding entry in `node_resource_info_` is greater than 0.
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
+  GetPerNodeInfeasibleResourceRequests() const;
+
+  /// \brief Cancel the tasks with autoscaler infeasible requests.
+  /// TODO: Implement the function
+  void CancelInfeasibleRequests() const;
+
   // Ray cluster session name.
   const std::string session_name_;
 
@@ -164,6 +189,9 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   // Handler for internal KV
   InternalKVInterface &kv_;
   instrumented_io_context &io_context_;
+
+  // A publisher for publishing gcs messages.
+  GcsPublisher *gcs_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
@@ -199,6 +227,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
 };
 
 }  // namespace gcs

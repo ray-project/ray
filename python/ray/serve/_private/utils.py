@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import copy
 import importlib
 import inspect
@@ -8,6 +9,7 @@ import random
 import time
 import uuid
 from abc import ABC, abstractmethod
+from asyncio import coroutines, ensure_future, futures
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -17,13 +19,15 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.utils import import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string, import_attr
+from ray._private.utils import get_random_alphanumeric_string
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
+from ray.serve.config import gRPCOptions
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 
@@ -589,7 +593,7 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if "{" in route_prefix or "}" in route_prefix:
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+            f"Invalid route_prefix '{route_prefix}', may not contain wildcards."
         )
 
 
@@ -605,3 +609,50 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     elif isinstance(obj, DeploymentResponse):
         # Launch async task to convert DeploymentResponse to an object ref
         return asyncio.create_task(obj._to_object_ref())
+
+
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise
+
+
+def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+    return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
+
+
+def run_coroutine_or_future_threadsafe(coro_or_future, loop):
+    """Submit a coroutine object or future to a given event loop.
+
+    Ref: https://github.com/python/cpython/blob/eef49c359505eaf109d519d39e53dfd3c78d066a/Lib/asyncio/tasks.py#L991
+
+    Return a concurrent.futures.Future to access the result.
+    """
+    if not coroutines.iscoroutine(coro_or_future) and not futures.isfuture(
+        coro_or_future
+    ):
+        raise TypeError("A coroutine object or future is required")
+
+    if futures.isfuture(coro_or_future):
+        assert loop == coro_or_future.get_loop()
+
+    future = concurrent.futures.Future()
+
+    def callback():
+        try:
+            futures._chain_future(ensure_future(coro_or_future, loop=loop), future)
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except BaseException as exc:
+            if future.set_running_or_notify_cancel():
+                future.set_exception(exc)
+            raise
+
+    loop.call_soon_threadsafe(callback)
+    return future

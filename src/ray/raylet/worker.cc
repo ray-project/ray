@@ -15,10 +15,11 @@
 #include "ray/raylet/worker.h"
 
 #include <boost/bind/bind.hpp>
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 

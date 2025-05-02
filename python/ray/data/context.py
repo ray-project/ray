@@ -1,3 +1,4 @@
+import copy
 import enum
 import logging
 import os
@@ -30,6 +31,7 @@ class ShuffleStrategy(str, enum.Enum):
 
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
+    HASH_SHUFFLE = "hash_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -76,6 +78,10 @@ DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
     "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 )
 
+DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -92,7 +98,10 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
-DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
+    "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
+    True,
+)
 
 # NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
 #       total cumulative size (due to it internally utilizing int32 offsets)
@@ -165,8 +174,8 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
-# Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 1024
+# The default batch size for batch transformations before it was changed to `None`.
+LEGACY_DEFAULT_BATCH_SIZE = 1024
 
 # Default value of the max number of blocks that can be buffered at the
 # streaming generator of each `DataOpTask`.
@@ -183,6 +192,11 @@ DEFAULT_S3_TRY_CREATE_DIR = False
 
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+)
+
+# Enable per node metrics reporting for Ray Data, disabled by default.
+DEFAULT_ENABLE_PER_NODE_METRICS = bool(
+    int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
 
@@ -316,6 +330,10 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
+            disabled by default.
+        memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
+            map tasks won't record memory stats.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -336,6 +354,29 @@ class DataContext:
     pipeline_push_based_shuffle_reduce_tasks: bool = True
 
     ################################################################
+    # Hash-based shuffling configuration
+    ################################################################
+
+    # Default hash-shuffle parallelism level (will be used when not
+    # provided explicitly)
+    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+
+    # Max number of aggregating actors that could be provisioned
+    # to perform aggregations on partitions produced during hash-shuffling
+    #
+    # When unset defaults to `DataContext.min_parallelism`
+    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # Max number of *concurrent* hash-shuffle finalization tasks running
+    # at the same time. This config is helpful to control concurrency of
+    # finalization tasks to prevent single aggregator running multiple tasks
+    # concurrently (for ex, to prevent it failing w/ OOM)
+    #
+    # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
+    max_hash_shuffle_finalization_batch_size: Optional[int] = None
+
+    join_operator_actor_num_cpus_per_partition_override: float = None
+    hash_shuffle_operator_actor_num_cpus_per_partition_override: float = None
+    hash_aggregate_operator_actor_num_cpus_per_partition_override: float = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
@@ -386,8 +427,9 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
-
+    enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
+    memory_usage_poll_interval_s: Optional[float] = 1
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -534,6 +576,10 @@ class DataContext:
             key: The key of the config.
         """
         self._kv_configs.pop(key, None)
+
+    def copy(self) -> "DataContext":
+        """Create a copy of the current DataContext."""
+        return copy.deepcopy(self)
 
 
 # Backwards compatibility alias.

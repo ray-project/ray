@@ -2,7 +2,6 @@ import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
@@ -205,7 +204,7 @@ def test_controller_deserialization_deployment_def(
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
-        from ray._private.utils import import_attr
+        from ray._common.utils import import_attr
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
@@ -328,7 +327,7 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     )
 
 
-def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
+def test_serve_stream_logs(start_and_shutdown_ray_cli_function, tmp_path):
     """Test that serve logs show up across different drivers."""
 
     file1 = """from ray import serve
@@ -345,23 +344,28 @@ class B:
         return "Hello B"
 serve.run(B.bind())"""
 
-    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
-        f1.write(file1.encode("utf-8"))
-        f1.seek(0)
-        # Driver 1 (starts Serve controller)
-        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
-        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Adding 1 replica to Deployment(name='A'" in output.decode("utf-8")
+    f1 = tmp_path / "file1.py"
+    f1.write_text(file1)
+    # Driver 1 (starts Serve controller)
+    output = subprocess.check_output(
+        [sys.executable, str(f1)], stderr=subprocess.STDOUT
+    )
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    assert "Adding 1 replica to Deployment(name='A'" in output.decode("utf-8")
 
-        f2.write(file2.encode("utf-8"))
-        f2.seek(0)
-        # Driver 2 (reconnects to the same Serve controller)
-        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
-        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Adding 1 replica to Deployment(name='B'" in output.decode("utf-8")
+    f2 = tmp_path / "file2.py"
+    f2.write_text(file2)
+    # Driver 2 (reconnects to the same Serve controller)
+    output = subprocess.check_output(
+        [sys.executable, str(f2)], stderr=subprocess.STDOUT
+    )
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    assert "Adding 1 replica to Deployment(name='B'" in output.decode("utf-8")
 
 
-def test_checkpoint_deleted_on_serve_shutdown(start_and_shutdown_ray_cli_function):
+def test_checkpoint_deleted_on_serve_shutdown(
+    start_and_shutdown_ray_cli_function, tmp_path
+):
     """Test the application target state checkpoint is deleted when Serve is shutdown"""
 
     file1 = """from ray import serve
@@ -378,20 +382,23 @@ class B:
         return "Hello B"
 serve.run(B.bind())"""
 
-    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
-        f1.write(file1.encode("utf-8"))
-        f1.seek(0)
-        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
-        print(output.decode("utf-8"))
-        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        subprocess.check_output(["serve", "shutdown", "-y"])
+    f1 = tmp_path / "file1.py"
+    f1.write_text(file1)
+    output = subprocess.check_output(
+        [sys.executable, str(f1)], stderr=subprocess.STDOUT
+    )
+    print(output.decode("utf-8"))
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    subprocess.check_output(["serve", "shutdown", "-y"])
 
-        f2.write(file2.encode("utf-8"))
-        f2.seek(0)
-        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
-        print(output.decode("utf-8"))
-        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Recovering target state for application" not in output.decode("utf-8")
+    f2 = tmp_path / "file2.py"
+    f2.write_text(file2)
+    output = subprocess.check_output(
+        [sys.executable, str(f2)], stderr=subprocess.STDOUT
+    )
+    print(output.decode("utf-8"))
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    assert "Recovering target state for application" not in output.decode("utf-8")
 
 
 if __name__ == "__main__":

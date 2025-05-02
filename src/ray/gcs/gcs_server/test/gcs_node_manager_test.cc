@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"

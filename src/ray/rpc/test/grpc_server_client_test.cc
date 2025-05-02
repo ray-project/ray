@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <chrono>
+#include <memory>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/rpc/grpc_client.h"
@@ -105,7 +107,8 @@ class TestGrpcServerClientFixture : public ::testing::Test {
     // Prepare and start test server.
     handler_thread_ = std::make_unique<std::thread>([this]() {
       /// The asio work to keep handler_io_service_ alive.
-      boost::asio::io_service::work handler_io_service_work_(handler_io_service_);
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+          handler_io_service_work_(handler_io_service_.get_executor());
       handler_io_service_.run();
     });
     test_service_.reset(new TestGrpcService(handler_io_service_, test_service_handler_));
@@ -121,7 +124,8 @@ class TestGrpcServerClientFixture : public ::testing::Test {
     // Prepare a client
     client_thread_ = std::make_unique<std::thread>([this]() {
       /// The asio work to keep client_io_service_ alive.
-      boost::asio::io_service::work client_io_service_work_(client_io_service_);
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+          client_io_service_work_(client_io_service_.get_executor());
       client_io_service_.run();
     });
     client_call_manager_.reset(new ClientCallManager(client_io_service_));

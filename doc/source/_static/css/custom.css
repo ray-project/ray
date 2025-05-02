@@ -4,8 +4,8 @@
 * dark/light theme specific values, which normally take precedence over the PST defaults.
 * */
 html {
-  --anyscale-blue: #0641ac;
-  --ray-blue: #3c8ae9; /* Ray blue color - use this for all ray branding */
+  --anyscale-blue: #0066FF;
+  --ray-blue: #02A0CF; /* Ray blue color - use this for all ray branding */
   --pst-color-primary: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
@@ -227,9 +227,6 @@ li.active-link {
 .navbar-brand.logo > svg path#ray-text {
   fill: var(--pst-color-text-base);
 }
-.navbar-brand.logo > svg path#ray-logo {
-  fill: var(--ray-blue);
-}
 
 /* Anyscale branding */
 #try-anyscale-text {
@@ -400,4 +397,9 @@ table.autosummary tr > td:first-child > p > a > code > span {
 /* Hide the RTD version switcher since we are using PyData theme one */
 readthedocs-flyout {
   display: none !important;
+}
+
+/* Styling the experimental Anyscale upsell CTA */
+.anyscale-cta {
+  margin-bottom: 16px;
 }

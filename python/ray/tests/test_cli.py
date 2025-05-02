@@ -46,6 +46,7 @@ import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
+import ray._private.utils as utils
 from ray.util.check_open_ports import check_open_ports
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
@@ -336,6 +337,27 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
             ],
         )
     )
+
+
+def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--cgroup-path=/doesnt/matter"],
+    )
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+
+
+def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--enable-resource-isolation"],
+    )
+    # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
+    _die_on_error(result)
 
 
 @pytest.mark.skipif(
@@ -1057,7 +1079,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
 
 def test_ray_drain_node(monkeypatch):
     monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
-    ray._raylet.Config.initialize("")
+    ray.init()
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1195,6 +1217,29 @@ def test_ray_drain_node(monkeypatch):
         )
         assert result.exit_code != 0
         assert "The drain request is not accepted: Node not idle" in result.output
+
+    # Test without node-id
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.01:6543",
+                "--reason",
+                "DRAIN_NODE_REASON_PREEMPTION",
+                "--reason-message",
+                "spot preemption",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
+            ray.get_runtime_context().get_node_id(), 2, "spot preemption", 0
+        )
 
     with patch("time.time_ns", return_value=1000000000), patch(
         "ray._raylet.GcsClient"
