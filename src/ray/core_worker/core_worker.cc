@@ -3843,8 +3843,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     // Handle duplicate actor creation tasks that might be sent from the GCS on restart.
     // Ignore the message and reply OK.
     if (worker_context_.GetCurrentActorID() == actor_id) {
-      RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
-                    << task_spec.ActorCreationId()
+      RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor " << actor_id
                     << ". This is likely due to a GCS server restart.";
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
