@@ -232,13 +232,12 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     if (it == actor_scheduling_queues_.end()) {
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
       RAY_CHECK(cg_it != concurrency_groups_cache_.end());
-      if (execute_out_of_order_) {
+      if (execute_out_of_order) {
         std::stringstream ss;
         ss << "Creating out-of-order actor scheduling queue with max_concurrency="
            << actor_max_concurrency_ << " and concurrency groups:" << std::endl;
-        for (const auto &concurrency_group : concurrency_groups) {
-          ss << "\t" << concurrency_group.name << " : "
-             << concurrency_group.max_concurrency;
+        for (const auto &cg : cg_id->second) {
+          ss << "\t" << cg.name << " : " << cg.max_concurrency;
         }
         RAY_LOG(DEBUG) << ss.str();
 
