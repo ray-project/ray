@@ -597,6 +597,30 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_d
       });
 }
 
+void LocalObjectManager::DestroyExternalStorage() {
+  io_worker_pool_.PopDeleteWorker([this](std::shared_ptr<WorkerInterface> io_worker) {
+    rpc::DestroyExternalStorageRequest request;
+    std::promise<ray::Status> promise;
+    io_worker->rpc_client()->DestroyExternalStorage(
+        request,
+        [this, io_worker, &promise](const ray::Status &status,
+                                    const rpc::DestroyExternalStorageReply &reply) {
+          io_worker_pool_.PushDeleteWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send destroy external storage request: "
+                           << status.ToString();
+          }
+          promise.set_value(status);
+        });
+    auto future = promise.get_future();
+    // TODO: make the timeout configurable
+    using namespace std::chrono_literals;
+    if (future.wait_for(10s) != std::future_status::ready) {
+      RAY_LOG(ERROR) << "Failed to destroy external storage within ";
+    }
+  });
+}
+
 void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   auto stats = reply->mutable_store_stats();
   stats->set_spill_time_total_s(spill_time_total_s_);
