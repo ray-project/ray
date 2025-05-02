@@ -1112,18 +1112,20 @@ def test_log_with_import():
 def test_log_monitor_ip_correct(ray_start_cluster):
     cluster = ray_start_cluster
     # add first node
-    cluster.add_node(node_ip_address="127.0.0.2")
+    cluster.add_node(
+        node_ip_address="127.0.0.2", resources={"foobar": 1},
+    )
     address = cluster.address
     ray.init(address)
     # add second node
     cluster.add_node(node_ip_address="127.0.0.3")
 
-    @ray.remote
+    @ray.remote(resources={"foobar": 1})
     def print_msg():
         print("abc")
 
     p = init_log_pubsub()
-    print_msg.remote()
+    ray.get(print_msg.remote())
     data = get_log_data(
         p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
     )
