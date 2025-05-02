@@ -113,7 +113,13 @@ app = FastAPI()
 class TritonDeployment:
     def __init__(self):
         self._triton_server = tritonserver
-
+        
+        # NOTE: Each worker node needs to have access to this directory.
+        # If you are using distributed multi-node setup, prefer to use
+        # remote storage like S3 to save the model repository and use it.
+        #
+        # If triton server is not able to access this location,
+        # the triton server will complain `failed to stat /workspace/models`.
         model_repository = ["/workspace/models"]
 
         self._triton_server = tritonserver.Server(
