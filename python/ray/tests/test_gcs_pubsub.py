@@ -7,7 +7,6 @@ import ray
 from ray._private.gcs_pubsub import (
     GcsAioResourceUsageSubscriber,
 )
-from ray._private.gcs_utils import GcsAioClient
 import pytest
 
 
@@ -66,9 +65,9 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
 
-    gcs_aio_client = GcsAioClient(address=gcs_server_addr)
-    await gcs_aio_client.publish_node_resource_usage("aaa_id", '{"cpu": 1}')
-    await gcs_aio_client.publish_node_resource_usage("bbb_id", '{"cpu": 2}')
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
+    await gcs_client.async_publish_node_resource_usage("aaa_id", '{"cpu": 1}')
+    await gcs_client.async_publish_node_resource_usage("bbb_id", '{"cpu": 2}')
 
     assert await subscriber.poll() == ("aaa_id", '{"cpu": 1}')
     assert await subscriber.poll() == ("bbb_id", '{"cpu": 2}')

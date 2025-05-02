@@ -212,7 +212,7 @@ class DashboardAgent:
                 )
 
             check_parent_task = create_check_raylet_task(
-                self.log_dir, self.gcs_address, callback, loop
+                self.log_dir, self.gcs_client, callback, loop
             )
             tasks.append(check_parent_task)
 
