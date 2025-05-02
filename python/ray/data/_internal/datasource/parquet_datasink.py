@@ -54,7 +54,7 @@ class ParquetDatasink(_FileDatasink):
             filename_provider=filename_provider,
             dataset_uuid=dataset_uuid,
             file_format="parquet",
-            mode=mode
+            mode=mode,
         )
 
     def write(
