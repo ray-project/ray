@@ -23,12 +23,12 @@ class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
     batch_size: int = Field(
-        default=64,
+        default=32,
         description="Large batch sizes are likely to saturate the compute resources "
         "and could achieve higher throughput. On the other hand, small batch sizes "
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
-        "based on your use case. Defaults to 64.",
+        "based on your use case. Defaults to 32.",
     )
     resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,

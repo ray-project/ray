@@ -32,6 +32,7 @@ class ShuffleStrategy(str, enum.Enum):
 
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
+    HASH_SHUFFLE = "hash_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -76,6 +77,10 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 
 DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
     "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+)
+
+DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -350,6 +355,29 @@ class DataContext:
     pipeline_push_based_shuffle_reduce_tasks: bool = True
 
     ################################################################
+    # Hash-based shuffling configuration
+    ################################################################
+
+    # Default hash-shuffle parallelism level (will be used when not
+    # provided explicitly)
+    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+
+    # Max number of aggregating actors that could be provisioned
+    # to perform aggregations on partitions produced during hash-shuffling
+    #
+    # When unset defaults to `DataContext.min_parallelism`
+    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # Max number of *concurrent* hash-shuffle finalization tasks running
+    # at the same time. This config is helpful to control concurrency of
+    # finalization tasks to prevent single aggregator running multiple tasks
+    # concurrently (for ex, to prevent it failing w/ OOM)
+    #
+    # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
+    max_hash_shuffle_finalization_batch_size: Optional[int] = None
+
+    join_operator_actor_num_cpus_per_partition_override: float = None
+    hash_shuffle_operator_actor_num_cpus_per_partition_override: float = None
+    hash_aggregate_operator_actor_num_cpus_per_partition_override: float = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
