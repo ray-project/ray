@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
-from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datasource.file_datasink import _FileDatasink, SaveMode
 from ray.data.datasource.filename_provider import FilenameProvider
 
 if TYPE_CHECKING:
@@ -33,6 +33,7 @@ class ParquetDatasink(_FileDatasink):
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ):
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -53,6 +54,7 @@ class ParquetDatasink(_FileDatasink):
             filename_provider=filename_provider,
             dataset_uuid=dataset_uuid,
             file_format="parquet",
+            mode=mode
         )
 
     def write(

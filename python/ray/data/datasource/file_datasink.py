@@ -24,6 +24,24 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
+# TODO(jhsu): move this to another file once modes
+# are more unbiquitous
+from enum import Enum
+class SaveMode(Enum):
+    APPEND = 0
+    OVERWRITE = 1
+    IGNORE = 2
+    ERROR = 3
+    ERRORIFEXISTS = 3
+    @classmethod
+    def from_string(cls, name: str):
+        normalized_name = name.strip().upper().replace("_", "")
+        try:
+            return cls[normalized_name]
+        except KeyError as e:
+            valid_modes = SaveMode.__members__.keys()
+            raise ValueError(f"{name} is not invalid. Valid save modes are {valid_modes}") from e
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +56,7 @@ class _FileDatasink(Datasink[None]):
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ):
         """Initialize this datasink.
 
@@ -76,13 +95,22 @@ class _FileDatasink(Datasink[None]):
         self.filename_provider = filename_provider
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
-
+        self.mode = mode
         self.has_created_dir = False
 
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
     def on_write_start(self) -> None:
+        from pyarrow.fs import FileType
+        file_does_exist = self._get_file_info(self.path).type is not FileType.NotFound
+        if file_does_exist:
+            if self.mode == SaveMode.ERROR:
+                raise ValueError(f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files")
+            elif self.mode == SaveMode.IGNORE:
+                return
+            elif self.mode == SaveMode.OVERWRITE:
+                self._delete_dir_contents(self.path)
         self.has_created_dir = self._create_dir(self.path)
 
     def _create_dir(self, dest) -> bool:
@@ -116,6 +144,16 @@ class _FileDatasink(Datasink[None]):
                 return True
 
         return False
+
+    def _delete_dir_contents(self, dest) -> None:
+        """Delete the contents of directory (used in `SaveMode.OVERWRITE`)
+        """
+        self.filesystem.delete_dir_contents(dest)
+
+    def _get_file_info(self, dest) -> "pyarrow.fs.Filetype":
+        """Get the file info for dest.
+        """
+        return self.filesystem.get_file_info(dest)
 
     def write(
         self,

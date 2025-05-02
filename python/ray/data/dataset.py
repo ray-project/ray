@@ -109,6 +109,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider
+from ray.data.datasource.file_datasink import _FileDatasink, SaveMode
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -3316,6 +3317,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: str = "append",
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -3393,6 +3395,10 @@ class Dataset:
                     /arrow.apache.org/docs/python/generated/\
                         pyarrow.parquet.ParquetWriter.html>`_, which is used to write
                 out each block to a file. See `arrow_parquet_args_fn` for more detail.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "errorifexists", "ignore", "append". Defaults to "append".
+                NOTE: This method is not atomic. "Overwrite" will first delete all the data
+                before writing to `path`
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -3418,6 +3424,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=SaveMode.from_string(mode),
         )
         self.write_datasink(
             datasink,
@@ -4528,6 +4535,12 @@ class Dataset:
 
         try:
             datasink.on_write_start()
+            if isinstance(datasink, _FileDatasink):
+                if not datasink.has_created_dir and datasink.mode is SaveMode.IGNORE:
+                    logger.info(
+                        f"Ignoring write because {datasink.path} already exists"
+                    )
+                    return
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
             # TODO: Get and handle the blocks with an iterator instead of getting

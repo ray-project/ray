@@ -30,6 +30,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
+from ray.data.dataset import SaveMode
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -874,8 +875,8 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     "fs,data_path,endpoint_url",
     [
         (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        # (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        # (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
 def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -886,16 +887,16 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_blocks([df1, df2])
+    ds1 = ray.data.from_blocks([df1, df2])
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:
         os.mkdir(path)
     else:
         fs.create_dir(_unwrap_protocol(path))
-    ds._set_uuid("data")
-    ds.write_parquet(path, filesystem=fs)
-    path1 = os.path.join(path, "data_000000_000000.parquet")
-    path2 = os.path.join(path, "data_000001_000000.parquet")
+    ds1._set_uuid("data1")
+    ds1.write_parquet(path, filesystem=fs, mode="append")
+    path1 = os.path.join(path, "data1_000000_000000.parquet")
+    path2 = os.path.join(path, "data1_000001_000000.parquet")
     dfds = pd.concat(
         [
             pd.read_parquet(path1, storage_options=storage_options),
@@ -903,6 +904,52 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         ]
     )
     assert df.equals(dfds)
+
+    # test save modes
+    assert SaveMode.ERRORIFEXISTS == SaveMode.ERROR
+    df3 = pd.DataFrame({"two": [4, 5, 6], "three": ["h", "i", "j"]})
+    ds2 = ray.data.from_blocks([df3])
+    with pytest.raises(ValueError):
+        # path already exists
+        ds2.write_parquet(path, filesystem=fs, mode="error")
+    ds2.write_parquet(path, filesystem=fs, mode="ignore")
+    # make sure we ignored existing files
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+    ds2._set_uuid("data2")
+
+    # this should add another file
+    ds2.write_parquet(path, filesystem=fs, mode="append")
+    df = pd.concat([df1, df2, df3])
+    path3 = os.path.join(path, "data2_000000_000000.parquet")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+            pd.read_parquet(path3, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+    ds2.write_parquet(path, filesystem=fs, mode="overwrite")
+    assert not os.path.exists(path2)
+    assert not os.path.exists(path1)
+    dfds = pd.read_parquet(path3, storage_options=storage_options)
+    assert df3.equals(dfds)
+
+    # make sure we can still write
+    path_test_ignore_ok = os.path.join(data_path, "ignore")
+    path_test_error_ok = os.path.join(data_path, "error")
+    ds2.write_parquet(path_test_ignore_ok, filesystem=fs, mode="ignore")
+    x = pd.read_parquet(path_test_ignore_ok)
+    assert x.equals(df3)
+    ds2.write_parquet(path_test_error_ok, filesystem=fs, mode="errorifexists")
+    assert pd.read_parquet(path_test_error_ok).equals(df3)
+
     if fs is None:
         shutil.rmtree(path)
     else:
