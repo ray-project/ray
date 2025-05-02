@@ -227,7 +227,7 @@ class LLMConfig(BaseModelExtended):
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "
         "dictionary of key-value pairs. Current supported keys are "
-        "`stream_batching_interval_ms`, and `stream_batch_size`.",
+        "`stream_batching_interval_ms`, and `num_router_replicas`.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
