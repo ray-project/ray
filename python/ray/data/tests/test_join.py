@@ -1,10 +1,11 @@
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-
 import ray
+
+from typing import Optional
+
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data import Dataset, DataContext
@@ -46,6 +47,11 @@ def test_simple_inner_join(
     num_rows_right: int,
     partition_size_hint: Optional[int],
 ):
+    # NOTE: We override max-block size to make sure that in cases when a partition
+    #       size hint is not provided, we're not over-estimating amount of memory
+    #       required for the aggregators
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
     doubles = ray.data.range(num_rows_left).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
@@ -104,6 +110,11 @@ def test_simple_left_right_outer_join(
     num_rows_left,
     num_rows_right,
 ):
+    # NOTE: We override max-block size to make sure that in cases when a partition
+    #       size hint is not provided, we're not over-estimating amount of memory
+    #       required for the aggregators
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
     doubles = ray.data.range(num_rows_left).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
@@ -162,6 +173,11 @@ def test_simple_full_outer_join(
     num_rows_left,
     num_rows_right,
 ):
+    # NOTE: We override max-block size to make sure that in cases when a partition
+    #       size hint is not provided, we're not over-estimating amount of memory
+    #       required for the aggregators
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
     doubles = ray.data.range(num_rows_left).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
@@ -200,6 +216,11 @@ def test_simple_full_outer_join(
 @pytest.mark.parametrize("left_suffix", [None, "_left"])
 @pytest.mark.parametrize("right_suffix", [None, "_right"])
 def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_suffix):
+    # NOTE: We override max-block size to make sure that in cases when a partition
+    #       size hint is not provided, we're not over-estimating amount of memory
+    #       required for the aggregators
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
     doubles = ray.data.range(100).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
