@@ -21,7 +21,6 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.exceptions import RayActorError, RayTaskError
-from ray.tune import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
@@ -29,6 +28,7 @@ from ray.train.constants import (
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
 )
+from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,

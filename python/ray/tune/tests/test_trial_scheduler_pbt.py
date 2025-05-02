@@ -11,6 +11,9 @@ from typing import List
 from unittest.mock import MagicMock
 
 import numpy as np
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 import pytest
 
 import ray
@@ -18,11 +21,11 @@ from ray import cloudpickle, tune
 from ray._private.test_utils import object_memory_usage
 from ray.tune import (
     Callback,
-    Trainable,
     Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
+    Trainable,
 )
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
@@ -33,9 +36,6 @@ from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 from ray.tune.utils.util import flatten_dict
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 MB = 1024**2
 

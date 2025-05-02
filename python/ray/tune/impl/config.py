@@ -4,8 +4,8 @@ from ray.air.config import CheckpointConfig as _CheckpointConfig
 from ray.air.config import FailureConfig as _FailureConfig
 from ray.air.config import RunConfig as _RunConfig
 from ray.train.constants import (
-    _v2_migration_warnings_enabled,
     V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.utils import _copy_doc, _log_deprecation_warning
 
