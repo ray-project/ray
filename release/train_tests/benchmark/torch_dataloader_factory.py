@@ -137,7 +137,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
 
         if self.benchmark_config.task == "localfs_image_classification_jpeg":
             train_sampler = DistributedSampler(
-                train_ds, num_replicas=world_size, rank=worker_rank, shuffle=True
+                train_ds, num_replicas=world_size, rank=worker_rank, shuffle=False
             )
         else:
             train_sampler = None
