@@ -4144,6 +4144,7 @@ cdef class CoreWorker:
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          method_meta.enable_task_events,
+                                         method_meta.tensor_transport,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
@@ -4160,6 +4161,7 @@ cdef class CoreWorker:
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
                                          {},  # enable_task_events
+                                         None,  # tensor_transport
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
