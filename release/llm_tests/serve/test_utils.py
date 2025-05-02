@@ -109,9 +109,8 @@ def start_service(
         service_name = f"{service_name}-{ray_commit}-{get_random_string()}"
 
     if image_uri is None:
-        cluster_env = os.environ.get("ANYSCALE_JOB_CLUSTER_ENV_NAME", None)
-        if cluster_env is not None:
-            image_uri = f"anyscale/image/{cluster_env}:1"
+        cluster_env = os.environ["ANYSCALE_JOB_CLUSTER_ENV_NAME"]
+        image_uri = f"anyscale/image/{cluster_env}:1"
 
     time_metrics = {}
     service_config = service.ServiceConfig(
@@ -224,12 +223,12 @@ def append_python_version_from_image(name: str, image_name: str) -> str:
     return name
 
 
-def get_s3_storage_path(suffix: str) -> str:
+def get_vllm_s3_storage_path() -> str:
     build_number = os.environ.get(
         "BUILDKITE_BUILD_NUMBER", uuid.uuid4().hex[:5].upper()
     )
     retry_count = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
-    unique_id = f"build-{build_number}-{retry_count}-{suffix}"
+    unique_id = f"build-{build_number}-{retry_count}"
 
     storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
 

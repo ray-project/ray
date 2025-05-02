@@ -6,6 +6,7 @@ import gevent.monkey
 
 gevent.monkey.patch_all()
 
+import sys  # noqa: E402
 import argparse  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
@@ -235,17 +236,11 @@ def main(pargs):
 
     results = run_vllm_benchmark(vllm_cli_args)
 
-    # "A10" without "G" to match existing dashboard tags
-    accelerator = (
-        "A10"
-        if llm_config["accelerator_type"] == "A10G"
-        else llm_config["accelerator_type"]
-    )
-    tag = f"{accelerator}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
+    tag = f"{llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
     service_metadata = {
         "cloud_name": "",
         "service_name": "",
-        "py_version": pargs.py_version,
+        "py_version": f"py{sys.version_info.major}{sys.version_info.minor}",
         "tag": tag,
         "vllm_engine": f"V{os.environ.get('VLLM_USE_V1', '')}",
     }
@@ -277,11 +272,5 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="The remote s3 path to store intermediate results on.",
-    )
-    parser.add_argument(
-        "--py-version",
-        type=str,
-        required=False,
-        help="Python version associated with Ray image URI",
     )
     main(parser.parse_args())

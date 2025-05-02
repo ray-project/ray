@@ -1,3 +1,14 @@
+# This script is run as an Anyscale job by the release test CI pipeline.
+# It starts a Ray Serve LLM service with the specified service config.
+# Use CLI flags to run pytest tests from the probes directory or a performance
+# benchmark against the service.
+#
+# It supports launching a vLLM performance benchmark job in parallel,
+# using the same service config passed via CLI and identical workload
+# to the Ray Serve LLM test. In particular, if the script is run with both
+# --run-serve-llm-profiler and --run-vllm-profiler, the service and vLLM job
+# will run at the same time.
+
 # NOTE: This needs to get imported first because locust does not work
 # well with a lot of libraries including openai, boto3, ray
 # ruff: noqa: I001
@@ -21,7 +32,7 @@ from test_utils import (
     setup_client_env_vars,
     get_python_version_from_image,
     append_python_version_from_image,
-    get_s3_storage_path,
+    get_vllm_s3_storage_path,
 )
 
 
@@ -30,41 +41,72 @@ logging.basicConfig(level=logging.INFO)
 
 
 CLOUD = "serve_release_tests_cloud"
-JOB_NAME = "rayllm_release_test_vllm_perf"
+JOB_NAME = "serve_llm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
-SERVICE_NAME = "llm_serving_release_test"
-VLLM_USE_V1 = "0"  # V1 enabled by default in vLLM, force this setting for Ray LLM
+SERVICE_NAME = "serve_llm_release_test_service"
 
 
 @click.command()
-@click.option("--image-uri", type=str, default=None)
-@click.option("--serve-config-file", type=str)
-@click.option("--run-probes", type=bool, default=True)
-@click.option("--run-perf-profiler", type=bool, default=True)
-@click.option("--skip-hf-token", type=bool, default=False)
-@click.option("--timeout", type=int, default=600)
+@click.option(
+    "--image-uri",
+    type=str,
+    default=None,
+    help="Optional image URI for service worker. Taken ANYSCALE_JOB_CLUSTER_ENV_NAME if not present.",
+)
+@click.option("--serve-config-file", type=str, help="Serve config file for this test")
+@click.option(
+    "--run-probes",
+    type=bool,
+    default=True,
+    help="Run pytest tests in probes directory against Ray Serve LLM service",
+)
+@click.option(
+    "--run-serve-llm-profiler",
+    is_flag=True,
+    help="Run locust/gevent performance benchmark against Ray Serve LLM service",
+)
+@click.option(
+    "--skip-hf-token",
+    type=bool,
+    default=False,
+    help="Don't query AWS Secrets Manager for HuggingFace token",
+)
+@click.option(
+    "--timeout", type=int, default=600, help="Ray LLM service timeout parameter."
+)
+@click.option("--vllm-use-v1", is_flag=True, help="Use vLLM v1 engine in this test.")
+@click.option(
+    "--run-vllm-profiler",
+    is_flag=True,
+    help="Submit Anyscale job to run benchmark_vllm.py and submit results.",
+)
 def main(
     image_uri: Optional[str],
     serve_config_file: str,
     run_probes: bool,
-    run_perf_profiler: bool,
+    run_serve_llm_profiler: bool,
     skip_hf_token: bool,
     timeout: int,
+    vllm_use_v1: bool,
+    run_vllm_profiler: bool,
 ):
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
-    env_vars["VLLM_USE_V1"] = VLLM_USE_V1
+    env_vars["VLLM_USE_V1"] = "1" if vllm_use_v1 else "0"
     llm_config = get_llm_config(serve_config_file)
 
-    if run_perf_profiler:
+    if run_vllm_profiler:
         if image_uri is None:
-            cluster_env = os.environ.get("ANYSCALE_JOB_CLUSTER_ENV_NAME", None)
-            if cluster_env is not None:
-                image_uri = f"anyscale/image/{cluster_env}:1"
+            # We expect this environment variable to be set for all release tests
+            cluster_env = os.environ["ANYSCALE_JOB_CLUSTER_ENV_NAME"]
+            image_uri = f"anyscale/image/{cluster_env}:1"
 
         submitted_job_id, s3_storage_path = submit_benchmark_vllm_job(
-            image_uri, serve_config_file, env_vars["HUGGING_FACE_HUB_TOKEN"]
+            image_uri,
+            serve_config_file,
+            env_vars["HUGGING_FACE_HUB_TOKEN"],
+            vllm_use_v1,
         )
 
     # Start Ray LLM Service while vLLM job is running
@@ -104,7 +146,7 @@ def main(
             if exit_code != 0:
                 raise RuntimeError(f"Tests failed! {exit_code=}")
 
-        if run_perf_profiler:
+        if run_serve_llm_profiler:
             # For now, the values are hardcoded.
             results = run_bm(
                 api_url=api_url,
@@ -120,10 +162,6 @@ def main(
             logger.info(f"Performance test results: {results}")
 
             accelerator = llm_config.get("accelerator_type", "NoGpu")
-            # "A10" without "G" to match existing dashboard tags
-            if accelerator == "A10G":
-                accelerator = "A10"
-
             tensor_parallel_size = llm_config["engine_kwargs"].get(
                 "tensor_parallel_size", 0 if accelerator == "NoGpu" else 1
             )
@@ -138,13 +176,13 @@ def main(
                         "service_name": SERVICE_NAME,
                         "py_version": get_python_version_from_image(image_uri),
                         "tag": tag,
-                        "vllm_engine": f"V{VLLM_USE_V1}",
+                        "vllm_engine": f"V{vllm_use_v1}",
                         **result,
                     },
                 )
                 record.write(verbose=True)
 
-    if run_perf_profiler:
+    if run_vllm_profiler:
         anyscale.job.wait(
             id=submitted_job_id,
             state=anyscale.job.JobState.SUCCEEDED,
@@ -163,9 +201,10 @@ def main(
             record.write(verbose=True)
 
 
-def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: str):
-    py_version = get_python_version_from_image(image_uri)
-    s3_storage_path = get_s3_storage_path(suffix=py_version)
+def submit_benchmark_vllm_job(
+    image_uri: str, serve_config_file: str, hf_token: str, vllm_use_v1: bool
+):
+    s3_storage_path = get_vllm_s3_storage_path()
 
     working_dir = str(Path(__file__).parent)
 
@@ -176,7 +215,7 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
 
     job_config = anyscale.job.JobConfig(
         name=job_name,
-        entrypoint=f"python benchmark/benchmark_vllm.py --llm-config {serve_config_file} --remote-result-path {s3_storage_path} {f'--py-version {py_version}' if py_version else ''}",
+        entrypoint=f"python benchmark/benchmark_vllm.py --llm-config {serve_config_file} --remote-result-path {s3_storage_path}",
         working_dir=working_dir,
         cloud=CLOUD,
         compute_config=anyscale.compute_config.ComputeConfig(
@@ -190,7 +229,7 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
             "HF_TOKEN": hf_token,
-            "VLLM_USE_V1": VLLM_USE_V1,
+            "VLLM_USE_V1": vllm_use_v1,
         },
         max_retries=0,
     )
