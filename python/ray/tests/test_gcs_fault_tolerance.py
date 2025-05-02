@@ -429,18 +429,17 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
     """Tests reconnect behavior on GCS restart for sync and asyncio clients."""
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address)
-    gcs_aio_client = gcs_utils.GcsAioClient(address=gcs_address)
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
 
     def _get(use_asyncio: bool) -> bytes:
-        async def _get_async() -> bytes:
-            return await gcs_aio_client.internal_kv_get(b"a", None)
-
         if use_asyncio:
+
+            async def _get_async() -> bytes:
+                return await gcs_client.async_internal_kv_get(b"a", None)
+
             result = asyncio.run(_get_async())
         else:
             result = gcs_client.internal_kv_get(b"a", None)
