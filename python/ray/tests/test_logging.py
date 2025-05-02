@@ -1113,7 +1113,8 @@ def test_log_monitor_ip_correct(ray_start_cluster):
     cluster = ray_start_cluster
     # add first node
     cluster.add_node(
-        node_ip_address="127.0.0.2", resources={"foobar": 1},
+        node_ip_address="127.0.0.2",
+        resources={"foobar": 1},
     )
     address = cluster.address
     ray.init(address)
