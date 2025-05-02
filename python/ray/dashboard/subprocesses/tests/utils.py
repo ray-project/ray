@@ -17,10 +17,6 @@ logger = logging.getLogger(__name__)
 
 class BaseTestModule(SubprocessModule):
     @property
-    def gcs_aio_client(self):
-        return None
-
-    @property
     def gcs_client(self):
         return None
 
