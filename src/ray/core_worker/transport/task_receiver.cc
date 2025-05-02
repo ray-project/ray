@@ -51,10 +51,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   }
 
   if (task_spec.IsActorCreationTask()) {
+    actor_is_asyncio_ = task_spec.IsAsyncioActor();
+    actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
-    SetupActor(task_spec.IsAsyncioActor(),
-               task_spec.MaxActorConcurrency(),
-               task_spec.ExecuteOutOfOrder());
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -227,11 +226,22 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   };
 
   if (task_spec.IsActorTask()) {
+    // Asyncio and threaded actors don't enforce ordering on incoming actor tasks.
+    bool execute_out_of_order = actor_is_asyncio_ || actor_max_concurrency > 1;
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
       RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       if (execute_out_of_order_) {
+        std::stringstream ss;
+        ss << "Creating out-of-order actor scheduling queue with max_concurrency="
+           << actor_max_concurrency_ << " and concurrency groups:" << std::endl;
+        for (const auto &concurrency_group : concurrency_groups) {
+          ss << "\t" << concurrency_group.name << " : "
+             << concurrency_group.max_concurrency;
+        }
+        RAY_LOG(DEBUG) << ss.str();
+
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
@@ -240,11 +250,11 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                                                                  task_event_buffer_,
                                                                  pool_manager_,
                                                                  fiber_state_manager_,
-                                                                 is_asyncio_,
-                                                                 fiber_max_concurrency_,
+                                                                 actor_is_asyncio_,
                                                                  cg_it->second)))
                  .first;
       } else {
+        RAY_LOG(DEBUG) << "Creating in-order actor scheduling queue.";
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
@@ -253,8 +263,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                                                        task_event_buffer_,
                                                        pool_manager_,
                                                        fiber_state_manager_,
-                                                       is_asyncio_,
-                                                       fiber_max_concurrency_,
+                                                       actor_is_asyncio_,
                                                        cg_it->second)))
                  .first;
       }
@@ -304,17 +313,6 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
-}
-
-/// Note that this method is only used for asyncio actor.
-void TaskReceiver::SetupActor(bool is_asyncio,
-                              int fiber_max_concurrency,
-                              bool execute_out_of_order) {
-  RAY_CHECK(fiber_max_concurrency_ == 0)
-      << "SetupActor should only be called at most once.";
-  is_asyncio_ = is_asyncio;
-  fiber_max_concurrency_ = fiber_max_concurrency;
-  execute_out_of_order_ = execute_out_of_order;
 }
 
 void TaskReceiver::Stop() {
