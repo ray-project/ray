@@ -2339,8 +2339,8 @@ class Dataset:
                 false, since obtaining schemas could be prohibitively expensive).
 
         Returns:
-            A :class:`Dataset` that holds join of input left Dataset with the right
-              Dataset based on join type and keys.
+            A :class:`Dataset` that holds rows of input left Dataset joined with the
+            right Dataset based on join type and keys.
 
         Examples:
 
