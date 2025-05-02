@@ -246,7 +246,7 @@ with ellipses. ::
 
     .. testoutput::
 
-        Dataset(num_rows=3, schema=...)
+        Dataset(num_rows=..., schema=...)
 
 If your output is nondeterministic and you want to display a sample output, add
 `:options: +MOCK`. ::
