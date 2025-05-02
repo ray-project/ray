@@ -235,7 +235,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_main_io_service_,
+                              new OutOfOrderActorSchedulingQueue(task_execution_service_,
                                                                  *waiter_,
                                                                  task_event_buffer_,
                                                                  pool_manager_,
@@ -248,7 +248,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
-                              new ActorSchedulingQueue(task_main_io_service_,
+                              new ActorSchedulingQueue(task_execution_service_,
                                                        *waiter_,
                                                        task_event_buffer_,
                                                        pool_manager_,
