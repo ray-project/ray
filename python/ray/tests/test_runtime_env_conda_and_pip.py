@@ -2,7 +2,6 @@ import os
 import pytest
 import sys
 import platform
-import time
 from ray._private.test_utils import (
     wait_for_condition,
     chdir,
