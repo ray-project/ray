@@ -26,7 +26,7 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 
