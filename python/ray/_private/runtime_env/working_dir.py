@@ -20,7 +20,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private import GcsClient
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
