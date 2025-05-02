@@ -58,7 +58,7 @@ def test_deploy_basic(serve_instance, use_handle):
 
 
 @pytest.mark.parametrize(
-    "component_name",
+    "input_tuple",
     [
         ("test@component", "test_component"),
         ("test#123", "test_123"),
@@ -70,11 +70,14 @@ def test_deploy_basic(serve_instance, use_handle):
         ("component^name", "component_name"),
         ("component&name", "component_name"),
         ("component*name", "component_name"),
-        ("component�������name", "component_name"),
+        ("component�name", "component_name"),
+        ("component_name", "component_name"),
     ],
 )
-def test_deploy_with_special_characters(serve_instance, component_name, expected_name):
+def test_deploy_with_any_characters(serve_instance, input_tuple):
     """The function should not fail when the deployment name contains special characters."""
+
+    component_name, expected_name = input_tuple
 
     # V1 blocks on signal
     @serve.deployment(name="some_name")
