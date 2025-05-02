@@ -432,7 +432,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                   std::placeholders::_7,
                                   std::placeholders::_8);
     task_receiver_ = std::make_unique<TaskReceiver>(
-        worker_context_,
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
@@ -3838,7 +3837,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
 
   // Set actor info in the worker context.
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK) {
-    auto actor_id = ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
+    auto actor_id =
+        ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
     // Handle duplicate actor creation tasks that might be sent from the GCS on restart.
     // Ignore the message and reply OK.
