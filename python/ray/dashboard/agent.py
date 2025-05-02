@@ -10,11 +10,11 @@ import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
 from ray._private import logging_utils
+from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        self.gcs_aio_client = GcsAioClient(
+        self.gcs_client = GcsClient(
             address=self.gcs_address,
             cluster_id=self.cluster_id_hex,
         )
@@ -187,13 +187,13 @@ class DashboardAgent:
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
             grpc_port = -1 if not self.server else self.grpc_port
-            put_by_node_id = self.gcs_aio_client.internal_kv_put(
+            put_by_node_id = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
                 json.dumps([self.ip, http_port, grpc_port]).encode(),
                 True,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
-            put_by_ip = self.gcs_aio_client.internal_kv_put(
+            put_by_ip = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
                 json.dumps([self.node_id, http_port, grpc_port]).encode(),
                 True,

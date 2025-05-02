@@ -436,8 +436,7 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 
 
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address)
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -457,9 +456,8 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
     assert passed[0]
 
 
-def test_gcs_aio_client_reconnect(ray_start_regular_with_external_redis):
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address)
+def test_async_gcs_client_reconnect(ray_start_regular_with_external_redis):
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -467,8 +465,7 @@ def test_gcs_aio_client_reconnect(ray_start_regular_with_external_redis):
     passed = [False]
 
     async def async_kv_get():
-        gcs_aio_client = gcs_utils.GcsAioClient(address=gcs_address)
-        assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
+        assert await gcs_client.async_internal_kv_get(b"a", None) == b"b"
         return True
 
     def kv_get():
@@ -1351,7 +1348,7 @@ class HangPlugin(RuntimeEnvPlugin):
     ],
     indirect=True,
 )
-def test_placement_group_removal_after_gcs_restarts(
+def test_pg_removal_after_gcs_restarts(
     set_runtime_env_plugins, ray_start_regular_with_external_redis
 ):
     @ray.remote
