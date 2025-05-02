@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.anyscale.data._internal.execution.operators.join import JoinOperator
-from ray.anyscale.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.execution.operators.join import JoinOperator
+from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data import Dataset, DataContext
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.util import MiB, GiB
