@@ -46,7 +46,7 @@
           "selected": false
         },
         "datasource": "${datasource}",
-        "definition": "query_result(count by (SessionName)(last_over_time(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+        "definition": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
         "description": "Filter queries to specific ray sessions.",
         "error": null,
         "hide": 0,
@@ -56,7 +56,7 @@
         "name": "SessionName",
         "options": [],
         "query": {
-          "query": "query_result(count by (SessionName)(last_over_time(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+          "query": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -75,8 +75,8 @@
           "selected": false
         },
         "datasource": "${datasource}",
-        "definition": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
-        "description": "Filter queries to specific ray sessions.",
+        "definition": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+        "description": "Filter queries to specific Ray Train run names.",
         "error": null,
         "hide": 0,
         "includeAll": true,
@@ -85,7 +85,7 @@
         "name": "TrainRunName",
         "options": [],
         "query": {
-          "query": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+          "query": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
