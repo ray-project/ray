@@ -46,6 +46,7 @@ from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
 train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris/train")
 eval_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris/val")
 
+
 def train_func():
     # 2. Load your data shard as an `xgboost.DMatrix`.
 
