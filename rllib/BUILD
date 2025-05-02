@@ -605,7 +605,7 @@ py_test(
     ],
     main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
-        "exclusive",        
+        "exclusive",
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
