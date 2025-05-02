@@ -71,10 +71,11 @@ def test_deploy_basic(serve_instance, use_handle):
         ("component^name", "component_name"),
         ("component&name", "component_name"),
         ("component*name", "component_name"),
-        ("component�������name", "component_name"),
+        ("component�name", "component_name"),
+        ("component_name", "component_name"),
     ],
 )
-def test_deploy_with_special_characters(serve_instance, input_tuple):
+def test_deploy_with_any_characters(serve_instance, input_tuple):
     """The function should not fail when the deployment name contains special characters."""
 
     component_name, expected_name = input_tuple
