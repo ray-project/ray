@@ -4127,6 +4127,7 @@
 # LLM Serve
 ##############
 
+# Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
   python: "3.11"
@@ -4145,8 +4146,9 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+# Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
   python: "3.11"
@@ -4165,7 +4167,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
@@ -4185,7 +4187,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-serve-llm-profiler
 
 
 - name: llm_serve_llama_3dot1_8B_lora
@@ -4206,7 +4208,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
@@ -4226,7 +4228,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --run-perf-profiler false --skip-hf-token true
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
 
 
 ##############

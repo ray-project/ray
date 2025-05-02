@@ -13,6 +13,7 @@ from ray._private.worker import WORKER_MODE
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
+from ray.data._internal.logging import update_dataset_logger_for_worker
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
@@ -430,6 +431,7 @@ class DataContext:
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
+    dataset_logger_id: Optional[str] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -532,6 +534,11 @@ class DataContext:
         remote workers used for parallelization.
         """
         global _default_context
+        if (
+            not _default_context
+            or _default_context.dataset_logger_id != context.dataset_logger_id
+        ):
+            update_dataset_logger_for_worker(context.dataset_logger_id)
         _default_context = context
 
     @property
@@ -580,6 +587,14 @@ class DataContext:
     def copy(self) -> "DataContext":
         """Create a copy of the current DataContext."""
         return copy.deepcopy(self)
+
+    def set_dataset_logger_id(self, dataset_id: str) -> None:
+        """Set the current dataset logger id.
+
+        This is used internally to propagate the current dataset logger id to remote
+        workers.
+        """
+        self.dataset_logger_id = dataset_id
 
 
 # Backwards compatibility alias.
