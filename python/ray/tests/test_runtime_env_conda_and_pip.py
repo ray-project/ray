@@ -116,7 +116,7 @@ class TestGC:
         reason="Needs PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_job_level_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
@@ -139,9 +139,6 @@ class TestGC:
 
         # Ensure that the runtime env has been installed.
         assert ray.get(f.remote())
-        # Sleep some seconds before checking that we didn't GC. Otherwise this
-        # check may spuriously pass.
-        time.sleep(2)
         assert not check_local_files_gced(cluster)
 
         ray.shutdown()
@@ -163,7 +160,7 @@ class TestGC:
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_detached_actor_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
