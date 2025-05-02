@@ -359,7 +359,7 @@ class DataIterator(abc.ABC):
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
-            device = get_device().type
+            device = get_device()
 
         finalize_fn = None
         if collate_fn is None:
