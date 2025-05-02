@@ -3237,11 +3237,16 @@ class Dataset:
                 implementation. Use this parameter to customize what your filenames
                 look like.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
-                arguments that are provided to `pyarrow.parquet.write_table() <https:/\
+                arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
-                        pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>`_
+                        pyarrow.parquet.ParquetWriter.html>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``arrow_parquet_args``. Use this argument
+                any duplicate keys from ``arrow_parquet_args``. If `row_group_size` is
+                provided, it will be passed to
+                `pyarrow.parquet.ParquetWriter.write_table() <https:/\
+                    /arrow.apache.org/docs/python/generated/pyarrow\
+                        .parquet.ParquetWriter.html\
+                        #pyarrow.parquet.ParquetWriter.write_table>`_. Use this argument
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
@@ -3258,10 +3263,10 @@ class Dataset:
                 decided based on the available resources.
             num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
             arrow_parquet_args: Options to pass to
-                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
-                    /generated/pyarrow.parquet.write_table.html\
-                        #pyarrow.parquet.write_table>`_, which is used to write out each
-                block to a file.
+                `pyarrow.parquet.ParquetWriter() <https:/\
+                    /arrow.apache.org/docs/python/generated/\
+                        pyarrow.parquet.ParquetWriter.html>`_, which is used to write
+                out each block to a file. See `arrow_parquet_args_fn` for more detail.
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -4877,7 +4882,16 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(num_rows=?, schema=...)
+            Dataset(
+               num_rows=?,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
+            )
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -4899,7 +4913,16 @@ class Dataset:
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
-            +- Dataset(num_rows=?, schema=...)
+            +- Dataset(
+                  num_rows=?,
+                  schema={
+                     sepal length (cm): double,
+                     sepal width (cm): double,
+                     petal length (cm): double,
+                     petal width (cm): double,
+                     target: int64
+                  }
+               )
             >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -5604,7 +5627,16 @@ class Dataset:
 
             .. testoutput::
 
-                Dataset(num_rows=?, schema=...)
+                Dataset(
+                   num_rows=?,
+                   schema={
+                      sepal length (cm): double,
+                      sepal width (cm): double,
+                      petal length (cm): double,
+                      petal width (cm): double,
+                      target: int64
+                   }
+                )
 
 
         Returns:
@@ -5677,7 +5709,16 @@ class Dataset:
 
             .. testoutput::
 
-                Dataset(num_rows=?, schema=...)
+                Dataset(
+                   num_rows=?,
+                   schema={
+                      sepal length (cm): double,
+                      sepal width (cm): double,
+                      petal length (cm): double,
+                      petal width (cm): double,
+                      target: int64
+                   }
+                )
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
