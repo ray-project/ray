@@ -176,24 +176,34 @@ class DefaultPandasCollateFn(PandasBatchCollateFn):
 
 
 @DeveloperAPI
-def default_finalize_fn(
-    batch: Union[Dict[str, List["torch.Tensor"]], Any], device: Optional[str] = None
-) -> Union[Dict[str, "torch.Tensor"], Any]:
-    """Default finalize function for moving PyTorch tensors to device.
+class DefaultFinalizeFn:
+    """Default finalize function for moving PyTorch tensors to device."""
 
-    Args:
-        batch: Input batch to move to device. Can be:
-            - Dictionary mapping column names to lists of tensors
-            - Any other type supported by move_tensors_to_device
-        device: Target device to move tensors to
+    def __init__(
+        self,
+        device: Optional[str] = None,
+    ):
+        """Initialize the finalize function.
+        Args:
+            device: Optional device to place tensors on
+        """
+        self.device = device
 
-    Returns:
-        Batch with tensors moved to the target device. Type matches input type:
-        - If input is Dict[str, List[torch.Tensor]], returns Dict[str, torch.Tensor]
-        - Otherwise returns the same type as input with tensors moved to device
-    """
-    from ray.air._internal.torch_utils import (
-        move_tensors_to_device,
-    )
+    def __call__(
+        self, batch: Union[Dict[str, List["torch.Tensor"]], Any]
+    ) -> Union[Dict[str, "torch.Tensor"], Any]:
+        """Finalize the batch.
+        Args:
+            batch: Input batch to move to device. Can be:
+                - Dictionary mapping column names to lists of tensors
+                - Any other type supported by move_tensors_to_device
+        Returns:
+            Batch with tensors moved to the target device. Type matches input type:
+            - If input is Dict[str, List[torch.Tensor]], returns Dict[str, torch.Tensor]
+            - Otherwise returns the same type as input with tensors moved to device
+        """
+        from ray.air._internal.torch_utils import (
+            move_tensors_to_device,
+        )
 
-    return move_tensors_to_device(batch, device=device)
+        return move_tensors_to_device(batch, device=self.device)

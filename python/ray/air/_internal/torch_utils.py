@@ -449,12 +449,7 @@ def concat_tensors_to_device(
     row_start = 0
     for t in tensor_list:
         row_end = row_start + t.shape[0]
-        if t.is_pinned():
-            # Perform non-blocking transfer if the tensor is pinned
-            result[row_start:row_end].copy_(t, non_blocking=True)
-        else:
-            # Perform blocking transfer if the tensor is not pinned
-            result[row_start:row_end].copy_(t)
+        result[row_start:row_end].copy_(t, non_blocking=t.is_pinned())
         row_start = row_end
 
     assert isinstance(result, torch.Tensor), "Result must be a torch.Tensor"
@@ -490,21 +485,22 @@ def move_tensors_to_device(
 
     if isinstance(batch, dict):
         for k, v in batch.items():
-            if isinstance(v, list) and all(isinstance(t, torch.Tensor) for t in v):
-                batch[k] = concat_tensors_to_device(v, device=device)
-            elif isinstance(v, torch.Tensor):
-                if v.is_pinned():
-                    batch[k] = v.to(device=device, non_blocking=True)
+            if isinstance(v, list):
+                if all(isinstance(t, torch.Tensor) for t in v):
+                    batch[k] = concat_tensors_to_device(v, device=device)
                 else:
-                    batch[k] = v.to(device=device)
+                    raise TypeError(
+                        f"Expected list of torch.Tensor for key '{k}', got {[type(t) for t in v]}"
+                    )
+            elif isinstance(v, torch.Tensor):
+                batch[k] = v.to(device=device, non_blocking=v.is_pinned())
+            else:
+                raise TypeError(f"Unsupported value type for key '{k}': {type(v)}")
     elif isinstance(batch, list) and all(isinstance(t, torch.Tensor) for t in batch):
         batch = concat_tensors_to_device(batch, device=device)
     else:
         assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
-        if batch.is_pinned():
-            batch = batch.to(device=device, non_blocking=True)
-        else:
-            batch = batch.to(device=device)
+        batch = batch.to(device=device, non_blocking=batch.is_pinned())
 
     if isinstance(batch, dict):
         assert all(isinstance(v, torch.Tensor) for v in batch.values()), (

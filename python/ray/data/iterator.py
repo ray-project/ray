@@ -32,7 +32,7 @@ from ray.data.collate_fn import (
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
     DefaultArrowCollateFn,
-    default_finalize_fn,
+    DefaultFinalizeFn,
 )
 
 if TYPE_CHECKING:
@@ -367,7 +367,9 @@ class DataIterator(abc.ABC):
                 dtypes=dtypes,
                 device=device,
             )
-            finalize_fn = default_finalize_fn
+            finalize_fn = DefaultFinalizeFn(
+                device=device,
+            )
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
             batch_format = "pyarrow"
