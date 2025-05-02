@@ -697,6 +697,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                  std::vector<ObjectID> *ids_to_release)
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// A wrapper of `retry_task_callback_` that sets the task status
+  /// and calls `retry_task_callback_`. This function should be the only
+  /// caller of `retry_task_callback_`.
+  ///
+  /// \param[in] task_entry The task entry to retry.
+  /// \param[in] object_recovery Whether to retry the task for object recovery.
+  /// \param[in] delay_ms The delay in milliseconds before retrying the task.
+  void RetryTask(TaskEntry *task_entry, bool object_recovery, uint32_t delay_ms);
+
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
