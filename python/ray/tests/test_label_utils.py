@@ -7,8 +7,8 @@ from ray._private.label_utils import (
     validate_node_labels,
     validate_label_key,
     validate_label_value,
-    validate_node_label_syntax,
     validate_label_selector_value,
+    validate_node_label_syntax,
 )
 import sys
 import tempfile

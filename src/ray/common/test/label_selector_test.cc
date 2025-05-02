@@ -19,8 +19,9 @@
 namespace ray {
 
 TEST(LabelSelectorTest, BasicConstruction) {
-  std::unordered_map<std::string, std::string> label_selector_dict = {
-      {"market-type", "spot"}, {"region", "us-east"}};
+  google::protobuf::Map<std::string, std::string> label_selector_dict;
+  label_selector_dict["market-type"] = "spot";
+  label_selector_dict["region"] = "us-east";
 
   LabelSelector selector(label_selector_dict);
   auto constraints = selector.GetConstraints();
@@ -81,17 +82,26 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
   EXPECT_TRUE(values.contains("dev"));
 }
 
-TEST(LabelSelectorTest, ThrowsOnEmptyKeyOrValue) {
-  EXPECT_THROW(LabelSelector(std::unordered_map<std::string, std::string>{{"", "value"}}),
-               std::invalid_argument);
-  EXPECT_THROW(LabelSelector(std::unordered_map<std::string, std::string>{{"key", ""}}),
-               std::invalid_argument);
+TEST(LabelSelectorTest, ErrorLogsOnEmptyKey) {
+  google::protobuf::Map<std::string, std::string> label_selector_dict;
+  label_selector_dict[""] = "value";
+
+  testing::internal::CaptureStderr();
+  LabelSelector selector(label_selector_dict);
+  std::string stderr_output = testing::internal::GetCapturedStderr();
+
+  EXPECT_NE(stderr_output.find("Empty Label Selector key."), std::string::npos);
 }
 
-TEST(LabelSelectorTest, ThrowsOnEmptyInList) {
+TEST(LabelSelectorTest, ErrorLogsOnEmptyInList) {
   LabelSelector selector;
-  EXPECT_THROW(selector.AddConstraint("key", "in()"), std::invalid_argument);
-  EXPECT_THROW(selector.AddConstraint("key", "!in()"), std::invalid_argument);
+
+  testing::internal::CaptureStderr();
+  selector.AddConstraint("key", "in()");
+  std::string stderr_output = testing::internal::GetCapturedStderr();
+
+  EXPECT_NE(stderr_output.find("No values provided for Label Selector key: key"),
+            std::string::npos);
 }
 
 }  // namespace ray

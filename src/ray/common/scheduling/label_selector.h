@@ -36,7 +36,7 @@ class LabelConstraint {
 
   LabelConstraint(std::string key,
                   LabelSelectorOperator op,
-                 absl::flat_hash_set<std::string> values)
+                  absl::flat_hash_set<std::string> values)
       : key_(std::move(key)), op_(op), values_(std::move(values)) {}
 
   const std::string &GetLabelKey() const { return key_; }
@@ -44,14 +44,6 @@ class LabelConstraint {
   LabelSelectorOperator GetOperator() const { return op_; }
 
   const absl::flat_hash_set<std::string> &GetLabelValues() const { return values_; }
-
-  void SetLabelKey(const std::string &key) { key_ = key; }
-
-  void SetOperator(LabelSelectorOperator op) { op_ = op; }
-
-  void SetLabelValues(const absl::flat_hash_set<std::string> &values) {
-    values_ = values;
-  }
 
  private:
   std::string key_;
@@ -65,8 +57,6 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  LabelSelector(const LabelSelector &other) : constraints_(other.constraints_) {}
-
   LabelSelector(const google::protobuf::Map<std::string, std::string> &label_selector);
 
   void AddConstraint(const std::string &key, const std::string &value);
@@ -75,17 +65,10 @@ class LabelSelector {
     constraints_.push_back(std::move(constraint));
   }
 
-  std::vector<LabelConstraint> GetConstraints() const { return constraints_; }
+  const std::vector<LabelConstraint> GetConstraints() const { return constraints_; }
 
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
-
-  LabelSelector &operator=(const LabelSelector &other) {
-    if (this != &other) {
-      constraints_ = other.constraints_;
-    }
-    return *this;
-  }
 
  private:
   std::vector<LabelConstraint> constraints_;
