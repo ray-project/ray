@@ -196,7 +196,7 @@ class TestVLLMEngine:
         assert guided_json == sampling_params.response_format.json_schema
         assert getattr(parsed_params, "response_format", None) is None
 
-    def test_batch_interval_ms(self):
+    def test_get_batch_interval_ms(self):
         """Test that the batch interval is set correctly in the config."""
 
         # Test with a no stream_batching_interval_ms.
@@ -206,7 +206,7 @@ class TestVLLMEngine:
             ),
         )
         vllm_engine = VLLMEngine(llm_config)
-        assert vllm_engine.batch_interval_ms() == MODEL_RESPONSE_BATCH_TIMEOUT_MS
+        assert vllm_engine._get_batch_interval_ms() == MODEL_RESPONSE_BATCH_TIMEOUT_MS
 
         # Test with a non-zero stream_batching_interval_ms.
         llm_config = LLMConfig(
@@ -218,7 +218,7 @@ class TestVLLMEngine:
             },
         )
         vllm_engine = VLLMEngine(llm_config)
-        assert vllm_engine.batch_interval_ms() == 13
+        assert vllm_engine._get_batch_interval_ms() == 13
 
         # Test with zero stream_batching_interval_ms.
         llm_config = LLMConfig(
@@ -230,7 +230,7 @@ class TestVLLMEngine:
             },
         )
         vllm_engine = VLLMEngine(llm_config)
-        assert vllm_engine.batch_interval_ms() == 0
+        assert vllm_engine._get_batch_interval_ms() == 0
 
 
 TEXT_VALUE = "foo"

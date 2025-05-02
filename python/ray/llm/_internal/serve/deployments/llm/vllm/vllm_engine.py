@@ -519,7 +519,7 @@ class VLLMEngine(LLMEngine):
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
 
-    def batch_interval_ms(self, stream: bool = True) -> int:
+    def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""
         stream_batching_interval_ms = self.llm_config.experimental_configs.get(
             "stream_batching_interval_ms"
@@ -532,9 +532,12 @@ class VLLMEngine(LLMEngine):
         self,
         request: GenerationRequest,
     ) -> AsyncGenerator[LLMRawResponse, None]:
+        # TODO (genesu): Responses batching logics should be common to all
+        #  engines and belongs to the LLMServer level instead of the engine
+        #  level here. Refactor the entire batching logics up.
         response_stream = LLMRawResponsesBatcher(
             self._generate(request),
-            interval_ms=self.batch_interval_ms(request.stream),
+            interval_ms=self._get_batch_interval_ms(request.stream),
         )
         async for response in response_stream.stream():
             yield response

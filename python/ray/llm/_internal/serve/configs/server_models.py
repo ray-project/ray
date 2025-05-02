@@ -44,6 +44,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
@@ -226,8 +227,14 @@ class LLMConfig(BaseModelExtended):
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "
-        "dictionary of key-value pairs. Current supported keys are "
-        "`stream_batching_interval_ms`, and `num_router_replicas`.",
+        "dictionary of key-value pairs. Current supported keys are:\n"
+        "- `stream_batching_interval_ms`: Ray Serve LLM batches streaming "
+        "requests together. This config decides how long to wait for the "
+        "batch before processing the requests. Defaults to "
+        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
+        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "Serve will take the max amount all the replicas. Default would be 2 "
+        "router replicas per model replica.\n",
     )
 
     _supports_vision: bool = PrivateAttr(False)
