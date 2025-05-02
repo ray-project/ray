@@ -287,11 +287,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
         : max_pending_calls(max_pending_calls),
           fail_if_actor_unreachable(fail_if_actor_unreachable),
           owned(owned) {
-      if (execute_out_of_order) {
-        actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
-      } else {
-        actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>(actor_id);
-      }
+      actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
     }
 
     /// The current state of the actor. If this is ALIVE, then we should have
