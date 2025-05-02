@@ -104,6 +104,9 @@ class LocalityScheduleMixin:
         # print(
         #     f"in apply_locality_scheduling {self._colocated_replica_ids=} {self._replica_id_set=}"
         # )
+        if not pending_request:
+            return self._replica_id_set
+
         if (
             self._prefer_local_node_routing
             and not pending_request.scheduling_context.tried_same_node
@@ -188,16 +191,16 @@ class MultiplexScheduleMixin:
 
     def apply_multiplex_scheduling(
         self,
-        pending_request: Optional[PendingRequest] = None,
+        pending_request: PendingRequest,
     ) -> Set[ReplicaID]:
         # TODO (genesu): add doc string and data structure for the return type
-        if not pending_request.scheduling_context.multiplexed_matching_timeout:
-            pending_request.scheduling_context.multiplexed_matching_timeout = (
+        if not pending_request.scheduling_context.multiplexed_start_matching_time:
+            pending_request.scheduling_context.multiplexed_start_matching_time = (
                 time.time()
             )
 
         multiplexed_start_matching_time = (
-            pending_request.scheduling_context.multiplexed_matching_timeout
+            pending_request.scheduling_context.multiplexed_start_matching_time
         )
         multiplexed_model_id = pending_request.metadata.multiplexed_model_id
         if (
@@ -789,7 +792,7 @@ class PowerOfTwoChoicesReplicaScheduler(
                 pr.future.set_result(replica)
                 break
 
-    def _get_next_pending_request_metadata_to_schedule(
+    def _get_next_pending_request_to_schedule(
         self,
     ) -> Optional[PendingRequest]:
         while len(self._pending_requests_to_schedule) > 0:
@@ -812,12 +815,9 @@ class PowerOfTwoChoicesReplicaScheduler(
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
                 start_time = time.time()
                 backoff_index = 0
-                pending_request = self._get_next_pending_request_metadata_to_schedule()
-                if not pending_request:
-                    continue
-
+                pending_request = self._get_next_pending_request_to_schedule()
+                request_metadata = pending_request.metadata if pending_request else None
                 async for candidates in self.choose_replicas(pending_request):
-                    request_metadata = pending_request.metadata
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
                     # if we need to continue this scheduling task.
