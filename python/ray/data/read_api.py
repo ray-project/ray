@@ -79,7 +79,6 @@ from ray.data.datasource import (
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
-    _unwrap_arrow_serialization_workaround,
     _validate_shuffle_arg,
 )
 from ray.data.datasource.file_meta_provider import (
@@ -108,7 +107,6 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
-
 
 T = TypeVar("T")
 
@@ -528,6 +526,7 @@ def read_videos(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
+    include_timestamps: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
     shuffle: Union[Literal["files"], None] = None,
@@ -571,6 +570,8 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
+        include_timestmaps: If ``True``, include the frame timestamps from the video
+            as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
@@ -593,6 +594,7 @@ def read_videos(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         include_paths=include_paths,
+        include_timestamps=include_timestamps,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1497,7 +1499,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema={a: int64, b: int64})
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1908,6 +1910,7 @@ def read_tfrecords(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1941,10 +1944,7 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1954,10 +1954,7 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1970,6 +1967,7 @@ def read_tfrecords(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -2050,6 +2048,7 @@ def read_tfrecords(
     ds = read_datasource(
         datasource,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -3601,8 +3600,6 @@ def _get_datasource_or_legacy_reader(
     Returns:
         The datasource or a generated legacy reader.
     """
-    kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-
     DataContext._set_current(ctx)
 
     if ds.should_create_reader:

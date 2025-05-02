@@ -13,12 +13,14 @@ class DataloaderType(enum.Enum):
 class DataLoaderConfig(BaseModel):
     train_batch_size: int = 32
     validation_batch_size: int = 256
-    prefetch_batches: int = 1
 
 
 class RayDataConfig(DataLoaderConfig):
     # NOTE: Optional[int] doesn't play well with argparse.
     local_buffer_shuffle_size: int = -1
+    enable_operator_progress_bars: bool = False
+    ray_data_prefetch_batches: int = 4
+    ray_data_override_num_blocks: int = -1
 
 
 class TorchConfig(DataLoaderConfig):
@@ -26,6 +28,7 @@ class TorchConfig(DataLoaderConfig):
     torch_dataloader_timeout_seconds: int = 300
     torch_pin_memory: bool = True
     torch_non_blocking: bool = True
+    torch_prefetch_factor: int = -1
 
 
 class BenchmarkConfig(BaseModel):
@@ -39,6 +42,9 @@ class BenchmarkConfig(BaseModel):
     max_failures: int = 0
 
     task: str = "image_classification"
+    locality_with_output: bool = False
+    actor_locality_enabled: bool = False
+    enable_shard_locality: bool = True
 
     # Data
     dataloader_type: DataloaderType = DataloaderType.RAY_DATA
@@ -49,7 +55,6 @@ class BenchmarkConfig(BaseModel):
     # Training
     num_epochs: int = 1
     skip_train_step: bool = False
-    train_step_anomaly_detection: bool = False
     limit_training_rows: int = 1000000
 
     # Validation

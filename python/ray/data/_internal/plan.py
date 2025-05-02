@@ -10,8 +10,6 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import AbstractFrom
-from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import unify_block_metadata_schema
@@ -136,7 +134,7 @@ class ExecutionPlan:
             ):
                 """Traverse (DFS) the LogicalPlan DAG and
                 return a string representation of the operators."""
-                if isinstance(op, (Read, InputData, AbstractFrom)):
+                if not op.input_dependencies or op.is_read_op():
                     return curr_str, depth
 
                 curr_max_depth = depth
@@ -168,19 +166,27 @@ class ExecutionPlan:
                 count = self._snapshot_metadata.num_rows
             else:
                 # This plan hasn't executed any operators.
-                sources = self._logical_plan.sources()
+                has_n_ary_operator = False
+                dag = self._logical_plan.dag
+
+                while not dag.is_read_op() and dag.input_dependencies:
+                    if len(dag.input_dependencies) > 1:
+                        has_n_ary_operator = True
+                        break
+
+                    dag = dag.input_dependencies[0]
+
                 # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
-                if len(sources) > 1:
-                    # Multiple sources, cannot determine schema.
+                if has_n_ary_operator:
                     schema = None
                     count = None
                 else:
-                    assert len(sources) == 1
+                    assert dag.is_read_op() or not dag.input_dependencies, dag
                     plan = ExecutionPlan(
                         DatasetStats(metadata={}, parent=None),
                         self._context,
                     )
-                    plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
+                    plan.link_logical_plan(LogicalPlan(dag, plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -360,31 +366,26 @@ class ExecutionPlan:
             return self._schema
 
         schema = None
+
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+
         elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
             schema = self._logical_plan.dag.aggregate_output_metadata().schema
+
         elif fetch_if_missing:
-            iter_ref_bundles, _, _ = self.execute_to_iterator()
-            for ref_bundle in iter_ref_bundles:
-                for metadata in ref_bundle.metadata:
-                    if metadata.schema is not None and (
-                        metadata.num_rows is None or metadata.num_rows > 0
-                    ):
-                        schema = metadata.schema
-                        break
-        elif self.is_read_only():
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
-            iter_ref_bundles, _, _ = self.execute_to_iterator()
-            try:
-                ref_bundle = next(iter(iter_ref_bundles))
-                for metadata in ref_bundle.metadata:
-                    if metadata.schema is not None:
-                        schema = metadata.schema
-                        break
-            except StopIteration:  # Empty dataset.
-                schema = None
+
+            iter_ref_bundles, _, executor = self.execute_to_iterator()
+
+            # Make sure executor is fully shutdown upon exiting
+            with executor:
+                for ref_bundle in iter_ref_bundles:
+                    for metadata in ref_bundle.metadata:
+                        if metadata.schema is not None:
+                            schema = metadata.schema
+                            break
 
         self._schema = schema
         return self._schema
@@ -420,6 +421,11 @@ class ExecutionPlan:
 
         This will use streaming execution to generate outputs.
 
+        NOTE: Executor will be shutdown upon either of the 2 following conditions:
+
+            - Iterator is fully exhausted (ie until StopIteration is raised)
+            - Executor instances is garbage-collected
+
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
@@ -450,7 +456,7 @@ class ExecutionPlan:
         self,
         preserve_order: bool = False,
     ) -> RefBundle:
-        """Execute this plan.
+        """Executes this plan (eagerly).
 
         Args:
             preserve_order: Whether to preserve order in execution.
@@ -499,17 +505,19 @@ class ExecutionPlan:
                     owns_blocks=owns_blocks,
                 )
             else:
-                executor = self.create_executor()
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
-                )
-                bundle = RefBundle(
-                    tuple(blocks.iter_blocks_with_metadata()),
-                    owns_blocks=blocks._owned_by_consumer,
-                )
+                # Make sure executor is properly shutdown
+                with self.create_executor() as executor:
+                    blocks = execute_to_legacy_block_list(
+                        executor,
+                        self,
+                        dataset_uuid=self._dataset_uuid,
+                        preserve_order=preserve_order,
+                    )
+                    bundle = RefBundle(
+                        tuple(blocks.iter_blocks_with_metadata()),
+                        owns_blocks=blocks._owned_by_consumer,
+                    )
+
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
@@ -578,14 +586,6 @@ class ExecutionPlan:
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return all(isinstance(op, Read) for op in self._logical_plan.sources())
-
-    def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        contains only a Read op. By default, the last operator of
-        the LogicalPlan is used."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-        return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for

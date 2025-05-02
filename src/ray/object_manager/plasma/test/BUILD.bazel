@@ -32,21 +32,21 @@ ray_cc_test(
     ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        "//:object_manager_common",
         "//src/ray/core_worker:experimental_mutable_object_manager",
+        "//src/ray/object_manager:object_manager_common",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 ray_cc_test(
-    name = "object_lifecycle_manager_test",
+    name = "obj_lifecycle_mgr_test",
     srcs = [
-        "object_lifecycle_manager_test.cc",
+        "obj_lifecycle_mgr_test.cc",
         "stats_collector_test.cc",
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/object_manager/plasma:object_lifecycle_manager",
+        "//src/ray/object_manager/plasma:obj_lifecycle_mgr",
         "@com_google_absl//absl/random",
         "@com_google_googletest//:gtest_main",
     ],
