@@ -68,7 +68,7 @@ class TaskReceiver {
                std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done)
       : task_handler_(std::move(task_handler)),
-        task_task_execution_service_(task_execution_service),
+        task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(actor_creation_task_done),
