@@ -90,23 +90,25 @@ def main(
     vllm_use_v1: bool,
     run_vllm_profiler: bool,
 ):
+    if image_uri is None:
+        # We expect this environment variable to be set for all release tests
+        cluster_env = os.environ["ANYSCALE_JOB_CLUSTER_ENV_NAME"]
+        image_uri = f"anyscale/image/{cluster_env}:1"
+
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
-    env_vars["VLLM_USE_V1"] = "1" if vllm_use_v1 else "0"
+    vllm_use_v1_env = "1" if vllm_use_v1 else "0"
+    env_vars["VLLM_USE_V1"] = vllm_use_v1_env
     llm_config = get_llm_config(serve_config_file)
 
     if run_vllm_profiler:
-        if image_uri is None:
-            # We expect this environment variable to be set for all release tests
-            cluster_env = os.environ["ANYSCALE_JOB_CLUSTER_ENV_NAME"]
-            image_uri = f"anyscale/image/{cluster_env}:1"
 
         submitted_job_id, s3_storage_path = submit_benchmark_vllm_job(
             image_uri,
             serve_config_file,
             env_vars["HUGGING_FACE_HUB_TOKEN"],
-            vllm_use_v1,
+            vllm_use_v1_env,
         )
 
     # Start Ray LLM Service while vLLM job is running
@@ -176,7 +178,7 @@ def main(
                         "service_name": SERVICE_NAME,
                         "py_version": get_python_version_from_image(image_uri),
                         "tag": tag,
-                        "vllm_engine": f"V{vllm_use_v1}",
+                        "vllm_engine": f"V{vllm_use_v1_env}",
                         **result,
                     },
                 )
@@ -202,7 +204,7 @@ def main(
 
 
 def submit_benchmark_vllm_job(
-    image_uri: str, serve_config_file: str, hf_token: str, vllm_use_v1: bool
+    image_uri: str, serve_config_file: str, hf_token: str, vllm_use_v1_env: str
 ):
     s3_storage_path = get_vllm_s3_storage_path()
 
@@ -228,7 +230,7 @@ def submit_benchmark_vllm_job(
         env_vars={
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "HF_TOKEN": hf_token,
-            "VLLM_USE_V1": "1" if vllm_use_v1 else "0",
+            "VLLM_USE_V1": vllm_use_v1_env,
         },
         max_retries=0,
     )
