@@ -109,6 +109,7 @@ def start_service(
         service_name = f"{service_name}-{ray_commit}-{get_random_string()}"
 
     if image_uri is None:
+        # We expect this environment variable to be set for all release tests
         cluster_env = os.environ["ANYSCALE_JOB_CLUSTER_ENV_NAME"]
         image_uri = f"anyscale/image/{cluster_env}:1"
 

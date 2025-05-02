@@ -4,6 +4,7 @@ import time
 from enum import Enum
 from typing import Any, Dict
 
+import ray
 import boto3
 from pydantic import BaseModel, field_validator
 
@@ -37,7 +38,7 @@ class FirehoseRecord(BaseModel):
             "_table": DEFAULT_TABLE_NAME,
             "name": str(self.record_name.value),
             "branch": os.environ.get("BUILDKITE_BRANCH", ""),
-            "commit": os.environ.get("BUILDKITE_COMMIT", ""),
+            "commit": ray.__commit__,
             "report_timestamp_ms": int(time.time() * 1000),
             "results": {**self.record_metrics},
         }

@@ -51,7 +51,7 @@ SERVICE_NAME = "serve_llm_release_test_service"
     "--image-uri",
     type=str,
     default=None,
-    help="Optional image URI for service worker. Taken ANYSCALE_JOB_CLUSTER_ENV_NAME if not present.",
+    help="Optional image URI for service worker. Taken from ANYSCALE_JOB_CLUSTER_ENV_NAME if not present.",
 )
 @click.option("--serve-config-file", type=str, help="Serve config file for this test")
 @click.option(
@@ -227,9 +227,8 @@ def submit_benchmark_vllm_job(
         image_uri=image_uri,
         env_vars={
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
-            "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
             "HF_TOKEN": hf_token,
-            "VLLM_USE_V1": vllm_use_v1,
+            "VLLM_USE_V1": "1" if vllm_use_v1 else "0",
         },
         max_retries=0,
     )
