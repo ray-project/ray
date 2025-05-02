@@ -1351,7 +1351,7 @@ class HangPlugin(RuntimeEnvPlugin):
     ],
     indirect=True,
 )
-def test_placement_group_removal_after_gcs_restarts(
+def test_pg_removal_after_gcs_restarts(
     set_runtime_env_plugins, ray_start_regular_with_external_redis
 ):
     @ray.remote
