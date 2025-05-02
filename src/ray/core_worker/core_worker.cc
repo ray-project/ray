@@ -3835,12 +3835,32 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                            send_reply_callback)) {
     return;
   }
+
+  // Set actor info in the worker context.
+  if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK) {
+    auto actor_id = ActorID::FromBinary(request.task_spec().actor_creation_id());
+
+    // If GCS server is restarted after sending an actor creation task to this core
+    // worker, the restarted GCS server will send the same actor creation task to the core
+    // worker again. We just need to ignore it and reply ok.
+    if (worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {
+      RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
+                    << task_spec.ActorCreationId()
+                    << ". This is likely due to a GCS server restart.";
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+      return;
+    }
+    worker_context_.SetCurrentActorId(actor_id);
+  }
+
+  // Set job info in the worker context.
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
     worker_context_.MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
     task_counter_.SetJobId(job_id);
   }
+
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
   std::string func_name =

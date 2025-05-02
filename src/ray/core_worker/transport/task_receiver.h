@@ -69,8 +69,7 @@ class TaskReceiver {
                TaskHandler task_handler,
                std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done)
-      : worker_context_(worker_context),
-        task_handler_(std::move(task_handler)),
+      : task_handler_(std::move(task_handler)),
         task_main_io_service_(main_io_service),
         task_event_buffer_(task_event_buffer),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
@@ -124,8 +123,6 @@ class TaskReceiver {
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
-  // Worker context.
-  WorkerContext &worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
