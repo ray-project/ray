@@ -29,12 +29,11 @@ def test_in_virtualenv(ray_start_regular_shared):
     assert ray.get(f.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="python.exe in use during deletion."
+)
 def test_multiple_pip_installs(ray_start_regular_shared):
     """Test that multiple pip installs don't interfere with each other."""
-    if sys.platform == "win32" and "ray" not in address:
-        pytest.skip(
-            "Failing on windows, as python.exe is in use during deletion attempt."
-        )
 
     @ray.remote
     def f():
@@ -62,8 +61,7 @@ def test_multiple_pip_installs(ray_start_regular_shared):
     os.environ.get("CI") and sys.platform != "linux",
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
-@pytest.mark.parametrize("field", ["pip"])
-def test_pip_ray_is_overwritten(ray_start_regular_shared, field):
+def test_pip_ray_is_overwritten(ray_start_regular_shared):
     @ray.remote
     def f():
         import pip_install_test  # noqa: F401
