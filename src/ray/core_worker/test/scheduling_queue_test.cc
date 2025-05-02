@@ -91,7 +91,6 @@ TEST(SchedulingQueueTest, TestTaskEvents) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
@@ -169,7 +168,6 @@ TEST(SchedulingQueueTest, TestInOrder) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
@@ -212,7 +210,6 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
@@ -270,7 +267,6 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
@@ -320,7 +316,6 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
@@ -362,7 +357,6 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
@@ -410,7 +404,6 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
                              pool_manager,
                              /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
@@ -478,7 +471,6 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
                                        pool_manager,
                                        /*fiber_state_manager=*/nullptr,
                                        /*is_asyncio=*/false,
-                                       /*fiber_max_concurrency=*/1,
                                        /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
@@ -556,7 +548,6 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
           /*max_concurrency_for_default_concurrency_group=*/100),
       /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
-      /*fiber_max_concurrency=*/1,
       /*concurrency_groups=*/{});
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::FromRandom(job_id);
@@ -625,7 +616,6 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
           /*max_concurrency_for_default_concurrency_group=*/100),
       /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
-      /*fiber_max_concurrency=*/1,
       /*concurrency_groups=*/{});
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::FromRandom(job_id);

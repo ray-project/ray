@@ -29,7 +29,6 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
-    int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups,
     int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
@@ -39,17 +38,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),
-      is_asyncio_(is_asyncio) {
-  if (is_asyncio_) {
-    std::stringstream ss;
-    ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
-       << ", and defined concurrency groups are:" << std::endl;
-    for (const auto &concurrency_group : concurrency_groups) {
-      ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
-    }
-    RAY_LOG(DEBUG) << ss.str();
-  }
-}
+      is_asyncio_(is_asyncio) {}
 
 void ActorSchedulingQueue::Stop() {
   if (pool_manager_) {

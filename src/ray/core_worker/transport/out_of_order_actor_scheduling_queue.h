@@ -48,7 +48,6 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio,
-      int fiber_max_concurrency,
       const std::vector<ConcurrencyGroup> &concurrency_groups);
 
   void Stop() override;

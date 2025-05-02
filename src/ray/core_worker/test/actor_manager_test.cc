@@ -105,7 +105,6 @@ class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
   MOCK_METHOD5(AddActorQueueIfNotExists,
                void(const ActorID &actor_id,
                     int32_t max_pending_calls,
-                    bool execute_out_of_order,
                     bool fail_if_actor_unreachable,
                     bool owned));
   MOCK_METHOD3(ConnectActor,
