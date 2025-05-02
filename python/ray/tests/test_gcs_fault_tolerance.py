@@ -1,19 +1,17 @@
 import asyncio
 import os
 import signal
+import subprocess
 import sys
 import time
 import tempfile
-import threading
 from concurrent.futures import ThreadPoolExecutor
-from subprocess import Popen
 from typing import Any
 
 from filelock import FileLock
 import pytest
 
 import ray
-from ray._common.utils import get_or_create_event_loop
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
@@ -997,7 +995,7 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
 
 def test_redis_logs(external_redis):
     try:
-        process = Popen(
+        process = subprocess.Popen(
             ["ray", "start", "--head"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         stdout, stderr = process.communicate(timeout=30)
