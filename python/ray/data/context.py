@@ -192,7 +192,7 @@ DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 DEFAULT_S3_TRY_CREATE_DIR = False
 
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
-    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
