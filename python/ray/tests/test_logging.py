@@ -1114,14 +1114,14 @@ def test_log_monitor_ip_correct(ray_start_cluster):
     # add first node
     cluster.add_node(
         node_ip_address="127.0.0.2",
-        resources={"foobar": 1},
+        resources={"pin_task": 1},
     )
     address = cluster.address
     ray.init(address)
     # add second node
     cluster.add_node(node_ip_address="127.0.0.3")
 
-    @ray.remote(resources={"foobar": 1})
+    @ray.remote(resources={"pin_task": 1})
     def print_msg():
         print("abc")
 
