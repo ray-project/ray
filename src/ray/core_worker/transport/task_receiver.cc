@@ -162,7 +162,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
               task_spec.ConcurrencyGroups(),
-              fiber_max_concurrency_,
+              actor_max_concurrency_,
               initialize_thread_callback_);
         } else {
           // If the actor is an asyncio actor, then this concurrency group manager
@@ -227,7 +227,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
 
   if (task_spec.IsActorTask()) {
     // Asyncio and threaded actors don't enforce ordering on incoming actor tasks.
-    bool execute_out_of_order = actor_is_asyncio_ || actor_max_concurrency > 1;
+    bool execute_out_of_order = actor_is_asyncio_ || actor_max_concurrency_ > 1;
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
@@ -236,7 +236,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         std::stringstream ss;
         ss << "Creating out-of-order actor scheduling queue with max_concurrency="
            << actor_max_concurrency_ << " and concurrency groups:" << std::endl;
-        for (const auto &cg : cg_id->second) {
+        for (const auto &cg : cg_it->second) {
           ss << "\t" << cg.name << " : " << cg.max_concurrency;
         }
         RAY_LOG(DEBUG) << ss.str();
