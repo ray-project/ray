@@ -463,6 +463,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   WorkerID CallerWorkerId() const;
 
+  NodeID CallerNodeId() const;
+
   uint64_t ActorCounter() const;
 
   ObjectID ActorCreationDummyObjectId() const;

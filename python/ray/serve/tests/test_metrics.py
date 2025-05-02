@@ -2,6 +2,7 @@ import http
 import os
 import random
 import sys
+import threading
 from typing import DefaultDict, Dict, List, Optional
 
 import grpc
@@ -12,10 +13,6 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
-
-from ray.serve.generated import serve_pb2_grpc
-from ray.serve.generated import serve_pb2
-import threading
 
 import ray
 import ray.util.state as state_api
@@ -34,6 +31,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2

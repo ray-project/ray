@@ -439,6 +439,10 @@ WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
+NodeID TaskSpecification::CallerNodeId() const {
+  return NodeID::FromBinary(message_->caller_address().raylet_id());
+}
+
 // === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {
