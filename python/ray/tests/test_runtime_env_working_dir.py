@@ -10,7 +10,6 @@ from unittest import mock
 import pytest
 
 import ray
-from ray._private import gcs_utils
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
