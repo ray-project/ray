@@ -11,6 +11,7 @@ from ray.data.block import (
     DataBatch,
     UserDefinedFunction,
 )
+from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
 
@@ -212,17 +213,34 @@ class GroupedData:
             :meth:`GroupedData.aggregate`
                 Use this method for common aggregation use cases.
         """
-        # Globally sort records by key.
-        # Note that sort() will ensure that records of the same key partitioned
-        # into the same block.
-        if self._key is not None:
-            sorted_ds = self._dataset.sort(self._key)
+
+        # Prior to applying map operation we have to shuffle the data based on provided
+        # key and (optionally) number of partitions
+        #
+        #   - In case key is none, we repartition into a single block
+        #   - In case when hash-shuffle strategy is employed -- perform `repartition_and_sort`
+        #   - Otherwise we perform "global" sort of the dataset (to co-locate rows with the
+        #     same key values)
+        if self._key is None:
+            shuffled_ds = self._dataset.repartition(1)
+        elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            num_partitions = (
+                self._num_partitions
+                or self._dataset.context.default_hash_shuffle_parallelism
+            )
+            shuffled_ds = self._dataset.repartition(
+                num_partitions,
+                keys=self._key,
+                # Blocks must be sorted after repartitioning, such that group
+                # of rows sharing the same key values are co-located
+                sort=True,
+            )
         else:
-            sorted_ds = self._dataset.repartition(1)
+            shuffled_ds = self._dataset.sort(self._key)
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def apply_udf_to_groups(udf, batch, *args, **kwargs):
+        def _apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
@@ -257,12 +275,12 @@ class GroupedData:
                     self.fn = fn(*args, **kwargs)
 
                 def __call__(self, batch, *args, **kwargs):
-                    yield from apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+                    yield from _apply_udf_to_groups(self.fn, batch, *args, **kwargs)
 
         else:
 
             def wrapped_fn(batch, *args, **kwargs):
-                yield from apply_udf_to_groups(fn, batch, *args, **kwargs)
+                yield from _apply_udf_to_groups(fn, batch, *args, **kwargs)
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
@@ -271,9 +289,9 @@ class GroupedData:
         else:
             wrapped_fn.__name__ = fn.__name__
 
-        # Note we set batch_size=None here, so it will use the entire block as a batch,
-        # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds._map_batches_without_batch_size_validation(
+        # NOTE: We set batch_size=None here, so that every batch contains the entire block,
+        #       guaranteeing that groups are contained in full (ie not being split)
+        return shuffled_ds._map_batches_without_batch_size_validation(
             wrapped_fn,
             batch_size=None,
             compute=compute,
