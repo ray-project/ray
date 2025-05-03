@@ -1,6 +1,5 @@
 from ray import serve
 import time
-from collections import defaultdict
 from threading import RLock
 from typing import Optional, List, Tuple, Dict, Set
 
@@ -55,7 +54,7 @@ class PrefixTree:
             "root": self.root,
             "tenants": self.tenants,
             "tenant_char_count": self.tenant_char_count,
-            "tenant_nodes": self.tenant_nodes
+            "tenant_nodes": self.tenant_nodes,
         }
 
     def to_string(self) -> str:
@@ -121,12 +120,14 @@ class PrefixTree:
 
     #         self.tenant_nodes[tenant].add(curr_node)
     #         return curr_node
-            
+
     def insert(self, text: str, tenant: str) -> Node:
         """Insert text into tree with given tenant. Returns the node that was inserted (or the existing node if it was updated)."""
         with self.lock:
             if tenant not in self.tenants:
-                raise ValueError(f"Cannot insert text for tenant '{tenant}': tenant does not exist")
+                raise ValueError(
+                    f"Cannot insert text for tenant '{tenant}': tenant does not exist"
+                )
 
             curr_node: Node = self.root
             timestamp_ms: int = int(time.time() * 1000)
@@ -213,6 +214,7 @@ class PrefixTree:
             curr_node.tenant_last_access_time[tenant] = timestamp_ms
             self.tenant_nodes[tenant].add(curr_node)
             return curr_node
+
     def prefix_match(
         self, text: str, available_tenants: Optional[List[str]] = None
     ) -> Tuple[str, Optional[List[str]]]:
@@ -224,8 +226,7 @@ class PrefixTree:
         if available_tenants:
             # Filter available_tenants to only include those that exist in the tree
             available_tenants = [
-                tenant for tenant in available_tenants 
-                if tenant in self.tenants
+                tenant for tenant in available_tenants if tenant in self.tenants
             ]
             if not available_tenants:
                 return "", None
@@ -277,7 +278,6 @@ class PrefixTree:
             ret_text: str = text[:i]
             return ret_text, selected_tenants
 
-
     def add_tenant(self, tenant: str) -> None:
         """Add a tenant to the tree."""
         with self.lock:
@@ -288,30 +288,37 @@ class PrefixTree:
             self.tenant_char_count[tenant] = 0
             self.tenant_nodes[tenant] = set()
 
-
     def remove_tenant(self, tenant: str) -> int:
         """Remove a tenant's nodes from the tree, returns the number of characters removed. Also removes the tenant from tenants, tenant_char_count, and tenant_nodes."""
         with self.lock:
             if tenant not in self.tenants:
-                raise ValueError(f"Cannot remove tenant '{tenant}': tenant does not exist")
+                raise ValueError(
+                    f"Cannot remove tenant '{tenant}': tenant does not exist"
+                )
 
             total_chars_removed: int = 0
             for node in self.tenant_nodes[tenant].copy():
                 total_chars_removed += self.remove_tenant_single_node(tenant, node)
-            
+
             self.tenants.remove(tenant)
             self.tenant_nodes.pop(tenant, None)
             self.tenant_char_count.pop(tenant, None)
             return total_chars_removed
 
-
     def remove_tenant_single_node(self, tenant: str, node: Node) -> int:
         """Remove a single node belonging to a tenant, returns the number of characters removed."""
         with self.lock:
             if tenant not in self.tenants:
-                raise ValueError(f"Cannot remove tenant '{tenant}': tenant does not exist")
-            if node not in self.tenant_nodes[tenant] or tenant not in node.tenant_last_access_time:
-                raise ValueError(f"Cannot remove node '{node.text}' from tenant '{tenant}': tenant does not have this node")
+                raise ValueError(
+                    f"Cannot remove tenant '{tenant}': tenant does not exist"
+                )
+            if (
+                node not in self.tenant_nodes[tenant]
+                or tenant not in node.tenant_last_access_time
+            ):
+                raise ValueError(
+                    f"Cannot remove node '{node.text}' from tenant '{tenant}': tenant does not have this node"
+                )
 
             removed_chars_len: int = len(node.text)
             self.tenant_char_count[tenant] -= removed_chars_len
@@ -322,7 +329,6 @@ class PrefixTree:
                 node.parent.children.pop(node.text[0], None)
 
             return removed_chars_len
-
 
     def evict_tenant_by_LRU(self, tenant: str, min_remove_size: int) -> int:
         """Evict nodes from a tenant until the removed character count is at least min_remove_size.
@@ -336,17 +342,20 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_nodes or not self.tenant_nodes[tenant]:
-                raise ValueError(f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes")
+                raise ValueError(
+                    f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes"
+                )
 
             if self.tenant_char_count[tenant] < min_remove_size:
-                raise ValueError(f"Cannot evict tenant '{tenant}': total character count is less than min_remove_size")
+                raise ValueError(
+                    f"Cannot evict tenant '{tenant}': total character count is less than min_remove_size"
+                )
 
             # Sort nodes by last access time (oldest first)
             nodes_to_evict = sorted(
                 self.tenant_nodes[tenant],
                 key=lambda node: node.tenant_last_access_time.get(tenant, 0),
             )
-
 
             total_chars_removed: int = 0
 
@@ -360,7 +369,6 @@ class PrefixTree:
                     break
 
             return total_chars_removed
-
 
     def get_smallest_tenant(self) -> Optional[str]:
         """Get the tenant with the smallest total character count."""
