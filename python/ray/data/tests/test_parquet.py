@@ -945,10 +945,16 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     path_test_ignore_ok = os.path.join(data_path, "ignore")
     path_test_error_ok = os.path.join(data_path, "error")
     ds2.write_parquet(path_test_ignore_ok, filesystem=fs, mode="ignore")
-    ignore = pd.read_parquet(path_test_ignore_ok, storage_options=storage_options)
+    ignore = pd.read_parquet(
+        os.path.join(path_test_ignore_ok, "data2_000000_000000.parquet"),
+        storage_options=storage_options,
+    )
     assert ignore.equals(df3)
     ds2.write_parquet(path_test_error_ok, filesystem=fs, mode="errorifexists")
-    error = pd.read_parquet(path_test_error_ok, storage_options=storage_options)
+    error = pd.read_parquet(
+        os.path.join(path_test_error_ok, "data2_000000_000000.parquet"),
+        storage_options=storage_options,
+    )
     assert error.equals(df3)
 
     if fs is None:
