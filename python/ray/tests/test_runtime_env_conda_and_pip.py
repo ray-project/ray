@@ -15,6 +15,7 @@ from ray._private.runtime_env.dependency_utils import (
     MAX_INTERNAL_PIP_FILENAME_TRIES,
 )
 from ray.runtime_env import RuntimeEnv
+from ray.util.state import list_tasks
 
 import yaml
 import tempfile
@@ -138,7 +139,12 @@ class TestGC:
 
         # Ensure that the runtime env has been installed.
         assert ray.get(f.remote())
-        assert not check_local_files_gced(cluster)
+
+        # Check that after the task is finished, the runtime_env is not GC'd
+        # because the job is still alive.
+        wait_for_condition(lambda: list_tasks()[0].state == "FINISHED")
+        for _ in range(5):
+            assert not check_local_files_gced(cluster)
 
         ray.shutdown()
 
