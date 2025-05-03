@@ -138,7 +138,11 @@ class ActorPoolMapOperator(MapOperator):
 
     def completed(self) -> bool:
         # TODO separate marking as completed from the check
-        return self._inputs_complete and self._bundle_queue.is_empty() and super().completed()
+        return (
+            self._inputs_complete
+            and self._bundle_queue.is_empty()
+            and super().completed()
+        )
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
