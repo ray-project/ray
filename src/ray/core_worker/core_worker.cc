@@ -732,7 +732,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           to_resubmit_.push(std::move(task_to_retry));
         } else {
           if (spec.IsActorTask()) {
-            RAY_LOG(INFO) << "[debug] TaskManager retry_task_callback SubmitTask";
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec);
             RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
