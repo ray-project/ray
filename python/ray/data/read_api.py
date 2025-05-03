@@ -1499,7 +1499,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema={a: int64, b: int64})
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1944,7 +1944,10 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(num_rows=?, schema=...)
+        Dataset(
+           num_rows=?,
+           schema={...}
+        )
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1954,7 +1957,10 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(num_rows=?, schema=...)
+        Dataset(
+           num_rows=?,
+           schema={...}
+        )
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
