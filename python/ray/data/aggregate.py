@@ -111,13 +111,13 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     `AggregateFnV2` instances are passed to a Dataset's ``.aggregate(...)`` method to
     perform aggregations by applying distributed aggregation algorithm:
 
-        - `aggregate_block` is applied to individual blocks, producing partial
-            aggregations.
-        - `combine` combines new partially aggregated value (previously returned
-            from `aggregate_block` partial aggregations into a singular partial
-            aggregation) with the previously stored accumulator.
-        - `finalize` transforms partial aggregation into its final state (for
-            some aggregations this is an identity transformation, ie no-op)
+    - `aggregate_block` is applied to individual blocks, producing partial
+        aggregations.
+    - `combine` combines new partially aggregated value (previously returned
+        from `aggregate_block` partial aggregations into a singular partial
+        aggregation) with the previously stored accumulator.
+    - `finalize` transforms partial aggregation into its final state (for
+        some aggregations this is an identity transformation, ie no-op)
 
     """
 
