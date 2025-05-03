@@ -12,6 +12,7 @@ from threading import Thread
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
 import numpy as np
+import psutil
 
 import ray
 from ray._private.dict import (  # noqa: F401
@@ -25,8 +26,6 @@ from ray._private.dict import (  # noqa: F401
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
 from ray.air._internal.util import is_nan, is_nan_or_inf  # noqa: F401
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-import psutil
 
 logger = logging.getLogger(__name__)
 

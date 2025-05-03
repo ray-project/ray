@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional
 
 from ray.train._internal import session
 from ray.train.constants import (
-    _v2_migration_warnings_enabled,
     V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.context import TrainContext as TrainV1Context
 from ray.train.utils import _copy_doc

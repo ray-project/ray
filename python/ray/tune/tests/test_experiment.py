@@ -3,8 +3,7 @@ import unittest
 
 import ray
 import ray.train
-from ray.tune import CheckpointConfig
-from ray.tune import register_trainable
+from ray.tune import CheckpointConfig, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.utils import diagnose_serialization
