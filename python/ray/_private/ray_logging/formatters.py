@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 import logging
 import json
-from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
 from ray._private.ray_logging.constants import (
     LogKey,
+    INTERNAL_TIMESTAMP_LOG_KEY,
     LOGRECORD_STANDARD_ATTRS,
     LOGGER_FLATTEN_KEYS,
 )
