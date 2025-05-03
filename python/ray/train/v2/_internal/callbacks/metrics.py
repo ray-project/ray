@@ -2,7 +2,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields
-from typing import Dict, List, Optional, Type, TypeVar
+from typing import Dict, List, Optional, Type, TypeVar, Any
 
 from ray.train.v2._internal.execution.controller.state import TrainControllerState
 from ray.train.v2._internal.execution.callback import (
@@ -97,75 +97,97 @@ CONTROLLER_METRICS = [
     TRAIN_CONTROLLER_STATE,
 ]
 
-# Replace the ControllerMetrics dataclass with a MetricsTracker class
+
 class MetricsTracker:
     """Tracks metric values for a set of defined metrics."""
 
-    def __init__(self, metrics_definitions):
+    def __init__(self, metrics_definitions, base_tags: Dict[str, str]):
         self._metrics_definitions = {
             metric.name: metric for metric in metrics_definitions
         }
-        self._values = {metric.name: metric.default for metric in metrics_definitions}
+        self._base_tags = base_tags
+        # Use a tuple of (metric_name, frozenset(tags.items())) as the key
+        self._values = {}
+        self._metrics_lock = threading.Lock()
+        self._metrics_gauges = {}
+        self.reset()
 
-    def update(self, metric, value):
-        """Update a metric value.
+    def _get_key(self, metric_name, tags):
+        """Get the composite key for a metric and its tags."""
+        return (metric_name, frozenset(tags.items()))
+
+    def update(self, metric: ControllerMetric, tags: Dict[str, str], value: Any):
+        """Update a metric value with associated tags.
 
         Args:
-            metric: Either a ControllerMetric instance or a metric name string
+            metric: A ControllerMetric instance
+            tags: Dictionary of tag key-value pairs
             value: The new value to set or add to the metric
         """
-        metric_name = metric.name if hasattr(metric, "name") else metric
-        if metric_name not in self._values:
-            raise ValueError(f"Unknown metric: {metric_name}")
+        if metric.name not in self._metrics_definitions:
+            raise ValueError(f"Unknown metric: {metric.name}")
 
-        # For numeric types, add the value; otherwise replace it
-        if isinstance(self._values[metric_name], (int, float)):
-            self._values[metric_name] += value
-        else:
-            self._values[metric_name] = value
+        with self._metrics_lock:
+            # Combine base tags with metric-specific tags
+            combined_tags = {**self._base_tags, **tags}
+            key = self._get_key(metric.name, combined_tags)
+            if key not in self._values:
+                # Initialize with default value for new metric-tag combination
+                self._values[key] = metric.default
 
-    def set(self, metric, value):
-        """Set a metric to a specific value.
-
-        Args:
-            metric: Either a ControllerMetric instance or a metric name string
-            value: The value to set for the metric
-        """
-        metric_name = metric.name if hasattr(metric, "name") else metric
-        if metric_name not in self._values:
-            raise ValueError(f"Unknown metric: {metric_name}")
-        self._values[metric_name] = value
-
-    def get(self, metric):
-        """Get the current value of a metric.
-
-        Args:
-            metric: Either a ControllerMetric instance or a metric name string
-
-        Returns:
-            The current value of the metric
-        """
-        metric_name = metric.name if hasattr(metric, "name") else metric
-        return self._values.get(metric_name)
+            # For numeric types, add the value; otherwise replace it
+            if isinstance(self._values[key], (int, float)):
+                self._values[key] += value
+            else:
+                self._values[key] = value
 
     def get_all(self):
-        """Get all metric values.
+        """Get all metric values and their associated tags.
 
         Returns:
-            Dict mapping metric names to their current values
+            Dict mapping metric names to tuples of (value, tags)
         """
-        return dict(self._values)
+        with self._metrics_lock:
+            result = {}
+            for (metric_name, tag_items), value in self._values.items():
+                tags = dict(tag_items)
+                if metric_name not in result:
+                    result[metric_name] = []
+                result[metric_name].append((value, tags))
+            return result
 
-    def get_definition(self, metric_name):
-        """Get the definition for a metric.
+    def reset(self):
+        """Reset all metrics to their default values."""
+        with self._metrics_lock:
+            self._values = {}
 
-        Args:
-            metric_name: The name of the metric
+    def create_gauges(self):
+        """Create Prometheus gauges for all metrics."""
+        with self._metrics_lock:
+            self._metrics_gauges = {}
+            for metric_name in self._metrics_definitions.keys():
+                metric_def = self._metrics_definitions[metric_name]
+                self._metrics_gauges[metric_name] = Gauge(
+                    metric_name,
+                    description=metric_def.description,
+                    tag_keys=metric_def.tag_keys,
+                )
 
-        Returns:
-            The ControllerMetric definition
-        """
-        return self._metrics_definitions.get(metric_name)
+    def push_metrics(self):
+        """Push all metrics to their gauges."""
+        with self._metrics_lock:
+            metrics_dict = self.get_all()
+            for metric_name, metric_values in metrics_dict.items():
+                if metric_name in self._metrics_gauges:
+                    for value, tags in metric_values:
+                        self._metrics_gauges[metric_name].set(value, tags)
+
+    def reset_gauges(self):
+        """Reset all gauges to their default values."""
+        with self._metrics_lock:
+            for metric_name, gauge in self._metrics_gauges.items():
+                metric_def = self._metrics_definitions[metric_name]
+                gauge.set(metric_def.default, self._base_tags)
 
 
 class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
@@ -181,25 +203,8 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._run_name = train_run_context.get_run_config().name
         self._thread: Optional[threading.Thread] = None
         self._thread_stop_event: Optional[threading.Event] = None
-        self._metrics: Optional[MetricsTracker] = None
-        self._metrics_lock: Optional[threading.Lock] = None
+        self._metrics_tracker: Optional[MetricsTracker] = None
         self._controller_tag: Dict[str, str] = {}
-        self._metrics_gauges: Dict[str, Gauge] = {}
-
-        # Track state transitions with a dictionary of state names to counts
-        self._state_transitions: Dict[str, int] = {}
-
-    def _create_prometheus_controller_metrics(self) -> Dict[str, Gauge]:
-        """Create Prometheus worker metrics for the controller metrics."""
-        metrics = {}
-        for metric_name in self._metrics.get_all().keys():
-            metric_def = self._metrics.get_definition(metric_name)
-            metrics[metric_name] = Gauge(
-                metric_name,
-                description=metric_def.description,
-                tag_keys=metric_def.tag_keys,
-            )
-        return metrics
 
     def after_controller_start(self):
         """
@@ -210,71 +215,23 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
             RUN_NAME_TAG_KEY: self._run_name,
         }
         self._thread_stop_event = threading.Event()
-        self._metrics_lock = threading.Lock()
-        self._metrics = MetricsTracker(CONTROLLER_METRICS)
-        self._metrics_gauges = self._create_prometheus_controller_metrics()
+        self._metrics_tracker = MetricsTracker(CONTROLLER_METRICS, self._controller_tag)
+        self._metrics_tracker.create_gauges()
 
         # Initialize with the INITIALIZING state
-        with self._metrics_lock:
-            self._state_transitions = {"INITIALIZING": 1}
+        self._metrics_tracker.update(
+            TRAIN_CONTROLLER_STATE, {"ray_train_controller_state": "INITIALIZING"}, 1
+        )
 
         def push_local_metrics():
             while not self._thread_stop_event.is_set():
-                with self._metrics_lock:
-                    # Push regular metrics
-                    metrics_dict = self._metrics.get_all()
-                    # Make a copy of state transitions
-                    state_transitions = dict(self._state_transitions)
-
-                for metric_name, metric_value in metrics_dict.items():
-                    # Skip state transitions metric as it's handled separately
-                    if metric_name == TRAIN_CONTROLLER_STATE.name:
-                        continue
-                    self._metrics_gauges[metric_name].set(
-                        metric_value, self._controller_tag
-                    )
-
-                # Push state transition metrics
-                state_gauge = self._metrics_gauges.get(TRAIN_CONTROLLER_STATE.name)
-                if state_gauge:
-                    for state_name, count in state_transitions.items():
-                        state_tag = {
-                            RUN_NAME_TAG_KEY: self._run_name,
-                            "ray_train_controller_state": state_name,
-                        }
-                        state_gauge.set(count, state_tag)
-
+                self._metrics_tracker.push_metrics()
                 time.sleep(ControllerMetricsCallback.LOCAL_METRICS_PUSH_INTERVAL_S)
 
         assert not self._thread
         self._thread = threading.Thread(target=push_local_metrics, daemon=True)
         self._thread.start()
 
-    def after_controller_state_update(
-        self,
-        previous_state: TrainControllerState,
-        current_state: TrainControllerState,
-    ):
-        """Track state transitions by incrementing the counter for the new state."""
-        if not self._metrics_lock:
-            return
-
-        # Only count if the state type actually changed
-        if previous_state._state_type != current_state._state_type:
-            previous_state_name = previous_state._state_type.name
-            current_state_name = current_state._state_type.name
-
-            with self._metrics_lock:
-                # Decrement the previous state counter
-                if previous_state_name in self._state_transitions:
-                    self._state_transitions[previous_state_name] -= 1
-
-                # Increment the counter for the new state
-                if current_state_name not in self._state_transitions:
-                    self._state_transitions[current_state_name] = 0
-                self._state_transitions[current_state_name] += 1
-
-    # TODO: This should be done after the controller shuts down.
     def before_controller_shutdown(self):
         """
         Stop the thread that pushes local metrics to the gauges before the
@@ -283,23 +240,31 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         # Stop the thread that pushes local metrics to the metrics gauges.
         assert not self._thread_stop_event.is_set()
         self._thread_stop_event.set()
-        # Reset the metrics to their default values.
-        for metric_name, gauge in self._metrics_gauges.items():
-            # Skip state transitions metric as it's handled separately
-            if metric_name == TRAIN_CONTROLLER_STATE.name:
-                continue
-            metric_def = self._metrics.get_definition(metric_name)
-            gauge.set(metric_def.default, self._controller_tag)
+        self._metrics_tracker.reset_gauges()
 
-        # Reset state transition metrics
-        state_gauge = self._metrics_gauges.get(TRAIN_CONTROLLER_STATE.name)
-        if state_gauge:
-            for state_name in self._state_transitions:
-                state_tag = {
-                    RUN_NAME_TAG_KEY: self._run_name,
-                    "ray_train_controller_state": state_name,
-                }
-                state_gauge.set(TRAIN_CONTROLLER_STATE.default, state_tag)
+    def after_controller_state_update(
+        self,
+        previous_state: TrainControllerState,
+        current_state: TrainControllerState,
+    ):
+        """Track state transitions by incrementing the counter for the new state."""
+        if previous_state._state_type != current_state._state_type:
+            previous_state_name = previous_state._state_type.name
+            current_state_name = current_state._state_type.name
+
+            # Decrement the previous state counter
+            self._metrics_tracker.update(
+                TRAIN_CONTROLLER_STATE,
+                {"ray_train_controller_state": previous_state_name},
+                -1,
+            )
+
+            # Increment the counter for the new state
+            self._metrics_tracker.update(
+                TRAIN_CONTROLLER_STATE,
+                {"ray_train_controller_state": current_state_name},
+                1,
+            )
 
     @contextmanager
     def on_worker_group_start(self):
@@ -309,8 +274,9 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         start_time_s = time_monotonic()
         yield
         elapsed_time_s = time_monotonic() - start_time_s
-        with self._metrics_lock:
-            self._metrics.update(TRAIN_WORKER_GROUP_START_TOTAL_TIME_S, elapsed_time_s)
+        self._metrics_tracker.update(
+            TRAIN_WORKER_GROUP_START_TOTAL_TIME_S, {}, elapsed_time_s
+        )
 
     @contextmanager
     def on_worker_group_shutdown(self):
@@ -320,10 +286,9 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         start_time_s = time_monotonic()
         yield
         elapsed_time_s = time_monotonic() - start_time_s
-        with self._metrics_lock:
-            self._metrics.update(
-                TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, elapsed_time_s
-            )
+        self._metrics_tracker.update(
+            TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, {}, elapsed_time_s
+        )
 
 
 ################################################################################
