@@ -352,7 +352,6 @@ class WorkerGroup:
         runtime_env = self._get_worker_runtime_env(
             custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
         )
-        print(runtime_env)
         worker_actor_cls = ray.remote(
             runtime_env=runtime_env,
             **bundle_to_remote_args(resources_per_worker),
