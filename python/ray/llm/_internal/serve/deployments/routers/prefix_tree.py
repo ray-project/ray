@@ -2,7 +2,7 @@ from ray import serve
 import time
 from collections import defaultdict
 from threading import RLock
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Set
 
 
 class Node:
@@ -20,8 +20,8 @@ class Node:
             str, int
         ] = {}  # Maps tenant -> timestamp in ms (int)
 
-    def __str__(self) -> str:
-        return f"Node(text='{self.text}', tenants={list(self.tenant_last_access_time.keys())})"
+    def to_string(self) -> str:
+        return f"Node(text='{self.text}', parent={self.parent}, children={self.children}, tenant_last_access_time={self.tenant_last_access_time})"
 
 
 @serve.deployment(name="TreeDeployment")
@@ -36,26 +36,30 @@ class PrefixTree:
     """
 
     def __init__(self) -> None:
+        self.lock: RLock = RLock()
         self.root: Node = Node()
-        self.tenant_char_count: Dict[str, int] = defaultdict(
-            int
-        )  # Maps tenant -> character count
-        self.lock: RLock = RLock()  # For operations that need to lock the entire tree
-        self.tenant_nodes: Dict[str, List[Node]] = defaultdict(
-            list
-        )  # Maps tenant -> list of nodes it belongs to
+        self.tenants: Set[str] = set()
+        self.tenant_char_count: Dict[str, int] = {}
+        self.tenant_nodes: Dict[str, Set[Node]] = {}
 
-    def get_root(self) -> Node:
-        return self.root
+    def reset(self) -> None:
+        """Reset the tree to an empty state."""
+        with self.lock:
+            self.root = Node()
+            self.tenants = set()
+            self.tenant_char_count = {}
+            self.tenant_nodes = {}
 
-    def get_tenant_char_count(self) -> Dict[str, int]:
-        return self.tenant_char_count
-
-    def get_tenant_nodes(self) -> Dict[str, List[Node]]:
-        return self.tenant_nodes
+    def to_dict(self) -> Dict:
+        return {
+            "root": self.root,
+            "tenants": self.tenants,
+            "tenant_char_count": self.tenant_char_count,
+            "tenant_nodes": self.tenant_nodes
+        }
 
     def to_string(self) -> str:
-        return f"PrefixTree(root={self.root.__str__()}, tenant_char_count={self.tenant_char_count}, tenant_nodes={self.tenant_nodes})"
+        return f"PrefixTree(root={self.root.__str__()}, tenants={self.tenants}, tenant_char_count={self.tenant_char_count}, tenant_nodes={self.tenant_nodes})"
 
     @staticmethod
     def shared_prefix_count(a: str, b: str) -> int:
@@ -68,14 +72,69 @@ class PrefixTree:
                 break
         return i
 
-    def insert(self, text: str, tenant: str) -> None:
-        """Insert text into tree with given tenant."""
+    # def insert(self, text: str, tenant: str) -> Node:
+    #     """Insert text into tree with given tenant. Returns the node that was inserted (or the existing node if it was updated)."""
+    #     with self.lock:
+    #         if tenant not in self.tenants:
+    #             raise ValueError(f"Cannot insert text for tenant '{tenant}': tenant does not exist")
+
+    #         curr_node: Node = self.root
+    #         timestamp_ms: int = int(time.time() * 1000)
+    #         i: int = 0
+    #         while i < len(text):
+    #             self.tenant_nodes[tenant].add(curr_node)
+
+    #             first_char: str = text[i]
+    #             curr_text: str = text[i:]
+    #             if first_char not in curr_node.children:
+    #                 # No match, create new node
+    #                 # e.g. curr_node.children = {}, curr_text = "hello" -> curr_node.children = {"h": Node("hello")}
+    #                 new_node: Node = Node(text=curr_text, parent=curr_node)
+    #                 new_node.tenant_last_access_time[tenant] = timestamp_ms
+    #                 curr_node.children[first_char] = new_node
+
+    #             # Match found, check if need to split
+    #             matched_node: Node = curr_node.children[first_char]
+    #             shared_count: int = self.shared_prefix_count(
+    #                 matched_node.text, curr_text
+    #             )
+    #             if shared_count == len(matched_node.text):
+    #                 # Full match, move down the tree
+    #                 if tenant not in matched_node.tenant_last_access_time:
+    #                     self.tenant_char_count[tenant] += shared_count
+    #                 matched_node.tenant_last_access_time[tenant] = timestamp_ms
+    #                 curr_node = matched_node
+    #             else:
+    #                 # Partial match, split at matched point
+    #                 matched_text: str = matched_node.text[:shared_count]
+    #                 remaining_text: str = matched_node.text[shared_count:]
+    #                 new_parent: Node = Node(text=matched_text, parent=curr_node)
+    #                 matched_node.text = remaining_text
+    #                 matched_node.parent = new_parent
+    #                 new_parent.children[remaining_text[0]] = matched_node
+    #                 if tenant not in new_parent.tenant_last_access_time:
+    #                     self.tenant_char_count[tenant] += shared_count
+    #                 new_parent.tenant_last_access_time[tenant] = timestamp_ms
+    #                 curr_node = new_parent
+
+    #             i += shared_count
+
+    #         self.tenant_nodes[tenant].add(curr_node)
+    #         return curr_node
+            
+    def insert(self, text: str, tenant: str) -> Node:
+        """Insert text into tree with given tenant. Returns the node that was inserted (or the existing node if it was updated)."""
         with self.lock:
+            if tenant not in self.tenants:
+                raise ValueError(f"Cannot insert text for tenant '{tenant}': tenant does not exist")
+
             curr_node: Node = self.root
             timestamp_ms: int = int(time.time() * 1000)
             i: int = 0
             while i < len(text):
                 curr_node.tenant_last_access_time[tenant] = timestamp_ms
+                self.tenant_nodes[tenant].add(curr_node)
+
                 first_char: str = text[i]
                 curr_text: str = text[i:]
                 if first_char not in curr_node.children:
@@ -86,7 +145,7 @@ class PrefixTree:
 
                     # Increment char count for tenant and add node to tenant_nodes
                     self.tenant_char_count[tenant] += len(curr_text)
-                    self.tenant_nodes[tenant].append(new_node)
+                    self.tenant_nodes[tenant].add(new_node)
 
                     curr_node.children[first_char] = new_node
                 else:
@@ -125,7 +184,6 @@ class PrefixTree:
                         new_parent.tenant_last_access_time = (
                             matched_node.tenant_last_access_time.copy()
                         )
-                        self.tenant_nodes[tenant].append(new_parent)
                         # Update matched_node
                         matched_node.text = remaining_text
                         matched_node.parent = new_parent
@@ -152,14 +210,28 @@ class PrefixTree:
                         # Move down the tree
                         curr_node = matched_node
                         i += shared_count
-
+            curr_node.tenant_last_access_time[tenant] = timestamp_ms
+            self.tenant_nodes[tenant].add(curr_node)
+            return curr_node
     def prefix_match(
         self, text: str, available_tenants: Optional[List[str]] = None
     ) -> Tuple[str, Optional[List[str]]]:
         """
         Match text against tree and return (matched_text, matched_tenants).
         Does not update access time for the matched tenants (only updates when insert() is called).
+        If available_tenants is not provided, all tenants are considered.
         """
+        if available_tenants:
+            # Filter available_tenants to only include those that exist in the tree
+            available_tenants = [
+                tenant for tenant in available_tenants 
+                if tenant in self.tenants
+            ]
+            if not available_tenants:
+                return "", None
+        else:
+            available_tenants = list(self.tenants)
+
         with self.lock:
             curr_node: Node = self.root
             i: int = 0
@@ -173,12 +245,11 @@ class PrefixTree:
                     matched_node: Node = curr_node.children[first_char]
 
                     # Check if any of the available tenants match this node
-                    if available_tenants:
-                        if not any(
-                            tenant in matched_node.tenant_last_access_time
-                            for tenant in available_tenants
-                        ):
-                            break
+                    if not any(
+                        tenant in matched_node.tenant_last_access_time
+                        for tenant in available_tenants
+                    ):
+                        break
 
                     shared_count: int = self.shared_prefix_count(
                         matched_node.text, curr_text
@@ -195,59 +266,65 @@ class PrefixTree:
 
             # Select the tenants in available_tenants that are in the current node
             selected_tenants: Optional[List[str]] = None
-            if available_tenants:
-                matching_tenants = [
-                    tenant
-                    for tenant in available_tenants
-                    if tenant in curr_node.tenant_last_access_time
-                ]
-                if matching_tenants:
-                    selected_tenants = matching_tenants
-            else:
-                if curr_node.tenant_last_access_time:
-                    selected_tenants = list(curr_node.tenant_last_access_time)
+            matching_tenants = [
+                tenant
+                for tenant in available_tenants
+                if tenant in curr_node.tenant_last_access_time
+            ]
+            if matching_tenants:
+                selected_tenants = matching_tenants
 
             ret_text: str = text[:i]
             return ret_text, selected_tenants
 
-    def get_smallest_tenant(self) -> Optional[str]:
-        """Get the tenant with the smallest total character count."""
-        with self.lock:
-            if not self.tenant_char_count:
-                return None
 
-            return min(self.tenant_char_count.items(), key=lambda x: x[1])[0]
-
-    def get_tenant_char_count(self) -> Dict[str, int]:
-        """Get character count for each tenant."""
+    def add_tenant(self, tenant: str) -> None:
+        """Add a tenant to the tree."""
         with self.lock:
-            return dict(self.tenant_char_count)
+            if tenant in self.tenants:
+                raise ValueError(f"Cannot add tenant '{tenant}': tenant already exists")
 
-    def remove_tenant_entirely(self, tenant: str) -> int:
-        """Remove all nodes belonging to a tenant, returns the number of characters removed. Also removes the tenant from tenant_char_count and tenant_nodes."""
+            self.tenants.add(tenant)
+            self.tenant_char_count[tenant] = 0
+            self.tenant_nodes[tenant] = set()
+
+
+    def remove_tenant(self, tenant: str) -> int:
+        """Remove a tenant's nodes from the tree, returns the number of characters removed. Also removes the tenant from tenants, tenant_char_count, and tenant_nodes."""
         with self.lock:
+            if tenant not in self.tenants:
+                raise ValueError(f"Cannot remove tenant '{tenant}': tenant does not exist")
+
             total_chars_removed: int = 0
             for node in self.tenant_nodes[tenant].copy():
                 total_chars_removed += self.remove_tenant_single_node(tenant, node)
+            
+            self.tenants.remove(tenant)
             self.tenant_nodes.pop(tenant, None)
             self.tenant_char_count.pop(tenant, None)
             return total_chars_removed
 
+
     def remove_tenant_single_node(self, tenant: str, node: Node) -> int:
         """Remove a single node belonging to a tenant, returns the number of characters removed."""
         with self.lock:
+            if tenant not in self.tenants:
+                raise ValueError(f"Cannot remove tenant '{tenant}': tenant does not exist")
+            if node not in self.tenant_nodes[tenant] or tenant not in node.tenant_last_access_time:
+                raise ValueError(f"Cannot remove node '{node.text}' from tenant '{tenant}': tenant does not have this node")
+
             removed_chars_len: int = len(node.text)
             self.tenant_char_count[tenant] -= removed_chars_len
             self.tenant_nodes[tenant].remove(node)
             node.tenant_last_access_time.pop(tenant, None)
-
             # If this node has no more tenants, remove it from the parent
-            if not node.tenant_last_access_time:
+            if not node.tenant_last_access_time and node.parent:
                 node.parent.children.pop(node.text[0], None)
 
             return removed_chars_len
 
-    def evict_tenant(self, tenant: str, min_remove_size: int) -> int:
+
+    def evict_tenant_by_LRU(self, tenant: str, min_remove_size: int) -> int:
         """Evict nodes from a tenant until the removed character count is at least min_remove_size.
 
         Args:
@@ -259,13 +336,17 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_nodes or not self.tenant_nodes[tenant]:
-                return 0
+                raise ValueError(f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes")
+
+            if self.tenant_char_count[tenant] < min_remove_size:
+                raise ValueError(f"Cannot evict tenant '{tenant}': total character count is less than min_remove_size")
 
             # Sort nodes by last access time (oldest first)
             nodes_to_evict = sorted(
                 self.tenant_nodes[tenant],
                 key=lambda node: node.tenant_last_access_time.get(tenant, 0),
             )
+
 
             total_chars_removed: int = 0
 
@@ -279,3 +360,12 @@ class PrefixTree:
                     break
 
             return total_chars_removed
+
+
+    def get_smallest_tenant(self) -> Optional[str]:
+        """Get the tenant with the smallest total character count."""
+        with self.lock:
+            if not self.tenant_char_count:
+                return None
+
+            return min(self.tenant_char_count.items(), key=lambda x: x[1])[0]
