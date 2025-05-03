@@ -42,6 +42,7 @@ class LLMRawResponsesBatcher:
             self.interval_s = interval_ms / 1000
 
         self.done_event: asyncio.Event = asyncio.Event()
+        self.bsize = 1
 
         # We are okay with this task getting cancelled (to propagate cancellations)
         self.read_task = asyncio.create_task(self.read())
@@ -62,11 +63,13 @@ class LLMRawResponsesBatcher:
                 except asyncio.TimeoutError:
                     pass
 
+                self.done_event.clear()
                 # Get all elements from the queue
                 results, is_done = self.check_done_and_drain()
 
                 # If there are results, merge and yield them
                 if results:
+                    print(f"Merging {len(results)} results")
                     output: BatchedLLMRawResponse = BatchedLLMRawResponse.merge_stream(*results)  # type: ignore
                     yield output
 
@@ -89,6 +92,8 @@ class LLMRawResponsesBatcher:
         try:
             async for x in self.generator:
                 self.queue.put_nowait(x)
+                if self.queue.qsize() >= self.bsize:
+                    self.done_event.set()
         finally:
             self.done_event.set()
 

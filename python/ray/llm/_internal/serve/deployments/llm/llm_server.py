@@ -134,6 +134,7 @@ class ResponsePostprocessor:
         all_results = []
         try:
             async for batched_results in generator:
+                all_results_in_batch = []
                 for result in batched_results.unpack():
                     all_results.append(result)
 
@@ -161,11 +162,14 @@ class ResponsePostprocessor:
                                     logprobs=ChatCompletionLogProbs(content=[]),
                                 )
                             ]
-                            yield ChatCompletionStreamResponse(
-                                id=completion_id,
-                                model=model,
-                                choices=choices,
-                                usage=None,
+                            # yield ChatCompletionStreamResponse(
+                            all_results_in_batch.append(
+                                ChatCompletionStreamResponse(
+                                    id=completion_id,
+                                    model=model,
+                                    choices=choices,
+                                    usage=None,
+                                )
                             )
                             yielded_role = True
 
@@ -199,16 +203,21 @@ class ResponsePostprocessor:
                             )
                         ]
 
-                        yield ChatCompletionStreamResponse(
-                            id=completion_id,
-                            model=model,
-                            choices=choices,
-                            usage=None,
+                        # yield ChatCompletionStreamResponse(
+                        all_results_in_batch.append(
+                            ChatCompletionStreamResponse(
+                                id=completion_id,
+                                model=model,
+                                choices=choices,
+                                usage=None,
+                            )
                         )
 
                 if had_error:
                     # Return early in case of an error
                     break
+
+                yield all_results_in_batch
 
         except Exception as e:
             logger.error(
@@ -251,6 +260,7 @@ class ResponsePostprocessor:
         had_error = False
         try:
             async for batched_results in generator:
+                all_results_in_batch = []
                 for result in batched_results.unpack():
                     all_results.append(result)
                     if result.error:
@@ -287,17 +297,21 @@ class ResponsePostprocessor:
                             + (merged_results.num_generated_tokens or 0),
                         )
 
-                    yield CompletionStreamResponse(
-                        id=get_model_request_id(model),
-                        model=model,
-                        choices=choices,
-                        usage=usage,
+                    # yield CompletionStreamResponse(
+                    all_results_in_batch.append(
+                        CompletionStreamResponse(
+                            id=get_model_request_id(model),
+                            model=model,
+                            choices=choices,
+                            usage=usage,
+                        )
                     )
 
                 if had_error:
                     # Return early in case of an error
                     break
 
+                yield all_results_in_batch
         except Exception as e:
             logger.error(
                 f"Failed while handling completions for request ({request_id}): {repr(e)}",
@@ -311,11 +325,13 @@ class ResponsePostprocessor:
     ) -> LLMChatResponse:
         gen = self.handle_failure(model=model, gen=gen)
 
+        # print("Landed on process_chat ...")
         if stream:
             async for response in self._chat_completions_wrapper(
                 model=model,
                 generator=gen,
             ):
+                # print(f"on llm server I am seeing: {repr(response)}")
                 yield response
         else:
             results: LLMRawResponse = await self.merge_stream(gen)
@@ -377,6 +393,7 @@ class ResponsePostprocessor:
                 model=model,
                 generator=gen,
             ):
+                # print(f"on llm server I am seeing: {repr(response)}")
                 yield response
         else:
             results: LLMRawResponse = await self.merge_stream(gen)
@@ -541,6 +558,7 @@ class LLMServer(_LLMServerBase):
         )
         stream = request.stream
         gen = self._predict(request_id=request_id, prompt=prompt, stream=stream)
+        # print("Landed on chat ...")
         return self.response_postprocessor.process_chat(
             model=self._llm_config.model_id, gen=gen, stream=stream
         )
@@ -562,6 +580,7 @@ class LLMServer(_LLMServerBase):
         )
         stream = request.stream
         gen = self._predict(request_id=request_id, prompt=prompt, stream=stream)
+        # print("Landed on completions ...")
         return self.response_postprocessor.process_completions(
             model=self._llm_config.model_id, gen=gen, stream=stream
         )

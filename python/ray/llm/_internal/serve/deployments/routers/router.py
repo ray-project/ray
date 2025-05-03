@@ -125,7 +125,8 @@ def _apply_openai_json_format(
     The converted strings are concatenated and returned:
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
-
+    if isinstance(response, list):
+        return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
     return "".join(f"data: {response.model_dump_json()}\n\n")
 
 
@@ -147,10 +148,14 @@ async def _openai_json_wrapper(
     Yields:
         Concatenated JSON strings that represent CompletionStreamResponse.
     """
-    yield _apply_openai_json_format(first_response)
+    packet = _apply_openai_json_format(first_response)
+    # print(f"on the router I am seeing: {repr(packet)}")
+    yield packet
 
     async for response in generator:
-        yield _apply_openai_json_format(response)
+        packet = _apply_openai_json_format(response)
+        # print(f"on the router I am seeing: {repr(packet)}")
+        yield packet
 
     yield "data: [DONE]\n\n"
 
