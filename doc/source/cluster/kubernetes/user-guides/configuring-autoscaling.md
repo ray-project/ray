@@ -350,7 +350,6 @@ headGroupSpec:
 ...
 workerGroupSpecs:
 - groupName: small-group
-  rayStartParams: {}
   template:
     spec:
       containers:
