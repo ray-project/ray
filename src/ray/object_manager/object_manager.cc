@@ -30,35 +30,6 @@ namespace asio = boost::asio;
 
 namespace ray {
 
-ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
-                                     SpillObjectsCallback spill_objects_callback,
-                                     std::function<void()> object_store_full_callback,
-                                     AddObjectCallback add_object_callback,
-                                     DeleteObjectCallback delete_object_callback) {
-  plasma::plasma_store_runner.reset(
-      new plasma::PlasmaStoreRunner(config.store_socket_name,
-                                    config.object_store_memory,
-                                    config.huge_pages,
-                                    config.plasma_directory,
-                                    config.fallback_directory));
-  // Initialize object store.
-  store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start,
-                              plasma::plasma_store_runner.get(),
-                              spill_objects_callback,
-                              object_store_full_callback,
-                              add_object_callback,
-                              delete_object_callback);
-  // Sleep for sometime until the store is working. This can suppress some
-  // connection warnings.
-  std::this_thread::sleep_for(std::chrono::microseconds(500));
-}
-
-ObjectStoreRunner::~ObjectStoreRunner() {
-  plasma::plasma_store_runner->Stop();
-  store_thread_.join();
-  plasma::plasma_store_runner.reset();
-}
-
 ObjectManager::ObjectManager(
     instrumented_io_context &main_service,
     const NodeID &self_node_id,
@@ -71,15 +42,21 @@ ObjectManager::ObjectManager(
     AddObjectCallback add_object_callback,
     DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request)
+    std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(object_directory),
-      object_store_internal_(std::make_unique<ObjectStoreRunner>(
-          config,
-          spill_objects_callback,
-          object_store_full_callback,
+      store_runner_(config.store_socket_name,
+                    config.object_store_memory,
+                    config.huge_pages,
+                    config.plasma_directory,
+                    config.fallback_directory),
+      store_thread_(
+          &plasma::PlasmaStoreRunner::Start,
+          plasma::plasma_store_runner.get(),
+          std::move(spill_objects_callback),
+          std::move(object_store_full_callback),
           /*add_object_callback=*/
           [this, add_object_callback = std::move(add_object_callback)](
               const ObjectInfo &object_info) {
@@ -99,7 +76,7 @@ ObjectManager::ObjectManager(
                   delete_object_callback(object_id);
                 },
                 "ObjectManager.ObjectDeleted");
-          })),
+          }),
       buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_.get_executor()),
@@ -111,10 +88,14 @@ ObjectManager::ObjectManager(
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(
           main_service, ClusterID::Nil(), config_.rpc_service_threads_number),
-      restore_spilled_object_(restore_spilled_object),
+      restore_spilled_object_(std::move(restore_spilled_object)),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
+  // Sleep for sometime until the store is working. This can suppress some
+  // connection warnings.
+  std::this_thread::sleep_for(std::chrono::microseconds(500));
+
   RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
@@ -149,8 +130,7 @@ ObjectManager::ObjectManager(
                                                 std::move(pin_object),
                                                 get_spilled_object_url_);
 
-  RAY_CHECK_OK(
-      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
+  RAY_CHECK_OK(buffer_pool_store_client_->Connect(config_.store_socket_name, "", 0, 300));
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
@@ -165,7 +145,8 @@ void ObjectManager::Stop() {
   if (plasma::plasma_store_runner) {
     plasma::plasma_store_runner->Stop();
   }
-  object_store_internal_.reset();
+  store_thread_.join();
+  plasma::plasma_store_runner.reset();
 }
 
 bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
@@ -201,7 +182,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
-  local_objects_[object_id].object_info = object_info;
+  local_objects_[object_id] = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
@@ -228,7 +209,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
-  auto object_info = it->second.object_info;
+  auto object_info = it->second;
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
@@ -391,7 +372,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 }
 
 void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &node_id) {
-  const ObjectInfo &object_info = local_objects_[object_id].object_info;
+  const ObjectInfo &object_info = local_objects_[object_id];
   uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
 
@@ -423,8 +404,8 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
                      << ", actual metadata size: " << object_reader->GetMetadataSize()
                      << ". This is likely due to a race condition."
                      << " We will update the object size and proceed sending the object.";
-    local_objects_[object_id].object_info.data_size = 0;
-    local_objects_[object_id].object_info.metadata_size = 1;
+    local_objects_[object_id].data_size = 0;
+    local_objects_[object_id].metadata_size = 1;
   }
 
   PushObjectInternal(object_id,

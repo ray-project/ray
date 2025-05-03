@@ -73,23 +73,6 @@ struct ObjectManagerConfig {
   bool huge_pages;
 };
 
-struct LocalObjectInfo {
-  /// Information from the object store about the object.
-  ObjectInfo object_info;
-};
-class ObjectStoreRunner {
- public:
-  ObjectStoreRunner(const ObjectManagerConfig &config,
-                    SpillObjectsCallback spill_objects_callback,
-                    std::function<void()> object_store_full_callback,
-                    AddObjectCallback add_object_callback,
-                    DeleteObjectCallback delete_object_callback);
-  ~ObjectStoreRunner();
-
- private:
-  std::thread store_thread_;
-};
-
 class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
@@ -390,8 +373,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
 
-  /// Object store runner.
-  std::unique_ptr<ObjectStoreRunner> object_store_internal_;
+  /// Plasma store runner
+  plasma::PlasmaStoreRunner store_runner_;
+
+  /// Plasma store thread
+  std::thread store_thread_;
 
   /// Used by the buffer pool to read and write objects in the local store
   /// during object transfers.
@@ -412,7 +398,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
-  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
+  absl::flat_hash_map<ObjectID, ObjectInfo> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
