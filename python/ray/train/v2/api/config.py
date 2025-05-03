@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from ray.runtime_env import RuntimeEnv
 from ray.air.config import FailureConfig as FailureConfigV1
 from ray.air.config import RunConfig as RunConfigV1
 from ray.air.config import ScalingConfig as ScalingConfigV1
+from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import _DEPRECATED
 from ray.train.v2._internal.migration_utils import (
     FAIL_FAST_DEPRECATION_MESSAGE,
@@ -114,7 +114,7 @@ class RunConfig(RunConfigV1):
         callbacks: [DeveloperAPI] A list of callbacks that the Ray Train controller
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
-            for each Ray Train worker actor.
+            for all Ray Train worker actors.
     """
 
     callbacks: Optional[List["UserCallback"]] = None
