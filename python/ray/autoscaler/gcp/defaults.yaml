@@ -91,7 +91,7 @@ available_node_types:
             # Run workers on preemtible instance by default.
             # Comment this out to use on-demand.
             scheduling:
-              - preemptible: true
+              preemptible: true
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
