@@ -4,6 +4,7 @@ import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
+import re
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -73,6 +74,10 @@ time_in_queue_histogram = metrics.Histogram(
     boundaries=LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
 )
 
+V1_TOO_LONG_PATTERN = re.compile(
+    r".* (\d+).* is longer than the maximum model length of (\d+).*"
+)
+
 
 def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     engine_config = llm_config.get_engine_config()
@@ -90,6 +95,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
         **{
             "model": model,
             "distributed_executor_backend": "ray",
+            "guided_decoding_backend": RAYLLM_GUIDED_DECODING_BACKEND,
             "disable_log_stats": False,
             **engine_config.get_initialization_kwargs(),
         }
@@ -513,15 +519,25 @@ class VLLMEngine(LLMEngine):
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
 
+    def _get_batch_interval_ms(self, stream: bool = True) -> int:
+        """Calculate the batching interval for responses."""
+        stream_batching_interval_ms = self.llm_config.experimental_configs.get(
+            "stream_batching_interval_ms"
+        )
+        if stream_batching_interval_ms is None:
+            stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
+        return stream_batching_interval_ms if stream else None
+
     async def generate(
         self,
         request: GenerationRequest,
     ) -> AsyncGenerator[LLMRawResponse, None]:
-        batch_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS if request.stream else None
-
+        # TODO (genesu): Responses batching logics should be common to all
+        #  engines and belongs to the LLMServer level instead of the engine
+        #  level here. Refactor the entire batching logics up.
         response_stream = LLMRawResponsesBatcher(
             self._generate(request),
-            interval_ms=batch_interval_ms,
+            interval_ms=self._get_batch_interval_ms(request.stream),
         )
         async for response in response_stream.stream():
             yield response
@@ -646,6 +662,11 @@ class VLLMEngine(LLMEngine):
             if len(error_args) == 3 and "Input too long." == error_args[0]:
                 _, input_length, max_input_length = error_args
                 raise InputTooLong(input_length, max_input_length).exception from None
+            elif len(error_args) == 1 and V1_TOO_LONG_PATTERN.match(error_args[0]):
+                parsed_error = V1_TOO_LONG_PATTERN.match(error_args[0])
+                raise InputTooLong(
+                    int(parsed_error[1]), int(parsed_error[2])
+                ).exception from None
             else:
                 raise e from None
         finally:
