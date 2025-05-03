@@ -89,7 +89,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._last_debug_log_time = 0
 
-        register_dataset_logger(self._dataset_id)
+        self._data_context.set_dataset_logger_id(
+            register_dataset_logger(self._dataset_id)
+        )
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -239,13 +241,17 @@ class StreamingExecutor(Executor, threading.Thread):
 
             self._autoscaler.on_executor_shutdown()
 
-            unregister_dataset_logger(self._dataset_id)
-
             dur = time.perf_counter() - start
 
             logger.debug(
                 f"Shut down executor for dataset {self._dataset_id} "
                 f"(took {round(dur, 3)}s)"
+            )
+
+            # Unregister should be called after all operators are shut down to
+            # capture as many logs as possible.
+            self._data_context.set_dataset_logger_id(
+                unregister_dataset_logger(self._dataset_id)
             )
 
     def run(self):

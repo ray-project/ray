@@ -57,6 +57,66 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
+def _create_empty_table(schema: "pyarrow.Schema"):
+    import pyarrow as pa
+
+    arrays = [pa.array([], type=t) for t in schema.types]
+
+    return pa.table(arrays, schema=schema)
+
+
+def hash_partition(
+    table: "pyarrow.Table",
+    *,
+    hash_cols: List[str],
+    num_partitions: int,
+) -> Dict[int, "pyarrow.Table"]:
+    """Hash-partitions provided Pyarrow `Table` into `num_partitions` based on
+    hash of the composed tuple of values from the provided columns list
+
+    NOTE: Since some partitions could be empty (due to skew in the table) this returns a
+          dictionary, rather than a list
+    """
+
+    import numpy as np
+
+    assert num_partitions > 0
+
+    if table.num_rows == 0:
+        return {}
+    elif num_partitions == 1:
+        return {0: table}
+
+    projected_table = table.select(hash_cols)
+
+    partitions = np.zeros((projected_table.num_rows,))
+    for i in range(projected_table.num_rows):
+        _tuple = tuple(c[i] for c in projected_table.columns)
+        partitions[i] = hash(_tuple) % num_partitions
+
+    # Convert to ndarray to compute hash partition indices
+    # more efficiently
+    partitions_array = np.array(partitions)
+    # For every partition compile list of indices of rows falling
+    # under that partition
+    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+
+    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
+    #       chunks w/in the individual columns, and therefore to improve performance
+    #       we attempt to defragment the table to potentially combine some of those
+    #       chunks into contiguous arrays.
+    table = try_combine_chunked_columns(table)
+
+    return {
+        p: table.take(idx)
+        # NOTE: Since some of the partitions might be empty, we're filtering out
+        #       indices of the length 0 to make sure we're not passing around
+        #       empty tables
+        for p, idx in enumerate(indices)
+        if len(idx) > 0
+    }
+
+
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
@@ -642,6 +702,10 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
     extended `ChunkedArray` combination protocol.
 
     For more details check out `combine_chunked_array` py-doc
+
+    Args:
+        table: Table with chunked columns to be combined into contiguous arrays.
+        copy: Skip copying when copy is False and there is exactly 1 chunk.
     """
 
     new_column_values_arrays = []
@@ -654,7 +718,7 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
 
 def combine_chunked_array(
     array: "pyarrow.ChunkedArray",
-    copy: bool = False,
+    ensure_copy: bool = False,
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
 
@@ -666,6 +730,11 @@ def combine_chunked_array(
            most of its native types, other than "large" kind).
 
     For more details check py-doc of `_try_combine_chunks_safe` method.
+
+    Args:
+        array: The chunked array to be combined into a single contiguous array.
+        ensure_copy: Skip copying when ensure_copy is False and there is exactly
+        1 chunk.
     """
 
     import pyarrow as pa
@@ -682,13 +751,14 @@ def combine_chunked_array(
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
-        return _concatenate_extension_column(array)
+        return _concatenate_extension_column(array, ensure_copy)
     elif len(array.chunks) == 0:
         # NOTE: In case there's no chunks, we need to explicitly create
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
-    elif len(array.chunks) == 1 and not copy:
+    elif len(array.chunks) == 1 and not ensure_copy:
+        # Skip copying
         return array
     else:
         return _try_combine_chunks_safe(array)
