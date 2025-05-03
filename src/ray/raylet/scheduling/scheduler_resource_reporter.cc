@@ -19,19 +19,14 @@
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/join.hpp>
-#include <deque>
 #include <utility>
 
 namespace ray {
 namespace raylet {
 
 SchedulerResourceReporter::SchedulerResourceReporter(
-    const absl::flat_hash_map<SchedulingClass,
-                              std::deque<std::shared_ptr<internal::Work>>>
-        &tasks_to_schedule,
-    const absl::flat_hash_map<SchedulingClass,
-                              std::deque<std::shared_ptr<internal::Work>>>
-        &infeasible_tasks,
+    const internal::WorkQueueMap &tasks_to_schedule,
+    const internal::WorkQueueMap &infeasible_tasks,
     const ILocalTaskManager &local_task_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
@@ -125,7 +120,12 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   };
 
   auto transform_func = [](const auto &pair) {
-    return std::make_pair(pair.first, pair.second.size());
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t num_tasks_queued = 0;
+    for (const auto &[_, queue] : priority_map) {
+      num_tasks_queued += queue.size();
+    }
+    return std::make_pair(scheduling_class, num_tasks_queued);
   };
 
   fill_resource_usage_helper(
@@ -165,11 +165,17 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
 void SchedulerResourceReporter::FillPendingActorCountByShape(
     rpc::ResourcesData &data) const {
   absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
-  for (const auto &[scheduling_class, queue] : infeasible_tasks_) {
-    pending_count_by_shape[scheduling_class].first = queue.size();
+  for (const auto &[scheduling_class, priority_map] : infeasible_tasks_) {
+    auto &[infeasible_count, _] = pending_count_by_shape[scheduling_class];
+    for (const auto &[_, queue] : priority_map) {
+      infeasible_count += queue.size();
+    }
   }
-  for (const auto &[scheduling_class, queue] : tasks_to_schedule_) {
-    pending_count_by_shape[scheduling_class].second = queue.size();
+  for (const auto &[scheduling_class, priority_map] : tasks_to_schedule_) {
+    auto &[_, schedule_count] = pending_count_by_shape[scheduling_class];
+    for (const auto &[_, queue] : priority_map) {
+      schedule_count += queue.size();
+    }
   }
 
   if (!pending_count_by_shape.empty()) {

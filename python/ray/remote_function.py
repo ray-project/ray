@@ -466,6 +466,8 @@ class RemoteFunction:
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
 
+        priority = task_options.get("priority")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -496,6 +498,7 @@ class RemoteFunction:
                 generator_backpressure_num_objects,
                 enable_task_events,
                 labels,
+                priority,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

@@ -30,11 +30,14 @@ SchedulerStats::SchedulerStats(const ClusterTaskManager &cluster_task_manager,
       local_task_manager_(local_task_manager) {}
 
 void SchedulerStats::ComputeStats() {
-  auto accumulator =
-      [](size_t state,
-         const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
-        return state + pair.second.size();
-      };
+  auto accumulator = [](size_t state, const auto &pair) {
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t count = 0;
+    for (const auto &[_, queue] : priority_map) {
+      count += queue.size();
+    }
+    return state + count;
+  };
   size_t num_waiting_for_resource = 0;
   size_t num_waiting_for_plasma_memory = 0;
   size_t num_waiting_for_remote_node_resources = 0;
@@ -52,6 +55,44 @@ void SchedulerStats::ComputeStats() {
   // TODO(sang): Normally, the # of queued tasks are not large, so this is less likely to
   // be an issue that we iterate all of them. But if it uses lots of CPU, consider
   // optimizing by updating live instead of iterating through here.
+  auto per_work_map_accumulator = [&num_waiting_for_resource,
+                                   &num_waiting_for_plasma_memory,
+                                   &num_waiting_for_remote_node_resources,
+                                   &num_worker_not_started_by_job_config_not_exist,
+                                   &num_worker_not_started_by_registration_timeout,
+                                   &num_tasks_waiting_for_workers,
+                                   &num_cancelled_tasks](size_t state, const auto &pair) {
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t total_count = 0;
+    for (const auto &[_, work_queue] : priority_map) {
+      total_count += work_queue.size();
+      for (const auto &work : work_queue) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+          num_tasks_waiting_for_workers += 1;
+        } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
+          num_cancelled_tasks += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION) {
+          num_waiting_for_resource += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
+          num_waiting_for_plasma_memory += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE) {
+          num_waiting_for_remote_node_resources += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::
+                       WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST) {
+          num_worker_not_started_by_job_config_not_exist += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::
+                       WORKER_NOT_FOUND_REGISTRATION_TIMEOUT) {
+          num_worker_not_started_by_registration_timeout += 1;
+        }
+      }
+    }
+    return state + total_count;
+  };
   auto per_work_accumulator = [&num_waiting_for_resource,
                                &num_waiting_for_plasma_memory,
                                &num_waiting_for_remote_node_resources,
@@ -94,7 +135,7 @@ void SchedulerStats::ComputeStats() {
       std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
                       cluster_task_manager_.tasks_to_schedule_.end(),
                       static_cast<size_t>(0),
-                      per_work_accumulator);
+                      per_work_map_accumulator);
   size_t num_tasks_to_dispatch =
       std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
                       local_task_manager_.GetTaskToDispatch().end(),
