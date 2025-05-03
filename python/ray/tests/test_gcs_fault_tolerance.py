@@ -157,7 +157,7 @@ def test_autoscaler_init(
 
     # Fetch the cluster status from the autoscaler and check that it works.
     status = get_cluster_status(cluster.address)
-    assert len(status.active_nodes) + len(status.idle_nodes) == 2
+    wait_for_condition(lambda: len(status.idle_nodes) == 2)
 
 
 @pytest.mark.parametrize(
