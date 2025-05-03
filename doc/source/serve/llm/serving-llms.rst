@@ -40,6 +40,7 @@ This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic
 
 - ``/v1/chat/completions``: Chat interface (ChatGPT-style)
 - ``/v1/completions``: Text completion
+- ``/v1/embeddings``: Text embeddings
 - ``/v1/models``: List available models
 - ``/v1/models/{model}``: Model information
 
@@ -431,6 +432,81 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
             for chunk in response:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
+
+
+Embeddings
+~~~~~~~~~~~~~~~~~~~~~
+
+You can generate embeddings by selecting the embed task in the engine arguments.
+Models supporting this use case are listed at
+`vLLM text embedding models <https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed>`_.
+
+.. tab-set::
+
+    .. tab-item:: Server
+        :sync: server
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_app
+
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+                accelerator_type="A10G",
+                # You can customize the engine arguments (e.g. vLLM engine kwargs)
+                engine_kwargs=dict(
+                    tensor_parallel_size=2,
+                    task="embed",
+                ),
+            )
+
+            app = build_openai_app({"llm_configs": [llm_config]})
+            serve.run(app, blocking=True)
+
+
+    .. tab-item:: Python Client
+        :sync: client
+
+        .. code-block:: python
+
+            from openai import OpenAI
+
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Make a request to the desired lora checkpoint
+            response = client.embeddings.create(
+                model="qwen-0.5b",
+                input=["A text to embed", "Another text to embed"],
+            )
+
+            for data in responses.data:
+                print(data.embedding)  # List of float of len 4096
+
+
+    .. tab-item:: cURL
+        :sync: curl
+
+        .. code-block:: bash
+
+            curl -X POST http://localhost:8000/v1/embeddings \
+                 -H "Content-Type: application/json" \
+                 -H "Authorization: Bearer fake-key" \
+                 -d '{
+                       "model": "qwen-0.5b",
+                       "input": ["A text to embed", "Another text to embed"],
+                       "encoding_format": "float"
+                     }'
 
 
 Structured Output
