@@ -1,11 +1,8 @@
 from dataclasses import dataclass
-from typing import Dict
-
-from ray.types import ObjectRef
-
-from typing import Optional
+from typing import Dict, Optional
 
 from ray.train._internal.session import _TrainingResult
+from ray.types import ObjectRef
 
 
 @dataclass

@@ -323,6 +323,8 @@ class DifferentiableLearner(Checkpointable):
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
 
+        self.metrics.activate_tensor_mode()
+
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -381,6 +383,8 @@ class DifferentiableLearner(Checkpointable):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         # self.after_gradient_based_update(timesteps=timesteps or {})
+
+        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
