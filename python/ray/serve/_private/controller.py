@@ -55,9 +55,9 @@ from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     DeploymentArgs,
     DeploymentRoute,
+    EndpointInfo as EndpointInfoProto,
     EndpointSet,
 )
-from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.schema import (
     ApplicationDetails,
     DeploymentDetails,

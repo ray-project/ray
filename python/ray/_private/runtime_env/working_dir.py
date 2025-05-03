@@ -20,6 +20,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 from ray.exceptions import RuntimeEnvSetupError
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
@@ -125,11 +126,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
     # it's specially treated to happen before all other plugins.
     priority = 5
 
-    def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
-    ):
+    def __init__(self, resources_dir: str, gcs_client: GcsClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
     def delete_uri(
@@ -163,7 +162,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         local_dir = await download_and_unpack_package(
             uri,
             self._resources_dir,
-            self._gcs_aio_client,
+            self._gcs_client,
             logger=logger,
             overwrite=True,
         )

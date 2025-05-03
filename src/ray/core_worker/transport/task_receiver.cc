@@ -38,20 +38,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
-  // If GCS server is restarted after sending an actor creation task to this core worker,
-  // the restarted GCS server will send the same actor creation task to the core worker
-  // again. We just need to ignore it and reply ok.
-  if (task_spec.IsActorCreationTask() &&
-      worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
-                  << task_spec.ActorCreationId()
-                  << ". This is likely due to a GCS server restart.";
-    return;
-  }
-
   if (task_spec.IsActorCreationTask()) {
-    worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
                task_spec.ExecuteOutOfOrder());
@@ -235,7 +222,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_main_io_service_,
+                              new OutOfOrderActorSchedulingQueue(task_execution_service_,
                                                                  *waiter_,
                                                                  task_event_buffer_,
                                                                  pool_manager_,
@@ -248,7 +235,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
-                              new ActorSchedulingQueue(task_main_io_service_,
+                              new ActorSchedulingQueue(task_execution_service_,
                                                        *waiter_,
                                                        task_event_buffer_,
                                                        pool_manager_,
