@@ -218,13 +218,11 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         """
         from ray.air._internal.torch_utils import (
             arrow_batch_to_tensors,
-            move_tensors_to_device,
         )
 
         tensors = arrow_batch_to_tensors(
-            batch, dtypes=self.dtypes, device=None, combine_chunks=self.device == "cpu"
+            batch, dtypes=self.dtypes, combine_chunks=self.device == "cpu"
         )
-        tensors = move_tensors_to_device(tensors, self.device)
         return tensors["image"], tensors["label"]
 
 

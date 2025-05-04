@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Sequence
 
 import numpy as np
 import pandas as pd
@@ -296,56 +296,38 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
 
 
 def convert_ndarray_list_to_torch_tensor_list(
-    ndarrays: Union[List[np.ndarray], Dict[str, List[np.ndarray]]],
+    ndarrays: Dict[str, List[np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
-) -> Union[List[torch.Tensor], Dict[str, List[torch.Tensor]]]:
-    """Convert a list of NumPy ndarrays or dict of lists of ndarrays to Torch Tensors.
+) -> Dict[str, List[torch.Tensor]]:
+    """Convert a dict mapping column names to lists of ndarrays to Torch Tensors.
 
     Args:
-        ndarrays: A list of NumPy ndarrays or a dict mapping column names to lists of
-            ndarrays that we wish to convert to Torch Tensors.
+        ndarrays: A dict mapping column names to lists of ndarrays that we wish to convert
+            to Torch Tensors.
         dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
             will be inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
 
-    Returns: A list of Torch Tensors or a dict mapping column names to lists of Tensors.
+    Returns: A dict mapping column names to lists of Tensors.
     """
-    if isinstance(ndarrays, list):
-        # Single column case - list of ndarrays
-        if isinstance(dtypes, dict):
-            if len(dtypes) != 1:
-                raise ValueError(
-                    "When constructing a single-column batch, only a single dtype "
-                    f"should be given, instead got: {dtypes}"
-                )
-            dtypes = next(iter(dtypes.values()))
-        return [
+    return {
+        col_name: [
             convert_ndarray_batch_to_torch_tensor_batch(
-                ndarray, dtypes=dtypes, device=device
+                ndarray,
+                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                device=device,
             )
-            for ndarray in ndarrays
+            for ndarray in col_ndarrays
         ]
-    else:
-        # Multi-column case - dict of lists of ndarrays
-        return {
-            col_name: [
-                convert_ndarray_batch_to_torch_tensor_batch(
-                    ndarray,
-                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                    device=device,
-                )
-                for ndarray in col_ndarrays
-            ]
-            for col_name, col_ndarrays in ndarrays.items()
-        }
+        for col_name, col_ndarrays in ndarrays.items()
+    }
 
 
 def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[str] = None,
     combine_chunks: bool = False,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert PyArrow batch to PyTorch tensors.
@@ -354,34 +336,34 @@ def arrow_batch_to_tensors(
         batch: PyArrow batch to convert
         dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
             will be inferred from the NumPy ndarray data.
-        device: Optional device to place tensors on
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
 
     Returns:
-        A dictionary of column name to list of tensors
+        A dictionary of column name to list of tensors. For non-chunked columns,
+        the list will contain a single tensor.
     """
     from ray.data._internal.arrow_ops import transform_pyarrow
+    from ray.data._internal.arrow_block import ArrowBlockAccessor
 
     if combine_chunks:
-        numpy_batch = transform_pyarrow.table_to_numpy_dict_combined(
-            batch,
-            zero_copy_only=False,
-        )
-        return convert_ndarray_batch_to_torch_tensor_batch(
-            numpy_batch,
-            dtypes=dtypes,
-            device=device,
-        )
+        numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
+        return {
+            col_name: [
+                convert_ndarray_batch_to_torch_tensor_batch(
+                    col_array,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                )
+            ]
+            for col_name, col_array in numpy_batch.items()
+        }
     else:
         numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
             batch,
-            zero_copy_only=False,
         )
         return convert_ndarray_list_to_torch_tensor_list(
             numpy_list,
             dtypes=dtypes,
-            device=device,
         )
 
 
@@ -416,12 +398,15 @@ def numpy_batch_to_torch_tensors(
 def concat_tensors_to_device(
     tensor_list: List[torch.Tensor],
     device: str,
+    non_blocking: bool = False,
 ) -> torch.Tensor:
     """Stack list of tensors into a contiguous GPU tensor.
 
     Args:
         tensor_list: List of tensors to stack
         device: The device to move tensors to
+        non_blocking: If True, and the source and destination devices are on the same
+            accelerator, the copy will be non-blocking.
 
     Returns:
         A contiguous tensor on the target device
@@ -449,7 +434,7 @@ def concat_tensors_to_device(
     row_start = 0
     for t in tensor_list:
         row_end = row_start + t.shape[0]
-        result[row_start:row_end].copy_(t, non_blocking=t.is_pinned())
+        result[row_start:row_end].copy_(t, non_blocking=non_blocking)
         row_start = row_end
 
     assert isinstance(result, torch.Tensor), "Result must be a torch.Tensor"
@@ -460,25 +445,28 @@ def concat_tensors_to_device(
 def move_tensors_to_device(
     batch: Union[
         torch.Tensor,
-        List[torch.Tensor],
+        Sequence[torch.Tensor],
         Dict[str, torch.Tensor],
         Dict[str, List[torch.Tensor]],
     ],
     device: Optional[str] = None,
+    non_blocking: bool = False,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor],]:
     """Move tensors to the specified device.
 
     Args:
         batch: A tensor or collection of tensors to move to device. Can be:
             - A single tensor
-            - A list of tensors
+            - A sequence of tensors
             - A dict mapping keys to tensors
             - A dict mapping keys to lists of tensors
         device: The device to move tensors to. If None, tensors are not moved.
+        non_blocking: If True, and the source and destination devices are on the same
+            accelerator, the copy will be non-blocking.
 
     Returns:
         The input tensors moved to the specified device, maintaining the same structure.
-        Note that any lists of tensors will be concatenated into a single tensor.
+        Note that any sequences of tensors will be concatenated into a single tensor.
     """
     if device is None:
         return batch
@@ -487,29 +475,23 @@ def move_tensors_to_device(
         for k, v in batch.items():
             if isinstance(v, list):
                 if all(isinstance(t, torch.Tensor) for t in v):
-                    batch[k] = concat_tensors_to_device(v, device=device)
+                    batch[k] = concat_tensors_to_device(
+                        v, device=device, non_blocking=non_blocking
+                    )
                 else:
                     raise TypeError(
                         f"Expected list of torch.Tensor for key '{k}', got {[type(t) for t in v]}"
                     )
             elif isinstance(v, torch.Tensor):
-                batch[k] = v.to(device=device, non_blocking=v.is_pinned())
+                batch[k] = v.to(device=device, non_blocking=non_blocking)
             else:
                 raise TypeError(f"Unsupported value type for key '{k}': {type(v)}")
     elif isinstance(batch, list) and all(isinstance(t, torch.Tensor) for t in batch):
-        batch = concat_tensors_to_device(batch, device=device)
-    else:
-        assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
-        batch = batch.to(device=device, non_blocking=batch.is_pinned())
-
-    if isinstance(batch, dict):
-        assert all(isinstance(v, torch.Tensor) for v in batch.values()), (
-            "All values in dict must be tensors, got: "
-            f"{[type(v) for v in batch.values()]}"
+        batch = concat_tensors_to_device(
+            batch, device=device, non_blocking=non_blocking
         )
     else:
-        assert isinstance(
-            batch, torch.Tensor
-        ), "Batch must be a Tensor or dict of Tensors"
+        assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
+        batch = batch.to(device=device, non_blocking=non_blocking)
 
     return batch

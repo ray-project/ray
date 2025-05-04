@@ -228,7 +228,6 @@ def custom_collate_fns():
             return arrow_batch_to_tensors(
                 modified_batch,
                 dtypes=self.dtypes,
-                device=self.device,
                 combine_chunks=self.device == "cpu",
             )["id"]
 

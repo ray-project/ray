@@ -643,60 +643,27 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
-def table_to_numpy_dict_combined(
-    table: "pyarrow.Table",
-    *,
-    zero_copy_only: bool = False,
-) -> Dict[str, np.ndarray]:
-    """Convert a PyArrow table to a dictionary of numpy arrays.
-
-    Args:
-        table: The PyArrow table to convert.
-        zero_copy_only: Whether to only use zero-copy transfers.
-
-    Returns:
-        A dictionary of numpy arrays.
-    """
-
-    numpy_batch = {}
-    for col_name in table.column_names:
-        col = table[col_name]
-        if isinstance(col, pyarrow.ChunkedArray):
-            combined_array = combine_chunked_array(col)
-            numpy_batch[col_name] = to_numpy(
-                combined_array, zero_copy_only=zero_copy_only
-            )
-        else:
-            numpy_batch[col_name] = to_numpy(col, zero_copy_only=zero_copy_only)
-    return numpy_batch
-
-
 def table_to_numpy_dict_chunked(
     table: "pyarrow.Table",
-    *,
-    zero_copy_only: bool = False,
 ) -> Dict[str, List[np.ndarray]]:
     """Convert a PyArrow table to a dictionary of lists of numpy arrays.
 
     Args:
         table: The PyArrow table to convert.
-        zero_copy_only: Whether to only use zero-copy transfers.
 
     Returns:
-        A dictionary mapping column names to either:
-        - A list of numpy arrays (for chunked columns)
-        - A single numpy array (for non-chunked columns)
+        A dictionary mapping column names to lists of numpy arrays. For chunked columns,
+        the list will contain multiple arrays (one per chunk). For non-chunked columns,
+        the list will contain a single array.
     """
 
     numpy_batch = {}
     for col_name in table.column_names:
         col = table[col_name]
         if isinstance(col, pyarrow.ChunkedArray):
-            numpy_batch[col_name] = [
-                to_numpy(chunk, zero_copy_only=zero_copy_only) for chunk in col.chunks
-            ]
+            numpy_batch[col_name] = [to_numpy(chunk) for chunk in col.chunks]
         else:
-            numpy_batch[col_name] = to_numpy(col, zero_copy_only=zero_copy_only)
+            numpy_batch[col_name] = [to_numpy(col)]
     return numpy_batch
 
 

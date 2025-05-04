@@ -31,8 +31,7 @@ from ray.data.collate_fn import (
     ArrowBatchCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
-    DefaultArrowCollateFn,
-    DefaultFinalizeFn,
+    DefaultCollateFn,
 )
 
 if TYPE_CHECKING:
@@ -319,12 +318,12 @@ class DataIterator(abc.ABC):
                 converts batches to `torch.Tensor`s and moves them to the device
                 assigned to the current worker. The input to `collate_fn` may be:
 
-                1. dict of np.ndarray, where you should provide a function that
-                   takes in a dict of Numpy arrays
-                2. pd.DataFrame, where you should provide a callable class that
-                   subclasses `PandasCollateFn`
-                3. pyarrow.Table, where you should provide a callable class that
-                   subclasses `ArrowCollateFn` (recommended for best performance)
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance)
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
 
                 The output can be any type. If the output is a `torch.Tensor`,
                 `dict[str, torch.Tensor]`, or `list/tuple[torch.Tensor]`, it will be
@@ -361,17 +360,45 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device()
 
+        # The default finalize_fn handles the host to device data transfer.
+        # This is executed in a 1-thread pool separately from collate_fn
+        # to allow independent parallelism of these steps.
+        def default_finalize_fn(
+            batch: Union[Dict[str, List["torch.Tensor"]], Any],
+        ) -> Union[Dict[str, "torch.Tensor"], Any]:
+            """Default finalize function for moving PyTorch tensors to device.
+
+            Args:
+                batch: Input batch to move to device. Can be:
+                    - Dictionary mapping column names to lists of tensors
+                    - Any other type supported by move_tensors_to_device
+
+            Returns:
+                Batch with tensors moved to the target device. Type matches input type:
+                - If input is Dict[str, List[torch.Tensor]],
+                  returns Dict[str, torch.Tensor]
+                - Otherwise returns the same type as input with tensors moved to device
+            """
+            from ray.air._internal.torch_utils import move_tensors_to_device
+
+            return move_tensors_to_device(batch, device=device)
+
         finalize_fn = None
         if collate_fn is None:
-            collate_fn = DefaultArrowCollateFn(
+            # The default collate_fn handles formatting and Tensor creation.
+            # Here, we defer host to device data transfer to the subsequent
+            # finalize_fn.
+            collate_fn = DefaultCollateFn(
                 dtypes=dtypes,
                 device=device,
             )
-            finalize_fn = DefaultFinalizeFn(
-                device=device,
-            )
+            finalize_fn = default_finalize_fn
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
+            # The ArrowBatchCollateFn handles formatting and Tensor creation.
+            # Here, we defer host to device data transfer to the subsequent
+            # finalize_fn.
+            finalize_fn = default_finalize_fn
             batch_format = "pyarrow"
         elif isinstance(collate_fn, NumpyBatchCollateFn):
             batch_format = "numpy"
@@ -380,7 +407,7 @@ class DataIterator(abc.ABC):
         elif callable(collate_fn):
             batch_format = "numpy"
             warnings.warn(
-                "Passing a callable to `iter_torch_batches` is deprecated and suggest using `ArrowBatchCollateFn` for the best performance.",
+                "Passing a raw callable `collate_fn` to `iter_torch_batches` is deprecated in Ray 2.46.",
                 DeprecationWarning,
             )
         else:
