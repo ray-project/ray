@@ -430,7 +430,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                   std::placeholders::_5,
                                   std::placeholders::_6,
                                   std::placeholders::_7,
-                                  std::placeholders::_8);
+                                  std::placeholders::_8,
+                                  std::placeholders::_9,
+                                  std::placeholders::_10);
     task_receiver_ = std::make_unique<TaskReceiver>(
         worker_context_,
         task_execution_service_,
@@ -3253,8 +3255,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
 Status CoreWorker::ExecuteTask(
     const TaskSpecification &task_spec,
     std::optional<ResourceMappingType> resource_ids,
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
+    ::google::protobuf::RepeatedPtrField<rpc::ReturnObject> *return_objects,
+    ::google::protobuf::RepeatedPtrField<rpc::ReturnObject> *dynamic_return_objects,
+    std::vector<ObjectID> *return_ids,
+    std::vector<ObjectID> *dynamic_return_ids,
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
@@ -3318,19 +3322,16 @@ Status CoreWorker::ExecuteTask(
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
+    return_ids->push_back(task_spec.ReturnId(i));
   }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
-  if (!task_spec.ReturnsDynamic()) {
-    dynamic_return_objects = nullptr;
-  } else if (task_spec.AttemptNumber() > 0) {
+  if (task_spec.AttemptNumber() > 0 && task_spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
       // Increase the put index so that when the generator creates a new obj
       // the object id won't conflict.
       worker_context_.GetNextPutIndex();
-      dynamic_return_objects->emplace_back(dynamic_return_id,
-                                           std::shared_ptr<RayObject>());
+      dynamic_return_ids->push_back(dynamic_return_id);
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
                      << " should return dynamic object " << dynamic_return_id;
 
@@ -3383,6 +3384,8 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       dynamic_return_objects,
+      return_ids,
+      dynamic_return_ids,
       streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
@@ -3405,11 +3408,11 @@ Status CoreWorker::ExecuteTask(
   if (!borrowed_ids.empty()) {
     reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
   }
-  if (dynamic_return_objects != nullptr) {
-    for (const auto &dynamic_return : *dynamic_return_objects) {
-      reference_counter_->PopAndClearLocalBorrowers(
-          {dynamic_return.first}, borrowed_refs, &deleted);
-    }
+  std::vector<ObjectID> dynamic_return_id_vec(0);
+  for (const auto &dynamic_return_id : *dynamic_return_ids) {
+    dynamic_return_id_vec[0] = dynamic_return_id;
+    reference_counter_->PopAndClearLocalBorrowers(
+        dynamic_return_id_vec, borrowed_refs, &deleted);
   }
   memory_store_->Delete(deleted);
 
@@ -3424,17 +3427,15 @@ Status CoreWorker::ExecuteTask(
   }
 
   if (!options_.is_local_mode) {
-    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, /*task_name=*/"");
     worker_context_.ResetCurrentTask();
   }
   {
     absl::MutexLock lock(&mutex_);
-    auto it = current_tasks_.find(task_spec.TaskId());
-    RAY_CHECK(it != current_tasks_.end());
-    current_tasks_.erase(it);
-    if (task_spec.IsNormalTask()) {
-      resource_ids_.clear();
-    }
+    auto erased = current_tasks_.erase(task_spec.TaskId());
+    RAY_CHECK(erased > 0);
+  }
+  if (task_spec.IsNormalTask()) {
+    resource_ids_.clear();
   }
 
   if (!options_.is_local_mode) {
@@ -3695,9 +3696,6 @@ void CoreWorker::HandleReportGeneratorItemReturns(
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
-  auto return_objects = std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>();
-  auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
-
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();
   for (size_t i = 0; i < num_returns; i++) {
@@ -3720,12 +3718,18 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   bool is_retryable_error = false;
   std::string application_error;
   // TODO(swang): Support DynamicObjectRefGenerators in local mode?
-  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  ::google::protobuf::RepeatedPtrField<rpc::ReturnObject> return_objects;
+  ::google::protobuf::RepeatedPtrField<rpc::ReturnObject> dynamic_return_objects;
+  std::vector<ObjectID> return_ids;
+  std::vector<ObjectID> dynamic_return_ids;
+  auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
                          /*resource_ids=*/ResourceMappingType{},
                          &return_objects,
                          &dynamic_return_objects,
+                         &return_ids,
+                         &dynamic_return_ids,
                          &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,

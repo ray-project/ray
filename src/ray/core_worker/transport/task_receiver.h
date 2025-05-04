@@ -53,9 +53,10 @@ class TaskReceiver {
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
+      ::google::protobuf::RepeatedPtrField<rpc::ReturnObject> *return_objects,
+      ::google::protobuf::RepeatedPtrField<rpc::ReturnObject> *dynamic_return_objects,
+      std::vector<ObjectID> *return_object_ids,
+      std::vector<ObjectID> *dynamic_return_object_ids,
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrower_refs,
       bool *is_retryable_error,

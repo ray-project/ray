@@ -83,15 +83,18 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     auto num_returns = task_spec.NumReturns();
     RAY_CHECK(num_returns >= 0);
 
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+    std::vector<ObjectID> return_object_ids;
+    std::vector<ObjectID> dynamic_return_object_ids;
+
     std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error;
     auto status = task_handler_(task_spec,
                                 std::move(resource_ids),
-                                &return_objects,
-                                &dynamic_return_objects,
+                                reply->mutable_return_objects(),
+                                reply->mutable_dynamic_return_objects(),
+                                &return_object_ids,
+                                &dynamic_return_object_ids,
                                 &streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
@@ -127,36 +130,21 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       return_id_proto->set_is_plasma_object(is_plasma_object);
     }
 
-    bool objects_valid = return_objects.size() == num_returns;
-    for (const auto &return_object : return_objects) {
-      if (return_object.second == nullptr) {
-        objects_valid = false;
-      }
-    }
-
+    bool objects_valid = reply->return_objects().size() == num_returns &&
+                         return_object_ids.size() == num_returns;
     if (objects_valid) {
       if (task_spec.ReturnsDynamic()) {
         size_t num_dynamic_returns_expected = task_spec.DynamicReturnIds().size();
         if (num_dynamic_returns_expected > 0) {
-          RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
+          RAY_CHECK(dynamic_return_object_ids.size() == num_dynamic_returns_expected)
               << "Expected " << num_dynamic_returns_expected
-              << " dynamic returns, but task generated " << dynamic_return_objects.size();
+              << " dynamic returns, but task generated "
+              << dynamic_return_object_ids.size();
         }
       } else {
-        RAY_CHECK(dynamic_return_objects.size() == 0)
-            << "Task with static num_returns returned " << dynamic_return_objects.size()
-            << " objects dynamically";
-      }
-      for (const auto &dynamic_return : dynamic_return_objects) {
-        auto return_object_proto = reply->add_dynamic_return_objects();
-        SerializeReturnObject(
-            dynamic_return.first, dynamic_return.second, return_object_proto);
-      }
-      for (size_t i = 0; i < return_objects.size(); i++) {
-        const auto &return_object = return_objects[i];
-        auto return_object_proto = reply->add_return_objects();
-        SerializeReturnObject(
-            return_object.first, return_object.second, return_object_proto);
+        RAY_CHECK(dynamic_return_object_ids.size() == 0)
+            << "Task with static num_returns returned "
+            << dynamic_return_object_ids.size() << " objects dynamically";
       }
 
       if (task_spec.IsActorCreationTask()) {
