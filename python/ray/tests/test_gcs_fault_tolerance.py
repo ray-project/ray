@@ -12,6 +12,7 @@ from filelock import FileLock
 import pytest
 
 import ray
+from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
@@ -150,15 +151,13 @@ def test_autoscaler_init(
     assert len(nodes) == 2
     assert nodes[0]["alive"] and nodes[1]["alive"]
 
-    cluster_kill_gcs_wait(cluster)
-
     # Restart gcs server process.
+    cluster_kill_gcs_wait(cluster)
     cluster.head_node.start_gcs_server()
 
-    from ray.autoscaler.v2.sdk import get_cluster_status
-
-    status = get_cluster_status(ray.get_runtime_context().gcs_address)
-    assert len(status.idle_nodes) == 2
+    # Fetch the cluster status from the autoscaler and check that it works.
+    status = get_cluster_status(cluster.address)
+    wait_for_condition(lambda: len(status.idle_nodes) == 2)
 
 
 @pytest.mark.parametrize(
