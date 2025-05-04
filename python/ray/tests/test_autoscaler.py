@@ -2239,6 +2239,8 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
         self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
@@ -3700,6 +3702,8 @@ class AutoscalingTest(unittest.TestCase):
             [placement_group_table_data],
         )
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
         self.waitForNodes(2, tag_filters=WORKER_FILTER)
 
         events = autoscaler.event_summarizer.summary()
