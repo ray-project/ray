@@ -661,9 +661,11 @@ def table_to_numpy_dict_chunked(
     for col_name in table.column_names:
         col = table[col_name]
         if isinstance(col, pyarrow.ChunkedArray):
-            numpy_batch[col_name] = [to_numpy(chunk) for chunk in col.chunks]
+            numpy_batch[col_name] = [
+                to_numpy(chunk, zero_copy_only=False) for chunk in col.chunks
+            ]
         else:
-            numpy_batch[col_name] = [to_numpy(col)]
+            numpy_batch[col_name] = [to_numpy(col, zero_copy_only=False)]
     return numpy_batch
 
 

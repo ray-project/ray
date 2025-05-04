@@ -1,6 +1,6 @@
 import sys
 import threading
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, List
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -11,6 +11,16 @@ import pyarrow
 import pandas as pd
 
 import ray
+from ray.data.iterator import (
+    ArrowBatchCollateFn,
+    NumpyBatchCollateFn,
+    PandasBatchCollateFn,
+)
+from ray.air._internal.torch_utils import (
+    arrow_batch_to_tensors,
+    convert_ndarray_batch_to_torch_tensor_batch,
+)
+
 
 if sys.version_info <= (3, 12):
     # Skip this test for Python 3.12+ due to to incompatibility tensorflow
@@ -201,13 +211,8 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
 @pytest.fixture
 def custom_collate_fns():
     """Fixture that provides both Arrow and Numpy custom collate functions."""
-    from ray.data.iterator import (
-        ArrowBatchCollateFn,
-        NumpyBatchCollateFn,
-        PandasBatchCollateFn,
-    )
 
-    class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
+    class SingleTensorArrowBatchCollateFn(ArrowBatchCollateFn):
         def __init__(
             self,
             dtypes: Optional[Dict[str, torch.dtype]] = None,
@@ -221,15 +226,77 @@ def custom_collate_fns():
             modified_batch = pyarrow.Table.from_arrays(
                 [pyarrow.compute.add(batch["id"], 5)], names=["id"]
             )
-            from ray.air._internal.torch_utils import (
-                arrow_batch_to_tensors,
-            )
 
             return arrow_batch_to_tensors(
                 modified_batch,
                 dtypes=self.dtypes,
                 combine_chunks=self.device == "cpu",
             )["id"]
+
+    class TupleArrowBatchCollateFn(ArrowBatchCollateFn):
+        def __init__(
+            self,
+            dtypes: Optional[Dict[str, torch.dtype]] = None,
+            device: Optional[str] = None,
+        ):
+            self.dtypes = dtypes
+            self.device = device
+
+        def __call__(self, batch: pyarrow.Table) -> Tuple[torch.Tensor, torch.Tensor]:
+            """Add 5 to the "id" column and return both id and value."""
+            modified_batch = pyarrow.Table.from_arrays(
+                [pyarrow.compute.add(batch["id"], 5), batch["id"]],
+                names=["id", "value"],
+            )
+            tensors = arrow_batch_to_tensors(
+                modified_batch,
+                dtypes=self.dtypes,
+                combine_chunks=self.device == "cpu",
+            )
+            return tensors["id"], tensors["value"]
+
+    class DictArrowBatchCollateFn(ArrowBatchCollateFn):
+        def __init__(
+            self,
+            dtypes: Optional[Dict[str, torch.dtype]] = None,
+            device: Optional[str] = None,
+        ):
+            self.dtypes = dtypes
+            self.device = device
+
+        def __call__(self, batch: pyarrow.Table) -> Dict[str, torch.Tensor]:
+            """Add 5 to the "id" column and return both columns as dict."""
+            modified_batch = pyarrow.Table.from_arrays(
+                [pyarrow.compute.add(batch["id"], 5), batch["id"]],
+                names=["id", "value"],
+            )
+            return arrow_batch_to_tensors(
+                modified_batch,
+                dtypes=self.dtypes,
+                combine_chunks=self.device == "cpu",
+            )
+
+    class ListArrowBatchCollateFn(ArrowBatchCollateFn):
+        def __init__(
+            self,
+            dtypes: Optional[Dict[str, torch.dtype]] = None,
+            device: Optional[str] = None,
+        ):
+            self.dtypes = dtypes
+            self.device = device
+
+        def __call__(self, batch: pyarrow.Table) -> List[torch.Tensor]:
+            """Add 5 to the "id" column and return both columns as list."""
+            modified_batch = pyarrow.Table.from_arrays(
+                [pyarrow.compute.add(batch["id"], 5), batch["id"]],
+                names=["id", "value"],
+            )
+            tensors = arrow_batch_to_tensors(
+                modified_batch,
+                dtypes=self.dtypes,
+                combine_chunks=self.device == "cpu",
+            )
+            return [tensors["id"], tensors["value"]]
 
     class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
         def __init__(
@@ -243,9 +310,6 @@ def custom_collate_fns():
         def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
             """Add 5 to the "id" array."""
             modified_batch = {"id": batch["id"] + 5}
-            from ray.air._internal.torch_utils import (
-                convert_ndarray_batch_to_torch_tensor_batch,
-            )
 
             return convert_ndarray_batch_to_torch_tensor_batch(
                 modified_batch, dtypes=self.dtypes, device=self.device
@@ -263,32 +327,62 @@ def custom_collate_fns():
         def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
             """Add 5 to the "id" column."""
             modified_batch = pd.DataFrame({"id": batch["id"] + 5})
-            from ray.air._internal.torch_utils import (
-                convert_ndarray_batch_to_torch_tensor_batch,
-            )
 
             return convert_ndarray_batch_to_torch_tensor_batch(
                 modified_batch.to_dict("series"), dtypes=self.dtypes, device=self.device
             )["id"]
 
     return {
-        "arrow": CustomArrowBatchCollateFn(device="cpu"),
+        "arrow": {
+            "single": SingleTensorArrowBatchCollateFn(device="cpu"),
+            "tuple": TupleArrowBatchCollateFn(device="cpu"),
+            "dict": DictArrowBatchCollateFn(device="cpu"),
+            "list": ListArrowBatchCollateFn(device="cpu"),
+        },
         "numpy": CustomNumpyBatchCollateFn(device="cpu"),
         "pandas": CustomPandasBatchCollateFn(device="cpu"),
     }
 
 
-@pytest.mark.parametrize("collate_type", ["arrow", "numpy", "pandas"])
+@pytest.mark.parametrize(
+    "collate_type,return_type",
+    [
+        ("arrow", "single"),
+        ("arrow", "tuple"),
+        ("arrow", "dict"),
+        ("arrow", "list"),
+        ("numpy", None),
+        ("pandas", None),
+    ],
+)
 def test_custom_batch_collate_fn(
-    ray_start_regular_shared, custom_collate_fns, collate_type
+    ray_start_regular_shared, custom_collate_fns, collate_type, return_type
 ):
     """Tests that custom batch collate functions can be used to modify
     the batch before it is converted to a PyTorch tensor."""
     ds = ray.data.range(5)
     it = ds.iterator()
-    for batch in it.iter_torch_batches(collate_fn=custom_collate_fns[collate_type]):
-        assert isinstance(batch, torch.Tensor)
-        assert batch.tolist() == list(range(5, 10))
+
+    collate_fn = (
+        custom_collate_fns[collate_type][return_type]
+        if return_type
+        else custom_collate_fns[collate_type]
+    )
+
+    for batch in it.iter_torch_batches(collate_fn=collate_fn):
+        if return_type == "single" or collate_type in ["numpy", "pandas"]:
+            assert isinstance(batch, torch.Tensor)
+            assert batch.tolist() == list(range(5, 10))
+        elif return_type == "dict":
+            assert isinstance(batch, dict)
+            assert batch["id"].tolist() == list(range(5, 10))
+            assert batch["value"].tolist() == list(range(5))
+        else:  # tuple or list
+            assert isinstance(batch, torch.Tensor)
+            # For tuple/list return types, tensors are concatenated
+            # First 5 values: modified id values [5,6,7,8,9]
+            # Last 5 values: original values [0,1,2,3,4]
+            assert batch.tolist() == list(range(5, 10)) + list(range(5))
 
 
 @pytest.fixture(params=["regular", "chunked"])

@@ -349,12 +349,10 @@ def arrow_batch_to_tensors(
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
         return {
-            col_name: [
-                convert_ndarray_batch_to_torch_tensor_batch(
-                    col_array,
-                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                )
-            ]
+            col_name: convert_ndarray_batch_to_torch_tensor_batch(
+                col_array,
+                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+            )
             for col_name, col_array in numpy_batch.items()
         }
     else:
@@ -396,14 +394,14 @@ def numpy_batch_to_torch_tensors(
 
 @torch.no_grad()
 def concat_tensors_to_device(
-    tensor_list: List[torch.Tensor],
+    tensor_sequence: Sequence[torch.Tensor],
     device: str,
     non_blocking: bool = False,
 ) -> torch.Tensor:
-    """Stack list of tensors into a contiguous GPU tensor.
+    """Stack sequence of tensors into a contiguous GPU tensor.
 
     Args:
-        tensor_list: List of tensors to stack
+        tensor_sequence: Sequence of tensors to stack
         device: The device to move tensors to
         non_blocking: If True, and the source and destination devices are on the same
             accelerator, the copy will be non-blocking.
@@ -412,27 +410,27 @@ def concat_tensors_to_device(
         A contiguous tensor on the target device
     """
     # Assumes tensors have the same shape/dtype
-    assert tensor_list, "Cannot stack empty list of tensors"
+    assert tensor_sequence, "Cannot stack empty sequence of tensors"
     assert all(
-        isinstance(t, torch.Tensor) for t in tensor_list
+        isinstance(t, torch.Tensor) for t in tensor_sequence
     ), "All items must be torch.Tensor"
     assert all(
-        t.dtype == tensor_list[0].dtype for t in tensor_list
+        t.dtype == tensor_sequence[0].dtype for t in tensor_sequence
     ), "All tensors must have the same dtype"
     assert all(
-        t.shape[1:] == tensor_list[0].shape[1:] for t in tensor_list
+        t.shape[1:] == tensor_sequence[0].shape[1:] for t in tensor_sequence
     ), "All tensors must have the same shape[1:]"
 
-    first = tensor_list[0]
+    first = tensor_sequence[0]
     dtype = first.dtype
     shape_tail = first.shape[1:]
-    total_rows = sum(t.shape[0] for t in tensor_list)
+    total_rows = sum(t.shape[0] for t in tensor_sequence)
 
     # Allocate an empty Tensor on device
     result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
 
     row_start = 0
-    for t in tensor_list:
+    for t in tensor_sequence:
         row_end = row_start + t.shape[0]
         result[row_start:row_end].copy_(t, non_blocking=non_blocking)
         row_start = row_end
@@ -441,14 +439,18 @@ def concat_tensors_to_device(
     return result
 
 
+BatchType = Union[
+    torch.Tensor,
+    Sequence[torch.Tensor],
+    Sequence[Sequence[torch.Tensor]],
+    Dict[str, torch.Tensor],
+    Dict[str, List[torch.Tensor]],
+]
+
+
 @torch.no_grad()
 def move_tensors_to_device(
-    batch: Union[
-        torch.Tensor,
-        Sequence[torch.Tensor],
-        Dict[str, torch.Tensor],
-        Dict[str, List[torch.Tensor]],
-    ],
+    batch: BatchType,
     device: Optional[str] = None,
     non_blocking: bool = False,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor],]:
@@ -458,6 +460,7 @@ def move_tensors_to_device(
         batch: A tensor or collection of tensors to move to device. Can be:
             - A single tensor
             - A sequence of tensors
+            - A sequence of sequences of tensors
             - A dict mapping keys to tensors
             - A dict mapping keys to lists of tensors
         device: The device to move tensors to. If None, tensors are not moved.
@@ -486,10 +489,23 @@ def move_tensors_to_device(
                 batch[k] = v.to(device=device, non_blocking=non_blocking)
             else:
                 raise TypeError(f"Unsupported value type for key '{k}': {type(v)}")
-    elif isinstance(batch, list) and all(isinstance(t, torch.Tensor) for t in batch):
-        batch = concat_tensors_to_device(
-            batch, device=device, non_blocking=non_blocking
-        )
+
+    elif isinstance(batch, (Sequence)):
+        if all(isinstance(t, torch.Tensor) for t in batch):
+            batch = concat_tensors_to_device(
+                batch, device=device, non_blocking=non_blocking
+            )
+        elif all(
+            isinstance(seq, (Sequence))
+            and all(isinstance(t, torch.Tensor) for t in seq)
+            for seq in batch
+        ):
+            batch = tuple(
+                concat_tensors_to_device(seq, device=device, non_blocking=non_blocking)
+                for seq in batch
+            )
+        else:
+            raise TypeError(f"Unsupported batch structure: {type(batch)}")
     else:
         assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
         batch = batch.to(device=device, non_blocking=non_blocking)
