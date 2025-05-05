@@ -614,15 +614,15 @@ def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis)
     subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
     print("sending error message 1")
-    publisher.publish_error(b"aaa_id", "", "test error message 1")
+    gcs_client.publish_error(b"aaa_id", "", "test error message 1")
 
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
     print("sending error message 2")
-    publisher.publish_error(b"bbb_id", "", "test error message 2")
+    gcs_client.publish_error(b"bbb_id", "", "test error message 2")
     print("done")
 
     (key_id, err) = subscriber.poll()
