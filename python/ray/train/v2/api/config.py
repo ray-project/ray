@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from ray.air.config import FailureConfig as FailureConfigV1
-from ray.air.config import RunConfig as RunConfigV1
-from ray.air.config import ScalingConfig as ScalingConfigV1
+from ray.air.config import (
+    FailureConfig as FailureConfigV1,
+    RunConfig as RunConfigV1,
+    ScalingConfig as ScalingConfigV1,
+)
 from ray.train.v2._internal.constants import _DEPRECATED
 from ray.train.v2._internal.migration_utils import (
     FAIL_FAST_DEPRECATION_MESSAGE,

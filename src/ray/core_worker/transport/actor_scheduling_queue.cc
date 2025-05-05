@@ -23,7 +23,7 @@ namespace ray {
 namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
-    instrumented_io_context &main_io_service,
+    instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -33,7 +33,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
     int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
-      wait_timer_(main_io_service),
+      wait_timer_(task_execution_service),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
