@@ -29,7 +29,7 @@ from ray.serve._private.replica_scheduler import (
     ReplicaScheduler,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,

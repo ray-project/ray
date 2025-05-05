@@ -28,8 +28,8 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     DeploymentTargetInfo,
     Duration,
-    MultiplexedReplicaInfo,
     ReplicaID,
+    ReplicaSchedulingInfo,
     ReplicaState,
     RunningReplicaInfo,
 )
@@ -911,7 +911,8 @@ class DeploymentReplica:
             state=ReplicaState.STARTING,
             start_time_s=0,
         )
-        self._multiplexed_model_ids: List = []
+        self._multiplexed_model_ids: List[str] = []
+        self._scheduling_stats: Dict[str, Any] = {}
 
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
@@ -925,6 +926,7 @@ class DeploymentReplica:
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
+            scheduling_stats=self.scheduling_stats,
             port=self._actor._port,
         )
 
@@ -932,9 +934,17 @@ class DeploymentReplica:
         """Record the multiplexed model ids for this replica."""
         self._multiplexed_model_ids = multiplexed_model_ids
 
+    def record_scheduling_stats(self, scheduling_stats: Dict[str, Any]):
+        """Record the multiplexed model ids for this replica."""
+        self._scheduling_stats = scheduling_stats
+
     @property
     def multiplexed_model_ids(self) -> List[str]:
         return self._multiplexed_model_ids
+
+    @property
+    def scheduling_stats(self) -> Dict[str, Any]:
+        return self._scheduling_stats
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -1296,9 +1306,9 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
-        # Whether the multiplexed model ids have been updated since the last
+        # Whether the replica scheduling info have been updated since the last
         # time we checked.
-        self._multiplexed_model_ids_updated = False
+        self._replica_scheduling_info_updated = False
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_availability: bool = True
@@ -1478,7 +1488,7 @@ class DeploymentState:
         running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
             != set(running_replica_infos)
-            or self._multiplexed_model_ids_updated
+            or self._replica_scheduling_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
         if not running_replicas_changed and not availability_changed:
@@ -1506,7 +1516,7 @@ class DeploymentState:
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._last_broadcasted_availability = is_available
-        self._multiplexed_model_ids_updated = False
+        self._replica_scheduling_info_updated = False
 
     def broadcast_deployment_config_if_changed(self) -> None:
         """Broadcasts the deployment config over long poll if it has changed.
@@ -2313,23 +2323,24 @@ class DeploymentState:
         for replica in replicas_to_keep:
             self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
 
-    def record_multiplexed_model_ids(
-        self, replica_id: ReplicaID, multiplexed_model_ids: List[str]
-    ) -> None:
+    def record_scheduling_info(self, info: ReplicaSchedulingInfo) -> None:
         """Records the multiplexed model IDs of a replica.
 
         Args:
-            replica_name: Name of the replica.
-            multiplexed_model_ids: List of model IDs that replica is serving.
+            info: ReplicaSchedulingInfo including deployment name, replica tag,
+                multiplex model ids, and scheduling stats.
         """
         # Find the replica
         for replica in self._replicas.get():
-            if replica.replica_id == replica_id:
-                replica.record_multiplexed_model_ids(multiplexed_model_ids)
-                self._multiplexed_model_ids_updated = True
+            if replica.replica_id == info.replica_id:
+                if info.multiplexed_model_ids is not None:
+                    replica.record_multiplexed_model_ids(info.multiplexed_model_ids)
+                if info.scheduling_stats is not None:
+                    replica.record_scheduling_stats(info.scheduling_stats)
+                self._replica_scheduling_info_updated = True
                 return
 
-        logger.warning(f"{replica_id} not found.")
+        logger.warning(f"{info.replica_id} not found.")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -2811,13 +2822,12 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """
-        Record multiplexed model ids for a multiplexed replica.
+    def record_replica_scheduling_info(self, info: ReplicaSchedulingInfo):
+        """Record replica scheduling information for a replica.
 
         Args:
-            info: Multiplexed replica info including deployment name,
-                replica tag and model ids.
+            info: ReplicaSchedulingInfo including deployment name, replica tag,
+                multiplex model ids, and scheduling stats.
         """
         deployment_id = info.replica_id.deployment_id
         if deployment_id not in self._deployment_states:
@@ -2827,9 +2837,7 @@ class DeploymentStateManager:
                 "manager."
             )
             return
-        self._deployment_states[deployment_id].record_multiplexed_model_ids(
-            info.replica_id, info.model_ids
-        )
+        self._deployment_states[deployment_id].record_scheduling_info(info)
 
     def get_active_node_ids(self) -> Set[str]:
         """Return set of node ids with running replicas of any deployment.

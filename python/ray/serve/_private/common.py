@@ -512,6 +512,7 @@ class RunningReplicaInfo:
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
+    scheduling_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
 
     def __post_init__(self):
@@ -530,6 +531,7 @@ class RunningReplicaInfo:
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
+                    str(self.scheduling_stats),
                 ]
             )
         )
@@ -565,9 +567,10 @@ class ServeComponentType(str, Enum):
 
 
 @dataclass
-class MultiplexedReplicaInfo:
+class ReplicaSchedulingInfo:
     replica_id: ReplicaID
-    model_ids: List[str]
+    multiplexed_model_ids: Optional[List[str]] = None
+    scheduling_stats: Optional[Dict[str, Any]] = None
 
 
 @dataclass

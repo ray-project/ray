@@ -77,11 +77,11 @@ class LocalityScheduleMixin:
         for id_set in self._colocated_replica_ids.values():
             id_set.discard(replica_id)
 
-    def update_discard_colocated_replica_ids_with_replicas(
+    def update_colocated_replica_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
         # print(
-        #     f"in update_discard_colocated_replica_ids_with_replicas {self._colocated_replica_ids=} {[(r.node_id, r.availability_zone) for r in replicas]=} {self._self_node_id=} {self._self_availability_zone=}"
+        #     f"in update_colocated_replica_ids_with_replicas {self._colocated_replica_ids=} {[(r.node_id, r.availability_zone) for r in replicas]=} {self._self_node_id=} {self._self_availability_zone=}"
         # )
         new_colocated_replica_ids = defaultdict(set)
 
@@ -447,8 +447,8 @@ class ReplicaScheduler(ABC):
         new_replica_id_set = set()
         if hasattr(self, "update_multiplexed_model_ids_with_replicas"):
             self.update_multiplexed_model_ids_with_replicas(replicas)
-        if hasattr(self, "update_discard_colocated_replica_ids_with_replicas"):
-            self.update_discard_colocated_replica_ids_with_replicas(replicas)
+        if hasattr(self, "update_colocated_replica_ids_with_replicas"):
+            self.update_colocated_replica_ids_with_replicas(replicas)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
