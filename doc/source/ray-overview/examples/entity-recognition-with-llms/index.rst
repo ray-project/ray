@@ -3,8 +3,7 @@
 Entity Recognition with LLMs
 ============================
 
-An end-to-end tutorial where we'll fine-tune an LLM to perform batch inference and online serving at scale.
-While entity recognition is the main task, we can easily extend these end-to-end workflows to any use case.
+This end-to-end tutorial **fine-tunes** an LLM to perform **batch inference** and **online serving** at scale. While entity recognition (NER) is the main task in this tutorial, you can easily extend these end-to-end workflows to any use case.
 
 .. toctree::
 
