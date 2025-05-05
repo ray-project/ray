@@ -599,15 +599,35 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force
   });
 }
 
+void NodeManager::DestroyWorkerAndTrySchedule(std::shared_ptr<WorkerInterface> worker,
+                                              rpc::WorkerExitType disconnect_type,
+                                              const std::string &disconnect_detail,
+                                              bool force) {
+  bool has_release_resources = false;
+  DestroyWorker(worker,
+                std::move(disconnect_type),
+                disconnect_detail,
+                force,
+                &has_release_resources);
+  if (has_release_resources) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  }
+}
+
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
-                                bool force) {
+                                bool force,
+                                bool *has_release_resources) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(
-      worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(),
+                   /*graceful=*/false,
+                   disconnect_type,
+                   disconnect_detail,
+                   /*creation_task_exception=*/nullptr,
+                   has_release_resources);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -686,7 +706,7 @@ void NodeManager::CheckForUnexpectedWorkerDisconnects() {
     if (disconnects[i]) {
       std::string msg = "Worker connection closed unexpectedly.";
       RAY_LOG(DEBUG).WithField(all_workers[i]->WorkerId()) << msg;
-      DestroyWorker(all_workers[i], rpc::WorkerExitType::SYSTEM_ERROR, msg);
+      DestroyWorkerAndTrySchedule(all_workers[i], rpc::WorkerExitType::SYSTEM_ERROR, msg);
     }
   }
 }
@@ -762,10 +782,11 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
             .WithField(worker->WorkerId())
         << "Destroying worker since its bundle was unused, bundle index: "
         << worker->GetBundleId().second;
-    DestroyWorker(worker,
-                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                  "Worker exits because it uses placement group bundles that are not "
-                  "registered to GCS. It can happen upon GCS restart.");
+    DestroyWorkerAndTrySchedule(
+        worker,
+        rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+        "Worker exits because it uses placement group bundles that are not "
+        "registered to GCS. It can happen upon GCS restart.");
   }
 
   // Return unused bundle resources.
@@ -1213,7 +1234,7 @@ void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> 
       "unexpected errors.");
 
   // Disconnect the client and don't process more messages.
-  DisconnectClient(
+  DisconnectClientAndTrySchedule(
       client, /*graceful=*/false, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
 }
 
@@ -1361,12 +1382,13 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
           fbb.GetBufferPointer(),
           [this, client](const ray::Status &status) {
             if (!status.ok()) {
-              DisconnectClient(client,
-                               /*graceful=*/false,
-                               rpc::WorkerExitType::SYSTEM_ERROR,
-                               "Worker is failed because the raylet couldn't reply the "
-                               "registration request: " +
-                                   status.ToString());
+              DisconnectClientAndTrySchedule(
+                  client,
+                  /*graceful=*/false,
+                  rpc::WorkerExitType::SYSTEM_ERROR,
+                  "Worker is failed because the raylet couldn't reply the "
+                  "registration request: " +
+                      status.ToString());
             }
           });
     };
@@ -1493,7 +1515,7 @@ void NodeManager::SendPortAnnouncementResponse(
       fbb.GetBufferPointer(),
       [this, client](const ray::Status &status) {
         if (!status.ok()) {
-          DisconnectClient(
+          DisconnectClientAndTrySchedule(
               client,
               /*graceful=*/false,
               rpc::WorkerExitType::SYSTEM_ERROR,
@@ -1534,11 +1556,12 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
       fbb.GetBufferPointer(),
       [this, client](const ray::Status &status) {
         if (!status.ok()) {
-          DisconnectClient(client,
-                           /*graceful=*/false,
-                           rpc::WorkerExitType::SYSTEM_ERROR,
-                           "Failed to send RegisterWorkerWithPortReply to client: " +
-                               status.ToString());
+          DisconnectClientAndTrySchedule(
+              client,
+              /*graceful=*/false,
+              rpc::WorkerExitType::SYSTEM_ERROR,
+              "Failed to send RegisterWorkerWithPortReply to client: " +
+                  status.ToString());
         }
       });
 }
@@ -1591,11 +1614,31 @@ void SendDisconnectClientReply(const WorkerID &worker_id,
   }
 }
 
+void NodeManager::DisconnectClientAndTrySchedule(
+    const std::shared_ptr<ClientConnection> &client,
+    bool graceful,
+    rpc::WorkerExitType disconnect_type,
+    const std::string &disconnect_detail,
+    const rpc::RayException *creation_task_exception) {
+  bool has_release_resources = false;
+  DisconnectClient(client,
+                   graceful,
+                   std::move(disconnect_type),
+                   disconnect_detail,
+                   creation_task_exception,
+                   &has_release_resources);
+  // Since some resources may have been released, we can try to dispatch more tasks.
+  if (has_release_resources) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  }
+}
+
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    bool graceful,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
-                                   const rpc::RayException *creation_task_exception) {
+                                   const rpc::RayException *creation_task_exception,
+                                   bool *has_release_resources) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1696,8 +1739,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Return the resources that were being used by this worker.
     local_task_manager_->ReleaseWorkerResources(worker);
 
-    // Since some resources may have been released, we can try to dispatch more tasks.
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    if (has_release_resources) {
+      *has_release_resources = true;
+    }
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
@@ -1746,11 +1790,11 @@ void NodeManager::ProcessDisconnectClientMessage(
     creation_task_exception->ParseFromString(std::string(
         reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
-  DisconnectClient(client,
-                   /*graceful=*/true,
-                   disconnect_type,
-                   disconnect_detail,
-                   creation_task_exception.get());
+  DisconnectClientAndTrySchedule(client,
+                                 /*graceful=*/true,
+                                 disconnect_type,
+                                 disconnect_detail,
+                                 creation_task_exception.get());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1831,8 +1875,9 @@ void NodeManager::ProcessWaitRequestMessage(
     } else {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
-      stream << "Failed to write WaitReply to the client. Status " << status;
-      DisconnectClient(
+      stream << "Failed to write WaitReply to the client. Status " << status
+             << ", message: " << status.message();
+      DisconnectClientAndTrySchedule(
           client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
@@ -1864,10 +1909,10 @@ void NodeManager::ProcessWaitRequestMessage(
           // We failed to write to the client, so disconnect the client.
           std::ostringstream stream;
           stream << "Failed to write WaitReply to the client. Status " << status;
-          DisconnectClient(client,
-                           /*graceful=*/false,
-                           rpc::WorkerExitType::SYSTEM_ERROR,
-                           stream.str());
+          DisconnectClientAndTrySchedule(client,
+                                         /*graceful=*/false,
+                                         rpc::WorkerExitType::SYSTEM_ERROR,
+                                         stream.str());
         }
       });
 }
@@ -2177,7 +2222,7 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
-      DisconnectClient(
+      DisconnectClientAndTrySchedule(
           worker->Connection(),
           /*graceful=*/false,
           rpc::WorkerExitType::SYSTEM_ERROR,
@@ -2292,9 +2337,9 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
   for (auto &worker : unused_actor_workers) {
     RAY_LOG(DEBUG).WithField(worker->WorkerId())
         << "GCS requested to release unused actor worker.";
-    DestroyWorker(worker,
-                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                  "Worker is no longer needed by the GCS.");
+    DestroyWorkerAndTrySchedule(worker,
+                                rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                                "Worker is no longer needed by the GCS.");
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3148,10 +3193,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
-          DestroyWorker(high_memory_eviction_target_,
-                        rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
-                        worker_exit_message,
-                        true /* force */);
+          DestroyWorkerAndTrySchedule(high_memory_eviction_target_,
+                                      rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
+                                      worker_exit_message,
+                                      true /* force */);
 
           if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
             // TODO(sang): Add the job entrypoint to the name.
