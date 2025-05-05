@@ -200,7 +200,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const rpc::Address &address,
+  CoreWorkerClient(rpc::Address address,
                    ClientCallManager &client_call_manager,
                    std::function<void()> core_worker_unavailable_timeout_callback);
 
