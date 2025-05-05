@@ -122,21 +122,11 @@ export const SearchTimezone = ({
   });
 
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  const browserOffset = (() => {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: browserTimezone,
-      timeZoneName: "longOffset",
-    });
-    const formatted = formatter.format(new Date());
-    const match = formatted.match(/GMT[+-]\d{2}:?\d{2}/);
-    return match ? match[0] : "";
-  })();
-
-  if (browserOffset) {
+  const browserTz = timezones.find((t) => t.value === browserTimezone);
+  if (browserTz) {
     options.unshift({
       value: browserTimezone,
-      utc: browserOffset,
+      utc: browserTz.utc,
       group: "System",
       country: "Browser Time",
     });
