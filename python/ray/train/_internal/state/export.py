@@ -2,8 +2,6 @@ from typing import Optional
 
 from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
-)
-from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunEventData as ProtoTrainRun,
 )
 from ray.train._internal.state.schema import (
