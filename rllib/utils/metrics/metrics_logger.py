@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+import copy
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
@@ -737,23 +737,12 @@ class MetricsLogger:
             own_stats = self._get_key(key, stats=self.stats, key_error=False)
 
             if not self._key_in_stats(key):
-                base_stats = incoming_stats[0]
+                # We need to deepcopy here first because stats from incoming_stats may be altered in the future
+                base_stats = copy.deepcopy(incoming_stats[0])
             elif len(incoming_stats) > 0:
                 base_stats = own_stats
             else:
                 continue
-
-            # Special case: `base_stats` is a lifetime sum (reduce=sum,
-            # clear_on_reduce=False) -> We subtract the previous value (from 2
-            # `reduce()` calls ago) from all to-be-merged stats, so we don't count
-            # twice the older sum from before.
-            if (
-                base_stats._reduce_method == "sum"
-                and base_stats._window is None
-                and base_stats._clear_on_reduce is False
-            ):
-                for stat in incoming_stats:
-                    stat.push(-stat.get_reduce_history()[-2][0])
 
             if not self._key_in_stats(key):
                 # Note that we may take a mean of means here, which is not the same as a mean of all values

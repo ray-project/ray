@@ -148,9 +148,10 @@ def test_tensor_mode(logger):
     logger.activate_tensor_mode()
     logger.log_value("torch_loss", torch.tensor(0.1))
     logger.log_value("torch_loss", torch.tensor(0.2))
-    tensor_metrics = logger.deactivate_tensor_mode()
-    logger.tensors_to_numpy(tensor_metrics)
-    check(logger.peek("torch_loss"), 0.101)
+    logger.deactivate_tensor_mode()
+    value = logger.peek("torch_loss")
+    check(value, 0.101)
+    check(isinstance(value, torch.Tensor), True)
 
 
 def test_time_logging(logger):

@@ -366,20 +366,18 @@ class Stats:
                     # If we we use a window, we don't want to replace the internal values list
                     self._set_values(new_values_list)
 
-            # Shift historic reduced valued by one in our reduce_history.
-            if self._reduce_method is not None or not self._inf_window:
-                # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window.
-                # We need to make a copy here because the new_values_list is a reference to the internal values list
-                self._reduce_history.append(
-                    self._numpy_if_necessary(new_values_list.copy())
-                )
-
             values_list = new_values_list
         else:
             reduced = None
             values_list = self._reduce_history[-1]
 
         values_list = self._numpy_if_necessary(values_list)
+
+        # Shift historic reduced valued by one in our reduce_history.
+        if self._reduce_method is not None or not self._inf_window:
+            # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window.
+            # We need to make a copy here because the new_values_list is a reference to the internal values list
+            self._reduce_history.append(values_list)
 
         if compile:
             if self._reduce_method is None:
