@@ -140,7 +140,12 @@ class LongPollClient:
             return
 
         self._callbacks_processed_count = 0
-        self._current_ref = self.host_actor.listen_for_change.remote(self.snapshot_ids)
+        self._current_ref = self.host_actor.listen_for_change.remote(
+            # Copy the snapshot IDs before serializing
+            # because they might be mutated from a different thread concurrently
+            # (from the SharedRouterLongPollClient registering a new router).
+            self.snapshot_ids.copy()
+        )
         self._current_ref._on_completed(lambda update: self._process_update(update))
 
     def _schedule_to_event_loop(self, callback):
