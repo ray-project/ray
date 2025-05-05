@@ -27,6 +27,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _pin_runtime_env_uri,
 )
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
@@ -656,7 +657,7 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
+    gcs_client: Optional[GcsClient] = None,
     logger: Optional[logging.Logger] = default_logger,
     overwrite: bool = False,
 ) -> str:
@@ -669,7 +670,7 @@ async def download_and_unpack_package(
         pkg_uri: URI of the package to download.
         base_directory: Directory to use as the parent directory of the target
             directory for the unpacked files.
-        gcs_aio_client: Client to use for downloading from the GCS.
+        gcs_client: Client to use for downloading from the GCS.
         logger: The logger to use.
         overwrite: If True, overwrite the existing package.
 
@@ -715,13 +716,13 @@ async def download_and_unpack_package(
                 f"with protocol {protocol}"
             )
             if protocol == Protocol.GCS:
-                if gcs_aio_client is None:
+                if gcs_client is None:
                     raise ValueError(
                         "GCS client must be provided to download from GCS."
                     )
 
                 # Download package from the GCS.
-                code = await gcs_aio_client.internal_kv_get(
+                code = await gcs_client.async_internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
                 if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
