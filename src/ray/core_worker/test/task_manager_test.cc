@@ -179,6 +179,13 @@ class TaskManagerTest : public ::testing::Test {
     manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
   }
 
+  void AddTaskToResubmitQueue(int64_t execution_time_ms, const TaskSpecification &spec) {
+    TaskToRetry task_to_retry = {execution_time_ms, spec};
+    manager_.to_resubmit_.push(std::move(task_to_retry));
+  }
+
+  size_t GetResubmitQueueSize() const { return manager_.to_resubmit_.size(); }
+
   bool lineage_pinning_enabled_;
   rpc::Address addr_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
@@ -2452,6 +2459,20 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   ASSERT_TRUE(signal_called);
   ASSERT_TRUE(retry_signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);
+}
+
+TEST_F(TaskManagerTest, TestPopTasksToRetry) {
+  auto spec1 = CreateTaskHelper(1, {});
+  AddTaskToResubmitQueue(current_time_ms() - 100, spec1);
+
+  auto spec2 = CreateTaskHelper(1, {});
+  AddTaskToResubmitQueue(current_time_ms() + 100, spec2);
+
+  auto tasks = manager_.PopTasksToRetry();
+  ASSERT_EQ(tasks.size(), 1);
+  ASSERT_EQ(tasks[0].TaskId(), spec1.TaskId());
+
+  ASSERT_EQ(GetResubmitQueueSize(), 1);
 }
 
 }  // namespace core
