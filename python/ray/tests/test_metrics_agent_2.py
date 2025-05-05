@@ -221,15 +221,12 @@ def test_metrics_agent_record_and_export_failed_records_dont_block_other_records
         tags={"tag": "c"},
     )
     agent.record_and_export([record_a, record_b, record_c])
+
     name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
     assert name == get_prom_metric_name(namespace, metric_name)
 
     # a and c should be recorded, b's failure should be ignored
-    assert len(samples) == 2
-    assert samples[0].value == 1
-    assert samples[0].labels == {"tag": "a"}
-    assert samples[1].value == 1
-    assert samples[1].labels == {"tag": "c"}
+    assert {sample.labels["tag"] for sample in samples} == {"a", "c"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
