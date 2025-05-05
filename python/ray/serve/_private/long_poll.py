@@ -144,6 +144,7 @@ class LongPollClient:
             # Copy the snapshot IDs before serializing
             # because they might be mutated from a different thread concurrently
             # (from the SharedRouterLongPollClient registering a new router).
+            # See https://github.com/ray-project/ray/pull/52793 for more details.
             self.snapshot_ids.copy()
         )
         self._current_ref._on_completed(lambda update: self._process_update(update))
