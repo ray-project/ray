@@ -77,6 +77,7 @@ class ClientCallImpl : public ClientCall {
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           const ClusterID &cluster_id,
                           std::shared_ptr<StatsHandle> stats_handle,
+                          bool record_stats,
                           int64_t timeout_ms = -1)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)) {
@@ -107,7 +108,7 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (!status.ok()) {
-      stats::STATS_grpc_client_failures.Record(1.0, stats_handle_->event_name);
+      stats::STATS_grpc_client_req_failures.Record(1.0, stats_handle_->event_name);
     }
     if (callback_ != nullptr) {
       // This should be only called once.
