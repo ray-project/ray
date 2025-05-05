@@ -472,8 +472,12 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestOwnerFailed) {
 
   // The second batch is replied, but failed.
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch(ray::Status::Invalid("")));
-  // Requests are not sent anymore.
-  ASSERT_EQ(NumBatchRequestSent(), 2);
+  // Retry is sent and replied to
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  // One extra request is sent.
+  ASSERT_EQ(NumBatchRequestSent(), 4);
+
   // Make sure metadata is cleaned up properly.
   AssertNoLeak();
 }
