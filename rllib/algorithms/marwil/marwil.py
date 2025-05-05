@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple, Type, Union
+from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
