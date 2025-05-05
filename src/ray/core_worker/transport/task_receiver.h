@@ -98,10 +98,10 @@ class TaskReceiver {
 
   /// Cancel an actor task that is queued for execution, but hasn't started executing yet.
   ///
-  /// Returns a boolean indicating if the task is present in the executor at all. If not,
-  /// it means the task either hasn't been received yet or has already finished executing.
+  /// Returns true if the task is present in the executor at all. If false, it means the
+  /// task either hasn't been received yet or has already finished executing.
   ///
-  /// This API is idempotent.
+  /// This method is idempotent.
   bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
 
   void Stop();
