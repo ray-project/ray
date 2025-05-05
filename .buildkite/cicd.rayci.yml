@@ -7,11 +7,10 @@ steps:
           //ci/ray_ci/... //release/... //ci/pipeline/... ci
           --only-tags=release_unit,ci_unit
           --cache-test-results --parallelism-per-worker 2
-          --build-name oss-ci-base_test
+          --build-name forge
           --build-type skip
     instance_type: small
     depends_on:
-      - oss-ci-base_test
       - forge
     tags: tools
   - label: ":coral: reef: privileged container tests"
