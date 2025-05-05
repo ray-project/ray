@@ -25,6 +25,7 @@ from ray.data._internal.numpy_support import (
 from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from pyarrow.lib import FixedShapeTensorType
 
 PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports ExtensionScalars.
@@ -410,7 +411,7 @@ def get_arrow_extension_fixed_shape_tensor_types():
     """Returns list of Arrow extension types holding multidimensional
     tensors of *fixed* shape
     """
-    return ArrowTensorType, ArrowTensorTypeV2
+    return ArrowTensorType, ArrowTensorTypeV2, FixedShapeTensorType
 
 
 @DeveloperAPI
