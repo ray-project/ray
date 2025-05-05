@@ -920,12 +920,27 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
+
+            # Check if this is a lifetime stat (clear_on_reduce=False, reduce="sum" and infinite window)
+            is_lifetime_stat = (
+                not stats._clear_on_reduce
+                and stats._reduce_method == "sum"
+                and stats._inf_window
+            )
+
             # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
             # We need to do this so that lifetime stats are accumulated only in the root logger
             if not self._is_root_logger:
-                # For non-root logger or non-lifetime stats, reduce normally
-                values = stats.reduce(compile=False)
-                return Stats.similar_to(stats, init_values=values)
+                if is_lifetime_stat:
+                    # Clear lifetime stats in non-root loggers
+                    stats._clear_on_reduce = True
+                    values = stats.reduce(compile=False)
+                    stats._clear_on_reduce = False
+                    return Stats.similar_to(stats, init_values=values)
+                else:
+                    # For non-root logger or non-lifetime stats, reduce normally
+                    values = stats.reduce(compile=False)
+                    return Stats.similar_to(stats, init_values=values)
             else:
                 # Only the root logger should return the actual values
                 return stats.reduce(compile=True)
