@@ -589,7 +589,7 @@ def test_imap_timeout(pool_4_processes, use_iter):
 
 
 def test_maxtasksperchild(shutdown_only):
-    with Pool(processes=5, maxtasksperchild=1) as pool:
+    with Pool(processes=3, maxtasksperchild=1) as pool:
         assert len(set(pool.map(lambda _: os.getpid(), range(20)))) == 20
     pool.join()
 
