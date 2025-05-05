@@ -228,7 +228,7 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
-class PowerOfTwoChoicesReplicaScheduler(
+class LLMPowerOfTwoChoicesReplicaScheduler(
     MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
@@ -358,6 +358,13 @@ class PowerOfTwoChoicesReplicaScheduler(
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
+
+        self._scheduling_assignments_file_path = f"/home/ray/default/work/_testing/results/scheduling_logs/pow_2_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        self._scheduling_queue_overhead_file_path = f"/home/ray/default/work/_testing/results/queue_overhead/pow_2_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        with open(self._scheduling_assignments_file_path, "w") as f:
+            f.write("scheduling_decision,original_request_id,matched_replica_request_id\n")  # Clear the log file at start
+        with open(self._scheduling_queue_overhead_file_path, "w") as f:
+            f.write("num_searched,search_duration\n")  # Clear the log file at start
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -692,6 +699,10 @@ class PowerOfTwoChoicesReplicaScheduler(
         Among replicas that respond within the deadline and don't have full queues, the
         one with the lowest queue length is chosen.
         """
+        # # Artificial random delay to test scheduling mismatch
+        # await asyncio.sleep(random.uniform(0.0, 0.1))
+        # # End artificial random delay
+        
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
         not_in_cache: List[RunningReplica] = []
@@ -739,18 +750,42 @@ class PowerOfTwoChoicesReplicaScheduler(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
-            return None
+        selected_pr = None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
-                return pr
+        # First, try to match based on multiplexed model ID:
+        if request_metadata is not None and request_metadata.multiplexed_model_id:
+            for pr in self._pending_requests_to_fulfill:
+                if (
+                    not pr.future.done()
+                    and pr.metadata.multiplexed_model_id
+                    == request_metadata.multiplexed_model_id
+                ):
+                    selected_pr = pr
+                    with open(self._scheduling_assignments_file_path, "a") as f:
+                        f.write(f"multiplexed_model_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
 
-        return None
+                    break
+        # # Second, try to match based on internal request ID:
+        # num_searched = 0
+        # search_start = time.time()
+        # if selected_pr is None and request_metadata is not None and request_metadata.internal_request_id:
+        #     for pr in self._pending_requests_to_fulfill:
+        #         num_searched += 1
+        #         if (
+        #             not pr.future.done()
+        #             and pr.metadata.internal_request_id
+        #             == request_metadata.internal_request_id
+        #         ):
+        #             with open(self._scheduling_assignments_file_path, "a") as f:
+        #                 f.write(f"internal_request_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
+        #             selected_pr = pr
+        #             break
+
+        # search_duration = time.time() - search_start
+        # with open(self._scheduling_queue_overhead_file_path, "a") as f:
+        #     f.write(f"{num_searched},{search_duration}\n")
+
+        return selected_pr
 
     def fulfill_next_pending_request(
         self,
@@ -767,7 +802,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
-        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
@@ -779,6 +813,8 @@ class PowerOfTwoChoicesReplicaScheduler(
             pr = self._pending_requests_to_fulfill.popleft()
             # print(f"{pr=} {pr.future.done()=}")
             if not pr.future.done():
+                with open(self._scheduling_assignments_file_path, "a") as f:
+                    f.write(f"FIFO,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
                 pr.future.set_result(replica)
                 break
 

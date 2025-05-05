@@ -82,9 +82,6 @@ class LocalityScheduleMixin:
     def update_discard_colocated_replica_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
-        print(
-            f"in update_discard_colocated_replica_ids_with_replicas {self._colocated_replica_ids=} {[(r.node_id, r.availability_zone) for r in replicas]=} {self._self_node_id=} {self._self_availability_zone=}"
-        )
         new_colocated_replica_ids = defaultdict(set)
 
         for r in replicas:
@@ -101,9 +98,6 @@ class LocalityScheduleMixin:
         self._colocated_replica_ids = new_colocated_replica_ids
 
     def apply_locality_scheduling(self) -> Set[ReplicaID]:
-        print(
-            f"in apply_locality_scheduling {self._colocated_replica_ids=} {self._replica_id_set=} {_get_request_scheduling_context()=}"
-        )
         if (
             self._prefer_local_node_routing
             and not _get_request_scheduling_context().tried_same_node
@@ -112,7 +106,6 @@ class LocalityScheduleMixin:
             # Attempt to schedule requests to replicas on the
             # same node at most once
             candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            print(f"_prefer_local_node_routing {candidate_replica_ids=}")
             _set_request_scheduling_context(tried_same_node=True)
         elif (
             self._prefer_local_az_routing
@@ -130,7 +123,6 @@ class LocalityScheduleMixin:
             # node or AZ, consider all available replicas.
             candidate_replica_ids = self._replica_id_set
             _set_request_scheduling_context(should_backoff=True)
-        # print(f"locality decision {candidate_replica_ids=}")
         return candidate_replica_ids
 
 
@@ -159,7 +151,6 @@ class MultiplexScheduleMixin:
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
-        # print(f"in update_multiplexed_model_ids_with_replicas {self._multiplexed_model_id_to_replica_ids=} {replicas=}")
 
     def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
         """Get the set of replicas that have the fewest multiplexed models loaded."""
@@ -228,7 +219,7 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
-class PowerOfTwoChoicesReplicaScheduler(
+class PrefixAwareReplicaScheduler(
     MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
@@ -285,6 +276,12 @@ class PowerOfTwoChoicesReplicaScheduler(
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+
+        # Beginning of injected code
+        from ray import serve
+        self._tree_deployment = serve.get_deployment_handle("TreeDeployment", app_name="llm_app")
+        # End of injected code
+
         self._deployment_id = deployment_id
         self._handle_source = handle_source
         self._self_node_id = self_node_id
@@ -482,10 +479,54 @@ class PowerOfTwoChoicesReplicaScheduler(
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
+    def get_input_text(self, pending_request: PendingRequest) -> str:
+        chat_completion_request = pending_request.args[0]
+        if hasattr(chat_completion_request, "messages"):
+            messages = chat_completion_request.messages
+            return "".join(msg.get("content", "") for msg in messages if "content" in msg)
+        elif hasattr(chat_completion_request, "prompt"):
+            return chat_completion_request.prompt
+        else:
+            raise ValueError("Invalid chat completion request")
+        
+    async def prefix_match_best_replicas(self, pending_request: PendingRequest, candidate_replica_ids: List[ReplicaID]) -> List[ReplicaID]:
+        """
+        Returns a list of candidate replicas, of which the one with the smallest replica queue will be chosen.
+        0. Default: same as pow 2 scheduler, return 2 replicas at random.
+        1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use default.
+        2. If load is imbalanced, use default.
+        """
+        chosen_replica_id = None
+        if pending_request is not None:
+            input_text = self.get_input_text(pending_request)
+            # is_imbalanced = highest_queue_len - lowest_queue_len > 10
+            # if is_imbalanced:
+            if False:
+                pass
+            else:
+                matched_text, tenant_id, match_timing = await self._tree_deployment.prefix_match.remote(input_text)
+                match_rate = len(matched_text) / len(input_text) if input_text else 0
+                if match_rate < 0.1:
+                    # chosen_replica = self._tree_deployment.get_smallest_tenant.remote()
+                    pass
+                else:
+                    for replica_id in candidate_replica_ids:
+                        if tenant_id == replica_id:
+                            chosen_replica_id = tenant_id
+                
+                # If no good match was found or match rate was too low
+                if chosen_replica_id is None or chosen_replica_id == "empty":
+                    pass
+        if chosen_replica_id is None:
+            return random.sample(candidate_replica_ids, min(2, len(candidate_replica_ids)))
+        else:
+            return [chosen_replica_id]
+
     async def choose_replicas(
         self,
         request_scheduling_context: _RequestSchedulingContext,
         request_metadata: Optional[RequestMetadata] = None,
+        pending_request: Optional[PendingRequest] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """Generator that repeatedly chooses (at most) two random available replicas.
 
@@ -504,7 +545,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         """
         if not request_scheduling_context:
             request_scheduling_context = _RequestSchedulingContext()
-
         entered_backoff = False
         try:
             backoff_index = 0
@@ -540,13 +580,12 @@ class PowerOfTwoChoicesReplicaScheduler(
                     # Get candidates for locality preference.
                     candidate_replica_ids = self.apply_locality_scheduling()
 
-                # print(f"in choose_replicas {candidate_replica_ids=}")
                 if candidate_replica_ids:
-                    chosen_ids = random.sample(
-                        list(candidate_replica_ids),
-                        k=min(2, len(candidate_replica_ids)),
-                    )
-                    # print(f"{chosen_ids=}")
+                    # chosen_ids = random.sample(
+                    #     list(candidate_replica_ids),
+                    #     k=min(2, len(candidate_replica_ids)),
+                    # )
+                    chosen_ids = await self.prefix_match_best_replicas(pending_request, list(candidate_replica_ids))
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
                 # We have a slight unintended behavior when enabled locality routing
@@ -735,27 +774,28 @@ class PowerOfTwoChoicesReplicaScheduler(
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
-    def _get_pending_request_matching_metadata(
-        self,
-        request_metadata: Optional[RequestMetadata] = None,
-    ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
-            return None
+    # def _get_pending_request_matching_metadata(
+    #     self,
+    #     request_metadata: Optional[RequestMetadata] = None,
+    # ) -> Optional[PendingRequest]:
+    #     if request_metadata is None or not request_metadata.multiplexed_model_id:
+    #         return None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
-                return pr
+    #     for pr in self._pending_requests_to_fulfill:
+    #         if (
+    #             not pr.future.done()
+    #             and pr.metadata.multiplexed_model_id
+    #             == request_metadata.multiplexed_model_id
+    #         ):
+    #             return pr
 
-        return None
+    #     return None
 
     def fulfill_next_pending_request(
         self,
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
+        pending_request: Optional[PendingRequest] = None,
     ):
         """Assign the replica to the next pending request in FIFO order.
 
@@ -764,11 +804,12 @@ class PowerOfTwoChoicesReplicaScheduler(
         """
         # First try to match a pending request based on the request metadata (currently
         # this only looks at the multiplexed model ID).
-        matched_pending_request = self._get_pending_request_matching_metadata(
-            request_metadata
-        )
-        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
-        if matched_pending_request is not None:
+        # matched_pending_request = self._get_pending_request_matching_metadata(
+        #     request_metadata
+        #     # pending_request.metadata
+        # )
+        matched_pending_request = pending_request
+        if matched_pending_request is not None and matched_pending_request in self._pending_requests_to_fulfill:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -777,21 +818,29 @@ class PowerOfTwoChoicesReplicaScheduler(
         # queue in FIFO order, passing over futures that have been cancelled.
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
-            # print(f"{pr=} {pr.future.done()=}")
             if not pr.future.done():
                 pr.future.set_result(replica)
                 break
 
-    def _get_next_pending_request_metadata_to_schedule(
+    # def _get_next_pending_request_metadata_to_schedule(
+    #     self,
+    # ) -> Optional[RequestMetadata]:
+    #     while len(self._pending_requests_to_schedule) > 0:
+    #         pr = self._pending_requests_to_schedule.popleft()
+    #         if not pr.future.done():
+    #             return pr.metadata
+
+    #     return None
+    def _get_next_pending_request_to_schedule(
         self,
-    ) -> Optional[RequestMetadata]:
+    ) -> Optional[PendingRequest]:
         while len(self._pending_requests_to_schedule) > 0:
             pr = self._pending_requests_to_schedule.popleft()
             if not pr.future.done():
-                return pr.metadata
+                return pr
 
         return None
-
+    
     async def fulfill_pending_requests(self):
         """Repeatedly tries to fulfill a pending request with an available replica.
 
@@ -805,9 +854,12 @@ class PowerOfTwoChoicesReplicaScheduler(
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
                 start_time = time.time()
                 backoff_index = 0
-                request_metadata = self._get_next_pending_request_metadata_to_schedule()
+                # request_metadata = self._get_next_pending_request_metadata_to_schedule()
+                pending_request = self._get_next_pending_request_to_schedule()
+                request_metadata = pending_request.metadata if pending_request is not None else None
                 async for candidates in self.choose_replicas(
-                    _RequestSchedulingContext(), request_metadata
+                    # _RequestSchedulingContext(), request_metadata
+                    _RequestSchedulingContext(), request_metadata, pending_request
                 ):
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
@@ -824,11 +876,13 @@ class PowerOfTwoChoicesReplicaScheduler(
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )
-                    # print(f"in fulfill_pending_requests {candidates=} {backoff_index=} {replica=} {_get_request_scheduling_context()}")
                     if replica is not None:
-                        self.fulfill_next_pending_request(replica, request_metadata)
+                        print(f"[fulfill_pending_requests] pending_request: {pending_request}")
+                        self.fulfill_next_pending_request(replica, request_metadata, pending_request)
+                        if pending_request is not None:
+                            input_text = self.get_input_text(pending_request)
+                            success, insert_timing = await self._tree_deployment.insert.remote(input_text, tenant=replica.replica_id)
                         break
-
                     backoff_index += 1
                     if backoff_index >= 50 and backoff_index % 50 == 0:
                         scheduling_time_elapsed = time.time() - start_time
@@ -851,7 +905,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
-            # print("finally called")
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
@@ -921,13 +974,69 @@ class PowerOfTwoChoicesReplicaScheduler(
             raise e from None
 
         return replica
-    
+
     async def on_request_scheduled(
         self, pending_request: PendingRequest, chosen_replica: RunningReplica
     ) -> None:
-        pass
+        text = self.get_input_text(pending_request)
+        await self._tree_deployment.insert.remote(text, tenant=chosen_replica.replica_id)
 
     async def on_response_received(
         self, pending_request: PendingRequest, chosen_replica: RunningReplica, result
     ):
+        orig_obj_ref_gen = result._obj_ref_gen
+        wrapped = PrefixAwareObjectRefGenerator(self.get_input_text(pending_request), orig_obj_ref_gen, self._tree_deployment, chosen_replica.replica_id)
+        result._obj_ref_gen = wrapped
         return result
+
+import ray
+from typing import Any, AsyncGenerator
+from ray._raylet import ObjectRefGenerator
+class PrefixAwareObjectRefGenerator:
+    """
+    Wraps a Ray ObjectRefGenerator so that every time __anext__ is called,
+    we pull the real chunk, extract its text, update our prefix tree, and
+    then hand the same ObjectRef back to Serve.
+    """
+
+    def __init__(self, prompt_text: str, orig_gen: ObjectRefGenerator, tree: Any, tenant_id: str):
+        self._orig = orig_gen
+        self._tree = tree
+        self._tenant = tenant_id
+        self._accum = prompt_text  # accumulate the full response so far
+        print(f"[PrefixAwareObjectRefGenerator.__init__] _orig: {self._orig}, _tree: {self._tree}, _tenant: {self._tenant}, _accum: {self._accum}")
+
+    def __aiter__(self) -> AsyncGenerator:
+        print(f"[PrefixAwareObjectRefGenerator.__aiter__]")
+        return self
+
+    async def __anext__(self):
+        print(f"[PrefixAwareObjectRefGenerator.__anext__]")
+        # 1) get the next ObjectRef from the underlying generator
+        obj_ref = await self._orig.__anext__()
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] obj_ref: {obj_ref}")
+        # 2) fetch the real chunk (e.g. a CompletionResponse)
+        resp = ray.get(obj_ref)
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] resp: {resp}")
+        # 3) pull out just the text piece
+        chunk = self._extract_text(resp)
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] chunk: {chunk}")
+        self._accum += chunk
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] self._accum: {self._accum}")
+        # 4) send the updated prompt+response back to your prefix‐tree actor
+        await self._tree.insert.remote(self._accum, tenant=self._tenant)
+        print(f"[PrefixAwareObjectRefGenerator.__anext__] after insert")
+
+        # 5) return the original ObjectRef so Serve can stream it unchanged
+        return obj_ref
+
+    def __getattr__(self, name: str):
+        print(f"[PrefixAwareObjectRefGenerator.__getattr__] name: {name}")
+        # forward *every other* attribute/method (including completed(),
+        # _on_completed(), __next__(), etc.) back to the original generator
+        return getattr(self._orig, name)
+
+    @staticmethod
+    def _extract_text(resp: Any) -> str:
+        # adapt to your LLM chunk type; e.g.:
+        return resp.choices[0].text

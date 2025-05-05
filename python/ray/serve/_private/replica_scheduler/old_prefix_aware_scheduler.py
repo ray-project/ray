@@ -1,3 +1,8 @@
+import subprocess
+from ray import serve
+
+import os
+import json
 import asyncio
 import enum
 import logging
@@ -15,6 +20,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Any
 )
 
 from ray.actor import ActorHandle
@@ -37,12 +43,7 @@ from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
 )
-from ray.serve._private.replica_scheduler.replica_scheduler import (
-    ReplicaScheduler,
-    _get_request_scheduling_context,
-    _set_request_scheduling_context,
-    _RequestSchedulingContext,
-)
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.util import metrics
 
@@ -54,183 +55,7 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
-class LocalityScheduleMixin:
-    def __init__(
-        self,
-        prefer_local_node_routing: bool = False,
-        prefer_local_az_routing: bool = False,
-        self_availability_zone: Optional[str] = None,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self._prefer_local_node_routing = prefer_local_node_routing
-        self._prefer_local_az_routing = prefer_local_az_routing
-        self._self_availability_zone = self_availability_zone
-
-        # Colocated replicas (e.g. wrt node, AZ)
-        self._colocated_replica_ids: DefaultDict[
-            LocalityScope, Set[ReplicaID]
-        ] = defaultdict(set)
-
-    def discard_colocated_replica_ids_on_replica_actor_died(
-        self, replica_id: ReplicaID
-    ):
-        for id_set in self._colocated_replica_ids.values():
-            id_set.discard(replica_id)
-
-    def update_discard_colocated_replica_ids_with_replicas(
-        self, replicas: List[RunningReplica]
-    ):
-        print(
-            f"in update_discard_colocated_replica_ids_with_replicas {self._colocated_replica_ids=} {[(r.node_id, r.availability_zone) for r in replicas]=} {self._self_node_id=} {self._self_availability_zone=}"
-        )
-        new_colocated_replica_ids = defaultdict(set)
-
-        for r in replicas:
-            if self._self_node_id is not None and r.node_id == self._self_node_id:
-                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
-            if (
-                self._self_availability_zone is not None
-                and r.availability_zone == self._self_availability_zone
-            ):
-                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
-                    r.replica_id
-                )
-
-        self._colocated_replica_ids = new_colocated_replica_ids
-
-    def apply_locality_scheduling(self) -> Set[ReplicaID]:
-        print(
-            f"in apply_locality_scheduling {self._colocated_replica_ids=} {self._replica_id_set=} {_get_request_scheduling_context()=}"
-        )
-        if (
-            self._prefer_local_node_routing
-            and not _get_request_scheduling_context().tried_same_node
-            and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
-        ):
-            # Attempt to schedule requests to replicas on the
-            # same node at most once
-            candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            print(f"_prefer_local_node_routing {candidate_replica_ids=}")
-            _set_request_scheduling_context(tried_same_node=True)
-        elif (
-            self._prefer_local_az_routing
-            and not _get_request_scheduling_context().tried_same_az
-            and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
-        ):
-            # Attempt to schedule requests to replicas in the same
-            # AZ at most once
-            candidate_replica_ids = self._colocated_replica_ids[
-                LocalityScope.AVAILABILITY_ZONE
-            ]
-            _set_request_scheduling_context(tried_same_az=True)
-        else:
-            # On subsequent iterations or when there are no replicas on the same
-            # node or AZ, consider all available replicas.
-            candidate_replica_ids = self._replica_id_set
-            _set_request_scheduling_context(should_backoff=True)
-        # print(f"locality decision {candidate_replica_ids=}")
-        return candidate_replica_ids
-
-
-class MultiplexScheduleMixin:
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._multiplexed_model_id_to_replica_ids: DefaultDict[
-            str, Set[ReplicaID]
-        ] = defaultdict(set)
-
-        # When there is no match for a multiplexed model id, we will try to fall back
-        # to all replicas immediately. This set is used to make sure we only fall back
-        # once for concurrent requests for the same model id.
-        # Whenever there is a match, we will remove the model id from this set.
-        self._multiplexed_model_id_fallback_match: Set[str] = set()
-
-    def update_multiplexed_model_ids_with_replicas(
-        self, replicas: List[RunningReplica]
-    ):
-        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
-
-        for r in replicas:
-            for model_id in r.multiplexed_model_ids:
-                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
-
-        self._multiplexed_model_id_to_replica_ids = (
-            new_multiplexed_model_id_to_replica_ids
-        )
-        # print(f"in update_multiplexed_model_ids_with_replicas {self._multiplexed_model_id_to_replica_ids=} {replicas=}")
-
-    def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
-        """Get the set of replicas that have the fewest multiplexed models loaded."""
-        candidates = set()
-        sorted_replicas = sorted(
-            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
-        )
-        least_num_multiplexed_model_ids = math.inf
-        for replica in sorted_replicas:
-            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
-                candidates.add(replica.replica_id)
-                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
-            else:
-                break
-
-        return candidates
-
-    @property
-    def multiplexed_matching_timeout(self) -> float:
-        return random.uniform(
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
-        )
-
-    def apply_multiplex_scheduling(
-        self,
-        multiplexed_model_id: str,
-        multiplexed_start_matching_time: float,
-    ) -> Set[ReplicaID]:
-        # TODO (genesu): add doc string and data structure for the return type
-        if (
-            time.time() - multiplexed_start_matching_time
-            < self.multiplexed_matching_timeout
-        ):
-            candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
-                multiplexed_model_id, None
-            )
-            if (
-                not candidate_replica_ids
-                and multiplexed_model_id
-                not in self._multiplexed_model_id_fallback_match
-            ) or _get_request_scheduling_context().tried_first_multiplexed_models:
-                # When there is no match for a multiplexed model id
-                # or when the replica(s) with the matching model id is busy,
-                # first try to fall back to replicas with the fewest models.
-                candidate_replica_ids = (
-                    self._get_replica_ids_with_fewest_multiplexed_models()
-                )
-                self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
-            elif candidate_replica_ids:
-                self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
-            _set_request_scheduling_context(tried_first_multiplexed_models=True)
-        elif not _get_request_scheduling_context().tried_fewest_multiplexed_models:
-            # After the `multiplexed_matching_timeout` is up, first try
-            # routing to replicas that have the fewest models loaded.
-            # We only try this once to avoid deterministically retrying on
-            # the same replicas repeatedly.
-            candidate_replica_ids = (
-                self._get_replica_ids_with_fewest_multiplexed_models()
-            )
-            _set_request_scheduling_context(tried_fewest_multiplexed_models=True)
-        else:
-            # If the timeout is up, and we've already tried the candidates
-            # with the fewest models loaded, fall back to all replicas.
-            candidate_replica_ids = self._replica_id_set
-        return candidate_replica_ids
-
-
-class PowerOfTwoChoicesReplicaScheduler(
-    MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
-):
+class PrefixAwareReplicaScheduler(ReplicaScheduler):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
     Requests are scheduled in FIFO order.
@@ -273,23 +98,45 @@ class PowerOfTwoChoicesReplicaScheduler(
         self,
         deployment_id: DeploymentID,
         handle_source: DeploymentHandleSource,
+        prefer_local_node_routing: bool = False,
+        prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_actor_handle: Optional[ActorHandle] = None,
+        self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
-        *args,
-        **kwargs,
+        # scheduler_params: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(*args, **kwargs)
+        # Dictionary to track load distribution over time
+        self._load_distribution: Dict[float, Dict[str, int]] = {}
+        self._benchmark_start_time = 0.0
+        self._zero_load_count = 0
+        self._load_tracking_task = None
+        self._num_requests_seen = 0
+        self._timing_output_file = f"/home/ray/default/work/_testing/results/deployment_overhead/{time.strftime('%H-%M-%S')}_id_{random.randint(0, 1000000)}.json"
+
+        # Variables to track prefix match rates / replica
+        self._prefix_match_rates: Dict[str, List[float]] = {}
+        
+        # Extracting tree_deployment from scheduler_params
+        self._tree_deployment = serve.get_deployment_handle("TreeDeployment", app_name="llm_app")
+        if self._tree_deployment is None:
+            raise ValueError("Tree deployment was not found")
+        self.balance_abs_threshold = 10
+        self.balance_rel_threshold = 0.5
+
         self._deployment_id = deployment_id
         self._handle_source = handle_source
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
+        self._self_actor_id = self_actor_id # Why is this needed?
         self._self_actor_handle = self_actor_handle
-
+        self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
 
@@ -308,6 +155,20 @@ class PowerOfTwoChoicesReplicaScheduler(
         # lazily to avoid an error due to the event being attached to the wrong loop.
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
         self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # Colocated replicas (e.g. wrt node, AZ)
+        self._colocated_replica_ids: DefaultDict[
+            LocalityScope, Set[ReplicaID]
+        ] = defaultdict(set)
+        self._multiplexed_model_id_to_replica_ids: DefaultDict[
+            str, Set[ReplicaID]
+        ] = defaultdict(set)
+
+        # When there is no match for a multiplexed model id, we will try to fallback
+        # to all replicas immediately. This set is used to make sure we only fallback
+        # once for concurrent requests for the same model id.
+        # Whenever there is a match, we will remove the the model id from this set.
+        self._multiplexed_model_id_fallback_match: Set[str] = set()
 
         # Tasks running the scheduling loop. The size of this set may vary over time
         # as new tasks will be scheduled when a request comes in or new replicas are
@@ -358,6 +219,12 @@ class PowerOfTwoChoicesReplicaScheduler(
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
+        self._scheduling_assignments_file_path = f"/home/ray/default/work/_testing/results/scheduling_logs/prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        self._scheduling_queue_overhead_file_path = f"/home/ray/default/work/_testing/results/scheduling_logs/prefix_aware_queue_overhead_{int(time.time())}_id_{random.randint(0, 1000000)}.csv"
+        with open(self._scheduling_assignments_file_path, "w") as f:
+            f.write("scheduling_decision,original_request_id,matched_replica_request_id\n")  # Clear the log file at start
+        with open(self._scheduling_queue_overhead_file_path, "w") as f:
+            f.write("num_searched,search_duration\n")  # Clear the log file at start
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -412,6 +279,123 @@ class PowerOfTwoChoicesReplicaScheduler(
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
 
+    async def _track_load_distribution(self):
+        """Track load + vLLM metrics by WorkerId every 0.1s, save to JSON at end."""
+        try:
+            self._benchmark_start_time = time.time()
+            print("Beginning to track load distribution immediately")
+
+            self._vllm_metrics_over_time = {}
+            import requests
+            session = requests.Session()
+            while True:
+                await asyncio.sleep(0.1)
+                current_time = time.time()
+                elapsed = round(current_time - self._benchmark_start_time, 2)
+                total_load = 0
+
+                # === Load distribution ===
+                result = await self._probe_queue_lens(self._replicas.values(), 0)
+                result_dict = {r.replica_id: q for r, q in result}
+                current_load = {}
+
+                for replica_id, replica in self._replicas.items():
+                    queue_len = result_dict[replica_id] or 0
+                    current_load[replica_id.unique_id] = queue_len
+                    total_load += queue_len
+
+                self._load_distribution[elapsed] = current_load
+
+                # === vLLM metrics via curl ===
+                try:
+                    response = session.get("http://localhost:5001/metrics")
+                    output = response.text
+                    # output = subprocess.check_output(["curl", "-s", "http://localhost:5001/metrics"]).decode("utf-8")
+                    lines = output.strip().split("\n")
+                    current_vllm_metrics = {}
+
+                    for line in lines:
+                        if line.startswith("#") or "vllm" not in line:
+                            continue
+
+                        parts = line.split()
+                        if len(parts) != 2:
+                            continue
+
+                        metric_line, value = parts
+                        try:
+                            value = float(value)
+                        except ValueError:
+                            continue
+
+                        # Parse metric name and labels
+                        if "{" in metric_line:
+                            name, label_str = metric_line.split("{", 1)
+                            # if name == "ray_vllm:num_requests_running":
+                            #     total_load += value
+                            label_str = label_str.rstrip("}")
+                            labels = dict(item.split("=") for item in label_str.split(","))
+                            labels = {k: v.strip('"') for k, v in labels.items()}
+                        else:
+                            name = metric_line
+                            labels = {}
+
+                        # Extract WorkerId
+                        worker_id = labels.get("WorkerId", "unknown")
+
+                        # Keep only important label keys
+                        important_keys = {"le", "model_name"}
+                        filtered_labels = {k: v for k, v in labels.items() if k in important_keys}
+
+                        # Append important label suffix to metric name
+                        if filtered_labels:
+                            label_suffix = ",".join(f"{k}={v}" for k, v in sorted(filtered_labels.items()))
+                            metric_key = f"{name}{{{label_suffix}}}"
+                        else:
+                            metric_key = name
+
+                        if worker_id not in current_vllm_metrics:
+                            current_vllm_metrics[worker_id] = {}
+                        current_vllm_metrics[worker_id][metric_key] = value
+
+                    self._vllm_metrics_over_time[elapsed] = current_vllm_metrics
+
+                except Exception as e:
+                    print(f"[WARN] Failed to curl or parse /metrics: {e}")
+                    
+                # === End condition ===
+                # if self._num_requests_seen > 90:
+                if self._num_requests_seen > 10 and total_load == 0:
+                    self._zero_load_count += 1
+                    if self._zero_load_count >= 2:
+                        print("Benchmark ended, writing data to disk")
+
+                        # Dump load distribution
+                        results_dir = "/home/ray/default/work/ray/_prefix_aware_playground/inside_ray/results/load_distributions"
+                        os.makedirs(results_dir, exist_ok=True)
+                        with open(os.path.join(results_dir, f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json"), "w") as f:
+                            json.dump(self._load_distribution, f, indent=2)
+
+                        # Dump prefix match rates
+                        prefix_match_dir = "/home/ray/default/work/ray/_prefix_aware_playground/inside_ray/results/prefix_match_rates"
+                        os.makedirs(prefix_match_dir, exist_ok=True)
+                        with open(os.path.join(prefix_match_dir, f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json"), "w") as f:
+                            json.dump(self._prefix_match_rates, f, indent=2)
+
+                        # Dump vLLM metrics
+                        metrics_dir = "/home/ray/default/work/ray/_prefix_aware_playground/inside_ray/results/vllm_metrics"
+                        os.makedirs(metrics_dir, exist_ok=True)
+                        with open(os.path.join(metrics_dir, f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json"), "w") as f:
+                            json.dump(self._vllm_metrics_over_time, f, indent=2)
+
+                        break
+                else:
+                    self._zero_load_count = 0
+        except Exception as e:
+            print(f"Error in load tracking: {e}")
+        finally:
+            self._load_tracking_task = None
+
     def create_replica_wrapper(
         self, replica_info: RunningReplicaInfo
     ) -> RunningReplica:
@@ -421,7 +405,8 @@ class PowerOfTwoChoicesReplicaScheduler(
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
         self._replica_id_set.discard(replica_id)
-        self.discard_colocated_replica_ids_on_replica_actor_died(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
@@ -444,8 +429,8 @@ class PowerOfTwoChoicesReplicaScheduler(
         """
         new_replicas = {}
         new_replica_id_set = set()
-        self.update_multiplexed_model_ids_with_replicas(replicas)
-        self.update_discard_colocated_replica_ids_with_replicas(replicas)
+        new_colocated_replica_ids = defaultdict(set)
+        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
@@ -459,6 +444,17 @@ class PowerOfTwoChoicesReplicaScheduler(
 
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
+            if self._self_node_id is not None and r.node_id == self._self_node_id:
+                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
+            if (
+                self._self_availability_zone is not None
+                and r.availability_zone == self._self_availability_zone
+            ):
+                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
+                    r.replica_id
+                )
+            for model_id in r.multiplexed_model_ids:
+                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
             replica_id_set_strs = {r.unique_id for r in new_replica_id_set}
@@ -474,6 +470,10 @@ class PowerOfTwoChoicesReplicaScheduler(
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
+        self._colocated_replica_ids = new_colocated_replica_ids
+        self._multiplexed_model_id_to_replica_ids = (
+            new_multiplexed_model_id_to_replica_ids
+        )
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
@@ -482,9 +482,28 @@ class PowerOfTwoChoicesReplicaScheduler(
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
-    async def choose_replicas(
+        # # Start load tracking task if it's not already running and we have replicas
+        # if self._load_tracking_task is None and len(self._replicas) > 0:
+        #     self._load_tracking_task = self._event_loop.create_task(self._track_load_distribution())
+
+    def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
+        """Get the set of replicas that have the fewest multiplexed models loaded."""
+        candidates = set()
+        sorted_replicas = sorted(
+            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
+        )
+        least_num_multiplexed_model_ids = math.inf
+        for replica in sorted_replicas:
+            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
+                candidates.add(replica.replica_id)
+                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
+            else:
+                break
+
+        return candidates
+
+    async def choose_two_replicas_with_backoff(
         self,
-        request_scheduling_context: _RequestSchedulingContext,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """Generator that repeatedly chooses (at most) two random available replicas.
@@ -502,12 +521,20 @@ class PowerOfTwoChoicesReplicaScheduler(
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
         """
-        if not request_scheduling_context:
-            request_scheduling_context = _RequestSchedulingContext()
 
-        entered_backoff = False
         try:
             backoff_index = 0
+            entered_backoff = False
+
+            tried_same_az = False
+            tried_same_node = False
+
+            multiplexed_start_matching_time = None
+            multiplexed_matching_timeout = random.uniform(
+                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+            )
+            tried_fewest_multiplexed_models = False
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
@@ -525,28 +552,94 @@ class PowerOfTwoChoicesReplicaScheduler(
                         extra={"log_to_stderr": False},
                     )
 
-                multiplexed_start_matching_time = time.time()
+                if multiplexed_start_matching_time is None:
+                    multiplexed_start_matching_time = time.time()
+
+                candidate_replica_ids = None
                 if (
                     request_metadata is not None
                     and request_metadata.multiplexed_model_id
                 ):
                     # Get candidates for multiplexed model ID.
-                    candidate_replica_ids = self.apply_multiplex_scheduling(
-                        multiplexed_model_id=request_metadata.multiplexed_model_id,
-                        multiplexed_start_matching_time=multiplexed_start_matching_time,
+                    if (
+                        time.time() - multiplexed_start_matching_time
+                        < multiplexed_matching_timeout
+                    ):
+                        candidate_replica_ids = (
+                            self._multiplexed_model_id_to_replica_ids.get(
+                                request_metadata.multiplexed_model_id, None
+                            )
+                        )
+                        if (
+                            not candidate_replica_ids
+                            and request_metadata.multiplexed_model_id
+                            not in self._multiplexed_model_id_fallback_match
+                        ):
+                            # When there is no match for a multiplexed model id,
+                            # first try to fall back to replicas with the fewest models.
+                            candidate_replica_ids = (
+                                self._get_replica_ids_with_fewest_multiplexed_models()
+                            )
+                            self._multiplexed_model_id_fallback_match.add(
+                                request_metadata.multiplexed_model_id
+                            )
+                        elif candidate_replica_ids:
+                            self._multiplexed_model_id_fallback_match.discard(
+                                request_metadata.multiplexed_model_id
+                            )
+                    elif not tried_fewest_multiplexed_models:
+                        # After the `multiplexed_matching_timeout` is up, first try
+                        # routing to replicas that have the fewest models loaded.
+                        # We only try this once to avoid deterministically retrying on
+                        # the same replicas repeatedly.
+                        candidate_replica_ids = (
+                            self._get_replica_ids_with_fewest_multiplexed_models()
+                        )
+                        tried_fewest_multiplexed_models = True
+                    else:
+                        # If the timeout is up and we've already tried the candidates
+                        # with the fewest models loaded, fall back to all replicas.
+                        candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
+                elif (
+                    self._prefer_local_node_routing
+                    and not tried_same_node
+                    and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+                ):
+                    # Attempt to schedule requests to replicas on the
+                    # same node at most once
+                    candidate_replica_ids = self._colocated_replica_ids[
+                        LocalityScope.NODE
+                    ]
+                    tried_same_node = True
+                    should_backoff = False
+                elif (
+                    self._prefer_local_az_routing
+                    and not tried_same_az
+                    and len(
+                        self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
                     )
-                    _set_request_scheduling_context(should_backoff=True)
+                    > 0
+                ):
+                    # Attempt to schedule requests to replicas in the same
+                    # AZ at most once
+                    candidate_replica_ids = self._colocated_replica_ids[
+                        LocalityScope.AVAILABILITY_ZONE
+                    ]
+                    tried_same_az = True
+                    should_backoff = False
                 else:
-                    # Get candidates for locality preference.
-                    candidate_replica_ids = self.apply_locality_scheduling()
+                    # On subsequent iterations or when there are no replicas on the same
+                    # node or AZ, consider all available replicas.
+                    candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
 
-                # print(f"in choose_replicas {candidate_replica_ids=}")
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
                         list(candidate_replica_ids),
-                        k=min(2, len(candidate_replica_ids)),
+                        # k=min(2, len(candidate_replica_ids))
+                        k=len(candidate_replica_ids)
                     )
-                    # print(f"{chosen_ids=}")
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
                 # We have a slight unintended behavior when enabled locality routing
@@ -555,7 +648,7 @@ class PowerOfTwoChoicesReplicaScheduler(
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not _get_request_scheduling_context().should_backoff:
+                if not should_backoff:
                     continue
 
                 if not entered_backoff:
@@ -677,10 +770,22 @@ class PowerOfTwoChoicesReplicaScheduler(
         assert len(result) == len(replicas)
         return result
 
+    def _get_input_text(self, pending_request: PendingRequest) -> str:
+        chat_completion_request = pending_request.args[0]
+        # print(f"[prefix_aware_scheduler.py: _get_input_text] Chat completion request: {chat_completion_request}")
+        if hasattr(chat_completion_request, "messages"):
+            messages = chat_completion_request.messages
+            return "".join(msg.get("content", "") for msg in messages if "content" in msg)
+        elif hasattr(chat_completion_request, "prompt"):
+            return chat_completion_request.prompt
+        else:
+            raise ValueError("Invalid chat completion request")
+
     async def select_from_candidate_replicas(
         self,
         candidates: List[RunningReplica],
         backoff_index: int,
+        pending_request: Optional[PendingRequest],
     ) -> Optional[RunningReplica]:
         """Chooses the best replica from the list of candidates.
 
@@ -692,7 +797,13 @@ class PowerOfTwoChoicesReplicaScheduler(
         Among replicas that respond within the deadline and don't have full queues, the
         one with the lowest queue length is chosen.
         """
+        # # Artificial random delay to test scheduling mismatch
+        # await asyncio.sleep(random.uniform(0.0, 0.1))
+        # # End artificial random delay
+
+        # BEGIN POW 2 LOGIC
         lowest_queue_len = math.inf
+        highest_queue_len = 0
         chosen_replica_id: Optional[str] = None
         not_in_cache: List[RunningReplica] = []
         if self._use_replica_queue_len_cache:
@@ -700,13 +811,15 @@ class PowerOfTwoChoicesReplicaScheduler(
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
                 # Include replicas whose queues are full as not in the cache so we will
-                # actively probe them. Otherwise, we may end up in "deadlock" until
-                # their cache entries expire.
+                # actively probe them. Otherwise we may end up in "deadlock" until their
+                # cache entries expire.
                 if queue_len is None or queue_len >= r.max_ongoing_requests:
                     not_in_cache.append(r)
-                elif queue_len < lowest_queue_len:
-                    lowest_queue_len = queue_len
-                    chosen_replica_id = r.replica_id
+                else:
+                    highest_queue_len = max(highest_queue_len, queue_len)
+                    if queue_len < lowest_queue_len:
+                        lowest_queue_len = queue_len
+                        chosen_replica_id = r.replica_id
         else:
             not_in_cache = candidates
 
@@ -720,7 +833,7 @@ class PowerOfTwoChoicesReplicaScheduler(
                 if queue_len is None:
                     # None is returned if we failed to get the queue len.
                     continue
-
+                highest_queue_len = max(highest_queue_len, queue_len)
                 if queue_len < r.max_ongoing_requests and queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
@@ -730,27 +843,105 @@ class PowerOfTwoChoicesReplicaScheduler(
             self._event_loop.create_task(
                 self._probe_queue_lens(not_in_cache, backoff_index)
             )
+        # END POW 2 LOGIC
 
-        # `self._replicas` may have been updated since the candidates were chosen.
-        # In that case, return `None` so a new one is selected.
+        # BEGIN PREFIX AWARE LOGIC
+        request_id = self._num_requests_seen + 1
+        timing_info = {"request_id": request_id}
+        # Determine if the load is imbalanced.
+        if pending_request is not None:
+            input_text = self._get_input_text(pending_request)
+            is_imbalanced = highest_queue_len - lowest_queue_len > 10
+            # if is_imbalanced:
+            if False:
+                pass
+            else:
+                timing_info["before_calling_prefix_match"] = time.time()
+                matched_text, tenant_id, match_timing = await self._tree_deployment.prefix_match.remote(input_text)
+                timing_info.update(match_timing)
+                timing_info["after_calling_prefix_match"] = time.time()
+                match_rate = len(matched_text) / len(input_text) if input_text else 0
+                if match_rate < 0.1:
+                    # chosen_replica = self._tree_deployment.get_smallest_tenant.remote()
+                    pass
+                else:
+                    for replica in candidates:
+                        if tenant_id == replica.replica_id:
+                            chosen_replica_id = replica.replica_id
+                
+                # If no good match was found or match rate was too low
+                if chosen_replica_id is None or chosen_replica_id == "empty":
+                    pass
+        # END PREFIX AWARE LOGIC
+
+        # # BEGIN PREFIX MATCH RATE TRACKING
+        # if pending_request is not None:
+        #     input_text = self._get_input_text(pending_request)
+        #     matched_text = await self._tree_deployment.prefix_match_tenant.remote(input_text, chosen_replica_id)
+        #     # matched_text = self._tree_deployment.prefix_match_tenant(input_text, chosen_replica_id)
+        #     if chosen_replica_id.unique_id not in self._prefix_match_rates:
+        #         self._prefix_match_rates[chosen_replica_id.unique_id] = []
+        #     if matched_text is not None:
+        #         self._prefix_match_rates[chosen_replica_id.unique_id].append(len(matched_text) / len(input_text))
+        #     else:
+        #         self._prefix_match_rates[chosen_replica_id.unique_id].append(0.0)
+        # # END PREFIX MATCH RATE TRACKING
+
+        # BEGIN UPDATE TREE
+        if pending_request is not None:
+            input_text = self._get_input_text(pending_request)
+            timing_info["before_calling_insert"] = time.time()
+            success, insert_timing = await self._tree_deployment.insert.remote(input_text, tenant=chosen_replica_id)
+            timing_info.update(insert_timing)
+            timing_info["after_calling_insert"] = time.time()
+        # END UPDATE TREE
+        
+        # # write to file takes very little time (< 1 ms)
+        # with open(self._timing_output_file, "a") as f:
+        #     f.write(json.dumps(timing_info) + "\n")
+        self._num_requests_seen += 1
         return self._replicas.get(chosen_replica_id, None)
 
     def _get_pending_request_matching_metadata(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
-            return None
+        selected_pr = None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
-                return pr
+        # First, try to match based on multiplexed model ID:
+        if request_metadata is not None and request_metadata.multiplexed_model_id:
+            for pr in self._pending_requests_to_fulfill:
+                if (
+                    not pr.future.done()
+                    and pr.metadata.multiplexed_model_id
+                    == request_metadata.multiplexed_model_id
+                ):
+                    selected_pr = pr
+                    with open(self._scheduling_assignments_file_path, "a") as f:
+                        f.write(f"multiplexed_model_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
 
-        return None
+                    break
+        # # Second, try to match based on internal request ID:
+        # num_searched = 0
+        # search_start = time.time()
+        # if selected_pr is None and request_metadata is not None and request_metadata.internal_request_id:
+        #     for pr in self._pending_requests_to_fulfill:
+        #         num_searched += 1
+        #         if (
+        #             not pr.future.done()
+        #             and pr.metadata.internal_request_id
+        #             == request_metadata.internal_request_id
+        #         ):
+        #             with open(self._scheduling_assignments_file_path, "a") as f:
+        #                 f.write(f"internal_request_id,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
+        #             selected_pr = pr
+        #             break
+
+        # search_duration = time.time() - search_start
+        # with open(self._scheduling_queue_overhead_file_path, "a") as f:
+        #     f.write(f"{num_searched},{search_duration}\n")
+
+        return selected_pr
 
     def fulfill_next_pending_request(
         self,
@@ -767,7 +958,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
-        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
@@ -777,18 +967,20 @@ class PowerOfTwoChoicesReplicaScheduler(
         # queue in FIFO order, passing over futures that have been cancelled.
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
-            # print(f"{pr=} {pr.future.done()=}")
             if not pr.future.done():
+                with open(self._scheduling_assignments_file_path, "a") as f:
+                    f.write(f"FIFO,{pr.metadata.internal_request_id},{request_metadata.internal_request_id}\n")
                 pr.future.set_result(replica)
                 break
 
+    # Modify this to pass pending_request too
     def _get_next_pending_request_metadata_to_schedule(
         self,
-    ) -> Optional[RequestMetadata]:
+    ) -> Optional[Tuple[RequestMetadata, PendingRequest]]:
         while len(self._pending_requests_to_schedule) > 0:
             pr = self._pending_requests_to_schedule.popleft()
             if not pr.future.done():
-                return pr.metadata
+                return pr.metadata, pr
 
         return None
 
@@ -801,14 +993,23 @@ class PowerOfTwoChoicesReplicaScheduler(
         has exceeded the target number. Else it will loop again to schedule another
         replica.
         """
+        # print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] called")
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
                 start_time = time.time()
                 backoff_index = 0
-                request_metadata = self._get_next_pending_request_metadata_to_schedule()
-                async for candidates in self.choose_replicas(
-                    _RequestSchedulingContext(), request_metadata
+                result = self._get_next_pending_request_metadata_to_schedule()
+                if result is None:
+                    request_metadata = None
+                    pending_request = None
+                else:
+                    request_metadata, pending_request = result
+                # print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] Request metadata: {request_metadata}")
+                # print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] Pending request: {pending_request}")
+                async for candidates in self.choose_two_replicas_with_backoff(
+                    request_metadata
                 ):
+                    # print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] Candidates: {candidates}")
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
                     # if we need to continue this scheduling task.
@@ -822,12 +1023,13 @@ class PowerOfTwoChoicesReplicaScheduler(
                         break
 
                     replica = await self.select_from_candidate_replicas(
-                        candidates, backoff_index
+                        candidates, backoff_index, pending_request
                     )
-                    # print(f"in fulfill_pending_requests {candidates=} {backoff_index=} {replica=} {_get_request_scheduling_context()}")
                     if replica is not None:
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
+                    else:
+                        print(f"[prefix_aware_scheduler.py: fulfill_pending_requests] No replica found for request {request_metadata.internal_request_id}")
 
                     backoff_index += 1
                     if backoff_index >= 50 and backoff_index % 50 == 0:
@@ -851,7 +1053,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
-            # print("finally called")
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
@@ -865,6 +1066,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         in for scheduling. However, in cases where the number of available replicas
         is updated or a task exits unexpectedly, we may need to start multiple.
         """
+        # print(f"[prefix_aware_scheduler.py: maybe_start_scheduling_tasks] maybe_start_scheduling_tasks() called")
         tasks_to_start = (
             self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
         )
@@ -912,7 +1114,6 @@ class PowerOfTwoChoicesReplicaScheduler(
                     index += 1
 
                 self._pending_requests_to_schedule.insert(index, pending_request)
-
             self.maybe_start_scheduling_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
