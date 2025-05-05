@@ -249,14 +249,8 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # any worker group, skip it.
                 continue
 
-            if num_workers_dict[to_delete_instances.node_type] <= 0:
-                logger.warning(
-                    "Autoscaler attempted to delete more workers than "
-                    + "exist of type {}.".format(node_type)
-                )
-            num_workers_dict[to_delete_instance.node_type] = max(
-                0, num_workers_dict[to_delete_instance.node_type] - 1
-            )
+            num_workers_dict[to_delete_instance.node_type] -= 1
+            assert num_workers_dict[to_delete_instance.node_type] >= 0
             to_delete_instances_by_type[to_delete_instance.node_type].append(
                 to_delete_instance
             )
