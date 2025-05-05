@@ -32,7 +32,6 @@
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
@@ -63,15 +62,13 @@ class TaskReceiver {
 
   using OnActorCreationTaskDone = std::function<Status()>;
 
-  TaskReceiver(WorkerContext &worker_context,
-               instrumented_io_context &main_io_service,
+  TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
                std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done)
-      : worker_context_(worker_context),
-        task_handler_(std::move(task_handler)),
-        task_main_io_service_(main_io_service),
+      : task_handler_(std::move(task_handler)),
+        task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(actor_creation_task_done),
@@ -124,12 +121,10 @@ class TaskReceiver {
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
-  // Worker context.
-  WorkerContext &worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
-  /// The IO event loop for running tasks on.
-  instrumented_io_context &task_main_io_service_;
+  /// The event loop for running tasks on.
+  instrumented_io_context &task_execution_service_;
   worker::TaskEventBuffer &task_event_buffer_;
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;

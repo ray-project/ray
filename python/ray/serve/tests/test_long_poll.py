@@ -25,8 +25,10 @@ from ray.serve._private.long_poll import (
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo as DeploymentTargetInfoProto,
+    EndpointSet,
+    LongPollRequest,
+    LongPollResult,
 )
-from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
 
 
 def test_notifier_events_cleared_without_update(serve_instance):

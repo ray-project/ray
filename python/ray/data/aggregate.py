@@ -432,9 +432,6 @@ class AbsMax(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        return max(current_accumulator, new)
-
     def aggregate_block(self, block: Block) -> AggType:
         block_accessor = BlockAccessor.for_block(block)
 
@@ -448,6 +445,9 @@ class AbsMax(AggregateFnV2):
             abs(max_),
             abs(min_),
         )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return max(current_accumulator, new)
 
 
 @PublicAPI
