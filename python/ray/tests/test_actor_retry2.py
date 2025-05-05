@@ -24,7 +24,6 @@ class Counter:
         return self.count
 
 
-# TODO: also do work for async and threaded actors
 @ray.remote(max_task_retries=3)
 class TroubleMaker:
     @ray.method(max_task_retries=5, retry_exceptions=[MyError])
@@ -112,7 +111,7 @@ class AsyncTroubleMaker:
                 return
 
 
-def test_generator_method_no_retry_without_retry_exceptions(shutdown_only):
+def test_generator_method_no_retry_without_retry_exceptions(ray_start_regular_shared):
     counter = Counter.remote()
     trouble_maker = AsyncTroubleMaker.remote()
 
@@ -135,7 +134,7 @@ def test_generator_method_no_retry_without_retry_exceptions(shutdown_only):
     assert ray.get(counter.get_count.remote()) == 2
 
 
-def test_generator_method_retry_exact_times(shutdown_only):
+def test_generator_method_retry_exact_times(ray_start_regular_shared):
     counter = Counter.remote()
     trouble_maker = AsyncTroubleMaker.remote()
 
@@ -166,7 +165,7 @@ def test_generator_method_retry_exact_times(shutdown_only):
     assert ray.get(counter.get_count.remote()) == 9
 
 
-def test_generator_method_does_not_over_retry(shutdown_only):
+def test_generator_method_does_not_over_retry(ray_start_regular_shared):
     counter = Counter.remote()
     trouble_maker = AsyncTroubleMaker.remote()
 
@@ -215,7 +214,7 @@ def test_generator_method_does_not_over_retry(shutdown_only):
     "max_task_retries", [-1, 4], ids=lambda r: f"max_task_retries({r})"
 )
 def test_method_raise_and_exit(
-    actions, actor_model, max_restarts, max_task_retries, shutdown_only
+    actions, actor_model, max_restarts, max_task_retries, ray_start_regular_shared
 ):
     """
     Test we can endure a mix of raises and exits. Note the number of exits we can endure
@@ -264,7 +263,7 @@ def test_method_raise_and_exit(
 )
 @pytest.mark.parametrize("actor_model", ["sync", "async", "threaded"])
 def test_method_raise_and_exit_no_over_retry(
-    actions_and_error, actor_model, shutdown_only
+    actions_and_error, actor_model, ray_start_regular_shared
 ):
     """
     Test we do not over retry.
@@ -302,7 +301,7 @@ def test_method_raise_and_exit_no_over_retry(
 @pytest.mark.parametrize(
     "is_async", [False, True], ids=lambda a: "async" if a else "sync"
 )
-def test_exit_only(is_async, shutdown_only):
+def test_exit_only(is_async, ray_start_regular_shared):
     """
     Sanity testing: only do exit-retry works
     """
