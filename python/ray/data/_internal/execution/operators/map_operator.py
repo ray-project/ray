@@ -473,7 +473,10 @@ class MapOperator(OneToOneOperator, ABC):
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
 
-    def shutdown(self, force: bool = False):
+    def _do_shutdown(self, force: bool = False):
+        # Invoke base-class sequence
+        super()._do_shutdown(force)
+        # Release refs
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 
@@ -561,6 +564,10 @@ class _BlockRefBundler:
                 bundle up to this target, but only exceed it if not doing so would
                 result in an empty bundle.
         """
+        assert (
+            min_rows_per_bundle is None or min_rows_per_bundle >= 0
+        ), "Min rows per bundle has to be non-negative"
+
         self._min_rows_per_bundle = min_rows_per_bundle
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0

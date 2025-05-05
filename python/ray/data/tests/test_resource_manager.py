@@ -290,7 +290,7 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         o2.metrics.on_output_dequeued(input)
-        topo[o2].outqueue.append(input)
+        topo[o2].output_queue.append(input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -298,7 +298,7 @@ class TestResourceManager:
 
         # Objects in the current operator's internal inqueue count towards the previous
         # operator's object store memory usage.
-        o3.metrics.on_input_queued(topo[o2].outqueue.pop())
+        o3.metrics.on_input_queued(topo[o2].output_queue.pop())
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1

@@ -7,7 +7,6 @@ import numpy as np
 
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import DeveloperAPI
 
 _, tf, _ = try_import_tf()
@@ -369,22 +368,27 @@ class Stats:
 
             # Shift historic reduced valued by one in our reduce_history.
             if self._reduce_method is not None or not self._inf_window:
-                # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window, otherwise we duplicate values into the history and the history can blow up.
-                # We need to extend it with a copy because reduced values are (possibly) references to the internal values list and will be mutated by following reduce calls.
-                self._reduce_history.append(new_values_list.copy())
+                # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window.
+                # We need to make a copy here because the new_values_list is a reference to the internal values list
+                self._reduce_history.append(
+                    self._numpy_if_necessary(new_values_list.copy())
+                )
+
             values_list = new_values_list
         else:
             reduced = None
             values_list = self._reduce_history[-1]
+
+        values_list = self._numpy_if_necessary(values_list)
 
         if compile:
             if self._reduce_method is None:
                 return values_list
             elif reduced is None:
                 reduced = self._reduced_values()[0]
-            return reduced[0]
+            return self._numpy_if_necessary(reduced)[0]
         else:
-            return list(values_list)
+            return self._numpy_if_necessary(values_list)
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -483,22 +487,13 @@ class Stats:
         # Mark that we have new values since we modified the values list
         self._has_new_values = True
 
-    def set_to_numpy_values(self, values) -> None:
-        """Converts `self.values` from tensors to actual numpy values.
-
-        Args:
-            values: The (numpy) values to set `self.values` to.
-        """
-        numpy_values = convert_to_numpy(values)
-        if self._reduce_method is None:
-            assert isinstance(values, list) and len(self.values) >= len(values)
-            self.values = numpy_values
-        else:
-            assert len(self.values) > 0
-            self._set_values(force_list(numpy_values))
-
-        # Mark that we have new values since we modified the values list
-        self._has_new_values = True
+    @staticmethod
+    def _numpy_if_necessary(values):
+        # Torch tensor handling. Convert to CPU/numpy first.
+        if torch and len(values) > 0 and torch.is_tensor(values[0]):
+            # Convert all tensors to numpy values.
+            values = [v.cpu().numpy() for v in values]
+        return values
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -737,14 +732,11 @@ class Stats:
                 return [mean_value], [mean_value]
             else:
                 return [mean_value], values
-        # Do non-EMA reduction (possibly using a window).
+        # Non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                assert all(torch.is_tensor(v) for v in values), values
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
+                # Only one item in the
                 if len(values[0].shape) == 0:
                     reduced = values[0]
                 else:
@@ -753,21 +745,6 @@ class Stats:
                     if self._reduce_method == "mean":
                         reduce_in = reduce_in.float()
                     reduced = reduce_meth(reduce_in)
-            elif tf and tf.is_tensor(values[0]):
-                # TODO (sven): Currently, tensor metrics only work with window=1.
-                #  We might want o enforce it more formally, b/c it's probably not a
-                #  good idea to have MetricsLogger or Stats tinker with the actual
-                #  computation graph that users are trying to build in their loss
-                #  functions.
-                assert len(values) == 1
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
-                    reduced = values[0]
-                else:
-                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                    reduced = reduce_meth(values)
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
 

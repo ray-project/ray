@@ -122,7 +122,6 @@ class MetricsLogger:
         """
         self.stats = {}
         self._tensor_mode = False
-        self._tensor_keys = set()
         # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
         #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
         #  An actual RLock, however, breaks our current OfflineData and
@@ -378,7 +377,7 @@ class MetricsLogger:
         if with_throughput and throughput_ema_coeff is None:
             throughput_ema_coeff = 0.05
 
-        self._check_tensor(key, value)
+        value = self._detach_tensor_if_necessary(value)
 
         with self._threading_lock:
             # `key` doesn't exist -> Automatically create it.
@@ -944,9 +943,6 @@ class MetricsLogger:
 
         try:
             with self._threading_lock:
-                assert (
-                    not self.tensor_mode
-                ), "Can't reduce if `self.tensor_mode` is True!"
                 reduced_stats_to_return = tree.map_structure_with_path(
                     _reduce, self.stats
                 )
@@ -963,48 +959,22 @@ class MetricsLogger:
         return reduced_stats_to_return
 
     def activate_tensor_mode(self):
-        """Switches to tensor-mode, in which in-graph tensors can be logged.
-
-        Should be used before calling in-graph/copmiled functions, for example loss
-        functions. The user can then still call the `log_...` APIs, but each incoming
-        value will be checked for a) whether it is a tensor indeed and b) the `window`
-        args must be 1 (MetricsLogger does not support any tensor-framework reducing
-        operations).
-
-        When in tensor-mode, we also track all incoming `log_...` values and return
-        them TODO (sven) continue docstring
-
-        """
-        self._threading_lock.acquire()
-        assert not self.tensor_mode
         self._tensor_mode = True
 
     def deactivate_tensor_mode(self):
-        """Switches off tensor-mode."""
-        assert self.tensor_mode
         self._tensor_mode = False
-        # Return all logged tensors (logged during the tensor-mode phase).
-        logged_tensors = {
-            key: self._get_key(key).peek(compile=False) for key in self._tensor_keys
-        }
-        # Clear out logged tensor keys.
-        self._tensor_keys.clear()
-        return logged_tensors
-
-    def tensors_to_numpy(self, tensor_metrics):
-        """Converts all previously logged and returned tensors back to numpy values.
-
-        Args:
-            tensor_metrics: Dictionary containing tensor metrics to be converted to numpy.
-        """
-        for key, values in tensor_metrics.items():
-            assert self._key_in_stats(key)
-            self._get_key(key).set_to_numpy_values(values)
-        self._threading_lock.release()
 
     @property
     def tensor_mode(self):
         return self._tensor_mode
+
+    def _detach_tensor_if_necessary(self, value):
+        if self.tensor_mode:
+            if torch and torch.is_tensor(value):
+                return value.detach()
+            elif tf and tf.is_tensor(value):
+                return tf.stop_gradient(value)
+        return value
 
     def set_value(
         self,
@@ -1101,7 +1071,6 @@ class MetricsLogger:
         """
         with self._threading_lock:
             self.stats = {}
-            self._tensor_keys = set()
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1142,13 +1111,6 @@ class MetricsLogger:
         with self._threading_lock:
             for flat_key, stats_state in state["stats"].items():
                 self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
-
-    def _check_tensor(self, key: Tuple[str], value) -> None:
-        # `value` is a tensor -> Log it in our keys set.
-        if self.tensor_mode and (
-            (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value))
-        ):
-            self._tensor_keys.add(key)
 
     def _key_in_stats(self, flat_key, *, stats=None):
         flat_key = force_tuple(tree.flatten(flat_key))
@@ -1193,10 +1155,6 @@ class MetricsLogger:
         flat_key = force_tuple(tree.flatten(flat_key))
 
         with self._threading_lock:
-            # Erase the tensor key as well, if applicable.
-            if flat_key in self._tensor_keys:
-                self._tensor_keys.discard(flat_key)
-
             # Erase the key from the (nested) `self.stats` dict.
             _dict = self.stats
             try:

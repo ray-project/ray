@@ -45,8 +45,6 @@ TEST_METRICS_EXPORT_PORT = 9999
 def serve_start_shutdown(request):
     param = request.param if hasattr(request, "param") else None
     request_timeout_s = param if param else None
-    if request_timeout_s:
-        os.environ["RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S"] = str(request_timeout_s)
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
@@ -64,6 +62,7 @@ def serve_start_shutdown(request):
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            request_timeout_s=request_timeout_s,
         ),
         http_options=HTTPOptions(
             request_timeout_s=request_timeout_s,
@@ -72,8 +71,6 @@ def serve_start_shutdown(request):
     serve.shutdown()
     ray.shutdown()
     ray._private.utils.reset_ray_address()
-    if request_timeout_s:
-        os.environ.pop("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S")
 
 
 def extract_tags(line: str) -> Dict[str, str]:

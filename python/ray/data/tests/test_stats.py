@@ -88,6 +88,8 @@ def gen_expected_metrics(
             "'num_task_outputs_generated': N",
             "'bytes_task_outputs_generated': N",
             "'rows_task_outputs_generated': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -119,7 +121,8 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_outqueue': Z",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
-            "'rows_task_outputs_generated': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             (
@@ -604,6 +607,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -722,6 +727,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -795,6 +802,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_task_outputs_generated: N,\n"
         "            bytes_task_outputs_generated: N,\n"
         "            rows_task_outputs_generated: N,\n"
+        "            row_outputs_taken: N,\n"
+        "            block_outputs_taken: N,\n"
         "            num_outputs_taken: N,\n"
         "            bytes_outputs_taken: N,\n"
         "            num_outputs_of_finished_tasks: N,\n"
