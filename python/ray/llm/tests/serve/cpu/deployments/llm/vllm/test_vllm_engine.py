@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from ray.llm._internal.serve.configs.server_models import FinishReason
-from ray.llm._internal.serve.deployments.utils.batcher import LLMRawResponsesBatcher
+from ray.llm._internal.serve.deployments.utils.batcher import LLMRawResponseBatcher
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
     VLLMEngine,
 )
@@ -267,7 +267,7 @@ class TestBatching:
     @pytest.mark.asyncio
     async def test_batch(self):
         count = 0
-        batcher = LLMRawResponsesBatcher(fake_generator())
+        batcher = LLMRawResponseBatcher(fake_generator())
         async for x in batcher.stream():
             count += 1
             assert x.num_generated_tokens == 100
@@ -280,7 +280,7 @@ class TestBatching:
     @pytest.mark.asyncio
     async def test_batch_timing(self):
         count = 0
-        batcher = LLMRawResponsesBatcher(fake_generator_slow(num_batches=10))
+        batcher = LLMRawResponseBatcher(fake_generator_slow(num_batches=10))
         async for _x in batcher.stream():
             count += 1
 
@@ -296,7 +296,7 @@ class TestBatching:
         the last response if it returns quickly."""
         count = 0
         token_count = 0
-        batcher = LLMRawResponsesBatcher(fake_generator_slow_last_return_immediate())
+        batcher = LLMRawResponseBatcher(fake_generator_slow_last_return_immediate())
         last_response = None
         async for _x in batcher.stream():
             count += 1
@@ -316,7 +316,7 @@ class TestBatching:
     async def test_batch_no_interval(self):
         """Check that the class creates only one batch if there's no interval."""
 
-        batcher = LLMRawResponsesBatcher(
+        batcher = LLMRawResponseBatcher(
             fake_generator_slow(num_batches=10), interval_ms=None
         )
 
@@ -339,7 +339,7 @@ class TestBatching:
                 raise ValueError()
 
         count = 0
-        batched = LLMRawResponsesBatcher(
+        batched = LLMRawResponseBatcher(
             generator_should_raise(), interval_ms=interval_ms
         )
 
@@ -378,7 +378,7 @@ class TestBatching:
                     if to_cancel == "inner":
                         raise asyncio.CancelledError()
 
-        batched = LLMRawResponsesBatcher(
+        batched = LLMRawResponseBatcher(
             generator_should_raise(), interval_ms=interval_ms
         )
 
