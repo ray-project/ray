@@ -577,7 +577,7 @@ void NormalTaskSubmitter::PushNormalTask(
        is_actor_creation,
        scheduling_key,
        addr,
-       assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+       assigned_resources](Status status, rpc::PushTaskReply &&reply) {
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
@@ -639,8 +639,9 @@ void NormalTaskSubmitter::PushNormalTask(
                          task_id,
                          gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
                                               reply.task_execution_error()))) {
+            bool is_application_error = reply.is_application_error();
             task_finisher_.CompletePendingTask(
-                task_id, reply, addr, reply.is_application_error());
+                task_id, std::move(reply), addr, is_application_error);
           }
         }
       });
