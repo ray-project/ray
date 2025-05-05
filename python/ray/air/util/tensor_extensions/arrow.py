@@ -699,7 +699,7 @@ class _ArrowTensorScalarIndexingMixin:
 # mixin's overriding methods appear first in the MRO.
 # TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
 @PublicAPI(stability="beta")
-class ArrowTensorArray(pa.ExtensionArray):
+class ArrowTensorArray(pa.FixedShapeTensorArray):
     """
     An array of fixed-shape, homogeneous-typed tensors.
 
@@ -714,7 +714,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         cls,
         arr: Union[np.ndarray, Iterable[np.ndarray]],
         column_name: Optional[str] = None,
-    ) -> pa.FixedShapeTensorArray:
+    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Convert a single ndarray or an iterable of ndarrays into
         a FixedShapeTensorArray via PyArrow's native implementation.
