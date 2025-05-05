@@ -302,6 +302,7 @@ def submit(
             cli_logger.print(cf.bold(f"ray job stop {job_id}"))
 
     cli_logger.newline()
+    cli_logger.flush()
     sdk_version = client.get_version()
     # sdk version 0 does not have log streaming
     if not no_wait:
