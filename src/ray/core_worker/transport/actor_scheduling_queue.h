@@ -46,7 +46,7 @@ const int kMaxReorderWaitSeconds = 30;
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
-      instrumented_io_context &main_io_service,
+      instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,

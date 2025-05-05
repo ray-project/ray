@@ -66,9 +66,7 @@ aioitertools==0.11.0
 aiorwlock==1.3.0
     # via -r python/requirements.txt
 aiosignal==1.3.1
-    # via
-    #   aiohttp
-    #   ray
+    # via aiohttp
 aiosqlite==0.19.0
     # via ypy-websocket
 alabaster==0.7.13
@@ -186,7 +184,6 @@ backcall==0.2.0
 backoff==1.10.0
     # via
     #   -r python/requirements/test-requirements.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
     #   segment-analytics-python
 base58==2.0.1
     # via aimrecords
@@ -238,10 +235,11 @@ braceexpand==0.1.7
     # via webdataset
 bracex==2.4
     # via wcmatch
-cachetools==5.3.2
+cachetools==5.5.2
     # via
     #   aim
     #   google-auth
+    #   pyiceberg
 certifi==2025.1.31
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -411,6 +409,12 @@ delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
 deltalake==0.18.2
     # via -r python/requirements/ml/data-test-requirements.txt
+deprecated==1.2.18
+    # via
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-semantic-conventions
 dill==0.3.7
     # via
     #   datasets
@@ -544,7 +548,6 @@ frozenlist==1.4.1
     # via
     #   aiohttp
     #   aiosignal
-    #   ray
 fs==2.4.16
     # via triad
 fsspec==2023.5.0
@@ -653,6 +656,7 @@ googleapis-common-protos==1.61.0
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
     #   tensorflow-metadata
 gpy==1.13.1
     # via -r python/requirements/ml/tune-test-requirements.txt
@@ -781,6 +785,7 @@ importlib-metadata==6.11.0
     #   jupyter-cache
     #   mlflow
     #   myst-nb
+    #   opentelemetry-api
 importlib-resources==5.13.0
     # via
     #   etils
@@ -1310,37 +1315,49 @@ opencensus-context==0.1.3
     # via opencensus
 opencensus-proto==0.1.0
     # via opentelemetry-exporter-opencensus
-opencv-python-headless==4.8.1.78
+opencv-python-headless==4.9.0.80
     # via -r python/requirements/ml/rllib-test-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.1.0
+opentelemetry-api==1.26.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
-opentelemetry-exporter-opencensus==0.20b0
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-opencensus==0.47b0
     # via -r python/requirements/test-requirements.txt
-opentelemetry-exporter-otlp==1.1.0
+opentelemetry-exporter-otlp==1.26.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-exporter-otlp-proto-grpc==1.1.0
+opentelemetry-exporter-otlp-proto-common==1.26.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.26.0
     # via opentelemetry-exporter-otlp
-opentelemetry-proto==1.1.0
-    # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.1.0
+opentelemetry-exporter-otlp-proto-http==1.26.0
+    # via opentelemetry-exporter-otlp
+opentelemetry-proto==1.26.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.26.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-semantic-conventions==0.20b0
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.47b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
     # via
@@ -1633,7 +1650,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.7.0
+pyiceberg==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -1726,7 +1743,9 @@ pytest-httpserver==1.0.6
 pytest-lazy-fixtures==1.1.2
     # via -r python/requirements/test-requirements.txt
 pytest-mock==3.14.0
-    # via -r python/requirements/ml/data-test-requirements.txt
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 pytest-remotedata==0.3.2
     # via -r python/requirements/ml/tune-test-requirements.txt
 pytest-repeat==0.9.3
@@ -1879,6 +1898,7 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
+    #   opentelemetry-exporter-otlp-proto-http
     #   pyiceberg
     #   ray
     #   requests-oauthlib
@@ -2389,6 +2409,7 @@ typing-extensions==4.12.2
     #   mypy
     #   myst-nb
     #   nevergrad
+    #   opentelemetry-sdk
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
@@ -2509,6 +2530,7 @@ wrapt==1.14.1
     #   aiobotocore
     #   aws-xray-sdk
     #   comet-ml
+    #   deprecated
     #   tensorflow
     #   tensorflow-datasets
 wurlitzer==3.1.1

@@ -1,13 +1,12 @@
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest as _ChatCompletionRequest,
-    CompletionRequest as _CompletionRequest,
-    ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
     ChatCompletionResponse as _ChatCompletionResponse,
-    CompletionStreamResponse as _CompletionStreamResponse,
+    ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
+    CompletionRequest as _CompletionRequest,
     CompletionResponse as _CompletionResponse,
+    CompletionStreamResponse as _CompletionStreamResponse,
     ErrorResponse as _ErrorResponse,
 )
-
 from ray.util.annotations import PublicAPI
 
 

@@ -361,7 +361,7 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
-        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
@@ -668,11 +668,11 @@ class ReporterAgent(
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
+                    result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
                 except psutil.NoSuchProcess:
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
             return result
 
     def _get_raylet_proc(self):
@@ -1245,7 +1245,7 @@ class ReporterAgent(
                 autoscaler_status_json_bytes: Optional[bytes] = None
                 if self._is_head_node:
                     autoscaler_status_json_bytes = (
-                        await self._gcs_aio_client.internal_kv_get(
+                        await self._gcs_client.async_internal_kv_get(
                             DEBUG_AUTOSCALING_STATUS.encode(),
                             None,
                             timeout=GCS_RPC_TIMEOUT_SECONDS,

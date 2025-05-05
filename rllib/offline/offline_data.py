@@ -6,9 +6,8 @@ import ray
 import time
 import types
 
-from typing import Dict
+from typing import Any, Dict, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
@@ -21,14 +20,18 @@ from ray.rllib.utils.annotations import (
 )
 from ray.util.annotations import PublicAPI
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
 class OfflineData:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: AlgorithmConfig):
+    def __init__(self, config: "AlgorithmConfig"):
 
+        # TODO (simon): Define self.spaces here.
         self.config = config
         self.is_multi_agent = self.config.is_multi_agent
         self.path = (
@@ -125,6 +128,7 @@ class OfflineData:
         num_samples: int,
         return_iterator: bool = False,
         num_shards: int = 1,
+        module_state: Dict[str, Any] = None,
     ):
         # Materialize the mapped data, if necessary. This runs for all the
         # data the `OfflinePreLearner` logic and maps them to `MultiAgentBatch`es.
@@ -137,45 +141,46 @@ class OfflineData:
         #       is costly.
         if not self.data_is_mapped:
 
-            # Get the RLModule state from learners.
-            if num_shards >= 1:
-                # Call here the learner to get an up-to-date module state.
-                # TODO (simon): This is a workaround as along as learners cannot
-                # receive any calls from another actor.
-                module_state = ray.get(
-                    self.learner_handles[0].get_state.remote(
+            if not module_state:
+                # Get the RLModule state from learners.
+                if num_shards >= 1:
+                    # Call here the learner to get an up-to-date module state.
+                    # TODO (simon): This is a workaround as along as learners cannot
+                    # receive any calls from another actor.
+                    module_state = ray.get(
+                        self.learner_handles[0].get_state.remote(
+                            component=COMPONENT_RL_MODULE,
+                        )
+                    )[COMPONENT_RL_MODULE]
+                    # Provide the `Learner`(s) GPU devices, if needed.
+                    # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                    #     devices = ray.get(self.learner_handles[0].get_device.remote())
+                    #     devices = [devices] if not isinstance(devices, list) else devices
+                    #     device_strings = [
+                    #         f"{device.type}:{str(device.index)}"
+                    #         if device.type == "cuda"
+                    #         else device.type
+                    #         for device in devices
+                    #     ]
+                    # # Otherwise, set the GPU strings to `None`.
+                    # # TODO (simon): Check inside 'OfflinePreLearner'.
+                    # else:
+                    #     device_strings = None
+                else:
+                    # Get the module state from the `Learner`(S).
+                    module_state = self.learner_handles[0].get_state(
                         component=COMPONENT_RL_MODULE,
-                    )
-                )[COMPONENT_RL_MODULE]
-                # Provide the `Learner`(s) GPU devices, if needed.
-                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
-                #     devices = ray.get(self.learner_handles[0].get_device.remote())
-                #     devices = [devices] if not isinstance(devices, list) else devices
-                #     device_strings = [
-                #         f"{device.type}:{str(device.index)}"
-                #         if device.type == "cuda"
-                #         else device.type
-                #         for device in devices
-                #     ]
-                # # Otherwise, set the GPU strings to `None`.
-                # # TODO (simon): Check inside 'OfflinePreLearner'.
-                # else:
-                #     device_strings = None
-            else:
-                # Get the module state from the `Learner`(S).
-                module_state = self.learner_handles[0].get_state(
-                    component=COMPONENT_RL_MODULE,
-                )[COMPONENT_RL_MODULE]
-                # Provide the `Learner`(s) GPU devices, if needed.
-                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
-                #     device = self.learner_handles[0].get_device()
-                #     device_strings = [
-                #         f"{device.type}:{str(device.index)}"
-                #         if device.type == "cuda"
-                #         else device.type
-                #     ]
-                # else:
-                #     device_strings = None
+                    )[COMPONENT_RL_MODULE]
+                    # Provide the `Learner`(s) GPU devices, if needed.
+                    # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                    #     device = self.learner_handles[0].get_device()
+                    #     device_strings = [
+                    #         f"{device.type}:{str(device.index)}"
+                    #         if device.type == "cuda"
+                    #         else device.type
+                    #     ]
+                    # else:
+                    #     device_strings = None
             # Constructor `kwargs` for the `OfflinePreLearner`.
             fn_constructor_kwargs = {
                 "config": self.config,

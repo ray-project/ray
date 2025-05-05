@@ -103,6 +103,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "tests/experimental/test_collective_dag.py",
+        "tests/experimental/test_dag_error_handling.py",
         "tests/experimental/test_dag_visualization.py",
         "tests/experimental/test_execution_schedule.py",
         "tests/experimental/test_mocked_nccl_dag.py",
