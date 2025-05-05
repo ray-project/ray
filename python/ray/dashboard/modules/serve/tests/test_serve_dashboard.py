@@ -483,9 +483,11 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     for target in target_groups[0].targets:
         assert target.ip in proxy_ips
         assert target.port == 9001
+        assert target.instance_id == "a"
     for target in target_groups[1].targets:
         assert target.ip in proxy_ips
         assert target.port == 8005
+        assert target.instance_id == ""
 
 
 @pytest.mark.skipif(

@@ -904,6 +904,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     Attributes:
         node_id: ID of the node that the actor is running on.
         node_ip: IP address of the node that the actor is running on.
+        node_instance_id: Cloud provider instance id of the node that the actor is running on.
         actor_id: Actor ID.
         actor_name: Actor name.
         worker_id: Worker ID.
@@ -916,6 +917,9 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
     node_ip: Optional[str] = Field(
         description="IP address of the node that the actor is running on."
+    )
+    node_instance_id: Optional[str] = Field(
+        description="Cloud provider instance id of the node that the actor is running on."
     )
     actor_id: Optional[str] = Field(description="Actor ID.")
     actor_name: Optional[str] = Field(description="Actor name.")
@@ -1073,6 +1077,7 @@ class ProxyDetails(ServeActorDetails, frozen=True):
 class Target(BaseModel, frozen=True):
     ip: str = Field(description="IP address of the target.")
     port: int = Field(description="Port of the target.")
+    instance_id: str = Field(description="Instance ID of the target.")
 
 
 @PublicAPI(stability="alpha")
