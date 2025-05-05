@@ -569,13 +569,16 @@ class LLMServer(_LLMServerBase):
             model=self._llm_config.model_id, gen=gen, stream=request.stream
         )
 
-        # 4. Apply batching with appropriate interval
-        batched_openai_response_stream = OpenAIResponseBatcher(
-            openai_resp_generator,
-            interval_ms=self._get_batch_interval_ms(request.stream),
-        )
+        if request.stream:
+            # 4. Apply batching with appropriate interval in case of streaming
+            batched_openai_response_stream = OpenAIResponseBatcher(
+                openai_resp_generator,
+                interval_ms=self._get_batch_interval_ms(),
+            )
 
-        return batched_openai_response_stream.stream()
+            return batched_openai_response_stream.stream()
+
+        return openai_resp_generator
 
     async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
         """Runs a chat request to the LLM engine and returns the response.
