@@ -27,7 +27,6 @@ from ray.rllib.utils.metrics import (
     DIFFERENTIABLE_LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.utils import to_snake_case
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -203,15 +202,11 @@ class TorchMetaLearner(TorchLearner):
 
             # Make the actual in-graph/traced meta-`_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
+            fwd_out, loss_per_module, _ = self._update(
                 tensor_minibatch.policy_batches,
                 params,
                 others_loss_per_module,
             )
-
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
@@ -237,7 +232,7 @@ class TorchMetaLearner(TorchLearner):
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
         # window is only 1 anyways.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
+        for mid, loss in loss_per_module.items():
             self.metrics.log_value(
                 key=(mid, self.TOTAL_LOSS_KEY),
                 value=loss,
@@ -301,9 +296,6 @@ class TorchMetaLearner(TorchLearner):
         To ensure compatibility, the `MultiRLModule`'s `forward` method must encapsulate
         all logic from `forward_train` and support additional keyword arguments (`kwargs`).
         """
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
@@ -335,7 +327,7 @@ class TorchMetaLearner(TorchLearner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, {}
 
     @override(Learner)
     def compute_losses(

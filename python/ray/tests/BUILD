@@ -666,8 +666,8 @@ py_test_module_list(
         "test_actor_failures.py",
         "test_actor_lineage_reconstruction.py",
         "test_actor_resources.py",
-        "test_actor_retry1.py",
-        "test_actor_retry2.py",
+        "test_actor_retry_1.py",
+        "test_actor_retry_2.py",
         "test_cancel.py",
         "test_chaos.py",
         "test_exit_observability.py",
@@ -904,6 +904,21 @@ py_test(
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_resource_isolation_config",
+    size = "medium",
+    srcs = ["test_resource_isolation_config.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
         "team:core",
     ],
     deps = [

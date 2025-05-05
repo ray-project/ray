@@ -6,7 +6,13 @@ from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
-PYTHON_VERSIONS = ["cp39-cp39", "cp310-cp310", "cp311-cp311", "cp312-cp312"]
+PYTHON_VERSIONS = [
+    "cp39-cp39",
+    "cp310-cp310",
+    "cp311-cp311",
+    "cp312-cp312",
+    "cp313-cp313",
+]
 ALL_PLATFORMS = [
     "manylinux2014_x86_64",
     "manylinux2014_aarch64",

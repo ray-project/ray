@@ -219,7 +219,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
         logger.info(f"Streaming logs with options: {options}")
 
         async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
-            actor_info_dict = await self.gcs_aio_client.get_all_actor_info(
+            actor_info_dict = await self.gcs_client.async_get_all_actor_info(
                 actor_id=actor_id
             )
             if len(actor_info_dict) == 0:
@@ -308,7 +308,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
         await SubprocessModule.run(self)
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self.gcs_aio_client
+            gcs_channel, self.gcs_client
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,

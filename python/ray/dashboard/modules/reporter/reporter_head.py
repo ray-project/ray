@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 import aiohttp.web
 
-from ray import NodeID
+from ray import NodeID, ActorID
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
@@ -24,7 +24,9 @@ from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.modules.reporter.utils import HealthChecker
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
@@ -76,6 +78,8 @@ class ReportHead(SubprocessModule):
         # the cluster's lifetime.
         self.cluster_metadata = None
 
+        self._health_checker = HealthChecker(self.gcs_client)
+
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
         return dashboard_optional_utils.rest_response(
@@ -104,7 +108,7 @@ class ReportHead(SubprocessModule):
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
-                self.gcs_aio_client.internal_kv_get(
+                self.gcs_client.async_internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -658,6 +662,58 @@ class ReportHead(SubprocessModule):
             headers={"Content-Type": "text/html"},
         )
 
+    @routes.get("/api/gcs_healthz")
+    async def health_check(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        try:
+            alive = await self._health_checker.check_gcs_liveness()
+            if alive is True:
+                return aiohttp.web.Response(
+                    text="success",
+                    content_type="application/text",
+                )
+        except Exception as e:
+            return aiohttp.web.HTTPServiceUnavailable(
+                reason=f"Health check failed: {e}"
+            )
+
+        return aiohttp.web.HTTPServiceUnavailable(reason="Health check failed")
+
+    @routes.get("/api/actors/kill")
+    async def kill_actor_gcs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        actor_id = req.query.get("actor_id")
+        force_kill = req.query.get("force_kill", False) in ("true", "True")
+        no_restart = req.query.get("no_restart", False) in ("true", "True")
+        if not actor_id:
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message="actor_id is required.",
+            )
+
+        status_code = await self.gcs_client.async_kill_actor(
+            ActorID.from_hex(actor_id),
+            force_kill,
+            no_restart,
+            timeout=30,
+        )
+
+        if status_code == dashboard_utils.HTTPStatusCode.NOT_FOUND:
+            message = f"Actor with id {actor_id} not found."
+        elif status_code == dashboard_utils.HTTPStatusCode.INTERNAL_ERROR:
+            message = f"Failed to kill actor with id {actor_id}."
+        elif status_code == dashboard_utils.HTTPStatusCode.OK:
+            message = (
+                f"Force killed actor with id {actor_id}"
+                if force_kill
+                else f"Requested actor with id {actor_id} to terminate. "
+                + "It will exit once running tasks complete"
+            )
+        else:
+            message = f"Unknown status code: {status_code}. Please open a bug report in the Ray repository."
+
+        return dashboard_optional_utils.rest_response(
+            status_code=status_code, message=message
+        )
+
     async def _get_stub_address_by_node_id(
         self, node_id: NodeID
     ) -> Optional[Tuple[NodeID, str, int, int]]:
@@ -668,7 +724,7 @@ class ReportHead(SubprocessModule):
 
         If not found, return None.
         """
-        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -681,7 +737,7 @@ class ReportHead(SubprocessModule):
     async def _get_stub_address_by_ip(
         self, ip: str
     ) -> Optional[Tuple[str, str, int, int]]:
-        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -701,7 +757,7 @@ class ReportHead(SubprocessModule):
     async def run(self):
         await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
-            self.aiogrpc_gcs_channel, self.gcs_aio_client
+            self.aiogrpc_gcs_channel, self.gcs_client
         )
         # Set up the state API in order to fetch task information.
         # This is only used to get task info. If we have Task APIs in GcsClient we can
@@ -716,7 +772,7 @@ class ReportHead(SubprocessModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
 
-        cluster_metadata = await self.gcs_aio_client.internal_kv_get(
+        cluster_metadata = await self.gcs_client.async_internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )

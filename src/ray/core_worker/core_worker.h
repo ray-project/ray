@@ -1155,9 +1155,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleDirectActorCallArgWaitComplete(
-      rpc::DirectActorCallArgWaitCompleteRequest request,
-      rpc::DirectActorCallArgWaitCompleteReply *reply,
+  void HandleActorCallArgWaitComplete(
+      rpc::ActorCallArgWaitCompleteRequest request,
+      rpc::ActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1889,16 +1889,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
-  std::atomic<bool> is_shutdown_ = false;
+  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
+  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
+  /// See https://github.com/ray-project/ray/issues/51642.
 
-  /// Whether the `Exit` function has been called, to avoid executing the exit
-  /// process multiple times.
-  ///
-  /// TODO(kevin85421): Currently, there are two public functions, `Exit` and `Shutdown`,
-  /// to terminate the core worker gracefully. We should unify them into `Exit()` so we
-  /// don't need `is_shutdown_` in the future. See
-  /// https://github.com/ray-project/ray/issues/51642 for more details.
-  std::atomic<bool> is_exit_ = false;
+  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
+  std::atomic<bool> is_exited_ = false;
+  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
+  std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
 
