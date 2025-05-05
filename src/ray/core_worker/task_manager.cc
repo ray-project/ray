@@ -681,8 +681,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
         // attempt.
-        RAY_LOG(INFO)
-            << "[debug][NotFound] Stale object reports from the previous attempt.";
         execution_signal_callback(
             Status::NotFound("Stale object reports from the previous attempt."), -1);
         return false;
@@ -698,7 +696,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
-    RAY_LOG(INFO) << "[debug][NotFound] Stream is already deleted.";
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
@@ -732,7 +729,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
 
   if (stream_it->second.IsObjectConsumed(item_index)) {
-    RAY_LOG(INFO) << "[debug][OK] Object is already consumed.";
     execution_signal_callback(Status::OK(), total_consumed);
     return false;
   }
@@ -749,14 +745,12 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                    << ". threshold: " << backpressure_threshold;
     auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
     if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      RAY_LOG(INFO) << "[debug][NotFound] Stream is deleted.";
       execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
     } else {
       signal_it->second.push_back(execution_signal_callback);
     }
   } else {
     // No need to backpressure.
-    RAY_LOG(INFO) << "[debug][OK] No need to backpressure.";
     execution_signal_callback(Status::OK(), total_consumed);
   }
   return num_objects_written != 0;
