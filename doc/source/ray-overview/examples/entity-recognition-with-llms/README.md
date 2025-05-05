@@ -1,43 +1,47 @@
-# Entity Recognition with LLMs
+# Entity recognition with LLMs
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/anyscale/e2e-llm-workflows" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-An end-to-end tutorial where we'll **fine-tune** an LLM to perform **batch inference** and **online serving** at scale. While entity recognition (NER) is the main task in this tutorial, we can easily extend these end-to-end workflows to any use case.
+This end-to-end tutorial **fine-tunes** an LLM to perform **batch inference** and **online serving** at scale. While entity recognition (NER) is the main task in this tutorial, you can easily extend these end-to-end workflows to any use case.
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/e2e_llm.png" width=800>
 
-**Note**: the intent of this tutorial is to show how Ray can be use to implement end-to-end LLM workflows that can extend to any use case (including multimodal).
+**Note**: the intent of this tutorial is to show how Ray can be use to implement end-to-end LLM workflows that can extend to any use case, including multimodal.
 
-We'll be using the [Ray library](https://github.com/ray-project/ray) to implement these workflows, namely the LLM APIs:
+This tutorial uses the [Ray library](https://github.com/ray-project/ray) to implement these workflows, namely the LLM APIs:
 
 [`ray.data.llm`](https://docs.ray.io/en/latest/data/working-with-llms.html):
+
 - Batch inference over distributed datasets
 - Streaming and async execution for throughput
-- Built-in metrics and tracing (+ observability)
+- Built-in metrics and tracing, including observability
 - Zero-copy GPU data transfer
 - Composable with preprocessing and postprocessing steps
 
 [`ray.serve.llm`](https://docs.ray.io/en/latest/serve/llm/serving-llms.html):
+
 - Automatic scaling and load balancing
 - Unified multi-node multi-model deployment
 - Multi-LoRA support with shared base models
-- Deep integration with inference engines (vLLM to start)
+- Deep integration with inference engines, vLLM to start
 - Composable multi-model LLM pipelines
 
-And all of these workloads come with all the observability views we’ll need to debug/tune them to **maximize throughput/latency**.
+And all of these workloads come with all the observability views you need to debug and tune them to **maximize throughput or latency**.
 
 # Set up
 
 ## Compute
-This [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) will automatically provision and autoscale the compute our workloads will need. If you're not on Anyscale, then you will need to provision `4xA10G:48CPU-192GB` for this tutorial.
+
+This [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) automatically provisions and autoscales the compute your workloads need. If you're not on Anyscale, then you need to provision `4xA10G:48CPU-192GB` for this tutorial.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/compute.png" width=500>
 
 ## Dependencies
-Let's start by downloading the dependencies required for this tutorial. You'll notice in our [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) we have a base image [anyscale/ray-llm:2.44.1-py311-cu124](https://hub.docker.com/layers/anyscale/ray-llm/2.44.1-py311-cu124/images/sha256-8099edda787fc96847af7e1c51f30ad09792aa250efa27f9aa825b15016e6b3f) followed by a list of pip packages. If you're not on any [Anyscale](https://console.anyscale.com/), you can pull this docker image yourself and install the dependencies.
+
+Start by downloading the dependencies required for this tutorial. Notice in your [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) you have a base image [`anyscale/ray-llm:2.44.1-py311-cu124`](https://hub.docker.com/layers/anyscale/ray-llm/2.44.1-py311-cu124/images/sha256-8099edda787fc96847af7e1c51f30ad09792aa250efa27f9aa825b15016e6b3f) followed by a list of pip packages. If you're not on [Anyscale](https://console.anyscale.com/), you can pull this docker image yourself and install the dependencies.
 
 
 ```bash
@@ -61,7 +65,7 @@ import textwrap
 from IPython.display import Code, Image, display
 ```
 
-We'll start by downloading our data from cloud storage to local shared storage.
+Start by downloading the data from cloud storage to local shared storage.
 
 
 ```bash
@@ -87,8 +91,6 @@ head -n 1 /mnt/cluster_storage/viggo/train.jsonl | python3 -m json.tool
 }
 ```
 
-
-
 ```python
 with open("/mnt/cluster_storage/viggo/train.jsonl", "r") as fp:
     first_line = fp.readline()
@@ -97,6 +99,7 @@ system_content = item["instruction"]
 print(textwrap.fill(system_content, width=80))
 ```
 
+```text
 Given a target sentence construct the underlying meaning representation of the
 input sentence as a single function with attributes and attribute values. This
 function should describe the target string accurately and the function must be
@@ -106,15 +109,13 @@ one of the following ['inform', 'request', 'give_opinion', 'confirm',
 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating', 'genres',
 'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam',
 'has_linux_release', 'has_mac_release', 'specifier']
+```
 
-
-We also have an info file that identifies the datasets and format --- alpaca and sharegpt (great for multimodal tasks) formats are supported --- to use for post training.
-
+You also have an info file that identifies the datasets and format --- Alpaca and ShareGPT formats, which are suitable for multimodal tasks and are supported by Anyscale --- to use for post training.
 
 ```python
 display(Code(filename="/mnt/cluster_storage/viggo/dataset_info.json", language="json"))
 ```
-
 
 ```json
 {
@@ -143,14 +144,13 @@ display(Code(filename="/mnt/cluster_storage/viggo/dataset_info.json", language="
 
 # Distributed fine-tuning
 
-We'll use [Ray Train](https://docs.ray.io/en/latest/train/train.html) + [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) to peform multinode training. The parameters for our training workload -- post-training method, dataset location, train/val details, etc. --- can be found in the `llama3_lora_sft_ray.yaml` config file. Check out recipes for even more post-training methods (sft, pretraining, ppo, dpo, kto, etc.) [here](https://github.com/hiyouga/LLaMA-Factory/tree/main/examples).
+Use [Ray Train](https://docs.ray.io/en/latest/train/train.html) + [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) to perform multi-node training. Find the parameters for the training workload -- post-training method, dataset location, train/val details, etc. --- in the `llama3_lora_sft_ray.yaml` config file. See the recipes for more post-training methods, like SFT, pretraining, PPO, DPO, KTO, etc. [on GitHub](https://github.com/hiyouga/LLaMA-Factory/tree/main/examples).
 
-**Note**: We also support using other tools like [axolotl](https://axolotl-ai-cloud.github.io/axolotl/docs/ray-integration.html) or even [Ray Train + HF Accelreate + FSDP/Deepspeed](https://docs.ray.io/en/latest/train/huggingface-accelerate.html) directly for complete control of your post-training workloads.
+**Note**: Anyscale also supports using other tools like [axolotl](https://axolotl-ai-cloud.github.io/axolotl/docs/ray-integration.html) or even [Ray Train + HF Accelerate + FSDP/DeepSpeed](https://docs.ray.io/en/latest/train/huggingface-accelerate.html) directly for complete control of your post-training workloads.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/distributed_training.png" width=800>
 
-## Config
-
+## `config`
 
 ```python
 import os
@@ -179,7 +179,7 @@ lora_target: all
 
 ### dataset
 dataset: viggo-train
-dataset_dir: /mnt/cluster_storage/viggo  # shared storage workers have access to
+dataset_dir: /mnt/cluster_storage/viggo  # Shared storage workers have access to.
 template: qwen
 cutoff_len: 2048
 max_samples: 1000
@@ -189,7 +189,7 @@ dataloader_num_workers: 4
 
 
 ### output
-output_dir: /mnt/cluster_storage/viggo/outputs  # should be somewhere workers have access to (ex. s3, nfs)
+output_dir: /mnt/cluster_storage/viggo/outputs  # Should be somewhere workers have access to, for example, S3, NFS.
 logging_steps: 10
 save_steps: 500
 plot_loss: true
@@ -197,9 +197,9 @@ overwrite_output_dir: true
 save_only_model: false
 
 
-### ray
+### Ray
 ray_run_name: lora_sft_ray
-ray_storage_path: /mnt/cluster_storage/viggo/saves  # should be somewhere workers have access to (ex. s3, nfs)
+ray_storage_path: /mnt/cluster_storage/viggo/saves  # Should be somewhere workers have access to, for example, S3, NFS
 ray_num_workers: 4
 resources_per_worker:
   GPU: 1
@@ -222,43 +222,46 @@ resume_from_checkpoint: null
 
 
 ### eval
-eval_dataset: viggo-val  # uses same dataset_dir as training data
-# val_size: 0.1  # only if using part of training data for validation
+eval_dataset: viggo-val  # Uses same dataset_dir as training data.
+# val_size: 0.1  # Only if using part of training data for validation.
 per_device_eval_batch_size: 1
 eval_strategy: steps
 eval_steps: 500
 ```
 
-
-
 ```python
-model_id = "ft-model"  # call it whatever you want
-model_source = yaml.safe_load(open("lora_sft_ray.yaml"))["model_name_or_path"]  # HF model ID, S3 mirror config, or GCS mirror config
+model_id = "ft-model"  # Call it whatever you want.
+model_source = yaml.safe_load(open("lora_sft_ray.yaml"))["model_name_or_path"]  # HF model ID, S3 mirror config, or GCS mirror config.
 print (model_source)
 ```
 
+```text
 Qwen/Qwen2.5-7B-Instruct
+```
 
 ## Multi-node training
 
-We'll be using Ray Train + LlamaFactory to perform the mult-node train loop.
+Use Ray Train + LlamaFactory to perform the mult-node train loop.
 
 <div class="alert alert-block alert"> <b>Ray Train</b>
 
-Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) here has several advantages:
-- automatically handles **multi-node, multi-GPU** setup with no manual SSH setup or hostfile configs.
-- define **per-worker franctional resource requirements** (e.g., 2 CPUs and 0.5 GPU per worker)
-- run on **heterogeneous machines** and scale flexibly (e.g., CPU for preprocessing and GPU for training)
-- built-in **fault tolerance** via retry of failed workers (and continue from last checkpoint).
+Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) has several advantages:
+
+- automatically handles **multi-node, multi-GPU** setup with no manual SSH setup or `hostfile` configs.
+- define **per-worker fractional resource requirements**, for example, 2 CPUs and 0.5 GPU per worker
+- run on **heterogeneous machines** and scale flexibly, for example, CPU for preprocessing and GPU for training
+- built-in **fault tolerance** through retry of failed workers, and continue from last checkpoint.
 - supports Data Parallel, Model Parallel, Parameter Server, and even custom strategies.
-- [Ray Compiled graphs](https://docs.ray.io/en/latest/ray-core/compiled-graph/ray-compiled-graph.html) allow us to even define different parallelism for jointly optimizing multipe models (Megatron, Deepspeed, etc. only allow for one global setting).
+- [Ray compiled graphs](https://docs.ray.io/en/latest/ray-core/compiled-graph/ray-compiled-graph.html) allow you to even define different parallelism for jointly optimizing multiple models. Megatron, DeepSpeed, etc. only allow for one global setting.
 
 [RayTurbo Train](https://docs.anyscale.com/rayturbo/rayturbo-train) offers even more improvement to the price-performance ratio, performance monitoring and more:
-- **elastic training** to scale to a dynamic number of workers, continue training on fewer resources (even on spot instances).
-- **purpose-built dashboard** designed to streamline the debugging of Ray Train workloads
-    - Monitoring: View the status of training runs and train workers.
-    - Metrics: See insights on training throughput, training system operation time.
-    - Profiling: Investigate bottlenecks, hangs, or errors from individual training worker processes.
+
+- **elastic training** to scale to a dynamic number of workers, and continue training on fewer resources, even on spot instances.
+- **purpose-built dashboard** designed to streamline the debugging of Ray Train workloads:
+
+  - Monitoring: View the status of training runs and train workers.
+  - Metrics: See insights on training throughput and training system operation time.
+  - Profiling: Investigate bottlenecks, hangs, or errors from individual training worker processes.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/train_dashboard.png" width=700>
 
@@ -365,23 +368,23 @@ display(Image(filename="/mnt/cluster_storage/viggo/outputs/training_loss.png"))
 <div class="alert alert-block alert"> <b> 🔎 Monitoring and Debugging with Ray</b>
 
 
-OSS Ray offers an extensive [observability suite](https://docs.ray.io/en/latest/ray-observability/index.html) that offers logs and an observability dashboard that we can use to monitor and debug. The dashboard includes a lot of different components such as:
+OSS Ray offers an extensive [observability suite](https://docs.ray.io/en/latest/ray-observability/index.html) that offers logs and an observability dashboard that you can use to monitor and debug. The dashboard includes a lot of different components such as:
 
--  memory, utilization, etc. of the tasks running in our [cluster](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-node-view)
+- memory, utilization, etc. of the tasks running in the [cluster](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-node-view)
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/cluster_util.png" width=700>
 
-- views to see all our running tasks, utilization across instance types, autoscaling, etc.
+- views to see all running tasks, utilization across instance types, autoscaling, etc.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/observability_views.png" width=1000>
 
 
-<div class="alert alert-block alert"> <b> 🔎➕➕ Monitoring and Debugging on Anyscale</b>
+<div class="alert alert-block alert"> <b> 🔎➕➕ Monitoring and debugging on Anyscale</b>
 
-While OSS Ray comes with an extensive obervability suite, Anyscale takes it many steps further to make it even easier and faster to monitor and debug your workloads.
+While OSS Ray comes with an extensive observability suite, Anyscale takes it many steps further to make it even easier and faster to monitor and debug your workloads.
 
-- [unified log viewer](https://docs.anyscale.com/monitoring/accessing-logs/) to see logs from *all* our driver and worker processes
-- Ray workload specific dashboard (Data, Train, etc.) that can breakdown the tasks. For example, our training workload above can be observed live through the Train specific Ray Workloads dashboard:
+- [unified log viewer](https://docs.anyscale.com/monitoring/accessing-logs/) to see logs from *all* your driver and worker processes
+- Ray workload specific dashboards, like Data, Train, etc., that can breakdown the tasks. For example, you can observe the preceding training workload live through the Train specific Ray Workloads dashboard:
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/train_dashboard.png" width=700>
 
@@ -390,18 +393,18 @@ While OSS Ray comes with an extensive obervability suite, Anyscale takes it many
 
 <div class="alert alert-block alert"> <b> 🗂️ Storage on Anyscale</b>
 
-We can always store to our data inside [any storage buckets](https://docs.anyscale.com/configuration/storage/#private-storage-buckets) but Anyscale offers a [default storage bucket](https://docs.anyscale.com/configuration/storage/#anyscale-default-storage-bucket) to make things even easier. We also have plenty of other [storage options](https://docs.anyscale.com/configuration/storage/) as well (shared at the cluster, user and cloud levels).
+You can always store data inside [any storage buckets](https://docs.anyscale.com/configuration/storage/#private-storage-buckets) but Anyscale offers a [default storage bucket](https://docs.anyscale.com/configuration/storage/#anyscale-default-storage-bucket) to make things even easier. You also have plenty of other [storage options](https://docs.anyscale.com/configuration/storage/) as well, for example, shared at the cluster, user, and cloud levels.
 
 
 ```bash
 %%bash
-# Anyscale default storage bucket
+# Anyscale default storage bucket.
 echo $ANYSCALE_ARTIFACT_STORAGE
 ```
 
+```text
 s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage
-
-
+```
 
 ```bash
 %%bash
@@ -432,12 +435,12 @@ else
 fi
 ```
 
-
 ```bash
 %%bash
 ls /mnt/cluster_storage/viggo/saves/lora_sft_ray
 ```
 
+```text
     TorchTrainer_95d16_00000_0_2025-04-11_14-47-37
     TorchTrainer_f9e4e_00000_0_2025-04-11_12-41-34
     basic-variant-state-2025-04-11_12-41-34.json
@@ -446,8 +449,7 @@ ls /mnt/cluster_storage/viggo/saves/lora_sft_ray
     experiment_state-2025-04-11_14-47-37.json
     trainer.pkl
     tuner.pkl
-
-
+```
 
 ```python
 # LoRA paths
@@ -464,7 +466,7 @@ dynamic_lora_path, lora_id = cloud_lora_path.rsplit("/", 1)
 ls $1
 ```
 
-```
+```text
 README.md
 adapter_config.json
 adapter_model.safetensors
@@ -484,24 +486,24 @@ training_args.bin
 vocab.json
 ```
 
-
 # Batch inference
 [`Overview`](https://docs.ray.io/en/latest/data/working-with-llms.html) |  [`API reference`](https://docs.ray.io/en/latest/data/api/llm.html)
 
-The `ray.data.llm` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference. These llm modules use [Ray Data](https://docs.ray.io/en/latest/data/data.html) under the hood, which makes it extremely easy to distribute our workloads but also ensures that they happen:
-- **efficiently**: minimize CPU/GPU idletime with hetergenous resource scheduling.
-- **at scale**: streaming execution to petabyte-scale datasets (especially when [working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html))
-- **reliably** by checkpointing processes, especially when running workloads on spot instanes (with on-demand fallback).
-- **flexiblibly**: connect to data from any source, apply your transformations and save to any format/location for your next workload.
+The `ray.data.llm` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference. These LLM modules use [Ray Data](https://docs.ray.io/en/latest/data/data.html) under the hood, which makes it extremely easy to distribute workloads but also ensures that they happen:
+
+- **efficiently**: minimize CPU or GPU idle time with heterogeneous resource scheduling.
+- **at scale**: streaming execution to petabyte-scale datasets, especially when [working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html).
+- **reliably** by checkpointing processes, especially when running workloads on spot instances with on-demand fallback.
+- **flexibility**: connect to data from any source, apply your transformations, and save to any format and location for your next workload.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_data_solution.png" width=800>
 
 [RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has even more functionality on top of Ray Data:
 - **accelerated metadata fetching** to improve reading first time from large datasets
 - **optimized autoscaling** where Jobs can kick off before waiting for the entire cluster to start
-- **high reliabilty** where entire fails jobs (head node, cluster, uncaptured exceptions, etc.) can resume from checkpoints (OSS Ray can only recover from worker node failures)
+- **high reliability** where entire fails jobs like head node, cluster, uncaptured exceptions, etc., can resume from checkpoints. OSS Ray can only recover from worker node failures.
 
-Let's start by defining the [vLLM engine processor config](https://docs.ray.io/en/latest/data/api/doc/ray.data.llm.vLLMEngineProcessorConfig.html#ray.data.llm.vLLMEngineProcessorConfig) where we can select the model we want to use and the [engine behavior](https://docs.vllm.ai/en/stable/serving/engine_args.html). The model can come from [HuggingFace (HF) Hub](https://huggingface.co/models) or a local model path `/path/to/your/model` (GPTQ, GGUF, or LoRA model formats supported).
+Start by defining the [vLLM engine processor config](https://docs.ray.io/en/latest/data/api/doc/ray.data.llm.vLLMEngineProcessorConfig.html#ray.data.llm.vLLMEngineProcessorConfig) where you can select the model to use and the [engine behavior](https://docs.vllm.ai/en/stable/serving/engine_args.html). The model can come from [Hugging Face (HF) Hub](https://huggingface.co/models) or a local model path `/path/to/your/model`. Anyscale supports GPTQ, GGUF, or LoRA model formats supported.
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/data_llm.png" width=800>
 
@@ -538,7 +540,7 @@ config = vLLMEngineProcessorConfig(
 
 ## LLM processor
 
-Next, we'll pass our config to an [llm processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_llm_processor.html#ray.data.llm.build_llm_processor) where we can define the preprocessing and postprocessing steps around inference. With our base model defined in the processor config, we can define the lora adapter layers as part of the preprocessing step of the llm processor itself.
+Next, pass the config to an [LLM processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_llm_processor.html#ray.data.llm.build_llm_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself.
 
 ```python
 from ray.data.llm import build_llm_processor
@@ -629,23 +631,24 @@ for item in results:
 matches / float(len(results))
 ```
 
+```text
 0.6879039704524469
+```
 
+**Note**: The objective of fine-tuning here isn't to create the most performant model but to show that you can leverage it for downstream workloads, like batch inference and online serving, at scale. Increase `num_train_epochs` if you want to though.
 
-
-**Note**: the objective of fine-tuning here is not to create the most performant model (increase `num_train_epochs` if you want to though) but to show it can be leveraged for downstream workloads (batch inference and online serving) at scale.
-
-We can observe the individual steps in our our batch inference workload through the Anyscale Ray Data dashboard:
+Observe the individual steps in the batch inference workload through the Anyscale Ray Data dashboard:
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/data_dashboard.png" width=1000>
 
 <div class="alert alert-info">
 
-💡 For more advanced guides on topics like optimized model loading, multi-lora, openai-compatible endpoints, etc. check out [more examples](https://docs.ray.io/en/latest/data/working-with-llms.html) and the [API reference](https://docs.ray.io/en/latest/data/api/llm.html).
+💡 For more advanced guides on topics like optimized model loading, multi-LoRA, openAI-compatible endpoints, etc., see [more examples](https://docs.ray.io/en/latest/data/working-with-llms.html) and the [API reference](https://docs.ray.io/en/latest/data/api/llm.html).
 
 </div>
 
 # Online serving
+
 [`Overview`](https://docs.ray.io/en/latest/serve/llm/serving-llms.html) | [`API reference`](https://docs.ray.io/en/latest/serve/api/index.html#llm-api)
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_serve.png" width=600>
@@ -654,16 +657,18 @@ We can observe the individual steps in our our batch inference workload through 
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/serve_llm.png" width=500>
 
-Ray Serve LLM is designed with the following features:
+Ray Serve LLM has the following features:
+
 - Automatic scaling and load balancing
 - Unified multi-node multi-model deployment
 - OpenAI compatibility
 - Multi-LoRA support with shared base models
-- Deep integration with inference engines (vLLM to start)
+- Deep integration with inference engines, vLLM to start
 - Composable multi-model LLM pipelines
 
 [RayTurbo Serve](https://docs.anyscale.com/rayturbo/rayturbo-serve) on Anyscale has even more functionality on top of Ray Serve:
-- **fast autoscaling and model loading** to get our services up and running even faster ([5x improvements](https://www.anyscale.com/blog/autoscale-large-ai-models-faster) even for LLMs)
+
+- **fast autoscaling and model loading** to get services up and running even faster: [5x improvements](https://www.anyscale.com/blog/autoscale-large-ai-models-faster) even for LLMs
 - 54% **higher QPS** and up-to 3x **streaming tokens per second** for high traffic serving use-cases
 - **replica compaction** into fewer nodes where possible to reduce resource fragmentation and improve hardware utilization
 - **zero-downtime** [incremental rollouts](https://docs.anyscale.com/platform/services/update-a-service/#resource-constrained-updates) so your service is never interrupted
@@ -679,7 +684,7 @@ from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 ```
 
-Let's define an [LLM config](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) where we can define where our model comes from, it's [autoscaling behavior](https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling), what hardware to use and [engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html).
+Define an [LLM config](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) where you can define where the model comes from, it's [autoscaling behavior](https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling), what hardware to use, and [engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html).
 
 
 ```python
@@ -689,30 +694,29 @@ llm_config = LLMConfig(
         "model_id": model_id,
         "model_source": model_source
     },
-    lora_config={  # REMOVE this section if you are only using a base model
+    lora_config={  # REMOVE this section if you're only using a base model.
         "dynamic_lora_loading_path": dynamic_lora_path,
-        "max_num_adapters_per_replica": 16,  # we only have 1
+        "max_num_adapters_per_replica": 16,  # You only have 1.
     },
     # runtime_env={"env_vars": {"HF_TOKEN": os.environ.get("HF_TOKEN")}},
     deployment_config={
         "autoscaling_config": {
             "min_replicas": 1,
             "max_replicas": 2,
-            # complete list: https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling
+            # Complete list: https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling
         }
     },
     accelerator_type="A10G",
     engine_kwargs={
-        "max_model_len": 4096,  # or increase KV cache size
+        "max_model_len": 4096,  # Or increase KV cache size.
         "tensor_parallel_size": 1,
         "enable_lora": True,
-        # complete list: https://docs.vllm.ai/en/stable/serving/engine_args.html
+        # Complete list: https://docs.vllm.ai/en/stable/serving/engine_args.html
     },
 )
 ```
 
-Now we'll deploy our llm config as an application. And since this is all built on top of [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), we can have advanvced service logic around composing models together, deploying multiple applications, model multiplexing, observability, etc.
-
+Now deploy the LLM config as an application. And because this is all built on top of [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), you can have advanced service logic around composing models together, deploying multiple applications, model multiplexing, observability, etc.
 
 ```python
 # Deploy
@@ -720,7 +724,9 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app)
 ```
 
+```text
 DeploymentHandle(deployment='LLMRouter')
+```
 
 ## Service request
 
@@ -740,45 +746,47 @@ for chunk in response:
         print(chunk.choices[0].delta.content, end="", flush=True)
 ```
 
+```text
 Avg prompt throughput: 20.3 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 0.3%, CPU KV cache usage: 0.0%.
 
 _opinion(name[Diablo II], developer[Blizzard North], rating[good], has_mac_release[yes])
+```
 
-And of course, we can observe our running service (deployments and metrics like QPS, latency, etc.) through the [Ray Dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html)'s [Serve view](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-serve-view):
+And of course, you can observe the running service, like deployments and metrics like QPS, latency, etc., through the [Ray Dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html)'s [Serve view](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-serve-view):
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/serve_dashboard.png" width=1000>
 
 <div class="alert alert-info">
 
-💡 For more advanced guides on topics like structured outputs (ex. json), vision LMs, multi-lora on shared base models, using other inference engines (ex. sglang), etc. fast model loading, etc. check out [more examples](https://docs.ray.io/en/latest/serve/llm/overview.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html).
+💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/overview.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.
 
 </div>
 
-# Production
+## Production
 
-Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to run [reliable batch jobs](https://docs.anyscale.com/platform/jobs) and deploy [highly available services](https://docs.anyscale.com/platform/services). Given we've been developing in an environment that's almost identical to production (multinode cluster), this should drastically speed up our dev → prod velocity.
+Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to run [reliable batch jobs](https://docs.anyscale.com/platform/jobs) and deploy [highly available services](https://docs.anyscale.com/platform/services). Given you've been developing in an environment that's almost identical to production, meaning a multi-node cluster, this integration should drastically speed up your dev to prod velocity.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/cicd.png" width=600>
 
-## Jobs
+### Jobs
 
-[Anyscale Jobs](https://docs.anyscale.com/platform/jobs/) ([API ref](https://docs.anyscale.com/reference/job-api/)) allows us to execute discrete workloads in production such as batch inference, embeddings generation, or model fine-tuning.
-- [define and manage](https://docs.anyscale.com/platform/jobs/manage-jobs) our Jobs in many different ways (CLI, Python SDK)
+[Anyscale Jobs](https://docs.anyscale.com/platform/jobs/) ([API ref](https://docs.anyscale.com/reference/job-api/)) allows you to execute discrete workloads in production such as batch inference, embeddings generation, or model fine-tuning.
+
+- [define and manage](https://docs.anyscale.com/platform/jobs/manage-jobs) your Jobs in many different ways (CLI, Python SDK)
 - set up [queues](https://docs.anyscale.com/platform/jobs/job-queues) and [schedules](https://docs.anyscale.com/platform/jobs/schedules)
-- set up all the [observability, alerting, etc.](https://docs.anyscale.com/platform/jobs/monitoring-and-debugging) around our Jobs
+- set up all the [observability, alerting, etc.](https://docs.anyscale.com/platform/jobs/monitoring-and-debugging) around your Jobs
 
-## Services
+### Services
 
-[Anyscale Services](https://docs.anyscale.com/platform/services/) ([API ref](https://docs.anyscale.com/reference/service-api/)) offers an extremely fault tolerant, scalable and optimized way to serve our Ray Serve applications.
-- we can [rollout and update](https://docs.anyscale.com/platform/services/update-a-service) our services with canary deployment (zero-downtime upgrades)
-- [monitor](https://docs.anyscale.com/platform/services/monitoring) our Services through a dedicated Service page, unified log viewer, tracing, set up alerts, etc.
-- scale a service (`num_replicas=auto`) and utilize replica compaction to consolidate nodes that are fractionally utilized
+[Anyscale Services](https://docs.anyscale.com/platform/services/) ([API ref](https://docs.anyscale.com/reference/service-api/)) offers an extremely fault tolerant, scalable and optimized way to serve your Ray Serve applications.
+
+- you can [rollout and update](https://docs.anyscale.com/platform/services/update-a-service) services with canary deployment, meaning zero-downtime upgrades
+- [monitor](https://docs.anyscale.com/platform/services/monitoring) your Services through a dedicated Service page, unified log viewer, tracing, set up alerts, etc.
+- scale a service with `num_replicas=auto` and utilize replica compaction to consolidate nodes that are fractionally utilized
 - [head node fault tolerance](https://docs.anyscale.com/platform/services/production-best-practices#head-node-ft) (OSS Ray recovers from failed workers and replicas but not head node crashes)
-- serving [muliple applications](https://docs.anyscale.com/platform/services/multi-app) in a single Service
+- serving [multiple applications](https://docs.anyscale.com/platform/services/multi-app) in a single Service
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/canary.png" width=700>
-
-
 
 ```bash
 %%bash
