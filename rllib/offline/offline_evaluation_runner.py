@@ -10,7 +10,6 @@ from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
-    DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
