@@ -315,11 +315,16 @@ class _DeploymentResponseBase:
             return
 
         self._cancelled = True
-        if not self._replica_result_future.done():
-            self._replica_result_future.cancel()
-        elif self._replica_result_future.exception() is None:
+        self._replica_result_future.cancel()
+        try:
+            # try to fetch the results synchronously. if it succeeds,
+            # we will explicitly cancel the replica result. if it fails,
+            # the request is already cancelled and we can return early.
             self._fetch_future_result_sync()
-            self._replica_result.cancel()
+        except RequestCancelledError:
+            # request is already cancelled nothing to do here
+            return
+        self._replica_result.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:

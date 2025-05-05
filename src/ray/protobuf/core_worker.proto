@@ -155,7 +155,7 @@ message PushTaskReply {
   repeated StreamingGeneratorReturnIdInfo streaming_generator_return_ids = 10;
 }
 
-message DirectActorCallArgWaitCompleteRequest {
+message ActorCallArgWaitCompleteRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
   // Id used to uniquely identify this request. This is sent back to the core
@@ -163,7 +163,7 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {}
+message ActorCallArgWaitCompleteReply {}
 
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
@@ -460,9 +460,9 @@ service CoreWorkerService {
       returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
-  // Reply from raylet that wait for direct actor call args has completed.
-  rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
-      returns (DirectActorCallArgWaitCompleteReply);
+  // Reply from raylet that wait for actor call args has completed.
+  rpc ActorCallArgWaitComplete(ActorCallArgWaitCompleteRequest)
+      returns (ActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
   // Wait for the actor's owner to decide that the actor has no references.
