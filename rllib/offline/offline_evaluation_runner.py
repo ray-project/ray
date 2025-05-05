@@ -34,7 +34,7 @@ from ray.rllib.utils.minibatch_utils import MiniBatchRayDataIterator
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.runners.runner import Runner
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ModuleID, StateDict, TensorType
+from ray.rllib.utils.typing import DeviceType, ModuleID, StateDict, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -58,14 +58,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         self.__module_spec: MultiRLModuleSpec = module_spec
         self.__dataset_iterator = None
         self.__batch_iterator = None
-
-        # Set device.
-        self.__device = get_device(
-            self.config,
-            0
-            if not self.worker_index
-            else self.config.num_gpus_per_offline_eval_runner,
-        )
 
         Runner.__init__(self, config=config)
         Checkpointable.__init__(self)
@@ -286,8 +278,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     ) -> MultiAgentBatch:
         batch = convert_to_torch_tensor(
             batch.policy_batches,
-            # TODO (simon): Implement GPU inference.
-            device=None,  # self._device if to_device else None,
+            device=self._device if to_device else None,
             pin_memory=pin_memory,
             use_stream=use_stream,
         )
@@ -435,6 +426,18 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         )
 
     @override(Runner)
+    def set_device(self):
+        try:
+            self.__device = get_device(
+                self.config,
+                0
+                if not self.worker_index
+                else self.config.num_gpus_per_offline_eval_runner,
+            )
+        except NotImplementedError:
+            self.__device = None
+
+    @override(Runner)
     def make_module(self):
         try:
             if not self._module_spec:
@@ -492,8 +495,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self):
-        """Returns the device."""
+    def _device(self) -> DeviceType:
         return self.__device
 
     @property
