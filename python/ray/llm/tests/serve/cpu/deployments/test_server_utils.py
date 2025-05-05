@@ -2,6 +2,9 @@ import base64
 import struct
 from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 
+import sys
+import pytest
+
 
 def test_floats_to_base64_empty_list():
     """Test encoding an empty list of floats."""
@@ -35,3 +38,7 @@ def test_floats_to_base64_round_trip():
     # Check that the values are close (not exactly equal due to floating point precision)
     for original, decoded in zip(float_list, decoded_floats):
         assert abs(original - decoded) < 1e-6
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
