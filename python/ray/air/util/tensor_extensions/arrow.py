@@ -699,7 +699,7 @@ class _ArrowTensorScalarIndexingMixin:
 # mixin's overriding methods appear first in the MRO.
 # TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
 @PublicAPI(stability="beta")
-class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
+class ArrowTensorArray(pa.ExtensionArray):
     """
     An array of fixed-shape, homogeneous-typed tensors.
 
@@ -714,233 +714,29 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         cls,
         arr: Union[np.ndarray, Iterable[np.ndarray]],
         column_name: Optional[str] = None,
-    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
+    ) -> pa.FixedShapeTensorArray:
         """
-        Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
-        tensors. If given fixed-shape tensor elements, this will return an
-        ``ArrowTensorArray``; if given variable-shape tensor elements, this will return
-        an ``ArrowVariableShapedTensorArray``.
-
-        Args:
-            arr: An ndarray or an iterable of ndarrays.
-            column_name: Optional. Used only in logging outputs to provide
-                additional details.
-
-        Returns:
-            - If fixed-shape tensor elements, an ``ArrowTensorArray`` containing
-              ``len(arr)`` tensors of fixed shape.
-            - If variable-shaped tensor elements, an ``ArrowVariableShapedTensorArray``
-              containing ``len(arr)`` tensors of variable shape.
-            - If scalar elements, a ``pyarrow.Array``.
+        Convert a single ndarray or an iterable of ndarrays into
+        a FixedShapeTensorArray via PyArrow's native implementation.
         """
-        if not isinstance(arr, np.ndarray) and isinstance(arr, Iterable):
-            arr = list(arr)
-
-        if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
-            # Stack ndarrays and pass through to ndarray handling logic below.
-            try:
-                arr = np.stack(arr, axis=0)
-            except ValueError as ve:
-                logger.warning(
-                    f"Failed to stack lists due to: {ve}; "
-                    f"falling back to using np.array(..., dtype=object)",
-                    exc_info=ve,
-                )
-
-                # ndarray stacking may fail if the arrays are heterogeneously-shaped.
-                arr = np.array(arr, dtype=object)
-
+        # Stack lists/tuples of arrays into one ndarray, or leave as-is if already ndarray.
         if not isinstance(arr, np.ndarray):
-            raise ValueError(
-                f"Must give ndarray or iterable of ndarrays, got {type(arr)} {arr}"
-            )
+            # try stacking; fallback to object-dtype if shapes differ
+            try:
+                arr = np.stack(list(arr), axis=0)
+            except Exception:
+                arr = np.array(list(arr), dtype=object)
+        # Delegate to the core pyarrow API, not cls.from_numpy_ndarray (which isn't
+        # inherited as a @staticmethod on the subclass).
+        return pa.FixedShapeTensorArray.from_numpy_ndarray(arr)
 
-        try:
-            timestamp_dtype = _try_infer_pa_timestamp_type(arr)
-
-            if timestamp_dtype:
-                # NOTE: Quirky Arrow behavior will coerce unsupported Numpy `datetime64`
-                #       precisions that are nested inside a list type, but won't do it,
-                #       if these are top-level ndarray. To work this around we have to cast
-                #       ndarray values manually
-                arr = _coerce_np_datetime_to_pa_timestamp_precision(
-                    arr, timestamp_dtype, column_name
-                )
-
-            return cls._from_numpy(arr)
-        except Exception as e:
-            data_str = ""
-            if column_name:
-                data_str += f"column: '{column_name}', "
-            data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
-            raise ArrowConversionError(data_str) from e
-
-    @classmethod
-    def _from_numpy(
-        cls,
-        arr: np.ndarray,
-    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
-        if len(arr) > 0 and np.isscalar(arr[0]):
-            # Elements are scalar so a plain Arrow Array will suffice.
-            return pa.array(arr)
-        if _is_ndarray_variable_shaped_tensor(arr):
-            # Tensor elements have variable shape, so we delegate to
-            # ArrowVariableShapedTensorArray.
-            return ArrowVariableShapedTensorArray.from_numpy(arr)
-        if not arr.flags.c_contiguous:
-            # We only natively support C-contiguous ndarrays.
-            arr = np.ascontiguousarray(arr)
-        scalar_dtype = pa.from_numpy_dtype(arr.dtype)
-        if pa.types.is_string(scalar_dtype):
-            if arr.dtype.byteorder == ">" or (
-                arr.dtype.byteorder == "=" and sys.byteorder == "big"
-            ):
-                raise ValueError(
-                    "Only little-endian string tensors are supported, "
-                    f"but got: {arr.dtype}",
-                )
-            scalar_dtype = pa.binary(arr.dtype.itemsize)
-        outer_len = arr.shape[0]
-        element_shape = arr.shape[1:]
-        total_num_items = arr.size
-        num_items_per_element = np.prod(element_shape) if element_shape else 1
-
-        # Data buffer.
-        if pa.types.is_boolean(scalar_dtype):
-            # NumPy doesn't represent boolean arrays as bit-packed, so we manually
-            # bit-pack the booleans before handing the buffer off to Arrow.
-            # NOTE: Arrow expects LSB bit-packed ordering.
-            # NOTE: This creates a copy.
-            arr = np.packbits(arr, bitorder="little")
-        data_buffer = pa.py_buffer(arr)
-        data_array = pa.Array.from_buffers(
-            scalar_dtype, total_num_items, [None, data_buffer]
-        )
-
-        from ray.data import DataContext
-
-        if DataContext.get_current().use_arrow_tensor_v2:
-            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
-        else:
-            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
-
-        # Create Offset buffer
-        offset_buffer = pa.py_buffer(
-            pa_type_.OFFSET_DTYPE(
-                [i * num_items_per_element for i in range(outer_len + 1)]
-            )
-        )
-
-        storage = pa.Array.from_buffers(
-            pa_type_.storage_type,
-            outer_len,
-            [None, offset_buffer],
-            children=[data_array],
-        )
-
-        return pa.ExtensionArray.from_storage(pa_type_, storage)
-
-    def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
+    def to_numpy(self, zero_copy_only: bool = True) -> np.ndarray:
         """
-        Helper for getting either an element of the array of tensors as an
-        ndarray, or the entire array of tensors as a single ndarray.
-
-        Args:
-            index: The index of the tensor element that we wish to return as
-                an ndarray. If not given, the entire array of tensors is
-                returned as an ndarray.
-            zero_copy_only: If True, an exception will be raised if the
-                conversion to a NumPy array would require copying the
-                underlying data (e.g. in presence of nulls, or for
-                non-primitive types). This argument is currently ignored, so
-                zero-copy isn't enforced even if this argument is true.
-
-        Returns:
-            The corresponding tensor element as an ndarray if an index was
-            given, or the entire array of tensors as an ndarray otherwise.
+        Convert back to a NumPy ndarray.
+        This will be zero-copy whenever possible.
         """
-        # TODO(Clark): Enforce zero_copy_only.
-        # TODO(Clark): Support strides?
-        # Buffers schema:
-        # [None, offset_buffer, None, data_buffer]
-        buffers = self.buffers()
-        data_buffer = buffers[3]
-        storage_list_type = self.storage.type
-        value_type = storage_list_type.value_type
-        ext_dtype = value_type.to_pandas_dtype()
-        shape = self.type.shape
-        if pa.types.is_boolean(value_type):
-            # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
-            # and are accessed via bit offsets.
-            buffer_item_width = value_type.bit_width
-        else:
-            # We assume all other array types are accessed via byte array
-            # offsets.
-            buffer_item_width = value_type.bit_width // 8
-        # Number of items per inner ndarray.
-        num_items_per_element = np.prod(shape) if shape else 1
-        # Base offset into data buffer, e.g. due to zero-copy slice.
-        buffer_offset = self.offset * num_items_per_element
-        # Offset of array data in buffer.
-        offset = buffer_item_width * buffer_offset
-        if index is not None:
-            # Getting a single tensor element of the array.
-            offset_buffer = buffers[1]
-            offset_array = np.ndarray(
-                (len(self),), buffer=offset_buffer, dtype=self.type.OFFSET_DTYPE
-            )
-            # Offset into array to reach logical index.
-            index_offset = offset_array[index]
-            # Add the index offset to the base offset.
-            offset += buffer_item_width * index_offset
-        else:
-            # Getting the entire array of tensors.
-            shape = (len(self),) + shape
-        if pa.types.is_boolean(value_type):
-            # Special handling for boolean arrays, since Arrow bit-packs boolean arrays
-            # while NumPy does not.
-            # Cast as uint8 array and let NumPy unpack into a boolean view.
-            # Offset into uint8 array, where each element is a bucket for 8 booleans.
-            byte_bucket_offset = offset // 8
-            # Offset for a specific boolean, within a uint8 array element.
-            bool_offset = offset % 8
-            # The number of uint8 array elements (buckets) that our slice spans.
-            # Note that, due to the offset for a specific boolean, the slice can span
-            # byte boundaries even if it contains less than 8 booleans.
-            num_boolean_byte_buckets = 1 + ((bool_offset + np.prod(shape) - 1) // 8)
-            # Construct the uint8 array view on the buffer.
-            arr = np.ndarray(
-                (num_boolean_byte_buckets,),
-                dtype=np.uint8,
-                buffer=data_buffer,
-                offset=byte_bucket_offset,
-            )
-            # Unpack into a byte per boolean, using LSB bit-packed ordering.
-            arr = np.unpackbits(arr, bitorder="little")
-            # Interpret buffer as boolean array.
-            return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
-        # Special handling of binary/string types. Assumes unicode string tensor columns
-        if pa.types.is_fixed_size_binary(value_type):
-            ext_dtype = np.dtype(
-                f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
-            )
-        return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
-
-    def to_numpy(self, zero_copy_only: bool = True):
-        """
-        Convert the entire array of tensors into a single ndarray.
-
-        Args:
-            zero_copy_only: If True, an exception will be raised if the
-                conversion to a NumPy array would require copying the
-                underlying data (e.g. in presence of nulls, or for
-                non-primitive types). This argument is currently ignored, so
-                zero-copy isn't enforced even if this argument is true.
-
-        Returns:
-            A single ndarray representing the entire array of tensors.
-        """
-        return self._to_numpy(zero_copy_only=zero_copy_only)
+        # to_numpy_ndarray always returns an (N, *shape) ndarray
+        return self.to_numpy_ndarray()
 
     @classmethod
     def _concat_same_type(
