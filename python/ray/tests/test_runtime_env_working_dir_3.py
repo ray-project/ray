@@ -77,22 +77,8 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
-def get_local_file_whitelist(cluster):
-    # On Windows the runtime directory itself is sometimes not deleted due
-    # to it being in use therefore whitelist it for the tests.
-    if sys.platform == "win32":
-        runtime_dir = (
-            Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path())
-            / "working_dir_files"
-        )
-        pkg_dirs = list(Path(runtime_dir).iterdir())
-        if pkg_dirs:
-            return {pkg_dirs[0].name}
-    return {}
-
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestGC:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     def test_job_level_gc(
         self,
         start_cluster,
@@ -155,8 +141,7 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        whitelist = get_local_file_whitelist(cluster)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     # NOTE(edoakes): I tried removing the parametrization here and setting working_dir
@@ -215,8 +200,7 @@ class TestGC:
             ray.kill(actors[i])
             print(f"Issued ray.kill for actor {i}.")
 
-        whitelist = get_local_file_whitelist(cluster)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     def test_detached_actor_gc(
@@ -292,8 +276,7 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        whitelist = get_local_file_whitelist(cluster)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     def test_hit_cache_size_limit(
