@@ -37,7 +37,7 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(max_object_report_batch_size),
-      mark_as_failed_(mark_as_failed) {}
+      mark_as_failed_(std::move(mark_as_failed)) {}
 
 namespace {
 
@@ -78,7 +78,7 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
   // Filter out the removed nodes from the object locations.
   FilterRemovedNodes(gcs_client, &new_node_ids);
   if (new_node_ids != *node_ids) {
-    *node_ids = new_node_ids;
+    *node_ids = std::move(new_node_ids);
     is_updated = true;
   }
   const std::string &new_spilled_url = location_info.spilled_url();
@@ -290,11 +290,6 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   it->second.subscribed = true;
 
   // Update entries for this object.
-  for (auto const &node_id_binary : location_info.node_ids()) {
-    const auto node_id = NodeID::FromBinary(node_id_binary);
-    RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-        << "Object is on node alive? " << !gcs_client_->Nodes().IsRemoved(node_id);
-  }
   auto location_updated = UpdateObjectLocations(location_info,
                                                 gcs_client_,
                                                 &it->second.current_object_locations,
@@ -315,29 +310,24 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
         << ", lookup failed: " << location_lookup_failed;
     metrics_num_object_location_updates_++;
     cum_metrics_num_object_location_updates_++;
-    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-    // looping over the callbacks.
-    auto callbacks = it->second.callbacks;
-    // Call all callbacks associated with the object id locations we have
+
+    // We can call the callback directly without worrying about invalidating caller
+    // iterators since this is already running in the subscription callback stack.
+    // See https://github.com/ray-project/ray/issues/2959.
+    // Call callback associated with the object id locations we have
     // received.  This notifies the client even if the list of locations is
     // empty, since this may indicate that the objects have been evicted from
     // all nodes.
-    for (const auto &[_, func] : callbacks) {
-      // We can call the callback directly without worrying about invalidating caller
-      // iterators since this is already running in the subscription callback stack.
-      // See https://github.com/ray-project/ray/issues/2959.
-      func(object_id,
-           it->second.current_object_locations,
-           it->second.spilled_url,
-           it->second.spilled_node_id,
-           it->second.pending_creation,
-           it->second.object_size);
-    }
+    it->second.callback(object_id,
+                        it->second.current_object_locations,
+                        it->second.spilled_url,
+                        it->second.spilled_node_id,
+                        it->second.pending_creation,
+                        it->second.object_size);
   }
 }
 
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
-    const UniqueID &callback_id,
     const ObjectID &object_id,
     const rpc::Address &owner_address,
     const OnLocationsFound &callback) {
@@ -395,14 +385,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto location_state = LocationListenerState();
     location_state.owner_address = owner_address;
+    location_state.callback = callback;
     it = listeners_.emplace(object_id, std::move(location_state)).first;
   }
   auto &listener_state = it->second;
-
-  if (listener_state.callbacks.count(callback_id) > 0) {
-    return Status::OK();
-  }
-  listener_state.callbacks.emplace(callback_id, callback);
 
   // If we previously received some notifications about the object's locations,
   // immediately notify the caller of the current known locations.
@@ -441,21 +427,18 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 }
 
 ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
-    const UniqueID &callback_id, const ObjectID &object_id) {
+    const ObjectID &object_id) {
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
     return Status::OK();
   }
-  entry->second.callbacks.erase(callback_id);
-  if (entry->second.callbacks.empty()) {
-    object_location_subscriber_->Unsubscribe(
-        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-        entry->second.owner_address,
-        object_id.Binary());
-    owner_client_pool_->Disconnect(
-        WorkerID::FromBinary(entry->second.owner_address.worker_id()));
-    listeners_.erase(entry);
-  }
+  object_location_subscriber_->Unsubscribe(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+      entry->second.owner_address,
+      object_id.Binary());
+  owner_client_pool_->Disconnect(
+      WorkerID::FromBinary(entry->second.owner_address.worker_id()));
+  listeners_.erase(entry);
   return Status::OK();
 }
 
@@ -486,26 +469,23 @@ OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
 
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &[object_id, listener] : listeners_) {
-    bool updated = listener.current_object_locations.erase(node_id);
+    bool updated = listener.current_object_locations.erase(node_id) > 0;
     if (listener.spilled_node_id == node_id) {
       listener.spilled_node_id = NodeID::Nil();
       listener.spilled_url = "";
       updated = true;
     }
-
     if (updated) {
-      // Re-call all the subscribed callbacks for the object, since its
+      // It is safe to call the callback directly since this is already running
+      // in the subscription callback stack.
+      // Re-call all the subscribed callback for the object, since its
       // locations have changed.
-      for (const auto &[_, func] : listener.callbacks) {
-        // It is safe to call the callback directly since this is already running
-        // in the subscription callback stack.
-        func(object_id,
-             listener.current_object_locations,
-             listener.spilled_url,
-             listener.spilled_node_id,
-             listener.pending_creation,
-             listener.object_size);
-      }
+      listener.callback(object_id,
+                        listener.current_object_locations,
+                        listener.spilled_url,
+                        listener.spilled_node_id,
+                        listener.pending_creation,
+                        listener.object_size);
     }
   }
 }
@@ -520,13 +500,7 @@ void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
   stats::ObjectDirectoryLocationUpdates.Record(
       metrics_num_object_location_updates_per_second_);
   metrics_num_object_location_updates_ = 0;
-  // Record number of object location lookups per second.
-  metrics_num_object_location_lookups_per_second_ =
-      static_cast<double>(metrics_num_object_location_lookups_) *
-      (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryLocationLookups.Record(
-      metrics_num_object_location_lookups_per_second_);
-  metrics_num_object_location_lookups_ = 0;
+
   // Record number of object locations added per second.
   metrics_num_object_locations_added_per_second_ =
       static_cast<double>(metrics_num_object_locations_added_) *
@@ -534,6 +508,7 @@ void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
   stats::ObjectDirectoryAddedLocations.Record(
       metrics_num_object_locations_added_per_second_);
   metrics_num_object_locations_added_ = 0;
+
   // Record number of object locations removed per second.
   metrics_num_object_locations_removed_per_second_ =
       static_cast<double>(metrics_num_object_locations_removed_) *
@@ -552,8 +527,6 @@ std::string OwnershipBasedObjectDirectory::DebugString() const {
          << cum_metrics_num_object_location_updates_;
   result << "\n- num location updates per second: "
          << metrics_num_object_location_updates_per_second_;
-  result << "\n- num location lookups per second: "
-         << metrics_num_object_location_lookups_per_second_;
   result << "\n- num locations added per second: "
          << metrics_num_object_locations_added_per_second_;
   result << "\n- num locations removed per second: "
