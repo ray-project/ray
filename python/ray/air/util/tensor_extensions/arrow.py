@@ -745,7 +745,7 @@ class ArrowTensorArray(pa.FixedShapeTensorArray):
         """
         # to_numpy_ndarray always returns an (N, *shape) ndarray
         return self.to_numpy_ndarray()
-        
+
     @property
     def type(self):
         """Override to maintain compatibility with the schema string format in tests"""
@@ -755,6 +755,7 @@ class ArrowTensorArray(pa.FixedShapeTensorArray):
             shape = tuple(pa_type.shape)
             dtype = pa_type.value_type
             from ray.data import DataContext
+
             if DataContext.get_current().use_arrow_tensor_v2:
                 return ArrowTensorTypeV2(shape, dtype)
             else:

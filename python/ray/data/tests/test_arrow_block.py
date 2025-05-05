@@ -444,18 +444,20 @@ def test_register_arrow_types(tmp_path):
     ds.write_parquet(tmp_file)
 
     ds = ray.data.read_parquet(tmp_file)
-    
+
     # The schema representation might be different depending on whether we're using
     # Ray's custom arrow tensor extension type or PyArrow's native FixedShapeTensorType
     schema_str = str(ds.schema())
-    
+
     # Check that the schema contains the tensor type information
     assert "item" in schema_str
-    
+
     # Accept either the Ray custom format or PyArrow's native format
-    ray_format = "Column  Type\n------  ----\nitem    numpy.ndarray(shape=(8, 8), dtype=int64)"
+    ray_format = (
+        "Column  Type\n------  ----\nitem    numpy.ndarray(shape=(8, 8), dtype=int64)"
+    )
     pyarrow_format = "Column  Type\n------  ----\nitem    extension<arrow.fixed_shape_tensor[value_type=int64, shape=[8,8], permutation=[0,1]]>"
-    
+
     assert schema_str in [ray_format, pyarrow_format]
 
     # Also run in driver script to eliminate existing imports.

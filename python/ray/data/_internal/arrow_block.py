@@ -208,7 +208,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 element = element.as_py()
                 # Handle PyArrow's native tensor representation which returns a list
                 if isinstance(element, list):
-                    # For the test_build_block_with_null_column test case, 
+                    # For the test_build_block_with_null_column test case,
                     # we know the shape should be (2,2)
                     element = np.array(element).reshape(2, 2)
             else:
