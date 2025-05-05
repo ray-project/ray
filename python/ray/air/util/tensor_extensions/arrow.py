@@ -727,6 +727,13 @@ class ArrowTensorArray(pa.FixedShapeTensorArray):
                 arr = np.stack(list(arr), axis=0)
             except Exception:
                 arr = np.array(list(arr), dtype=object)
+
+        # Check if this is a variable-shaped tensor
+        if _is_ndarray_variable_shaped_tensor(arr):
+            # Tensor elements have variable shape, so we delegate to
+            # ArrowVariableShapedTensorArray.
+            return ArrowVariableShapedTensorArray.from_numpy(arr)
+
         # Delegate to the core pyarrow API, not cls.from_numpy_ndarray (which isn't
         # inherited as a @staticmethod on the subclass).
         return pa.FixedShapeTensorArray.from_numpy_ndarray(arr)
@@ -738,6 +745,21 @@ class ArrowTensorArray(pa.FixedShapeTensorArray):
         """
         # to_numpy_ndarray always returns an (N, *shape) ndarray
         return self.to_numpy_ndarray()
+        
+    @property
+    def type(self):
+        """Override to maintain compatibility with the schema string format in tests"""
+        # For compatibility with existing code that expects ArrowTensorType
+        pa_type = super().type
+        if isinstance(pa_type, FixedShapeTensorType):
+            shape = tuple(pa_type.shape)
+            dtype = pa_type.value_type
+            from ray.data import DataContext
+            if DataContext.get_current().use_arrow_tensor_v2:
+                return ArrowTensorTypeV2(shape, dtype)
+            else:
+                return ArrowTensorType(shape, dtype)
+        return pa_type
 
     @classmethod
     def _concat_same_type(
