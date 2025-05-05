@@ -55,10 +55,7 @@ class CoreWorkerMemoryStore {
       ReferenceCounter *counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
-      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
-      std::function<std::shared_ptr<RayObject>(const RayObject &object,
-                                               const ObjectID &object_id)>
-          object_allocator = nullptr);
+      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr);
   ~CoreWorkerMemoryStore() = default;
 
   /// Put an object with specified ID into object store. If there are pending GetAsync
@@ -66,9 +63,10 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
+  /// \param[in] copy_data Whether the data and metadata inside object should be copied.
   /// \return Whether the object was put into the memory store. If false, then
   /// this is because the object was promoted to and stored in plasma instead.
-  bool Put(const RayObject &object, const ObjectID &object_id);
+  bool Put(RayObject object, const ObjectID &object_id, bool copy_data = true);
 
   /// Get a list of objects from the object store.
   ///
@@ -249,12 +247,6 @@ class CoreWorkerMemoryStore {
   /// placeholder values for objects in plasma and inlined small returned
   /// objects from task.
   int64_t num_local_objects_bytes_ ABSL_GUARDED_BY(mu_) = 0;
-
-  /// This lambda is used to allow language frontend to allocate the objects
-  /// in the memory store.
-  std::function<std::shared_ptr<RayObject>(const RayObject &object,
-                                           const ObjectID &object_id)>
-      object_allocator_;
 };
 
 }  // namespace core

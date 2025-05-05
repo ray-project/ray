@@ -135,7 +135,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             // task so just marking the task fails.
             task_finisher_.CompletePendingTask(
                 task_id,
-                push_task_reply,
+                std::move(push_task_reply),
                 reply.actor_address(),
                 /*is_application_error=*/status.IsCreationTaskError());
           } else {
@@ -548,8 +548,10 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
             [this, task_spec = std::move(task.value().first)] {
               rpc::PushTaskReply reply;
               rpc::Address addr;
-              HandlePushTaskReply(
-                  Status::IOError("The actor is restarting."), reply, addr, task_spec);
+              HandlePushTaskReply(Status::IOError("The actor is restarting."),
+                                  std::move(reply),
+                                  addr,
+                                  task_spec);
             },
             "ActorTaskSubmitter::SendPendingTasks_ForceFail");
       }
@@ -616,8 +618,8 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
   rpc::Address addr(queue.rpc_client->Addr());
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
-      [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
-        HandlePushTaskReply(status, reply, addr, task_spec);
+      [this, addr, task_spec](const Status &status, rpc::PushTaskReply &&reply) {
+        HandlePushTaskReply(status, std::move(reply), addr, task_spec);
       };
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
@@ -649,7 +651,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 }
 
 void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
-                                             const rpc::PushTaskReply &reply,
+                                             rpc::PushTaskReply reply,
                                              const rpc::Address &addr,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
@@ -668,8 +670,9 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
+    bool is_application_error = reply.is_application_error();
     task_finisher_.CompletePendingTask(
-        task_id, reply, addr, reply.is_application_error());
+        task_id, std::move(reply), addr, is_application_error);
   } else if (status.IsSchedulingCancelled()) {
     std::ostringstream stream;
     stream << "The task " << task_id << " is canceled from an actor " << actor_id
@@ -740,9 +743,9 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
       if (status.ok()) {
         // last failure = user exception, just complete it with failure.
         RAY_CHECK(reply.is_retryable_error());
-
+        bool is_application_error = reply.is_application_error();
         GetTaskFinisherWithoutMu().CompletePendingTask(
-            task_id, reply, addr, reply.is_application_error());
+            task_id, std::move(reply), addr, is_application_error);
 
       } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
         // last failure = Actor death, but we still see the actor "alive" so we optionally

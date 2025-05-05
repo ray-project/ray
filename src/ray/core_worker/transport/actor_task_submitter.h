@@ -387,7 +387,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void HandlePushTaskReply(const Status &status,
-                           const rpc::PushTaskReply &reply,
+                           rpc::PushTaskReply reply,
                            const rpc::Address &addr,
                            const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mu_);
 

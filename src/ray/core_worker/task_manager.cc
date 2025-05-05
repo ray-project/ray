@@ -442,15 +442,24 @@ size_t TaskManager::NumPendingTasks() const {
 }
 
 bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
-                                   const rpc::ReturnObject &return_object,
+                                   rpc::ReturnObject return_object,
                                    const NodeID &worker_raylet_id,
                                    bool store_in_plasma) {
   bool direct_return = false;
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
   RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                  << return_object.size();
-  const auto nested_refs =
-      VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
+  auto nested_refs = VectorFromProtobuf<rpc::ObjectReference>(
+      std::move(*return_object.mutable_nested_inlined_refs()));
+  rpc::Address owner_address;
+  if (reference_counter_.GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
+    std::vector<ObjectID> nested_ids;
+    nested_ids.reserve(nested_refs.size());
+    for (const auto &nested_ref : nested_refs) {
+      nested_ids.emplace_back(ObjectRefToId(nested_ref));
+    }
+    reference_counter_.AddNestedObjectIds(object_id, nested_ids, owner_address);
+  }
 
   if (return_object.in_plasma()) {
     // NOTE(swang): We need to add the location of the object before marking
@@ -468,36 +477,24 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // fate-share with the object if the local node fails.
     std::shared_ptr<LocalMemoryBuffer> data_buffer;
     if (!return_object.data().empty()) {
-      data_buffer = std::make_shared<LocalMemoryBuffer>(
-          const_cast<uint8_t *>(
-              reinterpret_cast<const uint8_t *>(return_object.data().data())),
-          return_object.data().size());
+      data_buffer =
+          std::make_shared<LocalMemoryBuffer>(std::move(*return_object.mutable_data()));
     }
     std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
     if (!return_object.metadata().empty()) {
       metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-          const_cast<uint8_t *>(
-              reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-          return_object.metadata().size());
+          std::move(*return_object.mutable_metadata()));
     }
 
-    RayObject object(data_buffer, metadata_buffer, nested_refs);
+    RayObject object(
+        std::move(data_buffer), std::move(metadata_buffer), std::move(nested_refs));
     if (store_in_plasma) {
       put_in_local_plasma_callback_(object, object_id);
     } else {
-      direct_return = in_memory_store_.Put(object, object_id);
+      direct_return = in_memory_store_.Put(std::move(object), object_id);
     }
   }
 
-  rpc::Address owner_address;
-  if (reference_counter_.GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
-    std::vector<ObjectID> nested_ids;
-    nested_ids.reserve(nested_refs.size());
-    for (const auto &nested_ref : nested_refs) {
-      nested_ids.emplace_back(ObjectRefToId(nested_ref));
-    }
-    reference_counter_.AddNestedObjectIds(object_id, nested_ids, owner_address);
-  }
   return direct_return;
 }
 
@@ -658,7 +655,7 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 }
 
 bool TaskManager::HandleReportGeneratorItemReturns(
-    const rpc::ReportGeneratorItemReturnsRequest &request,
+    rpc::ReportGeneratorItemReturnsRequest request,
     const ExecutionSignalCallback &execution_signal_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
@@ -700,7 +697,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
   // TODO(sang): Support the regular return values as well.
   size_t num_objects_written = 0;
-  for (const auto &return_object : request.dynamic_return_objects()) {
+  for (auto &return_object : *request.mutable_dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
@@ -717,7 +714,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     // When an object is reported, the object is ready to be fetched.
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     HandleTaskReturn(object_id,
-                     return_object,
+                     std::move(return_object),
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
                      /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
   }
@@ -782,7 +779,7 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
-                                      const rpc::PushTaskReply &reply,
+                                      rpc::PushTaskReply reply,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
@@ -797,14 +794,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(reply.return_objects_size() == 1)
         << "Dynamic generators only supported for num_returns=1";
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
-    for (const auto &return_object : reply.dynamic_return_objects()) {
+    for (auto &return_object : *reply.mutable_dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
       if (first_execution) {
         reference_counter_.AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
       }
       if (!HandleTaskReturn(object_id,
-                            return_object,
+                            std::move(return_object),
                             NodeID::FromBinary(worker_addr.raylet_id()),
                             store_in_plasma_ids.contains(object_id))) {
         if (first_execution) {
@@ -814,10 +811,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  for (const auto &return_object : reply.return_objects()) {
+  for (auto &return_object : *reply.mutable_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    // If there's an application error we might need the return object, so not moving.
     if (HandleTaskReturn(object_id,
-                         return_object,
+                         is_application_error ? return_object : std::move(return_object),
                          NodeID::FromBinary(worker_addr.raylet_id()),
                          store_in_plasma_ids.contains(object_id))) {
       direct_return_ids.push_back(object_id);
@@ -942,9 +940,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
           RAY_CHECK_EQ(reply.return_objects_size(), 1);
-          const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
-                           return_object,
+                           std::move(reply.mutable_return_objects()->at(0)),
                            NodeID::FromBinary(worker_addr.raylet_id()),
                            store_in_plasma_ids.contains(generator_return_id));
         }
