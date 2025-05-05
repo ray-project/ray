@@ -271,53 +271,6 @@ Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) has several ad
 USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
 ```
 
-    Training started with configuration:
-    ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
-    │ Training config                                                                                      │
-    ├──────────────────────────────────────────────────────────────────────────────────────────────────────┤
-    │ train_loop_config/args/bf16                                                                     True │
-    │ train_loop_config/args/cutoff_len                                                               2048 │
-    │ train_loop_config/args/dataloader_num_workers                                                      4 │
-    │ train_loop_config/args/dataset                                                           viggo-train │
-    │ train_loop_config/args/dataset_dir                                              ...ter_storage/viggo │
-    │ train_loop_config/args/ddp_timeout                                                         180000000 │
-    │ train_loop_config/args/do_train                                                                 True │
-    │ train_loop_config/args/eval_dataset                                                        viggo-val │
-    │ train_loop_config/args/eval_steps                                                                500 │
-    │ train_loop_config/args/eval_strategy                                                           steps │
-    │ train_loop_config/args/finetuning_type                                                          lora │
-    │ train_loop_config/args/gradient_accumulation_steps                                                 8 │
-    │ train_loop_config/args/learning_rate                                                          0.0001 │
-    │ train_loop_config/args/logging_steps                                                              10 │
-    │ train_loop_config/args/lora_rank                                                                   8 │
-    │ train_loop_config/args/lora_target                                                               all │
-    │ train_loop_config/args/lr_scheduler_type                                                      cosine │
-    │ train_loop_config/args/max_samples                                                              1000 │
-    │ train_loop_config/args/model_name_or_path                                       ...en2.5-7B-Instruct │
-    │ train_loop_config/args/num_train_epochs                                                          5.0 │
-    │ train_loop_config/args/output_dir                                               ...age/viggo/outputs │
-    │ train_loop_config/args/overwrite_cache                                                          True │
-    │ train_loop_config/args/overwrite_output_dir                                                     True │
-    │ train_loop_config/args/per_device_eval_batch_size                                                  1 │
-    │ train_loop_config/args/per_device_train_batch_size                                                 1 │
-    │ train_loop_config/args/placement_strategy                                                       PACK │
-    │ train_loop_config/args/plot_loss                                                                True │
-    │ train_loop_config/args/preprocessing_num_workers                                                  16 │
-    │ train_loop_config/args/ray_num_workers                                                             4 │
-    │ train_loop_config/args/ray_run_name                                                     lora_sft_ray │
-    │ train_loop_config/args/ray_storage_path                                         ...orage/viggo/saves │
-    │ train_loop_config/args/resources_per_worker/GPU                                                    1 │
-    │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xA10G                      1 │
-    │ train_loop_config/args/resume_from_checkpoint                                                        │
-    │ train_loop_config/args/save_only_model                                                         False │
-    │ train_loop_config/args/save_steps                                                                500 │
-    │ train_loop_config/args/stage                                                                     sft │
-    │ train_loop_config/args/template                                                                 qwen │
-    │ train_loop_config/args/trust_remote_code                                                        True │
-    │ train_loop_config/args/warmup_ratio                                                              0.1 │
-    │ train_loop_config/callbacks                                                     ... 0x7e1262910e10>] │
-    ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
-
     100%|██████████| 155/155 [07:12<00:00,  2.85s/it][INFO|trainer.py:3942] 2025-04-11 14:57:59,207 >> Saving model checkpoint to /mnt/cluster_storage/viggo/outputs/checkpoint-155
 
     Training finished iteration 1 at 2025-04-11 14:58:02. Total running time: 10min 24s
