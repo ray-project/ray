@@ -2707,8 +2707,7 @@ cdef class EmptyProfileEvent:
 
 cdef class GcsClient:
     """
-    Client to the GCS server. Only contains synchronous methods. For async methods,
-    see GcsAioClient.
+    Client to the GCS server.
 
     This is a thin wrapper around InnerGcsClient with only call frequency collection.
     """
