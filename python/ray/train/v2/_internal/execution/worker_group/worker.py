@@ -1,14 +1,12 @@
-from dataclasses import dataclass
-from functools import cached_property
 import logging
 import os
 import queue
 import socket
+from dataclasses import dataclass
+from functools import cached_property
 from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
-from ray.types import ObjectRef
-from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
@@ -30,7 +28,9 @@ from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
 from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2._internal.util import ObjectRefWrapper
+from ray.types import ObjectRef
 
+from .thread_runner import ThreadRunner
 
 T = TypeVar("T")
 
