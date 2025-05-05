@@ -231,6 +231,8 @@ def test_method_raise_and_exit(
     The retry behavior should work if the max_task_retries or max_restarts are -1
         (infinite retry).
     """
+    # NOTE(edoakes): we test on all three types of actors in parallel to reduce the
+    # time taken to run the test in CI.
     counter = Counter.remote()
     sync_actor = TroubleMaker.options(max_restarts=max_retries_and_restarts).remote(
         counter_key="sync",
@@ -286,6 +288,8 @@ def test_method_raise_and_exit_no_over_retry(
     max_task_retries = 2
     actions, error = actions_and_error
 
+    # NOTE(edoakes): we test on all three types of actors in parallel to reduce the
+    # time taken to run the test in CI.
     counter = Counter.remote()
     sync_actor = TroubleMaker.options(max_restarts=max_restarts).remote(
         counter_key="sync",
