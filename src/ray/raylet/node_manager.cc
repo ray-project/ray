@@ -2116,7 +2116,6 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveRequest request,
     rpc::CancelResourceReserveReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // This PRC is only called when the placement group is removed.
   const auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
