@@ -52,6 +52,7 @@ class LocalityScope(str, enum.Enum):
 class LocalityScheduleMixin:
     def __init__(
         self,
+        self_node_id: Optional[str] = None,
         prefer_local_node_routing: bool = False,
         prefer_local_az_routing: bool = False,
         self_availability_zone: Optional[str] = None,
@@ -59,6 +60,7 @@ class LocalityScheduleMixin:
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self._self_node_id = self_node_id
         self._prefer_local_node_routing = prefer_local_node_routing
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_availability_zone = self_availability_zone
@@ -67,6 +69,7 @@ class LocalityScheduleMixin:
         self._colocated_replica_ids: DefaultDict[
             LocalityScope, Set[ReplicaID]
         ] = defaultdict(set)
+        self._replica_id_set: Set[ReplicaID] = set()
 
     def discard_colocated_replica_ids_on_replica_actor_died(
         self, replica_id: ReplicaID
@@ -149,6 +152,8 @@ class MultiplexScheduleMixin:
         # once for concurrent requests for the same model id.
         # Whenever there is a match, we will remove the model id from this set.
         self._multiplexed_model_id_fallback_match: Set[str] = set()
+        self._replica_id_set: Set[ReplicaID] = set()
+        self._replicas: Dict[ReplicaID, RunningReplica] = {}
 
     def update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -270,7 +275,6 @@ class ReplicaScheduler(ABC):
         self,
         deployment_id: DeploymentID,
         handle_source: DeploymentHandleSource,
-        self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_actor_handle: Optional[ActorHandle] = None,
         use_replica_queue_len_cache: bool = False,
@@ -284,7 +288,6 @@ class ReplicaScheduler(ABC):
         super().__init__(*args, **kwargs)
         self._deployment_id = deployment_id
         self._handle_source = handle_source
-        self._self_node_id = self_node_id
         self._self_actor_handle = self_actor_handle
 
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
@@ -418,7 +421,8 @@ class ReplicaScheduler(ABC):
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
         self._replica_id_set.discard(replica_id)
-        self.discard_colocated_replica_ids_on_replica_actor_died(replica_id)
+        if hasattr(self, "discard_colocated_replica_ids_on_replica_actor_died"):
+            self.discard_colocated_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
@@ -441,8 +445,10 @@ class ReplicaScheduler(ABC):
         """
         new_replicas = {}
         new_replica_id_set = set()
-        self.update_multiplexed_model_ids_with_replicas(replicas)
-        self.update_discard_colocated_replica_ids_with_replicas(replicas)
+        if hasattr(self, "update_multiplexed_model_ids_with_replicas"):
+            self.update_multiplexed_model_ids_with_replicas(replicas)
+        if hasattr(self, "update_discard_colocated_replica_ids_with_replicas"):
+            self.update_discard_colocated_replica_ids_with_replicas(replicas)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
@@ -497,7 +503,7 @@ class ReplicaScheduler(ABC):
         This method also updates the local cache of replica queue lengths according to
         the responses.
         """
-        result: List[Tuple[RunningReplica, int]] = []
+        result: List[Tuple[RunningReplica, Optional[int]]] = []
         if len(replicas) == 0:
             return result
 
