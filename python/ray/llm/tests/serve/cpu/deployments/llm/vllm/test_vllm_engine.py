@@ -18,6 +18,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
+    ModelLoadingConfig,
 )
 from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
 
@@ -194,6 +195,42 @@ class TestVLLMEngine:
         guided_json = json.loads(parsed_params.guided_decoding.json)
         assert guided_json == sampling_params.response_format.json_schema
         assert getattr(parsed_params, "response_format", None) is None
+
+    def test_get_batch_interval_ms(self):
+        """Test that the batch interval is set correctly in the config."""
+
+        # Test with a no stream_batching_interval_ms.
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+        )
+        vllm_engine = VLLMEngine(llm_config)
+        assert vllm_engine._get_batch_interval_ms() == MODEL_RESPONSE_BATCH_TIMEOUT_MS
+
+        # Test with a non-zero stream_batching_interval_ms.
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+            experimental_configs={
+                "stream_batching_interval_ms": 13,
+            },
+        )
+        vllm_engine = VLLMEngine(llm_config)
+        assert vllm_engine._get_batch_interval_ms() == 13
+
+        # Test with zero stream_batching_interval_ms.
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+            experimental_configs={
+                "stream_batching_interval_ms": 0,
+            },
+        )
+        vllm_engine = VLLMEngine(llm_config)
+        assert vllm_engine._get_batch_interval_ms() == 0
 
 
 TEXT_VALUE = "foo"
