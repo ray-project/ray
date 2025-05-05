@@ -569,7 +569,7 @@ py_test(
     args = [
         "--as-test",
         "--enable-new-api-stack",
-        "--offline_evaluation_interval=1",
+        "--offline-evaluation-interval=1",
         "--num-offline-eval-runners=2",
     ],
     # Include the offline data files.
@@ -595,7 +595,7 @@ py_test(
         "--as-test",
         "--enable-new-api-stack",
         "--num-gpus-per-learner=1",
-        "--offline_evaluation_interval=1",
+        "--offline-evaluation-interval=1",
         "--num-offline-eval-runners=2",
         "--num-gpus-per-offline-eval-runner=0.5",
     ],

@@ -18,7 +18,7 @@ parser = add_rllib_example_script_args()
 parser.set_defaults(enable_new_api_stack=True)
 
 parser.add_argument(
-    "--offline_evaluation_interval",
+    "--offline-evaluation-interval",
     type=int,
     default=1,
     help=(
