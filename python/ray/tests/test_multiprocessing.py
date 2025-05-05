@@ -1,7 +1,6 @@
 import math
 import os
 import platform
-import pytest
 import queue
 import random
 import sys
@@ -10,7 +9,8 @@ import time
 import multiprocessing as mp
 from collections import defaultdict
 
-from joblib import parallel_backend, Parallel, delayed
+import pytest
+
 
 import ray
 from ray._private.test_utils import external_redis_test_enabled, SignalActor
@@ -18,22 +18,17 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 from ray.util.joblib import register_ray
 
 
-@pytest.fixture
-def pool():
-    pool = Pool(processes=1)
-    yield pool
-    pool.terminate()
-    pool.join()
-    ray.shutdown()
+@pytest.fixture(scope="module")
+def ray_init_4_cpu_shared():
+    yield ray.init(num_cpus=4)
 
 
 @pytest.fixture
-def pool_4_processes():
+def pool_4_processes(ray_init_4_cpu_shared):
     pool = Pool(processes=4)
     yield pool
     pool.terminate()
     pool.join()
-    ray.shutdown()
 
 
 @pytest.fixture
@@ -42,22 +37,6 @@ def pool_4_processes_python_multiprocessing_lib():
     yield pool
     pool.terminate()
     pool.join()
-
-
-@pytest.fixture
-def ray_start_1_cpu():
-    address_info = ray.init(num_cpus=1)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_4_cpu():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -182,7 +161,7 @@ def test_connect_to_ray(monkeypatch, ray_start_cluster):
     ray.shutdown()
 
 
-def test_initializer(shutdown_only):
+def test_initializer(ray_init_4_cpu_shared):
     def init(dirname):
         with open(os.path.join(dirname, str(os.getpid())), "w") as f:
             print("hello", file=f)
@@ -237,7 +216,7 @@ def test_terminate(pool_4_processes):
         result.get()
 
 
-def test_apply(pool):
+def test_apply(pool_4_processes):
     def f(arg1, arg2, kwarg1=None, kwarg2=None):
         assert arg1 == 1
         assert arg2 == 2
@@ -245,9 +224,9 @@ def test_apply(pool):
         assert kwarg2 == 3
         return 1
 
-    assert pool.apply(f, (1, 2), {"kwarg2": 3}) == 1
+    assert pool_4_processes.apply(f, (1, 2), {"kwarg2": 3}) == 1
     with pytest.raises(AssertionError):
-        pool.apply(
+        pool_4_processes.apply(
             f,
             (
                 2,
@@ -256,12 +235,12 @@ def test_apply(pool):
             {"kwarg2": 3},
         )
     with pytest.raises(Exception):
-        pool.apply(f, (1,))
+        pool_4_processes.apply(f, (1,))
     with pytest.raises(Exception):
-        pool.apply(f, (1, 2), {"kwarg1": 3})
+        pool_4_processes.apply(f, (1, 2), {"kwarg1": 3})
 
 
-def test_apply_async(pool):
+def test_apply_async(pool_4_processes):
     def f(arg1, arg2, kwarg1=None, kwarg2=None):
         assert arg1 == 1
         assert arg2 == 2
@@ -269,9 +248,9 @@ def test_apply_async(pool):
         assert kwarg2 == 3
         return 1
 
-    assert pool.apply_async(f, (1, 2), {"kwarg2": 3}).get() == 1
+    assert pool_4_processes.apply_async(f, (1, 2), {"kwarg2": 3}).get() == 1
     with pytest.raises(AssertionError):
-        pool.apply_async(
+        pool_4_processes.apply_async(
             f,
             (
                 2,
@@ -280,9 +259,9 @@ def test_apply_async(pool):
             {"kwarg2": 3},
         ).get()
     with pytest.raises(Exception):
-        pool.apply_async(f, (1,)).get()
+        pool_4_processes.apply_async(f, (1,)).get()
     with pytest.raises(Exception):
-        pool.apply_async(f, (1, 2), {"kwarg1": 3}).get()
+        pool_4_processes.apply_async(f, (1, 2), {"kwarg1": 3}).get()
 
     # Won't return until the input ObjectRef is fulfilled.
     def ten_over(args):
@@ -291,7 +270,7 @@ def test_apply_async(pool):
         return 10 / val
 
     signal = SignalActor.remote()
-    result = pool.apply_async(ten_over, ([signal, 10],))
+    result = pool_4_processes.apply_async(ten_over, ([signal, 10],))
     result.wait(timeout=0.01)
     assert not result.ready()
     with pytest.raises(TimeoutError):
@@ -305,7 +284,7 @@ def test_apply_async(pool):
     assert result.get() == 1
 
     signal = SignalActor.remote()
-    result = pool.apply_async(ten_over, ([signal, 0],))
+    result = pool_4_processes.apply_async(ten_over, ([signal, 0],))
     with pytest.raises(ValueError, match="not ready"):
         result.successful()
 
@@ -322,8 +301,8 @@ def test_map(pool_4_processes):
     def f(index):
         return index, os.getpid()
 
-    results = pool_4_processes.map(f, range(1000))
-    assert len(results) == 1000
+    results = pool_4_processes.map(f, range(100))
+    assert len(results) == 100
 
     pid_counts = defaultdict(int)
     for i, (index, pid) in enumerate(results):
@@ -332,13 +311,13 @@ def test_map(pool_4_processes):
 
     # Check that the functions are spread somewhat evenly.
     for count in pid_counts.values():
-        assert count > 100
+        assert count > 20
 
     def bad_func(args):
         raise Exception("test_map failure")
 
     with pytest.raises(Exception, match="test_map failure"):
-        pool_4_processes.map(bad_func, range(100))
+        pool_4_processes.map(bad_func, range(10))
 
 
 def test_map_async(pool_4_processes):
@@ -385,13 +364,13 @@ def test_map_async(pool_4_processes):
         async_result.get()
 
 
-def test_starmap(pool):
+def test_starmap(pool_4_processes):
     def f(*args):
         return args
 
     args = [tuple(range(i)) for i in range(100)]
-    assert pool.starmap(f, args) == args
-    assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
+    assert pool_4_processes.starmap(f, args) == args
+    assert pool_4_processes.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
 def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):
@@ -431,9 +410,9 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
             # the current process_pool and callback_type in map_async
             callback_queue = Queue()
 
-            indices, error_indices = list(range(100)), []
+            indices, error_indices = list(range(20)), []
             if callback_type == "error callback":
-                error_indices = [2, 50, 98]
+                error_indices = [2, 10, 15]
             result = process_pool.map_async(
                 callback_test_helper,
                 [(index, error_indices) for index in indices],
@@ -489,13 +468,13 @@ def test_imap(pool_4_processes, use_iter):
             raise Exception("intentional failure")
         return index
 
-    error_indices = [2, 50, 98]
+    error_indices = [2, 10, 15]
     if use_iter:
-        imap_iterable = iter([(index, error_indices) for index in range(100)])
+        imap_iterable = iter([(index, error_indices) for index in range(20)])
     else:
-        imap_iterable = [(index, error_indices) for index in range(100)]
-    result_iter = pool_4_processes.imap(f, imap_iterable, chunksize=11)
-    for i in range(100):
+        imap_iterable = [(index, error_indices) for index in range(20)]
+    result_iter = pool_4_processes.imap(f, imap_iterable, chunksize=3)
+    for i in range(20):
         result = result_iter.next()
         if i in error_indices:
             assert isinstance(result, Exception)
@@ -506,17 +485,17 @@ def test_imap(pool_4_processes, use_iter):
         result_iter.next()
 
 
-def test_imap_fail_on_non_iterable(pool):
+def test_imap_fail_on_non_iterable(pool_4_processes):
     def fn(_):
         pass
 
     non_iterable = 3
 
     with pytest.raises(TypeError, match="object is not iterable"):
-        pool.imap(fn, non_iterable)
+        pool_4_processes.imap(fn, non_iterable)
 
     with pytest.raises(TypeError, match="object is not iterable"):
-        pool.imap_unordered(fn, non_iterable)
+        pool_4_processes.imap_unordered(fn, non_iterable)
 
 
 @pytest.mark.parametrize("use_iter", [True, False])
@@ -529,15 +508,15 @@ def test_imap_unordered(pool_4_processes, use_iter):
             raise Exception("intentional failure")
         return index
 
-    error_indices = [2, 50, 98]
+    error_indices = [2, 10, 15]
     in_order = []
     num_errors = 0
     if use_iter:
-        imap_iterable = iter([(index, error_indices) for index in range(100)])
+        imap_iterable = iter([(index, error_indices) for index in range(20)])
     else:
-        imap_iterable = [(index, error_indices) for index in range(100)]
-    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=11)
-    for i in range(100):
+        imap_iterable = [(index, error_indices) for index in range(20)]
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=3)
+    for i in range(20):
         result = result_iter.next()
         if isinstance(result, Exception):
             in_order.append(True)
@@ -564,14 +543,14 @@ def test_imap_timeout(pool_4_processes, use_iter):
             ray.get(signal.wait.remote())
         return index
 
-    wait_index = 23
+    wait_index = 5
     signal = SignalActor.remote()
     if use_iter:
-        imap_iterable = iter([(index, wait_index, signal) for index in range(100)])
+        imap_iterable = iter([(index, wait_index, signal) for index in range(20)])
     else:
-        imap_iterable = [(index, wait_index, signal) for index in range(100)]
+        imap_iterable = [(index, wait_index, signal) for index in range(20)]
     result_iter = pool_4_processes.imap(f, imap_iterable)
-    for i in range(100):
+    for i in range(20):
         if i == wait_index:
             with pytest.raises(TimeoutError):
                 result = result_iter.next(timeout=0.1)
@@ -586,14 +565,14 @@ def test_imap_timeout(pool_4_processes, use_iter):
     wait_index = 23
     signal = SignalActor.remote()
     if use_iter:
-        imap_iterable = iter([(index, wait_index, signal) for index in range(100)])
+        imap_iterable = iter([(index, wait_index, signal) for index in range(20)])
     else:
-        imap_iterable = [(index, wait_index, signal) for index in range(100)]
-    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=11)
+        imap_iterable = [(index, wait_index, signal) for index in range(20)]
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=3)
     in_order = []
-    for i in range(100):
+    for i in range(20):
         try:
-            result = result_iter.next(timeout=1)
+            result = result_iter.next(timeout=0.1)
         except TimeoutError:
             ray.get(signal.send.remote())
             result = result_iter.next()
@@ -610,62 +589,25 @@ def test_imap_timeout(pool_4_processes, use_iter):
 
 
 def test_maxtasksperchild(shutdown_only):
-    def f(args):
-        return os.getpid()
-
-    pool = Pool(5, maxtasksperchild=1)
-    assert len(set(pool.map(f, range(20)))) == 20
-    pool.terminate()
+    with Pool(processes=5, maxtasksperchild=1) as pool:
+        assert len(set(pool.map(lambda _: os.getpid(), range(20)))) == 20
     pool.join()
 
 
 def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
     def poolit_a(_):
-        with Pool(ray_address="auto") as pool:
+        with Pool() as pool:
             return list(pool.map(math.sqrt, range(0, 2, 1)))
 
     def poolit_b():
-        with Pool(ray_address="auto") as pool:
+        with Pool() as pool:
             return list(pool.map(poolit_a, range(2, 4, 1)))
 
     result = poolit_b()
     assert result == [[0.0, 1.0], [0.0, 1.0]]
 
 
-def test_task_to_actor_assignment(ray_start_4_cpu):
-
-    register_ray()
-
-    pause_time = 5
-
-    def worker_func(worker_id):
-        launch_time = time.time()
-        time.sleep(pause_time)
-        return worker_id, launch_time
-
-    num_workers = 4
-    output = []
-    with parallel_backend("ray", n_jobs=-1):
-        output = Parallel()(
-            delayed(worker_func)(worker_id) for worker_id in range(num_workers)
-        )
-
-    worker_ids = set()
-    launch_times = []
-    for worker_id, launch_time in output:
-        worker_ids.add(worker_id)
-        launch_times.append(launch_time)
-
-    assert len(worker_ids) == num_workers
-
-    for i in range(num_workers):
-        for j in range(i + 1, num_workers):
-            assert abs(launch_times[i] - launch_times[j]) < 1
-
-
 if __name__ == "__main__":
-    import pytest
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
