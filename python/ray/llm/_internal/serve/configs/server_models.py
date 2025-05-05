@@ -236,9 +236,9 @@ class LLMConfig(BaseModelExtended):
         "Serve will take the max amount all the replicas. Default would be 2 "
         "router replicas per model replica.\n",
     )
-    
-    enable_engine_metrics: Optional[bool] = Field(
-        None,
+
+    enable_additional_engine_metrics: Optional[bool] = Field(
+        True,
         description="Enable additional engine metrics via Prometheus.",
     )
 
