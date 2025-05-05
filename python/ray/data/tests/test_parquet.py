@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from packaging.version import parse as parse_version
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
@@ -1488,6 +1489,54 @@ def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_
 
     with pytest.warns(FutureWarning, match="file_extensions"):
         ray.data.read_parquet(tmp_path)
+
+
+def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
+    """Verify row_group_size is respected."""
+
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_5k.parquet",
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_5k.parquet",
+            use_legacy_dataset=False,  # required for .fragments attribute
+        )
+    assert ds.fragments[0].num_row_groups == 2
+
+
+def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
+    """Verify arrow_parquet_args_fn is working with row_group_size."""
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_1k.parquet",
+            arrow_parquet_args_fn=lambda: {
+                "row_group_size": 1000,  # overrides row_group_size
+            },
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_1k.parquet",
+            use_legacy_dataset=False,
+        )
+    assert ds.fragments[0].num_row_groups == 10
 
 
 if __name__ == "__main__":
