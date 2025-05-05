@@ -137,7 +137,7 @@ def _clear_current_platform_cache():
 
 
 class _EngineBackgroundProcess:
-    def __init__(self, ipc_path, engine_args, engine_config):
+    def __init__(self, ipc_path, engine_args, engine_config, llm_config):
         from vllm.engine.multiprocessing.engine import MQLLMEngine
 
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
@@ -153,6 +153,16 @@ class _EngineBackgroundProcess:
         # Clear the cache of the current platform.
         _clear_current_platform_cache()
 
+        if llm_config.enable_additional_engine_metrics:
+            from vllm.engine.metrics import RayPrometheusStatLogger
+            # TODO(seiji): Replace with `add_logger` https://github.com/vllm-project/vllm/pull/17674
+            ray_metrics_logger = RayPrometheusStatLogger(
+                local_interval=0.5,
+                labels={"model_name": engine_args.model},
+                vllm_config=engine_config,
+            )
+            stat_loggers = {"ray": ray_metrics_logger}
+
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
@@ -161,6 +171,7 @@ class _EngineBackgroundProcess:
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
             usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
+            stat_loggers=stat_loggers
         )
         self._error = None
 
@@ -401,7 +412,6 @@ class VLLMEngine(LLMEngine):
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
 
         ipc_path = vllm.utils.get_open_zmq_ipc_path()
-
         BackgroundCls = ray.remote(
             num_cpus=0,
             scheduling_strategy=PlacementGroupSchedulingStrategy(
@@ -415,7 +425,7 @@ class VLLMEngine(LLMEngine):
             ),
         )(_EngineBackgroundProcess)
         # Run the process in the background
-        process_ref = BackgroundCls.remote(ipc_path, engine_args, engine_config)
+        process_ref = BackgroundCls.remote(ipc_path, engine_args, engine_config, self.llm_config)
         process_ref.start.remote()
         engine_client = MQLLMEngineClient(
             ipc_path=ipc_path,
@@ -487,7 +497,7 @@ class VLLMEngine(LLMEngine):
                 labels={"model_name": engine_args.model},
                 vllm_config=vllm_config,
             )
-            self.engine.add_logger("ray", ray_metrics_logger)
+            engine.add_logger("ray", ray_metrics_logger)
 
         return engine
 
