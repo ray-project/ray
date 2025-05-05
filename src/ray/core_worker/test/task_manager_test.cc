@@ -371,16 +371,17 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
+  bool will_retry = false;
   auto error = rpc::ErrorType::WORKER_DIED;
   for (int i = 0; i < num_retries; i++) {
     RAY_LOG(INFO) << "Retry " << i;
-    manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+    will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+    ASSERT_TRUE(will_retry);
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
-    ASSERT_EQ(num_retries_, i + 1);
   }
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -479,19 +480,20 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
 
-  ASSERT_EQ(num_retries_, 0);
   ray::rpc::ErrorType error;
 
+  bool will_retry = false;
   error = rpc::ErrorType::OUT_OF_MEMORY;
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
-  ASSERT_EQ(num_retries_, 1);
+  will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_TRUE(will_retry);
 
   error = rpc::ErrorType::WORKER_DIED;
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
-  ASSERT_EQ(num_retries_, 2);
+  will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_TRUE(will_retry);
+
   error = rpc::ErrorType::WORKER_DIED;
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
-  ASSERT_EQ(num_retries_, 2);
+  will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_FALSE(will_retry);
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
@@ -510,9 +512,11 @@ TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
   int num_retries = 1;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
 
+  bool will_retry = false;
   for (int i = 0; i < 10000; i++) {
-    ASSERT_EQ(num_retries_, i);
-    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+    will_retry =
+        manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+    ASSERT_TRUE(will_retry);
   }
 
   manager_.MarkTaskCanceled(spec.TaskId());

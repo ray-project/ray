@@ -1041,6 +1041,11 @@ void TaskManager::RetryTask(TaskEntry *task_entry,
 
   auto &spec = task_entry->spec;
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+  SetTaskStatus(*task_entry,
+                rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                /* state_update */ std::nullopt,
+                /* include_task_info */ true);
+
   if (!object_recovery) {
     // Retry after a delay to emulate the existing Raylet reconstruction
     // behaviour. TODO(ekl) backoff exponentially.
@@ -1049,12 +1054,9 @@ void TaskManager::RetryTask(TaskEntry *task_entry,
     absl::MutexLock lock(&mu_);
     TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
     to_resubmit_.push(std::move(task_to_retry));
+    return;
   }
 
-  SetTaskStatus(*task_entry,
-                rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                /* state_update */ std::nullopt,
-                /* include_task_info */ true);
   retry_task_callback_(spec);
 }
 
