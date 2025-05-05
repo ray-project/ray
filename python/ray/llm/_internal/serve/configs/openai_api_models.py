@@ -712,7 +712,7 @@ class EmbeddingResponse(BaseModel):
     object: str = "list"
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
-    data: list[EmbeddingResponseData]
+    data: List[EmbeddingResponseData]
     usage: UsageInfo
 
 
