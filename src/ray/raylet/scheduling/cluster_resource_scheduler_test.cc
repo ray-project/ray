@@ -1798,7 +1798,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   bool is_infeasible;
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
-  LabelSelector label_selector;
+  LabelSelector label_selector = LabelSelector();
   // Schedule node
   auto best_node_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
                                                                label_selector,
@@ -1847,8 +1847,9 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
       label_selector_dict);
   label_selector_spec.SetNormalTaskSpec(
       0, false, "", scheduling_strategy, ActorID::Nil());
+  auto built_label_selector = std::move(label_selector_spec).ConsumeAndBuild();
   resource_scheduler.GetBestSchedulableNode(
-      std::move(label_selector_spec).ConsumeAndBuild(), "", false, false, &is_infeasible);
+      built_label_selector, "", false, false, &is_infeasible);
   ASSERT_TRUE(is_infeasible);
 
   // Set node labels - node should now be schedulable
@@ -1857,7 +1858,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   };
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(node_1, test_labels);
   auto best_node_2 = resource_scheduler.GetBestSchedulableNode(
-      std::move(label_selector_spec).ConsumeAndBuild(), "", false, false, &is_infeasible);
+      built_label_selector, "", false, false, &is_infeasible);
   ASSERT_EQ(best_node_2, node_1);
   ASSERT_FALSE(is_infeasible);
 }
