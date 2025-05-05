@@ -9,7 +9,6 @@ from ray.rllib.connectors.learner import (
     AddNextObservationsFromEpisodesToTrainBatch,
     GeneralAdvantageEstimation,
 )
-from ray.rllib.core import COMPONENT_EVAL_ENV_RUNNER, COMPONENT_LEARNER_GROUP
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -22,7 +21,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
