@@ -627,7 +627,7 @@ cdef class InnerGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Publisher().PublishError(
-                    c_key_id, error_info, timeout_ms))
+                    move(c_key_id), move(error_info), timeout_ms))
 
     def publish_logs(self, log_json: dict, timeout = None):
         cdef:
@@ -653,7 +653,7 @@ cdef class InnerGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Publisher().PublishLogs(
-                    c_key_id, log_batch, timeout_ms))
+                    move(c_key_id), move(log_batch), timeout_ms))
 
     def async_publish_node_resource_usage(
             self, key_id: str, node_resource_usage_json: str) -> Future[None]:
@@ -664,7 +664,7 @@ cdef class InnerGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Publisher().AsyncPublishNodeResourceUsage(
-                    c_key_id, c_node_resource_usage_json,
+                    move(c_key_id), move(c_node_resource_usage_json),
                     StatusPyCallback(convert_status, assign_and_decrement_fut, fut)))
         return asyncio.wrap_future(fut)
 

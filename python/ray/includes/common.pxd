@@ -581,18 +581,18 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
     cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
         CRayStatus PublishError(
-            const c_string &key_id,
-            const CErrorTableData &data,
+            c_string key_id,
+            CErrorTableData data,
             int64_t timeout_ms)
 
         CRayStatus PublishLogs(
-            const c_string &key_id,
-            const CLogBatch &data,
+            c_string key_id,
+            CLogBatch data,
             int64_t timeout_ms)
 
         CRayStatus AsyncPublishNodeResourceUsage(
-            const c_string &key_id,
-            const c_string &node_resource_usage,
+            c_string key_id,
+            c_string node_resource_usage,
             const StatusPyCallback &callback
         )
 

@@ -1019,18 +1019,15 @@ class PublisherAccessor {
   explicit PublisherAccessor(GcsClient *client_impl);
   virtual ~PublisherAccessor() = default;
 
-  virtual Status PublishError(const std::string &key_id,
-                              const rpc::ErrorTableData &data,
+  virtual Status PublishError(std::string key_id,
+                              rpc::ErrorTableData data,
                               int64_t timeout_ms);
 
-  virtual Status PublishLogs(const std::string &key_id,
-                             const rpc::LogBatch &data,
-                             int64_t timeout_ms);
+  virtual Status PublishLogs(std::string key_id, rpc::LogBatch data, int64_t timeout_ms);
 
-  virtual Status AsyncPublishNodeResourceUsage(
-      const std::string &key_id,
-      const std::string &node_resource_usage_json,
-      const StatusCallback &done);
+  virtual Status AsyncPublishNodeResourceUsage(std::string key_id,
+                                               std::string node_resource_usage_json,
+                                               const StatusCallback &done);
 
  private:
   GcsClient *client_impl_;
