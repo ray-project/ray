@@ -3428,9 +3428,8 @@ Status CoreWorker::ExecuteTask(
   }
   {
     absl::MutexLock lock(&mutex_);
-    auto it = running_tasks_.find(task_spec.TaskId());
-    RAY_CHECK(it != running_tasks_.end());
-    running_tasks_.erase(it);
+    size_t erased = running_tasks_.erase(task_spec.TaskId());
+    RAY_CHECK(erased == 1);
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
