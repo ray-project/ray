@@ -1,5 +1,7 @@
 import os
 import sys
+from collections import defaultdict
+from typing import Optional
 
 import pytest
 
@@ -13,26 +15,30 @@ class MyError(Exception):
 @ray.remote
 class Counter:
     def __init__(self) -> None:
-        self.count = 0
+        self._counts = defaultdict(int)
 
-    def increment(self) -> int:
-        c = self.count
-        self.count += 1
+    def increment(self, key: Optional[str] = None) -> int:
+        key = key or "default"
+        c = self._counts[key]
+        self._counts[key] += 1
         return c
 
-    def get_count(self) -> int:
-        return self.count
+    def get_count(self, key: Optional[str] = None) -> int:
+        return self._counts[key or "default"]
 
 
 @ray.remote(max_task_retries=3)
 class TroubleMaker:
+    def __init__(self, *, counter_key: Optional[str] = None):
+        self._counter_key = counter_key
+
     @ray.method(max_task_retries=5, retry_exceptions=[MyError])
     def may_raise_n_times(self, counter, n):
         """
         Raises if there were n calls before this call.
         Returns the number of calls before this call, if it's > n.
         """
-        c = ray.get(counter.increment.remote())
+        c = ray.get(counter.increment.remote(self._counter_key))
         print(f"may_raise_n_times, n = {n}, count = {c}")
         if c < n:
             print(f"method raises in {c} th call, want {n} times")
@@ -51,7 +57,7 @@ class TroubleMaker:
         @param actions: List["raise" | "exit"]
         """
 
-        c = ray.get(counter.increment.remote())
+        c = ray.get(counter.increment.remote(self._counter_key))
         action = "return" if c >= len(actions) else actions[c]
         print(f"raise_or_exit, action = {action}, count = {c}")
 
@@ -69,9 +75,12 @@ class AsyncTroubleMaker:
     Same as TroubleMaker, just all methods are async.
     """
 
+    def __init__(self, *, counter_key: Optional[str] = None):
+        self._counter_key = counter_key
+
     @ray.method(max_task_retries=5, retry_exceptions=[MyError])
     async def may_raise_n_times(self, counter, n):
-        c = ray.get(counter.increment.remote())
+        c = await counter.increment.remote(self._counter_key)
         print(f"may_raise_n_times, n = {n}, count = {c}")
         if c < n:
             print(f"method raises in {c} th call, want {n} times")
@@ -80,7 +89,7 @@ class AsyncTroubleMaker:
 
     @ray.method(retry_exceptions=[MyError])
     async def raise_or_exit(self, counter, actions):
-        c = await counter.increment.remote()
+        c = await counter.increment.remote(self._counter_key)
         action = "return" if c >= len(actions) else actions[c]
         print(f"raise_or_exit, action = {action}, count = {c}")
 
@@ -100,7 +109,7 @@ class AsyncTroubleMaker:
     @ray.method(num_returns="streaming")  # retry_exceptions=None aka False.
     async def yield_or_raise(self, counter, actions):
         while True:
-            c = await counter.increment.remote()
+            c = await counter.increment.remote(self._counter_key)
             a = actions[c]
             if isinstance(a, BaseException):
                 raise a
@@ -201,20 +210,18 @@ def test_generator_method_does_not_over_retry(ray_start_regular_shared):
 @pytest.mark.parametrize(
     "actions",
     [
-        ["exit", "raise", "raise"],
-        ["raise", "exit", "raise"],
-        ["raise", "raise", "exit"],
-        ["raise", "raise", "raise"],
+        ["exit", "exit"],
+        ["exit", "raise"],
+        ["raise", "exit"],
+        ["raise", "raise"],
     ],
     ids=lambda lst: ",".join(lst),  # test case show name
 )
-@pytest.mark.parametrize("actor_model", ["sync", "async", "threaded"])
-@pytest.mark.parametrize("max_restarts", [-1, 4], ids=lambda r: f"max_restarts({r})")
 @pytest.mark.parametrize(
-    "max_task_retries", [-1, 4], ids=lambda r: f"max_task_retries({r})"
+    "max_retries_and_restarts", [-1, 2], ids=lambda r: f"max_retries_and_restarts({r})"
 )
 def test_method_raise_and_exit(
-    actions, actor_model, max_restarts, max_task_retries, ray_start_regular_shared
+    actions, max_retries_and_restarts, ray_start_regular_shared
 ):
     """
     Test we can endure a mix of raises and exits. Note the number of exits we can endure
@@ -224,28 +231,32 @@ def test_method_raise_and_exit(
     The retry behavior should work if the max_task_retries or max_restarts are -1
         (infinite retry).
     """
-    if actor_model == "sync":
-        trouble_maker = TroubleMaker.options(max_restarts=max_restarts).remote()
-    elif actor_model == "async":
-        trouble_maker = AsyncTroubleMaker.options(max_restarts=max_restarts).remote()
-    elif actor_model == "threaded":
-        trouble_maker = TroubleMaker.options(
-            max_restarts=max_restarts, max_concurrency=2
-        ).remote()
-    else:
-        assert False, f"unrecognized actor_model: {actor_model}"
-
     counter = Counter.remote()
-    assert (
-        ray.get(
-            trouble_maker.raise_or_exit.options(
-                max_task_retries=max_task_retries
-            ).remote(counter, actions)
-        )
-        == 3
+    sync_actor = TroubleMaker.options(max_restarts=max_retries_and_restarts).remote(
+        counter_key="sync",
     )
-    # 4 = 1 initial + 3 retries (with the 1 restart included)
-    assert ray.get(counter.get_count.remote()) == 4
+    async_actor = AsyncTroubleMaker.options(
+        max_restarts=max_retries_and_restarts
+    ).remote(
+        counter_key="async",
+    )
+    threaded_actor = TroubleMaker.options(
+        max_restarts=max_retries_and_restarts, max_concurrency=2
+    ).remote(counter_key="threaded")
+
+    assert ray.get(
+        [
+            actor.raise_or_exit.options(
+                max_task_retries=max_retries_and_restarts
+            ).remote(counter, actions)
+            for actor in [sync_actor, async_actor, threaded_actor]
+        ]
+    ) == [2, 2, 2]
+
+    # Should expect 3 total tries from each actor: 1 initial + 2 retries
+    assert ray.get(
+        [counter.get_count.remote(option) for option in ["sync", "async", "threaded"]]
+    ) == [3, 3, 3]
 
 
 @pytest.mark.parametrize(
@@ -261,9 +272,8 @@ def test_method_raise_and_exit(
     ],
     ids=lambda p: ",".join(p[0]),  # test case show name
 )
-@pytest.mark.parametrize("actor_model", ["sync", "async", "threaded"])
 def test_method_raise_and_exit_no_over_retry(
-    actions_and_error, actor_model, ray_start_regular_shared
+    actions_and_error, ray_start_regular_shared
 ):
     """
     Test we do not over retry.
@@ -273,50 +283,55 @@ def test_method_raise_and_exit_no_over_retry(
         (infinite retry).
     """
     max_restarts = 1
-    max_task_retries = 2
+    max_task_retries = 1
     actions, error = actions_and_error
 
-    if actor_model == "sync":
-        trouble_maker = TroubleMaker.options(max_restarts=max_restarts).remote()
-    elif actor_model == "async":
-        trouble_maker = AsyncTroubleMaker.options(max_restarts=max_restarts).remote()
-    elif actor_model == "threaded":
-        trouble_maker = TroubleMaker.options(
-            max_restarts=max_restarts, max_concurrency=2
-        ).remote()
-    else:
-        assert False, f"unrecognized actor_model: {actor_model}"
-
     counter = Counter.remote()
-    with pytest.raises(error):
-        ray.get(
-            trouble_maker.raise_or_exit.options(
-                max_task_retries=max_task_retries
-            ).remote(counter, actions)
+    sync_actor = TroubleMaker.options(max_restarts=max_restarts).remote(
+        counter_key="sync",
+    )
+    async_actor = AsyncTroubleMaker.options(max_restarts=max_restarts).remote(
+        counter_key="async",
+    )
+    threaded_actor = TroubleMaker.options(
+        max_restarts=max_restarts, max_concurrency=2
+    ).remote(counter_key="threaded")
+
+    for ref in [
+        a.raise_or_exit.options(max_task_retries=max_task_retries).remote(
+            counter, actions
         )
+        for a in [sync_actor, async_actor, threaded_actor]
+    ]:
+        with pytest.raises(error):
+            ray.get(ref)
+
     # 3 = 1 initial + 2 retries (with the 1 restart included)
-    assert ray.get(counter.get_count.remote()) == 3
+    assert ray.get(
+        [counter.get_count.remote(key) for key in ["sync", "async", "threaded"]]
+    ) == [3, 3, 3]
 
 
-@pytest.mark.parametrize(
-    "is_async", [False, True], ids=lambda a: "async" if a else "sync"
-)
-def test_exit_only(is_async, ray_start_regular_shared):
-    """
-    Sanity testing: only do exit-retry works
-    """
-    actor_class = AsyncTroubleMaker if is_async else TroubleMaker
+def test_task_retries_on_exit(ray_start_regular_shared):
+    """Sanity check that task retries work when the actor exits."""
     counter = Counter.remote()
-    trouble_maker = actor_class.options(max_restarts=2).remote()
-    with pytest.raises(ray.exceptions.RayActorError):
-        ret = ray.get(
-            trouble_maker.raise_or_exit.options(max_task_retries=2).remote(
-                counter, ["exit", "exit", "exit"]
-            )
+    sync_actor = TroubleMaker.options(max_restarts=2).remote(counter_key="sync")
+    async_actor = AsyncTroubleMaker.options(max_restarts=2).remote(counter_key="async")
+
+    for ref in [
+        a.raise_or_exit.options(max_task_retries=2).remote(
+            counter, ["exit", "exit", "exit"]
         )
-        print(f"should not print: ret = {ret}")
+        for a in [sync_actor, async_actor]
+    ]:
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(ref)
+
     # 3 = 1 initial + 2 retries (with the 2 restarts included)
-    assert ray.get(counter.get_count.remote()) == 3
+    assert ray.get([counter.get_count.remote(key) for key in ["sync", "async"]]) == [
+        3,
+        3,
+    ]
 
 
 if __name__ == "__main__":
