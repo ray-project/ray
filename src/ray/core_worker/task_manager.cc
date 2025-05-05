@@ -1038,12 +1038,24 @@ void TaskManager::RetryTask(TaskEntry *task_entry,
                             bool object_recovery,
                             uint32_t delay_ms) {
   RAY_CHECK(task_entry != nullptr);
+
+  auto &spec = task_entry->spec;
+  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+  if (!object_recovery) {
+    // Retry after a delay to emulate the existing Raylet reconstruction
+    // behaviour. TODO(ekl) backoff exponentially.
+    RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
+                  << "ms delay: " << spec.DebugString();
+    absl::MutexLock lock(&mu_);
+    TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+    to_resubmit_.push(std::move(task_to_retry));
+  }
+
   SetTaskStatus(*task_entry,
                 rpc::TaskStatus::PENDING_ARGS_AVAIL,
                 /* state_update */ std::nullopt,
-                /* include_task_info */ true,
-                task_entry->spec.AttemptNumber() + 1);
-  retry_task_callback_(task_entry->spec, object_recovery, delay_ms);
+                /* include_task_info */ true);
+  retry_task_callback_(spec);
 }
 
 void TaskManager::FailPendingTask(const TaskID &task_id,
@@ -1583,6 +1595,18 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
     return ObjectID::Nil();
   }
   return it->second.spec.ReturnId(0);
+}
+
+std::vector<TaskSpecification> TaskManager::PopTasksToRetry() {
+  absl::MutexLock lock(&mu_);
+  std::vector<TaskSpecification> tasks_to_retry;
+  const auto current_time = current_time_ms();
+  while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
+    tasks_to_retry.emplace_back(to_resubmit_.top().task_spec);
+    to_resubmit_.pop();
+  }
+
+  return tasks_to_retry;
 }
 
 }  // namespace core

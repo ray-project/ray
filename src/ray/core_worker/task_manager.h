@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <deque>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -48,8 +50,7 @@ class TaskResubmissionInterface {
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback =
-    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
+using RetryTaskCallback = std::function<void(TaskSpecification &spec)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
@@ -170,6 +171,29 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+};
+
+/// Represents a task that needs to be retried at a specific time.
+struct TaskToRetry {
+  /// Time when the task should be retried.
+  int64_t execution_time_ms{};
+
+  /// The details of the task.
+  TaskSpecification task_spec;
+};
+
+/// Sorts TaskToRetry in descending order of the execution time.
+/// Priority queue naturally sorts elements in descending order,
+/// in order to have the tasks ordered by execution time in
+/// ascending order we use a comparator that sorts elements in
+/// descending order. Per docs "Priority queues are a type of container
+/// adaptors, specifically designed such that its first element is always
+/// the greatest of the elements it contains".
+class TaskToRetryDescComparator {
+ public:
+  bool operator()(const TaskToRetry &left, const TaskToRetry &right) {
+    return left.execution_time_ms > right.execution_time_ms;
+  }
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -578,6 +602,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Record OCL metrics.
   void RecordMetrics();
 
+  /// Returns a vector of task specifications that are ready to be retried.
+  /// This function removes tasks from the to_resubmit_ queue whose execution time
+  /// has passed and returns them.
+  std::vector<TaskSpecification> PopTasksToRetry();
+
  private:
   struct TaskEntry {
     TaskEntry(TaskSpecification spec_arg,
@@ -864,6 +893,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
+
+  /// Queue of tasks to retry, ordered by their execution time.
+  std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
+      to_resubmit_ ABSL_GUARDED_BY(mu_);
 
   friend class TaskManagerTest;
 };
