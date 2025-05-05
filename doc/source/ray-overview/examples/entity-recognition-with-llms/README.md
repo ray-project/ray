@@ -111,7 +111,7 @@ one of the following ['inform', 'request', 'give_opinion', 'confirm',
 'has_linux_release', 'has_mac_release', 'specifier']
 ```
 
-You also have an info file that identifies the datasets and format --- Alpaca and ShareGPT formats, which are suitable for multimodal tasks and are supported by Anyscale --- to use for post training.
+You also have an info file that identifies the datasets and format (Alpaca and ShareGPT formats) to use for post training.
 
 ```python
 display(Code(filename="/mnt/cluster_storage/viggo/dataset_info.json", language="json"))
@@ -144,7 +144,7 @@ display(Code(filename="/mnt/cluster_storage/viggo/dataset_info.json", language="
 
 # Distributed fine-tuning
 
-Use [Ray Train](https://docs.ray.io/en/latest/train/train.html) + [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) to perform multi-node training. Find the parameters for the training workload -- post-training method, dataset location, train/val details, etc. --- in the `llama3_lora_sft_ray.yaml` config file. See the recipes for more post-training methods, like SFT, pretraining, PPO, DPO, KTO, etc. [on GitHub](https://github.com/hiyouga/LLaMA-Factory/tree/main/examples).
+Use [Ray Train](https://docs.ray.io/en/latest/train/train.html) + [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) to perform multi-node training. Find the parameters for the training workload, post-training method, dataset location, train/val details, etc. in the `llama3_lora_sft_ray.yaml` config file. See the recipes for more post-training methods, like SFT, pretraining, PPO, DPO, KTO, etc. [on GitHub](https://github.com/hiyouga/LLaMA-Factory/tree/main/examples).
 
 **Note**: Anyscale also supports using other tools like [axolotl](https://axolotl-ai-cloud.github.io/axolotl/docs/ray-integration.html) or even [Ray Train + HF Accelerate + FSDP/DeepSpeed](https://docs.ray.io/en/latest/train/huggingface-accelerate.html) directly for complete control of your post-training workloads.
 
@@ -451,10 +451,10 @@ The `ray.data.llm` module integrates with key large language model (LLM) inferen
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_data_solution.png" width=800>
 
-[RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has even more functionality on top of Ray Data:
+[RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has even more features on top of Ray Data:
 - **accelerated metadata fetching** to improve reading first time from large datasets
 - **optimized autoscaling** where Jobs can kick off before waiting for the entire cluster to start
-- **high reliability** where entire fails jobs like head node, cluster, uncaptured exceptions, etc., can resume from checkpoints. OSS Ray can only recover from worker node failures.
+- **high reliability** where entire fails jobs like head node, cluster, missed exceptions, etc., can resume from checkpoints. OSS Ray can only recover from worker node failures.
 
 Start by defining the [vLLM engine processor config](https://docs.ray.io/en/latest/data/api/doc/ray.data.llm.vLLMEngineProcessorConfig.html#ray.data.llm.vLLMEngineProcessorConfig) where you can select the model to use and the [engine behavior](https://docs.vllm.ai/en/stable/serving/engine_args.html). The model can come from [Hugging Face (HF) Hub](https://huggingface.co/models) or a local model path `/path/to/your/model`. Anyscale supports GPTQ, GGUF, or LoRA model formats supported.
 
@@ -619,7 +619,7 @@ Ray Serve LLM has the following features:
 - Deep integration with inference engines, vLLM to start
 - Composable multi-model LLM pipelines
 
-[RayTurbo Serve](https://docs.anyscale.com/rayturbo/rayturbo-serve) on Anyscale has even more functionality on top of Ray Serve:
+[RayTurbo Serve](https://docs.anyscale.com/rayturbo/rayturbo-serve) on Anyscale has even more features on top of Ray Serve:
 
 - **fast autoscaling and model loading** to get services up and running even faster: [5x improvements](https://www.anyscale.com/blog/autoscale-large-ai-models-faster) even for LLMs
 - 54% **higher QPS** and up-to 3x **streaming tokens per second** for high traffic serving use-cases
