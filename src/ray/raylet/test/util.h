@@ -130,7 +130,7 @@ class MockWorker : public WorkerInterface {
     return address_;
   }
 
-  void DirectActorCallArgWaitComplete(int64_t tag) override {
+  void ActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
   }
 

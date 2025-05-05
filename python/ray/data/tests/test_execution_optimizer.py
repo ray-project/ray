@@ -68,7 +68,7 @@ def _check_valid_plan_and_result(
     expected_physical_plan_ops=None,
 ):
     assert ds.take_all() == expected_result
-    assert str(ds._plan._logical_plan.dag) == expected_plan
+    assert ds._plan._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
     for op in expected_physical_plan_ops:

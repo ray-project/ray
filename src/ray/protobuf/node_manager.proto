@@ -364,12 +364,14 @@ message PushMutableObjectRequest {
   // The total size of the metadata (across all chunks).
   uint64 total_metadata_size = 3;
 
-  // The offset of the chunk (in bytes) within the object.
+  // The offset of the chunk (in bytes) within the object's data.
   uint64 offset = 4;
-  // The size of this chunk. Note that this size could include both data and metadata.
+  // The size of data payload chunk.
   uint64 chunk_size = 5;
-  // The chunk payload. Note that this could include both data and metadata.
-  bytes payload = 6;
+  // The data payload.
+  bytes data = 6;
+  // The metadata payload. Note that the size of metadata is minimal.
+  bytes metadata = 7;
 }
 
 message PushMutableObjectReply {

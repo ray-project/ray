@@ -697,6 +697,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                  std::vector<ObjectID> *ids_to_release)
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// A wrapper of `retry_task_callback_` that sets the task status
+  /// and calls `retry_task_callback_`. This function should be the only
+  /// caller of `retry_task_callback_`.
+  ///
+  /// \param[in] task_entry The task entry to retry.
+  /// \param[in] object_recovery Whether to retry the task for object recovery.
+  /// \param[in] delay_ms The delay in milliseconds before retrying the task.
+  void RetryTask(TaskEntry *task_entry, bool object_recovery, uint32_t delay_ms);
+
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
@@ -734,11 +743,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status new status.
-  /// \param error_info Optional error info for task execution.
+  /// \param state_update The state update for the task status change event.
+  /// \param include_task_info Whether to include task info in the task status change
+  /// event.
+  /// \param attempt_number The attempt number to record the task status change
+  /// event. If not specified, the attempt number will be the current attempt number of
+  /// the task.
   void SetTaskStatus(
       TaskEntry &task_entry,
       rpc::TaskStatus status,
-      const std::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
+      std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt,
+      bool include_task_info = false,
+      std::optional<int32_t> attempt_number = std::nullopt);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
