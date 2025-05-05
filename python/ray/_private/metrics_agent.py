@@ -556,7 +556,6 @@ class MetricsAgent:
                     logger.error(
                         f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
                     )
-                    raise e
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
         if gauge.name not in self._registered_views:

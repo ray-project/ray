@@ -195,6 +195,44 @@ def test_metrics_agent_record_and_export(get_agent):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_agent_record_and_export_failed_records_dont_block_other_records(
+    get_agent,
+    capsys,
+):
+    namespace = "test"
+    agent, agent_port = get_agent
+
+    metric_name = "test"
+    test_gauge = Gauge(metric_name, "desc", "unit", ["tag"])
+    record_a = Record(
+        gauge=test_gauge,
+        value=1,
+        tags={"tag": "a"},
+    )
+    record_b = Record(
+        gauge=test_gauge,
+        value=1,
+        # this tag is much too long (>255 characters), so recording this metric will fail
+        tags={"tag": "b" * 1000},
+    )
+    record_c = Record(
+        gauge=test_gauge,
+        value=1,
+        tags={"tag": "c"},
+    )
+    agent.record_and_export([record_a, record_b, record_c])
+    name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
+    assert name == get_prom_metric_name(namespace, metric_name)
+
+    # a and c should be recorded, b's failure should be ignored
+    assert len(samples) == 2
+    assert samples[0].value == 1
+    assert samples[0].labels == {"tag": "a"}
+    assert samples[1].value == 1
+    assert samples[1].labels == {"tag": "c"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_agent_proxy_record_and_export_basic(get_agent):
     """Test the case the metrics are exported without worker_id."""
     namespace = "test"
