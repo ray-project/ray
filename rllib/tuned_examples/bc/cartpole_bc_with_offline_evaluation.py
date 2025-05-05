@@ -28,20 +28,18 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "--num_offline_eval_runners",
+    "--num-offline-eval-runners",
     type=int,
     default=2,
-    help=(
-        "The number of offline evaluation runners to be used in " "offline evaluation."
-    ),
+    help=("The number of offline evaluation runners to be used in offline evaluation."),
 )
 parser.add_argument(
     "--num-gpus-per-offline-eval-runner",
-    type=int,
-    default=0,
+    type=float,
+    default=0.0,
     help=(
         "The number of GPUs to be used in offline evaluation per offline "
-        "evaluation runner."
+        "evaluation runner. Can be fractional."
     ),
 )
 # Use `parser` to add your own custom command line options to this script
