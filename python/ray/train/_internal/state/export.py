@@ -1,15 +1,15 @@
 from typing import Optional
+
 from ray.core.generated.export_train_state_pb2 import (
-    ExportTrainRunEventData as ProtoTrainRun,
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+    ExportTrainRunEventData as ProtoTrainRun,
 )
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
+    RunStatusEnum,
     TrainRunInfo,
     TrainWorkerInfo,
-    RunStatusEnum,
-    ActorStatusEnum,
 )
-
 
 TRAIN_SCHEMA_VERSION = 1
 RAY_TRAIN_VERSION = 1

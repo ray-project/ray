@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private.pydantic_compat import (
     BaseModel,
     Field,
@@ -14,7 +15,6 @@ from ray._private.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,

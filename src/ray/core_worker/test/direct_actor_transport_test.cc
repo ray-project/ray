@@ -772,14 +772,6 @@ class MockDependencyWaiter : public DependencyWaiter {
   virtual ~MockDependencyWaiter() {}
 };
 
-class MockWorkerContext : public WorkerContext {
- public:
-  MockWorkerContext(WorkerType worker_type, const JobID &job_id)
-      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
-    current_actor_is_direct_call_ = true;
-  }
-};
-
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
@@ -797,14 +789,12 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 class MockTaskReceiver : public TaskReceiver {
  public:
-  MockTaskReceiver(WorkerContext &worker_context,
-                   instrumented_io_context &main_io_service,
+  MockTaskReceiver(instrumented_io_context &task_execution_service,
                    worker::TaskEventBuffer &task_event_buffer,
                    const TaskHandler &task_handler,
                    std::function<std::function<void()>()> initialize_thread_callback,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
-      : TaskReceiver(worker_context,
-                     main_io_service,
+      : TaskReceiver(task_execution_service,
                      task_event_buffer,
                      task_handler,
                      initialize_thread_callback,
@@ -819,8 +809,7 @@ class MockTaskReceiver : public TaskReceiver {
 class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
-      : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
-        worker_client_(std::make_shared<MockWorkerClient>()),
+      : worker_client_(std::make_shared<MockWorkerClient>()),
         dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
@@ -831,8 +820,7 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_5,
                                   std::placeholders::_6);
     receiver_ = std::make_unique<MockTaskReceiver>(
-        worker_context_,
-        main_io_service_,
+        task_execution_service_,
         task_event_buffer_,
         execute_task,
         /* intiialize_thread_callback= */ []() { return []() { return; }; },
@@ -854,21 +842,20 @@ class TaskReceiverTest : public ::testing::Test {
     return Status::OK();
   }
 
-  void StartIOService() { main_io_service_.run(); }
+  void StartIOService() { task_execution_service_.run(); }
 
   void StopIOService() {
     // We must delete the receiver before stopping the IO service, since it
     // contains timers referencing the service.
     receiver_.reset();
-    main_io_service_.stop();
+    task_execution_service_.stop();
   }
 
   std::unique_ptr<MockTaskReceiver> receiver_;
 
  private:
   rpc::Address rpc_address_;
-  MockWorkerContext worker_context_;
-  instrumented_io_context main_io_service_;
+  instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::unique_ptr<DependencyWaiter> dependency_waiter_;

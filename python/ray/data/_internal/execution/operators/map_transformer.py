@@ -90,9 +90,7 @@ class MapTransformFn:
         return self._output_block_size_option
 
     def set_target_max_block_size(self, target_max_block_size: int):
-        assert (
-            self._output_block_size_option is None and target_max_block_size is not None
-        )
+        assert target_max_block_size is not None
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )
@@ -105,10 +103,7 @@ class MapTransformFn:
             return self._output_block_size_option.target_max_block_size
 
     def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
-        assert (
-            self._output_block_size_option is None
-            and target_num_rows_per_block is not None
-        )
+        assert target_num_rows_per_block is not None
         self._output_block_size_option = OutputBlockSizeOption(
             target_num_rows_per_block=target_num_rows_per_block
         )
