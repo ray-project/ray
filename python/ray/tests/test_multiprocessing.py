@@ -1,27 +1,21 @@
+import math
 import os
-import sys
 import platform
 import pytest
+import queue
+import random
+import sys
 import tempfile
 import time
-import random
+import multiprocessing as mp
 from collections import defaultdict
-import queue
-import math
-
-import ray
-from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
-
-from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
 
-
-def teardown_function(function):
-    # Delete environment variable if set.
-    if "RAY_ADDRESS" in os.environ:
-        del os.environ["RAY_ADDRESS"]
+import ray
+from ray._private.test_utils import external_redis_test_enabled, SignalActor
+from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
+from ray.util.joblib import register_ray
 
 
 @pytest.fixture
@@ -44,8 +38,6 @@ def pool_4_processes():
 
 @pytest.fixture
 def pool_4_processes_python_multiprocessing_lib():
-    import multiprocessing as mp
-
     pool = mp.Pool(processes=4)
     yield pool
     pool.terminate()
@@ -68,49 +60,48 @@ def ray_start_4_cpu():
     ray.shutdown()
 
 
-def test_ray_init(monkeypatch, shutdown_only):
-    def getpid(args):
+@pytest.mark.skipif(
+    external_redis_test_enabled(),
+    reason="Starts multiple Ray instances in parallel with the same namespace.",
+)
+def test_ray_init(shutdown_only):
+    def getpid(i: int):
         return os.getpid()
 
-    def check_pool_size(pool, size):
-        args = [tuple() for _ in range(size)]
-        assert len(set(pool.map(getpid, args))) == size
+    def check_pool_size(pool, size: int):
+        assert len(set(pool.map(getpid, range(size)))) == size
 
     # Check that starting a pool starts ray if not initialized.
-    pool = Pool(processes=2)
-    assert ray.is_initialized()
-    assert int(ray.cluster_resources()["CPU"]) == 2
-    check_pool_size(pool, 2)
-    pool.terminate()
+    assert not ray.is_initialized()
+    with Pool(processes=4) as pool:
+        assert ray.is_initialized()
+        check_pool_size(pool, 4)
+        assert int(ray.cluster_resources()["CPU"]) == 4
     pool.join()
-    ray.shutdown()
-
-    # Set up the cluster id so that gcs is talking with a different
-    # storage prefix
-    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster")
-    ray._raylet.Config.initialize("")
 
     # Check that starting a pool doesn't affect ray if there is a local
     # ray cluster running.
-    ray.init(num_cpus=3)
     assert ray.is_initialized()
-    pool = Pool(processes=2)
-    assert int(ray.cluster_resources()["CPU"]) == 3
-    check_pool_size(pool, 2)
-    pool.terminate()
+    assert int(ray.cluster_resources()["CPU"]) == 4
+    with Pool(processes=2) as pool:
+        assert ray.is_initialized()
+        check_pool_size(pool, 2)
+        assert int(ray.cluster_resources()["CPU"]) == 4
     pool.join()
-    ray.shutdown()
 
     # Check that trying to start a pool on an existing ray cluster throws an
     # error if there aren't enough CPUs for the number of processes.
-    ray.init(num_cpus=1)
     assert ray.is_initialized()
+    assert int(ray.cluster_resources()["CPU"]) == 4
     with pytest.raises(ValueError):
-        Pool(processes=2)
-    assert int(ray.cluster_resources()["CPU"]) == 1
-    ray.shutdown()
+        Pool(processes=8)
+        assert int(ray.cluster_resources()["CPU"]) == 4
 
 
+@pytest.mark.skipif(
+    external_redis_test_enabled(),
+    reason="Starts multiple Ray instances in parallel with the same namespace.",
+)
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -130,57 +121,64 @@ def test_connect_to_ray(monkeypatch, ray_start_cluster):
         args = [tuple() for _ in range(size)]
         assert len(set(pool.map(getpid, args))) == size
 
-    address = ray_start_cluster.address
     # Use different numbers of CPUs to distinguish between starting a local
     # ray cluster and connecting to an existing one.
-    start_cpus = 1  # Set in fixture.
-    init_cpus = 2
+    ray.init(address=ray_start_cluster.address)
+    existing_cluster_cpus = int(ray.cluster_resources()["CPU"])
+    local_cluster_cpus = existing_cluster_cpus + 1
+    ray.shutdown()
 
-    # Set up the cluster id so that gcs is talking with a different
-    # storage prefix
-    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster")
-    ray._raylet.Config.initialize("")
-
-    # Check that starting a pool still starts ray if RAY_ADDRESS not set.
-    pool = Pool(processes=init_cpus, ray_address="local")
-    assert ray.is_initialized()
-    assert int(ray.cluster_resources()["CPU"]) == init_cpus
-    check_pool_size(pool, init_cpus)
-    pool.terminate()
+    # Check that starting a pool connects to the running ray cluster by default.
+    assert not ray.is_initialized()
+    with Pool() as pool:
+        assert ray.is_initialized()
+        check_pool_size(pool, existing_cluster_cpus)
+        assert int(ray.cluster_resources()["CPU"]) == existing_cluster_cpus
     pool.join()
     ray.shutdown()
 
     # Check that starting a pool connects to a running ray cluster if
-    # ray_address is passed in.
-    pool = Pool(ray_address=address)
-    assert ray.is_initialized()
-    assert int(ray.cluster_resources()["CPU"]) == start_cpus
-    check_pool_size(pool, start_cpus)
-    pool.terminate()
+    # ray_address is set to the cluster address.
+    assert not ray.is_initialized()
+    with Pool(ray_address=ray_start_cluster.address) as pool:
+        check_pool_size(pool, existing_cluster_cpus)
+        assert int(ray.cluster_resources()["CPU"]) == existing_cluster_cpus
     pool.join()
     ray.shutdown()
 
-    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster2")
-    ray._raylet.Config.initialize("")
-
-    # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
-    os.environ["RAY_ADDRESS"] = address
-
     # Check that starting a pool connects to a running ray cluster if
-    # RAY_ADDRESS is set.
-    pool = Pool()
-    assert ray.is_initialized()
-    assert int(ray.cluster_resources()["CPU"]) == start_cpus
-    check_pool_size(pool, start_cpus)
-    pool.terminate()
+    # RAY_ADDRESS is set to the cluster address.
+    assert not ray.is_initialized()
+    monkeypatch.setenv("RAY_ADDRESS", ray_start_cluster.address)
+    with Pool() as pool:
+        check_pool_size(pool, existing_cluster_cpus)
+        assert int(ray.cluster_resources()["CPU"]) == existing_cluster_cpus
     pool.join()
     ray.shutdown()
 
     # Check that trying to start a pool on an existing ray cluster throws an
     # error if there aren't enough CPUs for the number of processes.
+    assert not ray.is_initialized()
     with pytest.raises(Exception):
-        Pool(processes=start_cpus + 1)
-    assert int(ray.cluster_resources()["CPU"]) == start_cpus
+        Pool(processes=existing_cluster_cpus + 1)
+    assert int(ray.cluster_resources()["CPU"]) == existing_cluster_cpus
+    ray.shutdown()
+
+    # Check that starting a pool starts a local ray cluster if ray_address="local".
+    assert not ray.is_initialized()
+    with Pool(processes=local_cluster_cpus, ray_address="local") as pool:
+        check_pool_size(pool, local_cluster_cpus)
+        assert int(ray.cluster_resources()["CPU"]) == local_cluster_cpus
+    pool.join()
+    ray.shutdown()
+
+    # Check that starting a pool starts a local ray cluster if RAY_ADDRESS="local".
+    assert not ray.is_initialized()
+    monkeypatch.setenv("RAY_ADDRESS", "local")
+    with Pool(processes=local_cluster_cpus) as pool:
+        check_pool_size(pool, local_cluster_cpus)
+        assert int(ray.cluster_resources()["CPU"]) == local_cluster_cpus
+    pool.join()
     ray.shutdown()
 
 
