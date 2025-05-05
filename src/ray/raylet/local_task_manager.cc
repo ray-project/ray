@@ -35,7 +35,6 @@ LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
     TaskDependencyManagerInterface &task_dependency_manager,
-    std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
     internal::NodeInfoGetter get_node_info,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -49,7 +48,6 @@ LocalTaskManager::LocalTaskManager(
       self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
-      is_owner_alive_(is_owner_alive),
       get_node_info_(get_node_info),
       max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
@@ -329,22 +327,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         continue;
       }
 
-      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
-      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
-
-      // If the owner has died since this task was queued, cancel the task by
-      // killing the worker (unless this task is for a detached actor).
-      if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
-        RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
-                         << "'s caller is no longer running. Cancelling task.";
-        if (!task.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(task_id);
-        }
-        ReleaseTaskArgs(task_id);
-        work_it = dispatch_queue.erase(work_it);
-        continue;
-      }
-
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
@@ -541,17 +523,9 @@ bool LocalTaskManager::PoppedWorkerHandler(
     const std::string &runtime_env_setup_error_message) {
   const auto &reply = work->reply;
   const auto &callback = work->callback;
-  bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
+  const bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
   bool dispatched = false;
-
-  // Check whether owner worker or owner node dead.
-  bool not_detached_with_owner_failed = false;
-  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  const auto owner_node_id = NodeID::FromBinary(owner_address.raylet_id());
-  if (!is_detached_actor && !is_owner_alive_(owner_worker_id, owner_node_id)) {
-    not_detached_with_owner_failed = true;
-  }
 
   if (!canceled) {
     const auto &required_resource =
@@ -608,14 +582,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     return false;
   }
 
-  if (!worker || not_detached_with_owner_failed) {
-    // There are two cases that will not dispatch the task at this time:
-    // Case 1: Empty worker popped.
-    // Case 2: The task owner failed (not alive), except the creation task of
-    // detached actor.
-    // In that two case, we should also release worker resources, release task
-    // args.
-
+  if (!worker) {
     dispatched = false;
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
@@ -625,45 +592,39 @@ bool LocalTaskManager::PoppedWorkerHandler(
     ReleaseTaskArgs(task_id);
     RemoveFromRunningTasksIfExists(task);
 
-    if (!worker) {
-      // Empty worker popped.
-      RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
-                        "to grant the lease "
-                     << task_id;
-      if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
-        // In case of runtime env creation failed, we cancel this task
-        // directly and raise a `RuntimeEnvSetupError` exception to user
-        // eventually. The task will be removed from dispatch queue in
-        // `CancelTask`.
-        CancelTask(
-            task_id,
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
-            /*scheduling_failure_message*/ runtime_env_setup_error_message);
-      } else if (status == PopWorkerStatus::JobFinished) {
-        // The task job finished.
-        // Just remove the task from dispatch queue.
-        RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
-        erase_from_dispatch_queue_fn(work, scheduling_class);
-      } else {
-        // In other cases, set the work status `WAITING` to make this task
-        // could be re-dispatched.
-        internal::UnscheduledWorkCause cause =
-            internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        if (status == PopWorkerStatus::JobConfigMissing) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
-        } else {
-          RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
-                         << status;
-        }
-        work->SetStateWaiting(cause);
-      }
-    } else if (not_detached_with_owner_failed) {
-      // The task owner failed.
+    // Empty worker popped.
+    RAY_LOG(DEBUG).WithField(task_id)
+        << "This node has available resources, but no worker processes "
+           "to grant the lease: status "
+        << status;
+    if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
+      // In case of runtime env creation failed, we cancel this task
+      // directly and raise a `RuntimeEnvSetupError` exception to user
+      // eventually. The task will be removed from dispatch queue in
+      // `CancelTask`.
+      CancelTask(
+          task_id,
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
+          /*scheduling_failure_message*/ runtime_env_setup_error_message);
+    } else if (status == PopWorkerStatus::JobFinished) {
+      // The task job finished.
       // Just remove the task from dispatch queue.
-      RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
+      RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
+    } else {
+      // In other cases, set the work status `WAITING` to make this task
+      // could be re-dispatched.
+      internal::UnscheduledWorkCause cause =
+          internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+      if (status == PopWorkerStatus::JobConfigMissing) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+      } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+      } else {
+        RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
+                       << status;
+      }
+      work->SetStateWaiting(cause);
     }
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to

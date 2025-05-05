@@ -167,7 +167,21 @@ bool ClusterTaskManager::IsWorkWithResourceShape(
   return false;
 }
 
-bool ClusterTaskManager::CancelAllTaskOwnedBy(
+bool ClusterTaskManager::CancelAllTasksOwnedBy(
+    const NodeID &node_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  // Only tasks and regular actors are canceled because their lifetime is
+  // the same as the owner.
+  auto predicate = [node_id](const std::shared_ptr<internal::Work> &work) {
+    return !work->task.GetTaskSpecification().IsDetachedActor() &&
+           work->task.GetTaskSpecification().CallerNodeId() == node_id;
+  };
+
+  return CancelTasks(predicate, failure_type, scheduling_failure_message);
+}
+
+bool ClusterTaskManager::CancelAllTasksOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {

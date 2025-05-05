@@ -667,6 +667,9 @@ SHUFFLE_ALL_TO_ALL_OPS = [
 def test_debug_limit_shuffle_execution_to_num_blocks(
     ray_start_regular, restore_data_context, configure_shuffle_method, shuffle_op
 ):
+    if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
+        pytest.skip("Not supported by hash-shuffle")
+
     shuffle_fn = shuffle_op
 
     parallelism = 100

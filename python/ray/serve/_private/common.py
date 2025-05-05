@@ -8,11 +8,9 @@ from starlette.types import Scope
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
+    DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext

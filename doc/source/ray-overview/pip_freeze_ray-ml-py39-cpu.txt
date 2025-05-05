@@ -8,8 +8,8 @@ aimrocks==0.5.2
 aioboto3==11.2.0
 aiobotocore==2.5.0
 aiofiles==22.1.0
-aiohappyeyeballs==2.5.0
-aiohttp==3.9.5
+aiohappyeyeballs==2.6.1
+aiohttp==3.11.16
 aiohttp-cors==0.7.0
 aioitertools==0.11.0
 aiorwlock==1.5.0
@@ -61,8 +61,8 @@ colorful==0.5.5
 colorlog==6.7.0
 comet-ml==3.44.1
 comm==0.2.0
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1739917017929/work
-conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1737800978214/work/src
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1744220015350/work/conda-src
+conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1745834476052/work/src
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1729004031731/work
 configobj==5.0.8
@@ -102,7 +102,7 @@ exceptiongroup==1.2.2
 executing==2.0.1
 fairscale==0.4.6
 Farama-Notifications==0.0.4
-fastapi==0.109.2
+fastapi==0.115.0
 fasteners==0.19
 fastjsonschema==2.19.0
 fastrlock==0.8.2
@@ -121,6 +121,7 @@ fugue-sql-antlr==0.2.0
 future==1.0.0
 gast==0.4.0
 gcs-oauth2-boto-plugin==3.0
+getdaft==0.4.3
 gitdb==4.0.11
 GitPython==3.1.40
 glfw==2.6.3
@@ -191,8 +192,8 @@ kiwisolver==1.4.5
 labmaze==1.0.6
 lazy_loader==0.4
 libclang==16.0.6
-libmambapy @ file:///home/conda/feedstock_root/build_artifacts/mamba-split_1741615764949/work/libmambapy
-lightgbm==3.3.5
+libmambapy @ file:///home/conda/feedstock_root/build_artifacts/mamba-split_1745833727915/work/libmambapy
+lightgbm==4.6.0
 lightning-utilities==0.11.2
 linear-operator==0.4.0
 linkify-it-py==2.0.3
@@ -266,9 +267,9 @@ opencensus-context==0.1.3
 opencv-python-headless==4.8.1.78
 opentelemetry-api==1.1.0
 opentelemetry-exporter-otlp==1.1.0
-opentelemetry-exporter-otlp-proto-common==1.30.0
+opentelemetry-exporter-otlp-proto-common==1.32.1
 opentelemetry-exporter-otlp-proto-grpc==1.1.0
-opentelemetry-exporter-otlp-proto-http==1.30.0
+opentelemetry-exporter-otlp-proto-http==1.32.1
 opentelemetry-proto==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-semantic-conventions==0.20b0
@@ -329,7 +330,7 @@ pytest==7.4.4
 pytest-remotedata==0.3.2
 python-box==6.1.0
 python-dateutil==2.8.2
-python-dotenv==1.0.1
+python-dotenv==1.1.0
 python-json-logger==2.0.7
 pytorch-lightning==1.8.6
 pytorch-ranger==0.1.1
@@ -339,7 +340,7 @@ PyYAML==6.0.1
 pyzmq==26.0.3
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=b242fd4d9bf9be98fad514754a36721b4a9aa36c20016633fecb571c242966b3
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=265bc77c64b83ddd2c2366d3c72679265bf98f13109710e95ed98f04a13041c0
 redis==4.4.2
 referencing==0.36.2
 regex==2024.5.15
@@ -384,7 +385,7 @@ sqlglot==25.6.1
 sqlparse==0.5.1
 stack-data==0.6.3
 stanio==0.3.0
-starlette==0.36.3
+starlette==0.37.2
 statsforecast==1.7.0
 statsmodels==0.14.0
 SuperSuit==3.9.3
@@ -403,7 +404,7 @@ tensorflow-metadata==1.14.0
 tensorflow-probability==0.23.0
 termcolor==2.4.0
 terminado==0.18.1
-textual==2.1.2
+textual==3.1.1
 tf2onnx==1.15.1
 threadpoolctl==3.1.0
 tifffile==2024.8.30
@@ -433,8 +434,9 @@ triton==2.3.0
 typeguard==2.13.3
 typer==0.15.2
 types-python-dateutil==2.9.0.20240316
+typing-inspection==0.4.0
 typing_extensions==4.12.2
-tzdata==2025.1
+tzdata==2025.2
 uc-micro-py==1.0.3
 uri-template==1.3.0
 uritemplate==4.1.1
@@ -458,7 +460,7 @@ xgboost==2.1.0
 xxhash==3.4.1
 y-py==0.6.2
 yahp==0.1.1
-yarl==1.9.4
+yarl==1.18.3
 ypy-websocket==0.8.4
 zict==3.0.0
 zipp==3.19.2
