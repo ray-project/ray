@@ -283,7 +283,7 @@ def test_method_raise_and_exit_no_over_retry(
         (infinite retry).
     """
     max_restarts = 1
-    max_task_retries = 1
+    max_task_retries = 2
     actions, error = actions_and_error
 
     counter = Counter.remote()
