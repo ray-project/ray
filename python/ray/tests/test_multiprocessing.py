@@ -3,7 +3,6 @@
 Tests that require a standalone Ray cluster (for example, testing ray.init or shutdown
 behavior) should go in test_multiprocessing_standalone.py.
 """
-import math
 import os
 import platform
 import queue

@@ -4,22 +4,15 @@ Tests that can run on a shared Ray cluster fixture should go in test_multiproces
 """
 import math
 import os
-import platform
-import queue
-import random
 import sys
-import tempfile
-import time
 import multiprocessing as mp
-from collections import defaultdict
 
 import pytest
 
 
 import ray
-from ray._private.test_utils import external_redis_test_enabled, SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
-from ray.util.joblib import register_ray
+from ray._private.test_utils import external_redis_test_enabled
+from ray.util.multiprocessing import Pool
 
 
 @pytest.fixture(scope="module")
