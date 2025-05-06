@@ -258,6 +258,14 @@ enum ErrorType {
   ACTOR_UNAVAILABLE = 25;
 }
 
+// The user error information.
+message UserErrorInfo {
+  // The name of the exception class.
+  string exception_name = 1;
+  // The message associated with the exception.
+  string exception_message = 2;
+}
+
 /// The information per ray error type.
 message RayErrorInfo {
   // More detailed error context for various error types.
