@@ -38,7 +38,8 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    OneToOneOperator, InternalQueueOperatorMixin,
+    OneToOneOperator,
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,

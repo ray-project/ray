@@ -329,9 +329,9 @@ class PhysicalOperator(Operator):
 
         if not self._execution_finished:
             if (
-                self._inputs_complete and
-                internal_queue_size == 0 and
-                self.num_active_tasks() == 0
+                self._inputs_complete
+                and internal_queue_size == 0
+                and self.num_active_tasks() == 0
             ):
                 # NOTE: Operator is considered completed iff
                 #   - All input blocks have been ingested

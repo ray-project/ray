@@ -25,7 +25,8 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     Waitable,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator, InternalQueueOperatorMixin,
+    AllToAllOperator,
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
@@ -242,9 +243,7 @@ class OpState:
             else 0
         )
 
-        return (
-            self._pending_dispatch_input_bundles_count() + internal_queue_size
-        )
+        return self._pending_dispatch_input_bundles_count() + internal_queue_size
 
     def _pending_dispatch_input_bundles_count(self) -> int:
         """Return the number of input bundles that are pending dispatching to the

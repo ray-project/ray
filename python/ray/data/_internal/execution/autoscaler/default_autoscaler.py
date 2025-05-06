@@ -108,7 +108,9 @@ class DefaultAutoscaler(Autoscaler):
                         state,
                     )
                     should_scale_down = self._actor_pool_should_scale_down(
-                        actor_pool, op, state,
+                        actor_pool,
+                        op,
+                        state,
                     )
                     if should_scale_up and not should_scale_down:
                         if actor_pool.scale_up(1) == 0:
