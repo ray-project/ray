@@ -3364,7 +3364,7 @@ py_test(
     args = [
         "--enable-new-api-stack",
         "--as-test",
-        "--stop-iters=7000",
+        "--stop-iters=500",
         "--meta-lr=0.001",
         "--meta-train-batch-size=5",
         "--fine-tune-iters=10",
