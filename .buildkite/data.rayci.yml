@@ -6,6 +6,11 @@ steps:
   # builds
   - name: data9build
     wanda: ci/docker/data9.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: data9build
+      RAYCI_IS_GPU_BUILD: "false"
 
   - name: data9gpubuild
     wanda: ci/docker/data9.build.wanda.yaml
@@ -17,6 +22,11 @@ steps:
 
   - name: datalbuild
     wanda: ci/docker/datal.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: datalbuild
+      RAYCI_IS_GPU_BUILD: "false"
 
   - name: datalgpubuild
     wanda: ci/docker/datal.build.wanda.yaml
@@ -36,6 +46,11 @@ steps:
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: datanbuild
+      RAYCI_IS_GPU_BUILD: "false"
 
   - name: datangpubuild
     wanda: ci/docker/datan.build.wanda.yaml
