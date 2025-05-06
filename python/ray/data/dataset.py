@@ -3397,7 +3397,7 @@ class Dataset:
                 out each block to a file. See `arrow_parquet_args_fn` for more detail.
             mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
                 "errorifexists", "ignore", "append". Defaults to "append".
-                NOTE: This method is not atomic. "Overwrite" will first delete all the data
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
