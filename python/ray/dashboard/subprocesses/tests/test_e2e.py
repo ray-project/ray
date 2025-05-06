@@ -26,6 +26,9 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     yield SubprocessModuleConfig(
         cluster_id_hex="test_cluster_id",
         gcs_address="",
+        session_name="test_session",
+        temp_dir=str(tmp_path),
+        session_dir=str(tmp_path),
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
@@ -114,6 +117,32 @@ async def test_load_multiple_modules(aiohttp_client, default_module_config):
     assert await response.text() == "Hello from TestModule1"
 
 
+async def test_cached_endpoint(aiohttp_client, default_module_config):
+    """
+    Test whether the ray.dashboard.optional_utils.aiohttp_cache decorator works.
+    """
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/not_cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /not_cached, count: 1"
+
+    # Call again, count should increase.
+    response = await client.get("/not_cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /not_cached, count: 2"
+
+    response = await client.get("/cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /cached, count: 1"
+
+    # Call again, count should NOT increase.
+    response = await client.get("/cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /cached, count: 1"
+
+
 async def test_streamed_iota(aiohttp_client, default_module_config):
     # TODO(ryw): also test streams that raise exceptions.
     app = await start_http_server_app(default_module_config, [TestModule])
@@ -155,6 +184,23 @@ async def test_websocket_bytes_str(aiohttp_client, default_module_config):
             assert msg.type == aiohttp.WSMsgType.TEXT
             res.append(msg.data)
     assert res == ["1\n", "2\n", "3\n", "4\n", "5\n"]
+
+
+async def test_websocket_raise_http_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/websocket_raise_http_error")
+    assert response.status == 400
+    assert await response.text() == "400: Hello this is a bad request"
+
+
+async def test_websocket_raise_non_http_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/websocket_raise_non_http_error")
+    assert response.status == 500
 
 
 async def test_kill_self(aiohttp_client, default_module_config):
@@ -230,6 +276,22 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     assert all(
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
+
+    # Assert that stdout is logged to "dashboard_TestModule.out"
+    out_log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.out"
+    )
+    with out_log_file_path.open("r") as f:
+        out_log_file_content = f.read()
+    assert out_log_file_content == "In /logging_in_module, stdout\n"
+
+    # Assert that stderr is logged to "dashboard_TestModule.err"
+    err_log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
+    )
+    with err_log_file_path.open("r") as f:
+        err_log_file_content = f.read()
+    assert err_log_file_content == "In /logging_in_module, stderr\n"
 
 
 async def test_logging_in_module_with_multiple_incarnations(

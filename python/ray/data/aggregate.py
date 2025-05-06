@@ -4,10 +4,9 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
 
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_null
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Schema
@@ -105,7 +104,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn):
+class AggregateFnV2(AggregateFn, abc.ABC):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -148,9 +147,7 @@ class AggregateFnV2(AggregateFn):
             name=name,
             init=_safe_zero_factory,
             merge=_safe_combine,
-            accumulate_block=(
-                lambda acc, block: _safe_combine(acc, _safe_aggregate(block))
-            ),
+            accumulate_block=lambda _, block: _safe_aggregate(block),
             finalize=_safe_finalize,
         )
 
@@ -177,6 +174,8 @@ class AggregateFnV2(AggregateFn):
 
     def _validate(self, schema: Optional["Schema"]) -> None:
         if self._target_col_name:
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
             SortKey(self._target_col_name).validate_schema(schema)
 
 
@@ -433,9 +432,6 @@ class AbsMax(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        return max(current_accumulator, new)
-
     def aggregate_block(self, block: Block) -> AggType:
         block_accessor = BlockAccessor.for_block(block)
 
@@ -449,6 +445,9 @@ class AbsMax(AggregateFnV2):
             abs(max_),
             abs(min_),
         )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return max(current_accumulator, new)
 
 
 @PublicAPI
@@ -540,12 +539,13 @@ class Unique(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
+        ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
             on=on,
-            ignore_nulls=False,
+            ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
 

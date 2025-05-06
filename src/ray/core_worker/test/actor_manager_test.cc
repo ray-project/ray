@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/actor_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/reference_count.h"
@@ -30,7 +34,8 @@ using ::testing::_;
 
 class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::GcsClient *client) : gcs::ActorInfoAccessor(client) {}
+  explicit MockActorInfoAccessor(gcs::GcsClient *client)
+      : gcs::ActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
@@ -87,7 +92,7 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
 
 class MockGcsClient : public gcs::GcsClient {
  public:
-  MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
+  explicit MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
 
   void Init(MockActorInfoAccessor *actor_info_accessor) {
     actor_accessor_.reset(actor_info_accessor);
@@ -359,12 +364,12 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
 TEST_F(ActorManagerTest, TestActorStateIsOnlySubscribedOnce) {
   ActorID actor_id = AddActorHandle();
   // Make sure the AsyncSubscribe is invoked.
-  ASSERT_TRUE(actor_info_accessor_->actor_subscribed_times_[actor_id] == 1);
+  ASSERT_EQ(actor_info_accessor_->actor_subscribed_times_[actor_id], 1);
 
   // Try subscribing again.
   actor_manager_->SubscribeActorState(actor_id);
   // Make sure the AsyncSubscribe won't be invoked anymore.
-  ASSERT_TRUE(actor_info_accessor_->actor_subscribed_times_[actor_id] == 1);
+  ASSERT_EQ(actor_info_accessor_->actor_subscribed_times_[actor_id], 1);
 }
 
 TEST_F(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished) {

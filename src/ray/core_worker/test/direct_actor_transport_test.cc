@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <vector>
+
 // clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -25,10 +29,6 @@
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/core_worker/reference_count.h"
-// clang-format on
-
-// clang-format off
-#include "mock/ray/core_worker/task_manager.h"
 // clang-format on
 
 namespace ray {
@@ -85,8 +85,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
-  int64_t ClientProcessedUpToSeqno() override { return acked_seqno; }
-
   bool ReplyPushTask(Status status = Status::OK(), size_t index = 0) {
     if (callbacks.size() == 0) {
       return false;
@@ -114,7 +112,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
-        io_work(io_context),
+        io_work(io_context.get_executor()),
         reference_counter_(std::make_shared<MockReferenceCounter>()),
         submitter_(
             *client_pool_,
@@ -137,7 +135,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   instrumented_io_context io_context;
-  boost::asio::io_service::work io_work;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   ActorTaskSubmitter submitter_;
 
@@ -404,7 +402,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   // Simulate the actor failing.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
-      actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
+      actor_id, /*num_restarts=*/1, /*dead=*/false, death_cause, /*is_restartable=*/true);
   // Third task fails after the actor is disconnected. It should not get
   // retried.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -415,13 +413,8 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(CheckSubmitTask(task4));
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
-  if (execute_out_of_order) {
-    // Actor counter doesn't restart for out of order execution.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3));
-  } else {
-    // Actor counter restarts at 0 after the actor is restarted.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 0));
-  }
+  // task1, task2 failed, task3 failed, task4
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
@@ -465,7 +458,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   // Simulate the actor failing.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
-      actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
+      actor_id, /*num_restarts=*/1, /*dead=*/false, death_cause, /*is_restartable=*/true);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -474,20 +467,15 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
   ASSERT_TRUE(CheckSubmitTask(task4));
-  // Tasks 2 and 3 get retried.
+  // Tasks 2 and 3 get retried. In the real world, the seq_no of these two tasks should be
+  // updated to 4 and 5 by `CoreWorker::InternalHeartbeat`.
   ASSERT_TRUE(CheckSubmitTask(task2));
   ASSERT_TRUE(CheckSubmitTask(task3));
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
-  if (execute_out_of_order) {
-    // After restart the tasks are executed in submission order.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 1, 2));
-  } else {
-    // Actor counter restarts at 0 after the actor is restarted. New task cannot
-    // execute until after tasks 2 and 3 are re-executed.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 2, 0, 1));
-  }
+  // task1, task2 failed, task3 failed, task4, task2 retry, task3 retry
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 1, 2));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
@@ -784,14 +772,6 @@ class MockDependencyWaiter : public DependencyWaiter {
   virtual ~MockDependencyWaiter() {}
 };
 
-class MockWorkerContext : public WorkerContext {
- public:
-  MockWorkerContext(WorkerType worker_type, const JobID &job_id)
-      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
-    current_actor_is_direct_call_ = true;
-  }
-};
-
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
@@ -809,14 +789,12 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 class MockTaskReceiver : public TaskReceiver {
  public:
-  MockTaskReceiver(WorkerContext &worker_context,
-                   instrumented_io_context &main_io_service,
+  MockTaskReceiver(instrumented_io_context &task_execution_service,
                    worker::TaskEventBuffer &task_event_buffer,
                    const TaskHandler &task_handler,
                    std::function<std::function<void()>()> initialize_thread_callback,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
-      : TaskReceiver(worker_context,
-                     main_io_service,
+      : TaskReceiver(task_execution_service,
                      task_event_buffer,
                      task_handler,
                      initialize_thread_callback,
@@ -831,8 +809,7 @@ class MockTaskReceiver : public TaskReceiver {
 class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
-      : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
-        worker_client_(std::make_shared<MockWorkerClient>()),
+      : worker_client_(std::make_shared<MockWorkerClient>()),
         dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
@@ -843,8 +820,7 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_5,
                                   std::placeholders::_6);
     receiver_ = std::make_unique<MockTaskReceiver>(
-        worker_context_,
-        main_io_service_,
+        task_execution_service_,
         task_event_buffer_,
         execute_task,
         /* intiialize_thread_callback= */ []() { return []() { return; }; },
@@ -866,21 +842,20 @@ class TaskReceiverTest : public ::testing::Test {
     return Status::OK();
   }
 
-  void StartIOService() { main_io_service_.run(); }
+  void StartIOService() { task_execution_service_.run(); }
 
   void StopIOService() {
     // We must delete the receiver before stopping the IO service, since it
     // contains timers referencing the service.
     receiver_.reset();
-    main_io_service_.stop();
+    task_execution_service_.stop();
   }
 
   std::unique_ptr<MockTaskReceiver> receiver_;
 
  private:
   rpc::Address rpc_address_;
-  MockWorkerContext worker_context_;
-  instrumented_io_context main_io_service_;
+  instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::unique_ptr<DependencyWaiter> dependency_waiter_;
@@ -936,7 +911,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   // ignored normally, but here it's from a different worker and with a newer
   // timestamp, in this case it should succeed.
   {
-    auto worker_id = WorkerID::FromRandom();
+    worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
     rpc::PushTaskReply reply;
@@ -952,7 +927,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   // Push a task request with actor counter 1, but with a different worker id,
   // and a older timestamp. In this case the request should fail.
   {
-    auto worker_id = WorkerID::FromRandom();
+    worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
     rpc::PushTaskReply reply;

@@ -1,8 +1,7 @@
 import os
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 from pydantic import ConfigDict, Field
-from ray import serve
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
@@ -50,6 +49,11 @@ class VLLMEngineConfig(BaseModelExtended):
     mirror_config: Optional[CloudMirrorConfig] = Field(
         None,
         description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
+    )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This overrides the vLLM engine worker's default resource configuration, "
+        "the number of resources returned by `placement_bundles`.",
     )
     accelerator_type: Optional[GPUType] = Field(
         None,
@@ -104,6 +108,7 @@ class VLLMEngineConfig(BaseModelExtended):
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
+            resources_per_bundle=llm_config.resources_per_bundle,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -122,7 +127,7 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("pipeline_parallel_size", 1)
 
     @property
-    def num_gpu_workers(self) -> int:
+    def num_devices(self) -> int:
         return self.tensor_parallel_degree * self.pipeline_parallel_degree
 
     @property
@@ -134,12 +139,43 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        bundle = {"GPU": 1}
+        if self.resources_per_bundle:
+            bundle = self.resources_per_bundle
+        else:
+            bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_gpu_workers)]
+        bundles = [bundle for _ in range(self.num_devices)]
 
         return bundles
+
+    @property
+    def use_gpu(self) -> bool:
+        """
+        Returns True if vLLM is configured to use GPU resources.
+        """
+        if self.resources_per_bundle and self.resources_per_bundle.get("GPU", 0) > 0:
+            return True
+        if not self.accelerator_type:
+            # By default, GPU resources are used
+            return True
+
+        return self.accelerator_type in (
+            GPUType.NVIDIA_TESLA_V100.value,
+            GPUType.NVIDIA_TESLA_P100.value,
+            GPUType.NVIDIA_TESLA_T4.value,
+            GPUType.NVIDIA_TESLA_P4.value,
+            GPUType.NVIDIA_TESLA_K80.value,
+            GPUType.NVIDIA_TESLA_A10G.value,
+            GPUType.NVIDIA_L4.value,
+            GPUType.NVIDIA_L40S.value,
+            GPUType.NVIDIA_A100.value,
+            GPUType.NVIDIA_H100.value,
+            GPUType.NVIDIA_H200.value,
+            GPUType.NVIDIA_H20.value,
+            GPUType.NVIDIA_A100_40G.value,
+            GPUType.NVIDIA_A100_80G.value,
+        )
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
@@ -185,9 +221,10 @@ class VLLMSamplingParams(SamplingParams):
 class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    sampling_params: VLLMSamplingParams
+    sampling_params: Optional[
+        Union[VLLMSamplingParams, List[VLLMSamplingParams]]
+    ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
-    serve_request_context: Optional[serve.context._RequestContext] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 
     @property

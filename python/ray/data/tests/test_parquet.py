@@ -9,7 +9,8 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from packaging.version import parse as parse_version
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import (
@@ -128,7 +129,9 @@ def test_parquet_deserialize_fragments_with_retry(
 
     dataset_kwargs = {}
     pq_ds = pq.ParquetDataset(
-        data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
+        data_path,
+        **dataset_kwargs,
+        filesystem=fs,
     )
     serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
@@ -510,7 +513,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
         filesystem=fs,
-        use_legacy_dataset=False,
     )
 
     ds = ray.data.read_parquet(data_path, filesystem=fs)
@@ -547,7 +549,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
 
     # 2 partitions, 1 empty partition, 1 block/read task
@@ -595,7 +599,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -645,7 +648,6 @@ def test_parquet_read_partitioned_with_partition_filter(
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -680,7 +682,6 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         table,
         root_path=str(tmp_path),
         partition_cols=["one"],
-        use_legacy_dataset=False,
     )
 
     partitioning = Partitioning("hive", field_types={"one": int})
@@ -712,7 +713,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["two"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["two"],
     )
 
     def _block_udf(block: pa.Table):
@@ -913,7 +916,9 @@ def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
     # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
 
@@ -1484,6 +1489,54 @@ def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_
 
     with pytest.warns(FutureWarning, match="file_extensions"):
         ray.data.read_parquet(tmp_path)
+
+
+def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
+    """Verify row_group_size is respected."""
+
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_5k.parquet",
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_5k.parquet",
+            use_legacy_dataset=False,  # required for .fragments attribute
+        )
+    assert ds.fragments[0].num_row_groups == 2
+
+
+def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
+    """Verify arrow_parquet_args_fn is working with row_group_size."""
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_1k.parquet",
+            arrow_parquet_args_fn=lambda: {
+                "row_group_size": 1000,  # overrides row_group_size
+            },
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_1k.parquet",
+            use_legacy_dataset=False,
+        )
+    assert ds.fragments[0].num_row_groups == 10
 
 
 if __name__ == "__main__":

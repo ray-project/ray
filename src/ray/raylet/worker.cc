@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -179,13 +178,13 @@ const std::shared_ptr<ClientConnection> Worker::Connection() const { return conn
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
 
-void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+void Worker::ActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
-  rpc::DirectActorCallArgWaitCompleteRequest request;
+  rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  rpc_client_->DirectActorCallArgWaitComplete(
-      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+  rpc_client_->ActorCallArgWaitComplete(
+      request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }

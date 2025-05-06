@@ -255,6 +255,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
+  /// \param enable_resource_isolation If true, core worker enables resource isolation by
+  /// adding itself into appropriate cgroup.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID &node_id,
              std::string node_address,
@@ -269,7 +271,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             std::function<absl::Time()> get_time);
+             std::function<absl::Time()> get_time,
+             bool enable_resource_isolation);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -790,7 +793,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
 
-  // If this worker can serve the task.
+  /// Returns if the worker can be used to satisfy the request.
+  ///
+  /// \param[in] worker The worker.
+  /// \param[in] pop_worker_request The pop worker request.
+  /// \return WorkerUnfitForTaskReason::NONE if the worker can be used, else a
+  ///         status indicating why it cannot.
   WorkerUnfitForTaskReason WorkerFitsForTask(
       const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
 
@@ -857,6 +865,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  // If true, core worker enables resource isolation by adding itself into appropriate
+  // cgroup after it is created.
+  bool enable_resource_isolation_ = false;
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

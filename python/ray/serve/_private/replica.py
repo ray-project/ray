@@ -27,6 +27,8 @@ from typing import (
 
 import starlette.responses
 from anyio import to_thread
+from fastapi import Request
+from starlette.applications import Starlette
 from starlette.types import ASGIApp, Message
 
 import ray
@@ -76,8 +78,10 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
-from ray.serve._private.utils import get_component_file_name  # noqa: F401
-from ray.serve._private.utils import parse_import_path
+from ray.serve._private.utils import (
+    get_component_file_name,  # noqa: F401
+    parse_import_path,
+)
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
@@ -483,6 +487,24 @@ class ReplicaBase(ABC):
             self._metrics_manager.dec_num_ongoing_requests()
 
         latency_ms = (time.time() - start_time) * 1000
+        self._record_errors_and_metrics(
+            user_exception, status_code, latency_ms, request_metadata, request_args
+        )
+
+        if user_exception is not None:
+            raise user_exception from None
+
+    def _record_errors_and_metrics(
+        self,
+        user_exception: Optional[BaseException],
+        status_code: Optional[str],
+        latency_ms: float,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+    ):
+        http_method = self._maybe_get_http_method(request_metadata, request_args)
+        http_route = request_metadata.route
+        call_method = request_metadata.call_method
         if user_exception is None:
             status_str = "OK"
         elif isinstance(user_exception, asyncio.CancelledError):
@@ -490,13 +512,11 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        http_method = self._maybe_get_http_method(request_metadata, request_args)
-        http_route = request_metadata.route
         # Set in _wrap_user_method_call.
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
-                route=http_route or request_metadata.call_method,
+                route=http_route or call_method,
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
@@ -508,9 +528,6 @@ class ReplicaBase(ABC):
             latency_ms=latency_ms,
             was_error=user_exception is not None,
         )
-
-        if user_exception is not None:
-            raise user_exception from None
 
     async def _call_user_generator(
         self,
@@ -624,7 +641,7 @@ class ReplicaBase(ABC):
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
-            logger.debug(
+            logger.warning(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
@@ -1127,6 +1144,8 @@ class UserMethodInfo:
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
 
+    service_unavailable_exceptions = (BackPressureError, DeploymentUnavailableError)
+
     def __init__(
         self,
         deployment_def: Callable,
@@ -1371,6 +1390,17 @@ class UserCallableWrapper:
             )
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
+                app: Starlette = self._callable.app
+                # The reason we need to do this is because BackPressureError is a serve internal exception
+                # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
+                # With same reasoning, we are not handling TimeoutError because it's a generic exception
+                # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
+                def handle_exception(_: Request, exc: Exception):
+                    return self.handle_exception(exc)
+
+                for exc in self.service_unavailable_exceptions:
+                    app.add_exception_handler(exc, handle_exception)
+
                 await self._callable._run_asgi_lifespan_startup()
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
@@ -1630,9 +1660,6 @@ class UserCallableWrapper:
 
             return final_result
         except Exception as e:
-            unavailable_error = isinstance(
-                e, (BackPressureError, DeploymentUnavailableError)
-            )
             if (
                 request_metadata.is_http_request
                 and asgi_args is not None
@@ -1640,13 +1667,7 @@ class UserCallableWrapper:
                 # If the callable is an ASGI app, it already sent a 500 status response.
                 and not user_method_info.is_asgi_app
             ):
-                response = (
-                    starlette.responses.Response(e.message, status_code=503)
-                    if unavailable_error
-                    else starlette.responses.Response(
-                        "Internal Server Error", status_code=500
-                    )
-                )
+                response = self.handle_exception(e)
                 await self._send_user_result_over_asgi(response, asgi_args)
 
             if receive_task is not None and not receive_task.done():
@@ -1665,6 +1686,14 @@ class UserCallableWrapper:
                     receive_task.cancel()
 
             raise
+
+    def handle_exception(self, exc: Exception):
+        if isinstance(exc, self.service_unavailable_exceptions):
+            return starlette.responses.Response(exc.message, status_code=503)
+        else:
+            return starlette.responses.Response(
+                "Internal Server Error", status_code=500
+            )
 
     @_run_on_user_code_event_loop
     async def call_destructor(self):

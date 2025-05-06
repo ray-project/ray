@@ -1167,7 +1167,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
+        msg = "Failed to launch 2 node(s) of type worker. (didn't work): never did."
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
@@ -1210,7 +1210,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
+        msg = "Failed to launch 2 node(s) of type worker. (didn't work): never did."
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
@@ -1399,7 +1399,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the outdated node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 10 nodes of type " "worker (outdated)." in events, events
+        assert "Removing 10 nodes of type worker (outdated)." in events, events
         assert mock_metrics.stopped_nodes.inc.call_count == 10
         mock_metrics.started_nodes.inc.assert_called_with(5)
         assert mock_metrics.worker_create_node_time.observe.call_count == 5
@@ -1591,7 +1591,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Check the scale-down event is generated.
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 1 nodes of type worker " "(max_workers_per_type)." in events
+        assert "Removing 1 nodes of type worker (max_workers_per_type)." in events
         assert mock_metrics.stopped_nodes.inc.call_count == 1
 
         # Update the config to increase the cluster size
@@ -2296,7 +2296,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the launch failure event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 2 nodes of type " "worker (launch failed)." in events, events
+        assert "Removing 2 nodes of type worker (launch failed)." in events, events
 
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
@@ -2492,7 +2492,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
         assert (
-            "Restarting 1 nodes of type " "worker (lost contact with raylet)." in events
+            "Restarting 1 nodes of type worker (lost contact with raylet)." in events
         ), events
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
@@ -3620,7 +3620,9 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
+        assert lm.is_active(worker_ip)
         autoscaler.update()
+        assert not lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." in events, events

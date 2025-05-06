@@ -15,6 +15,7 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
+from ray import ray_constants
 from ray._common.utils import get_or_create_event_loop
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
@@ -249,7 +250,7 @@ class HttpServerDashboardHead:
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
-            client_max_size=100 * 1024**2,
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 self.metrics_middleware,
                 self.path_clean_middleware,
@@ -263,7 +264,7 @@ class HttpServerDashboardHead:
         self.runner = aiohttp.web.AppRunner(
             app,
             access_log_format=(
-                "%a %t '%r' %s %b bytes %D us " "'%{Referer}i' '%{User-Agent}i'"
+                "%a %t '%r' %s %b bytes %D us '%{Referer}i' '%{User-Agent}i'"
             ),
         )
         await self.runner.setup()

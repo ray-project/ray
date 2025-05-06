@@ -266,9 +266,9 @@ class TaskResourceInstances {
         buffer << resource[0];
       } else {
         buffer << "[";
-        for (size_t i = 0; i < resource.size(); i++) {
-          buffer << resource[i];
-          if (i < resource.size() - 1) {
+        for (size_t j = 0; j < resource.size(); j++) {
+          buffer << resource[j];
+          if (j < resource.size() - 1) {
             buffer << ", ";
           }
         }
@@ -315,7 +315,7 @@ class NodeResources {
   int64_t draining_deadline_timestamp_ms = -1;
 
   // The timestamp of the last resource update if there was a resource report.
-  absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
+  std::optional<absl::Time> last_resource_update_time = absl::nullopt;
 
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
   /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an

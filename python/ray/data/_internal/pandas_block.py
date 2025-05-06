@@ -14,21 +14,23 @@ from typing import (
 )
 
 import numpy as np
+from pandas.api.types import is_object_dtype, is_string_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions, is_null
+from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
-    BlockColumnAccessor,
 )
 from ray.data.context import DataContext
 
@@ -40,7 +42,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
-_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 50
+_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +152,18 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
             sum_ / self.count(ignore_nulls=ignore_nulls) if not is_null(sum_) else sum_
         )
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        return self._column.quantile(q=q)
+
+    def unique(self) -> BlockColumn:
+        pd = lazy_import_pandas()
+        return pd.Series(self._column.unique())
+
+    def flatten(self) -> BlockColumn:
+        return self._column.list.flatten()
+
     def sum_of_squared_diffs_from_mean(
         self,
         ignore_nulls: bool,
@@ -164,8 +178,18 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         return ((self._column - mean) ** 2).sum(skipna=ignore_nulls)
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         return self._column.to_list()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """NOTE: Unlike Arrow, specifying `zero_copy_only=True` isn't a guarantee
+        that no copy will be made
+        """
+
+        return self._column.to_numpy(copy=not zero_copy_only)
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self.to_pylist()
 
     def _is_all_null(self):
         return not self._column.notna().any()
@@ -238,18 +262,10 @@ class PandasBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.columns
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
-
-        table = self._table.copy()
-        table[name] = data
-        return table
+        return self._table.assign(**{name: value})
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
@@ -381,8 +397,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from pandas.api.types import is_object_dtype
-
         from ray.air.util.tensor_extensions.pandas import TensorArray
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
@@ -432,8 +446,10 @@ class PandasBlockAccessor(TableBlockAccessor):
                     objects.extend(current.to_numpy())
             return total_size
 
-        # Get initial memory usage including deep introspection
-        memory_usage = self._table.memory_usage(index=True, deep=True)
+        # Get initial memory usage.
+        # No need for deep inspection here, as we will handle the str, object and
+        # extension columns separately.
+        memory_usage = self._table.memory_usage(index=True, deep=False)
 
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
@@ -441,9 +457,13 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # Handle object columns separately
         for column in self._table.columns:
-            # Check pandas object dtype and the extension dtype
-            if is_object_dtype(self._table[column].dtype) or isinstance(
-                self._table[column].dtype, object_need_check
+            # For str, object and extension dtypes, we calculate the size
+            # by sampling the data.
+            dtype = self._table[column].dtype
+            if (
+                is_string_dtype(dtype)
+                or is_object_dtype(dtype)
+                or isinstance(dtype, object_need_check)
             ):
                 total_size = len(self._table[column])
 
@@ -464,7 +484,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                         )
                     # Scale back to the full column size if we sampled
                     column_memory = column_memory_sample * (total_size / sample_size)
-                    memory_usage[column] = int(column_memory)
+                    # Add the data memory usage on top of the index memory usage.
+                    memory_usage[column] += int(column_memory)
                 except Exception as e:
                     # Handle or log the exception as needed
                     logger.warning(f"Error calculating size for column '{column}': {e}")
@@ -525,7 +546,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(

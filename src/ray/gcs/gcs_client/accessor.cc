@@ -1407,7 +1407,7 @@ Status InternalKVAccessor::AsyncGetInternalConfig(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
         } else {
-          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status;
         }
         callback(status, reply.config());
       });
@@ -1549,6 +1549,49 @@ Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
   if (!is_accepted) {
     rejection_reason_message = reply.rejection_reason_message();
   }
+  return Status::OK();
+}
+
+PublisherAccessor::PublisherAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status PublisherAccessor::PublishError(std::string key_id,
+                                       rpc::ErrorTableData data,
+                                       int64_t timeout_ms) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
+  pub_message->set_key_id(std::move(key_id));
+  *(pub_message->mutable_error_info_message()) = std::move(data);
+  rpc::GcsPublishReply reply;
+  return client_impl_->GetGcsRpcClient().SyncGcsPublish(request, &reply, timeout_ms);
+}
+
+Status PublisherAccessor::PublishLogs(std::string key_id,
+                                      rpc::LogBatch data,
+                                      int64_t timeout_ms) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_LOG_CHANNEL);
+  pub_message->set_key_id(std::move(key_id));
+  *(pub_message->mutable_log_batch_message()) = std::move(data);
+  rpc::GcsPublishReply reply;
+  return client_impl_->GetGcsRpcClient().SyncGcsPublish(request, &reply, timeout_ms);
+}
+
+Status PublisherAccessor::AsyncPublishNodeResourceUsage(
+    std::string key_id,
+    std::string node_resource_usage_json,
+    const StatusCallback &done) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_NODE_RESOURCE_USAGE_CHANNEL);
+  pub_message->set_key_id(std::move(key_id));
+  pub_message->mutable_node_resource_usage_message()->set_json(
+      std::move(node_resource_usage_json));
+  client_impl_->GetGcsRpcClient().GcsPublish(
+      request,
+      [done](const Status &status, rpc::GcsPublishReply &&reply) { done(status); });
   return Status::OK();
 }
 

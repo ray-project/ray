@@ -11,10 +11,11 @@ from pprint import pformat
 
 _ALL_TAGS = set(
     """
+    always
     lint python cpp core_cpp java workflow accelerated_dag dashboard
     data serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python
+    release_tests compiled_python k8s_doc
     """.split()
 )
 
@@ -189,6 +190,7 @@ if __name__ == "__main__":
 
     tags: Set[str] = set()
 
+    tags.add("always")
     tags.add("lint")
 
     def _emit(line: str):
@@ -215,15 +217,14 @@ if __name__ == "__main__":
 
             _emit("ml tune train data serve core_cpp cpp java python doc")
             _emit("linux_wheels macos_wheels dashboard tools release_tests")
+
+        # Log the modified environment variables visible in console.
+        output_string = " ".join(list(tags))
+        for tag in tags:
+            assert tag in _ALL_TAGS, f"Unknown tag {tag}"
+
+        print(output_string, file=sys.stderr)  # Debug purpose
+        print(output_string)
     else:
-        _emit("ml tune train rllib rllib_directly serve")
-        _emit("cpp core_cpp java python doc linux_wheels macos_wheels docker")
-        _emit("dashboard tools workflow data release_tests")
-
-    # Log the modified environment variables visible in console.
-    output_string = " ".join(list(tags))
-    for tag in tags:
-        assert tag in _ALL_TAGS, f"Unknown tag {tag}"
-
-    print(output_string, file=sys.stderr)  # Debug purpose
-    print(output_string)
+        print("Run all tags", file=sys.stderr)
+        print("*")

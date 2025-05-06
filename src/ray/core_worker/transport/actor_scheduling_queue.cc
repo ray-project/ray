@@ -23,7 +23,7 @@ namespace ray {
 namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
-    instrumented_io_context &main_io_service,
+    instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -33,8 +33,8 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
     int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
-      wait_timer_(main_io_service),
-      main_thread_id_(boost::this_thread::get_id()),
+      wait_timer_(task_execution_service),
+      main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
@@ -86,10 +86,10 @@ void ActorSchedulingQueue::Add(
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   if (client_processed_up_to >= next_seq_no_) {
-    RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
-                   << client_processed_up_to;
+    RAY_LOG(INFO) << "client skipping requests " << next_seq_no_ << " to "
+                  << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
@@ -113,7 +113,7 @@ void ActorSchedulingQueue::Add(
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
     waiter_.Wait(dependencies, [seq_no, this]() {
-      RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+      RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
       auto it = pending_actor_tasks_.find(seq_no);
       if (it != pending_actor_tasks_.end()) {
         const TaskSpecification &task_spec = it->second.TaskSpec();
@@ -221,7 +221,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
 
 /// Called when we time out waiting for an earlier task to show up.
 void ActorSchedulingQueue::OnSequencingWaitTimeout() {
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                  << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {

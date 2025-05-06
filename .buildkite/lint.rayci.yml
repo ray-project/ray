@@ -2,6 +2,9 @@ group: lint
 steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small
+    tags:
+      - lint
+      - always
     depends_on:
       - forge
     commands:
@@ -25,6 +28,7 @@ steps:
     tags:
       - oss
       - lint
+      - always
     key: lint-medium
     instance_type: medium
     depends_on: docbuild
