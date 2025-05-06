@@ -4,10 +4,12 @@ import random
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
-from pyiceberg import catalog as pyi_catalog
-from pyiceberg import expressions as pyi_expr
-from pyiceberg import schema as pyi_schema
-from pyiceberg import types as pyi_types
+from pyiceberg import (
+    catalog as pyi_catalog,
+    expressions as pyi_expr,
+    schema as pyi_schema,
+    types as pyi_types,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.transforms import IdentityTransform
 

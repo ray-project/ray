@@ -3378,6 +3378,29 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/algorithms/maml_lr_supervised_learning",
+    size = "large",
+    srcs = ["examples/algorithms/maml_lr_supervised_learning.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--as-test",
+        "--stop-iters=70000",
+        "--meta-lr=0.001",
+        "--meta-train-batch-size=5",
+        "--fine-tune-iters=10",
+        "--fine-tune-batch-size=5",
+        "--fine-tune-lr=0.01",
+        "--noise-std=0.0",
+        "--no-plot",
+    ],
+    main = "examples/algorithms/maml_lr_supervised_learning.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: catalogs/
 # ....................................
 py_test(
