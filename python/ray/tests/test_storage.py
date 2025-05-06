@@ -258,32 +258,26 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
 
 
 def test_add_creatable_buckets_param_if_s3_uri():
-    if get_pyarrow_version() >= parse_version("9.0.0"):
-        # Test that the allow_bucket_creation=true query arg is added to an S3 URI.
-        uri = "s3://bucket/foo"
-        assert (
-            add_creatable_buckets_param_if_s3_uri(uri)
-            == "s3://bucket/foo?allow_bucket_creation=true"
-        )
+    # Test that the allow_bucket_creation=true query arg is added to an S3 URI.
+    uri = "s3://bucket/foo"
+    assert (
+        add_creatable_buckets_param_if_s3_uri(uri)
+        == "s3://bucket/foo?allow_bucket_creation=true"
+    )
 
-        # Test that query args are merged (i.e. existing query args aren't dropped).
-        uri = "s3://bucket/foo?bar=baz"
-        assert (
-            add_creatable_buckets_param_if_s3_uri(uri)
-            == "s3://bucket/foo?allow_bucket_creation=true&bar=baz"
-        )
+    # Test that query args are merged (i.e. existing query args aren't dropped).
+    uri = "s3://bucket/foo?bar=baz"
+    assert (
+        add_creatable_buckets_param_if_s3_uri(uri)
+        == "s3://bucket/foo?allow_bucket_creation=true&bar=baz"
+    )
 
-        # Test that existing allow_bucket_creation=false query arg isn't overridden.
-        uri = "s3://bucket/foo?allow_bucket_creation=false"
-        assert (
-            add_creatable_buckets_param_if_s3_uri(uri)
-            == "s3://bucket/foo?allow_bucket_creation=false"
-        )
-    else:
-        # Test that the allow_bucket_creation=true query arg is not added to an S3 URI,
-        # since we're using Arrow < 9.
-        uri = "s3://bucket/foo"
-        assert add_creatable_buckets_param_if_s3_uri(uri) == uri
+    # Test that existing allow_bucket_creation=false query arg isn't overridden.
+    uri = "s3://bucket/foo?allow_bucket_creation=false"
+    assert (
+        add_creatable_buckets_param_if_s3_uri(uri)
+        == "s3://bucket/foo?allow_bucket_creation=false"
+    )
 
     # Test that non-S3 URI is unchanged.
     uri = "gcs://bucket/foo"

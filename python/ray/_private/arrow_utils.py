@@ -82,10 +82,6 @@ def add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
 
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
-        return uri
     parsed_uri = urlparse(uri)
     if parsed_uri.scheme == "s3":
         uri = _add_url_query_params(uri, {"allow_bucket_creation": True})

@@ -127,9 +127,8 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     kwargs = aws_credentials.copy()
 
-    if get_pyarrow_version() >= parse_version("9.0.0"):
-        kwargs["allow_bucket_creation"] = True
-        kwargs["allow_bucket_deletion"] = True
+    kwargs["allow_bucket_creation"] = True
+    kwargs["allow_bucket_deletion"] = True
 
     fs = pa.fs.S3FileSystem(
         region="us-west-2",

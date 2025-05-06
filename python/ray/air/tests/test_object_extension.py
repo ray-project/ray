@@ -8,14 +8,10 @@ import pytest
 from ray.air.util.object_extensions.arrow import (
     ArrowPythonObjectArray,
     ArrowPythonObjectType,
-    _object_extension_type_allowed,
 )
 from ray.air.util.object_extensions.pandas import PythonObjectArray
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_object_array_validation():
     # Test unknown input type raises TypeError.
     with pytest.raises(TypeError):
@@ -25,9 +21,6 @@ def test_object_array_validation():
     PythonObjectArray([object(), object()])
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_arrow_scalar_object_array_roundtrip():
     arr = np.array(
         ["test", 20, False, {"some": "value"}, None, np.zeros((10, 10))], dtype=object
@@ -41,9 +34,6 @@ def test_arrow_scalar_object_array_roundtrip():
     assert np.all(out[-1] == arr[-1])
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_arrow_python_object_array_slice():
     arr = np.array(["test", 20, "test2", 40, "test3", 60], dtype=object)
     ata = ArrowPythonObjectArray.from_objects(arr)
@@ -51,9 +41,6 @@ def test_arrow_python_object_array_slice():
     assert ata[2:4].to_pylist() == ["test2", 40]
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_arrow_pandas_roundtrip():
     obj = types.SimpleNamespace(a=1, b="test")
     t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
@@ -61,18 +48,12 @@ def test_arrow_pandas_roundtrip():
     assert t1.equals(t2)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_pandas_python_object_isna():
     arr = np.array([1, np.nan, 3, 4, 5, np.nan, 7, 8, 9], dtype=object)
     ta = PythonObjectArray(arr)
     np.testing.assert_array_equal(ta.isna(), pd.isna(arr))
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_pandas_python_object_take():
     arr = np.array([1, 2, 3, 4, 5], dtype=object)
     ta = PythonObjectArray(arr)
@@ -85,9 +66,6 @@ def test_pandas_python_object_take():
     )
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_pandas_python_object_concat():
     arr1 = np.array([1, 2, 3, 4, 5], dtype=object)
     arr2 = np.array([6, 7, 8, 9, 10], dtype=object)
