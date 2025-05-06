@@ -16,6 +16,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
     generate_default_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
+    generate_serve_llm_grafana_dashboard,
     generate_serve_grafana_dashboard,
     generate_train_grafana_dashboard,
 )
@@ -333,6 +334,18 @@ class MetricsHead(SubprocessModule):
         with open(
             os.path.join(
                 self._grafana_dashboard_output_dir,
+                "serve_llm_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["serve_llm"],
+            ) = generate_serve_llm_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
                 "data_grafana_dashboard.json",
             ),
             "w",
@@ -388,10 +401,6 @@ class MetricsHead(SubprocessModule):
         await super().run()
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-
-        logger.info(
-            f"Generated prometheus and grafana configurations in: {self._metrics_root}"
-        )
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(
