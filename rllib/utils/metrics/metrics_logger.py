@@ -748,7 +748,7 @@ class MetricsLogger:
                 # twice the older sum from before.
                 if (
                     base_stats._reduce_method == "sum"
-                    and base_stats._window is None
+                    and base_stats._inf_window
                     and base_stats._clear_on_reduce is False
                 ):
                     for stat in incoming_stats:

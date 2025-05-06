@@ -371,7 +371,7 @@ You can also use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLo
             time.sleep(1.0)
 
     # Expect the throughput to be roughly 1.0/sec.
-    print(logger.get_throughputs"my_block_to_be_timed"))
+    print(logger.get_throughputs"my_block_to_be_timed")
 
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks

@@ -264,42 +264,19 @@ class Stats:
         Returns:
             The result of reducing the internal values list.
         """
-        # If there is a window and we are compiling and there is a reduce method, we need to calculate the reduced value (even we we don't have new values) because we don't keep track of the reduced value
-        if not self._inf_window:
-            if compile:
-                if self._reduce_method:
-                    return self._reduced_values()[0][0]
-                else:
-                    # In these cases, even if we compile, we return lists
-                    if not self._has_new_values:
-                        return self.get_reduce_history()[-1]
-                    else:
-                        return self._reduced_values()[1]
-            else:
-                if self._has_new_values:
-                    return self._reduced_values()[1]
-                else:
-                    if self._reduce_method:
-                        return self.get_reduce_history()[-1]
-                    else:
-                        return self._reduced_values()[1]
-        else:
-            # If there is an infinite window, there must be a reduce method and hence the history has single elements
-            if self._has_new_values:
-                ret, reduced_values = self._reduced_values()
-            else:
-                ret = None
-                reduced_values = self.get_reduce_history()[-1]
-
-            if compile:
-                if ret is None:
-                    ret = self._reduced_values()[0]
-                if self._reduce_method is None:
-                    return ret
-                else:
-                    return ret[0]
-            else:
+        if self._has_new_values or (not compile and not self._inf_window):
+            reduced_value, reduced_values = self._reduced_values()
+            if not compile and not self._inf_window:
                 return reduced_values
+            if compile and self._reduce_method:
+                return reduced_value[0]
+            return reduced_value
+        else:
+            return_value = self.get_reduce_history()[-1].copy()
+            if compile:
+                # We don't need to check for self._reduce_method here because we only store the reduced value if there is a reduce method
+                return_value = return_value[0]
+            return return_value
 
     def get_reduce_history(self) -> List[Any]:
         """Returns the history of reduced values as a list.
@@ -356,7 +333,7 @@ class Stats:
         """
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
-            reduced, new_values_list = self._reduced_values()
+            reduced, _ = self._reduced_values()
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
@@ -365,30 +342,32 @@ class Stats:
             else:
                 self._has_new_values = False
                 if self._inf_window:
-                    # If we we use a window, we don't want to replace the internal values list
-                    self._set_values(new_values_list)
-
-            values_list = new_values_list
+                    # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
+                    self._set_values(reduced)
         else:
-            reduced = None
-            values_list = self.get_reduce_history()[-1]
+            reduced = self.get_reduce_history()[-1]
 
-        values_list = self._numpy_if_necessary(values_list)
+        reduced = self._numpy_if_necessary(reduced)
 
         # Shift historic reduced valued by one in our reduce_history.
-        if self._reduce_method is not None or not self._inf_window:
-            # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window.
+        if self._reduce_method is not None:
+            # It only makes sense to extend the history if we are reducing to a single value.
             # We need to make a copy here because the new_values_list is a reference to the internal values list
-            self._reduce_history.append(force_list(values_list.copy()))
-
-        if compile:
-            if self._reduce_method is None:
-                return values_list
-            elif reduced is None:
-                reduced = self._reduced_values()[0]
-            return self._numpy_if_necessary(reduced)[0]
+            self._reduce_history.append(force_list(reduced.copy()))
         else:
-            return values_list
+            # If there is a window and no reduce method, we don't want to use the reduce history to return reduced values in other methods
+            self._has_new_values = True
+
+        if compile and self._reduce_method is not None:
+            assert (
+                len(reduced) == 1
+            ), f"Reduced values list must contain exactly one value, found {reduced}"
+            reduced = reduced[0]
+
+        if not compile and not self._inf_window:
+            return self._numpy_if_necessary(self.values).copy()
+
+        return reduced
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
