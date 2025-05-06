@@ -1681,7 +1681,6 @@ class Dataset:
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
         def random_sample(batch: DataBatch, seed: Optional[int]):
-
             ctx = TaskContext.get_current()
 
             if "rng" in ctx.kwargs:
