@@ -78,7 +78,7 @@ class ReportHead(SubprocessModule):
         # the cluster's lifetime.
         self.cluster_metadata = None
 
-        self._health_checker = HealthChecker(self.gcs_aio_client)
+        self._health_checker = HealthChecker(self.gcs_client)
 
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
@@ -108,7 +108,7 @@ class ReportHead(SubprocessModule):
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
-                self.gcs_aio_client.internal_kv_get(
+                self.gcs_client.async_internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -689,7 +689,7 @@ class ReportHead(SubprocessModule):
                 message="actor_id is required.",
             )
 
-        status_code = await self.gcs_aio_client.kill_actor(
+        status_code = await self.gcs_client.async_kill_actor(
             ActorID.from_hex(actor_id),
             force_kill,
             no_restart,
@@ -724,7 +724,7 @@ class ReportHead(SubprocessModule):
 
         If not found, return None.
         """
-        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -737,7 +737,7 @@ class ReportHead(SubprocessModule):
     async def _get_stub_address_by_ip(
         self, ip: str
     ) -> Optional[Tuple[str, str, int, int]]:
-        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -757,7 +757,7 @@ class ReportHead(SubprocessModule):
     async def run(self):
         await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
-            self.aiogrpc_gcs_channel, self.gcs_aio_client
+            self.aiogrpc_gcs_channel, self.gcs_client
         )
         # Set up the state API in order to fetch task information.
         # This is only used to get task info. If we have Task APIs in GcsClient we can
@@ -772,7 +772,7 @@ class ReportHead(SubprocessModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
 
-        cluster_metadata = await self.gcs_aio_client.internal_kv_get(
+        cluster_metadata = await self.gcs_client.async_internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )
