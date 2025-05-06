@@ -1602,7 +1602,7 @@ pyarrow==14.0.2
     #   pylance
     #   raydp
     #   triad
-pyarrow-hotfix==0.6
+pyarrow-hotfix==0.7
     # via
     #   datasets
     #   deltalake
