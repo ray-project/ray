@@ -209,9 +209,8 @@ def test_from_torch(shutdown_only, local_read, tmp_path):
 def test_from_torch_boundary_conditions(shutdown_only, local_read):
     """
     Tests that from_torch respects __len__ for map-style datasets
-    and works correctly for equivalent iterable-style datasets.
     """
-    from torch.utils.data import Dataset, IterableDataset
+    from torch.utils.data import Dataset
 
     class BoundaryTestMapDataset(Dataset):
         """A map-style dataset where __len__ is less than the underlying data size."""
@@ -252,7 +251,10 @@ def test_from_torch_boundary_conditions(shutdown_only, local_read):
     assert actual_items_map == expected_items
     assert len(actual_items_map) == dataset_len
 
-    # --- Test IterableDataset ---
+
+def test_torch_iterable_dataset():
+    from torch.utils.data import IterableDataset
+
     class TestIterableDataset(IterableDataset):
         def __init__(self):
             super().__init__()
@@ -261,14 +263,8 @@ def test_from_torch_boundary_conditions(shutdown_only, local_read):
             return iter(range(0, 10))
 
     iter_ds = TestIterableDataset()
-
-    ray_ds_iter = ray.data.from_torch(iter_ds)
-
-    expected_items = list(range(0, 10))
-    actual_items_iter = extract_values("item", list(ray_ds_iter.take_all()))
-
-    assert actual_items_iter == expected_items
-    assert len(actual_items_iter) == dataset_len
+    ray_ds = ray.data.from_torch(iter_ds)
+    assert ray_ds.take_all() == list(range(0, 10))
 
 
 def test_read_s3_file_error(shutdown_only, s3_path):
