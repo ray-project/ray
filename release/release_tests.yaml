@@ -2113,33 +2113,131 @@
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
   variations:
-    - __suffix__: full_training
+    - __suffix__: full_training.parquet
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16
 
-    - __suffix__: full_training_torch_dataloader
+    - __suffix__: full_training.parquet.torch_dataloader
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16
 
-    - __suffix__: skip_training
+    - __suffix__: skip_training.parquet
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
-    - __suffix__: skip_training_torch_dataloader
+    - __suffix__: skip_training.parquet.torch_dataloader
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
-    - __suffix__: skip_training.fault_tolerance
+    - __suffix__: skip_training.parquet.fault_tolerance
       run:
         timeout: 2700
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
+
+    - __suffix__: full_training.jpeg
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: full_training.jpeg.torch_dataloader
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16
+
+    - __suffix__: skip_training.jpeg
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.jpeg.torch_dataloader
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.jpeg.local_fs
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs.tuned
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end --ray_data_override_num_blocks=20
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs.torch_dataloader
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=torch --num_workers=1 --num_torch_workers=32 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs_multi_gpus
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs_multi_gpus.tuned
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end --ray_data_override_num_blocks=20
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs_multi_gpus.torch_dataloader
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+
+- name: training_ingest_benchmark-task=recsys
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  # TODO: Keep these manual for now -- there are a still a few issues to resolve.
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_install_torchrec.sh
+    cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
+
+  variations:
+    - __suffix__: skip_training.mock_dataloader
+      run:
+        timeout: 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=mock --num_workers=8 --train_batch_size=8192 --num_epochs=1 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.ray_data
+      run:
+        timeout: 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --num_epochs=1 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: full_training.mock_dataloader
+      run:
+        timeout: 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=mock --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
+
+    - __suffix__: full_training.ray_data
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
+
 
 - name: train_horovod_multi_node_test
   group: Train tests
@@ -2373,7 +2471,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  # https://github.com/ray-project/ray/issues/41984
+  frequency: manual
   team: rllib
   stable: False
 
@@ -2519,6 +2618,7 @@
 
   stable: false
 
+  # https://github.com/ray-project/ray/issues/46612
   frequency: weekly
   team: rllib
   cluster:
@@ -4027,6 +4127,7 @@
 # LLM Serve
 ##############
 
+# Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
   python: "3.11"
@@ -4045,8 +4146,9 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+# Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
   python: "3.11"
@@ -4065,7 +4167,28 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+
+- name: llm_serve_llama_3dot2_1B_no_accelerator
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_g5-4xlarge.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-serve-llm-profiler
+
 
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
@@ -4085,7 +4208,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
@@ -4105,14 +4228,14 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --run-perf-profiler false --skip-hf-token true
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
 
 
 ##############
 # LLM Batch
 ##############
 
-- name: llm_batch_vllm_v1_llama_tp2dp2
+- name: llm_batch_vllm
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4127,10 +4250,9 @@
   run:
     timeout: 3600
     script: >
-      python run_llama.py
-      --tp-size 2 --concurrency 2 --vllm-use-v1
+      pytest -sv test_batch_vllm.py
 
-- name: llm_batch_vllm_llama_pp2dp2
+- name: llm_batch_sglang_llama
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4140,49 +4262,10 @@
   cluster:
     byod:
       type: llm-cu124
+      post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
   run:
     timeout: 3600
     script: >
-      python run_llama.py
-      --pp-size 2 --concurrency 2
-
-- name: llm_batch_vllm_llama_lora
-  frequency: nightly
-  python: "3.11"
-  group: llm-batch
-  team: llm
-  working_dir: llm_tests/batch
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_1xl4.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python run_llama.py
-      --model-source s3://air-example-data/llama-3.2-216M-dummy/
-      --dynamic-lora-loading-path s3://air-example-data/
-      --lora-name llama-3.2-216M-lora-dummy
-      --max-lora-rank 32
-
-- name: llm_batch_vllm_v1_llava_tp1dp1
-  frequency: nightly
-  python: "3.11"
-  group: llm-batch
-  team: llm
-  working_dir: llm_tests/batch
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_1xl4.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python run_vision_language_model.py
-      --tp-size 1 --concurrency 1 --vllm-use-v1
+      pytest -sv test_batch_sglang.py

@@ -1,7 +1,7 @@
 .. _train_scaling_config:
 
-Configuring Scale and Resources
-===============================
+Configuring Scale and GPUs
+==========================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
 which configures the number of workers and the resources they should use.
@@ -175,76 +175,6 @@ in a :ref:`Ray runtime environment <runtime-environments>`:
     ray.init(runtime_env=runtime_env)
 
     trainer = TorchTrainer(...)
-
-.. _using-other-accelerators:
-
-Using other accelerators
-------------------------
-
-Using HPUs
-~~~~~~~~~~
-
-To use HPUs, specify the HPU resources using the ``resources_per_worker`` parameter and pass it to the :class:`~ray.train.ScalingConfig`.
-In the example below, training will run on 8 HPUs (8 workers, each using one HPU).
-
-.. testcode::
-
-    from ray.train import ScalingConfig
-
-    scaling_config = ScalingConfig(
-        num_workers=8,
-        resources_per_worker={"HPU": 1}
-    )
-
-Using HPUs in the training function
-"""""""""""""""""""""""""""""""""""
-
-After you set the ``resources_per_worker`` attribute to specify the HPU resources for each worker, Ray Train can set up environment variables in your training function so that the HPUs can be detected and used.
-
-You can get the associated devices with :meth:`ray.train.torch.get_device`.
-
-.. testcode::
-
-    import torch
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer, get_device
-
-
-    def train_func():
-        device = get_device()
-        assert device == torch.device("hpu")
-
-    trainer = TorchTrainer(
-        train_func,
-        scaling_config=ScalingConfig(
-            num_workers=1,
-            resources_per_worker={"HPU": 1}
-        )
-    )
-    trainer.fit()
-
-(PyTorch) Setting the communication backend
-"""""""""""""""""""""""""""""""""""""""""""
-
-PyTorch supports a few communication backends such as MPI, Gloo and NCCL natively. Intel® Gaudi® AI accelerator support for distributed communication can be enabled using Habana Collective Communication Library (HCCL) backend. When using HPU resources, You can set HCCL as the communication backend by configuring a :class:`~ray.train.torch.TorchConfig` and passing it into the :class:`~ray.train.torch.TorchTrainer` as follows.
-
-.. testcode::
-    :hide:
-
-    num_training_workers = 1
-
-.. testcode::
-
-    from ray.train.torch import TorchConfig, TorchTrainer
-
-    trainer = TorchTrainer(
-        train_func,
-        scaling_config=ScalingConfig(
-            num_workers=num_training_workers,
-            resources_per_worker={"CPU": 1, "HPU": 1},
-        ),
-        torch_config=TorchConfig(backend="hccl"),
-    )
 
 Setting the resources per worker
 --------------------------------

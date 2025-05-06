@@ -299,7 +299,8 @@ def test_delete_multi_app(ray_start_stop, url):
 def test_get_serve_instance_details_not_started(ray_start_stop, url):
     """Test REST API when Serve hasn't started yet."""
     # Parse the response to ensure it's formatted correctly.
-    ServeInstanceDetails(**requests.get(url).json())
+    serve_details = ServeInstanceDetails(**requests.get(url).json())
+    assert serve_details.target_groups == []
 
 
 @pytest.mark.skipif(
@@ -409,6 +410,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     for proxy in serve_details.proxies.values():
         assert proxy.status == ProxyStatus.HEALTHY
         assert os.path.exists("/tmp/ray/session_latest/logs" + proxy.log_file_path)
+    proxy_ips = [proxy.node_ip for proxy in serve_details.proxies.values()]
     print("Checked HTTP Proxy details.")
     # Check controller info
     assert serve_details.controller_info.actor_id
@@ -467,6 +469,23 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                 assert os.path.exists(file_path)
 
     print("Finished checking application details.")
+
+    # Check target details
+    target_groups = serve_details.target_groups
+    assert len(target_groups) == 2
+    # sort target_groups by protocol
+    target_groups.sort(key=lambda x: x.protocol.lower())
+    assert len(target_groups[0].targets) == 1
+    assert target_groups[0].protocol == "gRPC"
+    assert target_groups[0].route_prefix == "/"
+    assert target_groups[1].protocol == "HTTP"
+    assert target_groups[1].route_prefix == "/"
+    for target in target_groups[0].targets:
+        assert target.ip in proxy_ips
+        assert target.port == 9001
+    for target in target_groups[1].targets:
+        assert target.ip in proxy_ips
+        assert target.port == 8005
 
 
 @pytest.mark.skipif(

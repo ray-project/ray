@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/core_worker/transport/actor_scheduling_queue.h"
-
 namespace ray {
 namespace core {
 
@@ -67,7 +65,7 @@ void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &depende
                                 std::function<void()> on_dependencies_available) {
   auto tag = next_request_id_++;
   requests_[tag] = on_dependencies_available;
-  RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, tag));
+  RAY_CHECK_OK(dependency_client_.WaitForActorCallArgs(dependencies, tag));
 }
 
 /// Fulfills the callback stored by Wait().

@@ -1,17 +1,18 @@
 from ray.core.generated.export_train_state_pb2 import (
-    ExportTrainRunEventData as ProtoTrainRun,
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+    ExportTrainRunEventData as ProtoTrainRun,
 )
 from ray.train.v2._internal.state.schema import (
-    TrainRunAttempt,
-    TrainRun,
-    TrainWorker,
+    ActorStatus,
     RunAttemptStatus,
     RunStatus,
-    ActorStatus,
+    TrainRun,
+    TrainRunAttempt,
+    TrainWorker,
 )
 
 TRAIN_SCHEMA_VERSION = 1
+RAY_TRAIN_VERSION = 2
 
 # Status mapping dictionaries
 _ACTOR_STATUS_MAP = {
@@ -71,6 +72,7 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
     """Convert TrainRunAttempt to protobuf format."""
     proto_attempt = ProtoTrainRunAttempt(
         schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
         run_id=attempt.run_id,
         attempt_id=attempt.attempt_id,
         status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
@@ -88,6 +90,7 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
     proto_run = ProtoTrainRun(
         schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
         id=run.id,
         name=run.name,
         job_id=bytes.fromhex(run.job_id),

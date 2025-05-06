@@ -224,6 +224,7 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 
 cimport cpython
@@ -275,22 +276,6 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
-
-
-class DynamicObjectRefGenerator:
-    def __init__(self, refs):
-        # TODO(swang): As an optimization, can also store the generator
-        # ObjectID so that we don't need to keep individual ref counts for the
-        # inner ObjectRefs.
-        self._refs = refs
-
-    def __iter__(self):
-        while self._refs:
-            yield self._refs.pop(0)
-
-    def __len__(self):
-        return len(self._refs)
-
 
 class ObjectRefGenerator:
     """A generator to obtain object references
@@ -767,6 +752,23 @@ cdef int prepare_labels(
 
     return 0
 
+cdef int prepare_label_selector(
+        dict label_selector_dict,
+        unordered_map[c_string, c_string] *label_selector) except -1:
+
+    if label_selector_dict is None:
+        return 0
+
+    for key, value in label_selector_dict.items():
+        if not isinstance(key, str):
+            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+        if not isinstance(value, str):
+            raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+
+    return 0
+
+
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
@@ -890,6 +892,7 @@ cdef prepare_args_internal(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
+    serialization_context = worker.get_serialization_context()
     for arg in args:
         from ray.experimental.compiled_dag_ref import CompiledDAGRef
         if isinstance(arg, CompiledDAGRef):
@@ -907,8 +910,7 @@ cdef prepare_args_internal(
 
         else:
             try:
-                serialized_arg = worker.get_serialization_context(
-                ).serialize(arg)
+                serialized_arg = serialization_context.serialize(arg)
             except TypeError as e:
                 sio = io.StringIO()
                 ray.util.inspect_serializability(arg, print_file=sio)
@@ -2722,8 +2724,7 @@ cdef class EmptyProfileEvent:
 
 cdef class GcsClient:
     """
-    Client to the GCS server. Only contains synchronous methods. For async methods,
-    see GcsAioClient.
+    Client to the GCS server.
 
     This is a thin wrapper around InnerGcsClient with only call frequency collection.
     """
@@ -2745,56 +2746,6 @@ cdef class GcsClient:
             with ray._private.utils._CALLED_FREQ_LOCK:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
-
-cdef class GcsPublisher:
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
-    cdef:
-        shared_ptr[CPythonGcsPublisher] inner
-
-    def __cinit__(self, address):
-        self.inner.reset(new CPythonGcsPublisher(address))
-        check_status(self.inner.get().Connect())
-
-    def publish_error(self, key_id: bytes, error_type: str, message: str,
-                      job_id=None, num_retries=None):
-        cdef:
-            CErrorTableData error_info
-            int64_t c_num_retries = num_retries if num_retries else -1
-            c_string c_key_id = key_id
-
-        if job_id is None:
-            job_id = ray.JobID.nil()
-        assert isinstance(job_id, ray.JobID)
-        error_info.set_job_id(job_id.binary())
-        error_info.set_type(error_type)
-        error_info.set_error_message(message)
-        error_info.set_timestamp(time.time())
-
-        with nogil:
-            check_status(
-                self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
-
-    def publish_logs(self, log_json: dict):
-        cdef:
-            CLogBatch log_batch
-            c_string c_job_id
-
-        job_id = log_json.get("job")
-        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
-        log_batch.set_pid(
-            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
-        log_batch.set_job_id(job_id.encode() if job_id else b"")
-        log_batch.set_is_error(bool(log_json.get("is_err")))
-        for line in log_json.get("lines", []):
-            log_batch.add_lines(line)
-        actor_name = log_json.get("actor_name")
-        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
-        task_name = log_json.get("task_name")
-        log_batch.set_task_name(task_name.encode() if task_name else b"")
-
-        c_job_id = job_id.encode() if job_id else b""
-        with nogil:
-            check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
 
 
 cdef class _GcsSubscriber:
@@ -2979,7 +2930,7 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3034,6 +2985,7 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
+        options.enable_resource_isolation = enable_resource_isolation
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -3722,10 +3674,12 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
+                    label_selector,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3751,6 +3705,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
+            prepare_label_selector(label_selector, &c_label_selector)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3764,6 +3719,7 @@ cdef class CoreWorker:
                 serialized_runtime_env_info,
                 enable_task_events,
                 c_labels,
+                c_label_selector,
                 )
 
             current_c_task_id = current_task.native()
@@ -3812,6 +3768,7 @@ cdef class CoreWorker:
                      scheduling_strategy,
                      c_bool enable_task_events,
                      labels,
+                     label_selector,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3825,6 +3782,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3838,6 +3796,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
+            prepare_label_selector(label_selector, &c_label_selector)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3867,7 +3826,8 @@ cdef class CoreWorker:
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        c_label_selector),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3981,6 +3941,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
@@ -4014,7 +3975,8 @@ cdef class CoreWorker:
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        c_label_selector),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

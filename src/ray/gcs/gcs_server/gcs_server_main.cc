@@ -109,15 +109,16 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
   instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
-  boost::asio::io_service::work work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      main_service.get_executor());
 
   ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 

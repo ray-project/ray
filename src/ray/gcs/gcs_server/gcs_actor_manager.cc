@@ -272,6 +272,8 @@ void GcsActor::WriteActorExportEvent() const {
   export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
   export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
   export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
+  export_actor_data_ptr->mutable_labels()->insert(task_spec_.get()->labels().begin(),
+                                                  task_spec_.get()->labels().end());
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }

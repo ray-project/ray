@@ -1,5 +1,5 @@
-Configure scale and resources
------------------------------
+Configure scale and GPUs
+------------------------
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
@@ -11,7 +11,6 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 
-3. (Optional) :class:`resources_per_worker <ray.train.ScalingConfig>` - The resources reserved for each worker. If you want to allocate more than one CPU or GPU per training worker, or if you need to specify other accelerators, set this attribute.
 
 For more details, see :ref:`train_scaling_config`.
 

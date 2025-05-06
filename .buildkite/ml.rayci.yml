@@ -84,7 +84,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/tune/... //python/ray/air/... ml
         --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags gpu_only,gpu,minimal,doctest,needs_credentials,soft_imports,rllib,multinode
+        --except-tags gpu_only,gpu,minimal,doctest,needs_credentials,soft_imports,rllib
     depends_on:
       - mlbuild-multipy
       - forge
@@ -148,7 +148,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --parallelism-per-worker 3
-        --except-tags soft_imports,gpu_only,rllib,multinode
+        --except-tags soft_imports,gpu_only,rllib
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
@@ -217,26 +217,6 @@ steps:
         --only-tags minimal
     depends_on: [ "minbuild-ml", "forge" ]
 
-  - label: ":train: ml: tune multinode tests"
-    tags: tune
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker
-        --platform cpu --image-type ray --canonical-tag multinode
-      - python ./ci/build/build-multinode-image.py rayproject/ray:multinode rayproject/ray:multinode
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
-        --only-tags multinode
-        --test-env=RAY_HAS_SSH=1
-        --test-env=RAY_DOCKER_IMAGE=rayproject/ray:multinode
-        --test-env=RAY_TEMPDIR="/ray-mount"
-        --test-env=RAY_HOSTDIR="$${RAYCI_CHECKOUT_DIR}"
-        --test-env=RAY_TESTHOST="rayci.localhost"
-    depends_on:
-      - manylinux
-      - forge
-      - raycpubase
-      - mlbuild
-
   - label: ":train: ml: doc tests"
     tags:
       - train
@@ -274,6 +254,7 @@ steps:
     key: ml_flaky_tests
     tags:
       - train
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:

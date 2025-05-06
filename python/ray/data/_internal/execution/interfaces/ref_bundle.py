@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from typing import Iterator, List, Optional, Tuple
 
 import ray
-from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+from .common import NodeIdStr
 
 
 @dataclass
@@ -106,7 +107,7 @@ class RefBundle:
             ref = self.block_refs[0]
             # This call is pretty fast for owned objects (~5k/s), so we don't need to
             # batch it for now.
-            locs = ray.experimental.get_object_locations([ref])
+            locs = ray.experimental.get_local_object_locations([ref])
             nodes = locs[ref]["node_ids"]
             if nodes:
                 self._cached_location = nodes[0]

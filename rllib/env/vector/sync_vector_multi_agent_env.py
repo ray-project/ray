@@ -33,15 +33,30 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self.metadata["autoreset_mode"] = self.autoreset_mode
         self.render_mode = self.envs[0].render_mode
 
-        # TODO (simon, sven): Check, if we need to define `get_observation_space(agent)`.
-        self.single_action_spaces = self.envs[0].unwrapped.action_spaces or dict(
-            self.envs[0].unwrapped.action_space
-        )
-        self.single_action_space = gym.spaces.Dict(self.single_action_spaces)
-        self.single_observation_spaces = self.envs[
-            0
-        ].unwrapped.observation_spaces or dict(self.envs[0].unwrapped.observation_space)
+        if self.envs[0].unwrapped.observation_spaces is not None:
+            self.single_observation_spaces = self.envs[0].unwrapped.observation_spaces
+        elif self.envs[0].unwrapped.observation_space is not None:
+            self.single_observation_spaces = dict(
+                self.envs[0].unwrapped.observation_space
+            )
+        else:
+            self.single_observation_spaces = {
+                aid: self.envs[0].unwrapped.get_observation_space(aid)
+                for aid in self.envs[0].unwrapped.possible_agents
+            }
         self.single_observation_space = gym.spaces.Dict(self.single_observation_spaces)
+
+        if self.envs[0].unwrapped.action_spaces is not None:
+            self.single_action_spaces = self.envs[0].unwrapped.action_spaces
+        elif self.envs[0].unwrapped.action_space is not None:
+            self.single_action_spaces = dict(self.envs[0].unwrapped.action_space)
+        else:
+            self.single_action_spaces = {
+                aid: self.envs[0].unwrapped.get_action_space(aid)
+                for aid in self.envs[0].unwrapped.possible_agents
+            }
+        self.single_action_space = gym.spaces.Dict(self.single_action_spaces)
+
         # TODO (simon): Decide if we want to include a spaces check here.
 
         # Note, if `single_observation_spaces` are not defined, this will
