@@ -55,7 +55,7 @@ inline constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 /// The base size in bytes per request.
 inline constexpr int64_t kBaseRequestSize = 1024;
 
-// Shared between direct actor and task submitters.
+// Shared between actor and task submitters.
 /* class CoreWorkerClientInterface; */
 
 inline bool operator==(const rpc::Address &lhs, const rpc::Address &rhs) {
@@ -99,14 +99,14 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                const ClientCallback<NumPendingTasksReply> &callback,
                                int64_t timeout_ms = -1) {}
 
-  /// Notify a wait has completed for direct actor call arguments.
+  /// Notify a wait has completed for actor call arguments.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual void DirectActorCallArgWaitComplete(
-      const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {}
+  virtual void ActorCallArgWaitComplete(
+      const ActorCallArgWaitCompleteRequest &request,
+      const ClientCallback<ActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
   virtual void GetObjectStatus(const GetObjectStatusRequest &request,
@@ -212,7 +212,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         DirectActorCallArgWaitComplete,
+                         ActorCallArgWaitComplete,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

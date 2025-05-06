@@ -1279,8 +1279,8 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::WaitForDirectActorCallArgsRequest: {
-    ProcessWaitForDirectActorCallArgsRequestMessage(client, message_data);
+  case protocol::MessageType::WaitForActorCallArgsRequest: {
+    ProcessWaitForActorCallArgsRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::PushErrorRequest: {
     ProcessPushErrorRequestMessage(message_data);
@@ -1872,11 +1872,11 @@ void NodeManager::ProcessWaitRequestMessage(
       });
 }
 
-void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
+void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message =
-      flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
+      flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
   int64_t tag = message->tag();
   // Resolve any missing objects. This will pull the objects from remote node
@@ -1901,7 +1901,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
         if (!worker) {
           RAY_LOG(ERROR) << "Lost worker for wait request " << client;
         } else {
-          worker->DirectActorCallArgWaitComplete(tag);
+          worker->ActorCallArgWaitComplete(tag);
         }
       });
 }
@@ -2449,13 +2449,12 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
 
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
-    // direct actor creation calls because this ID is used later if the actor
+    // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
     worker.AssignTaskId(TaskID::Nil());
     worker.SetOwnerAddress(rpc::Address());
   }
-  // Direct actors will be assigned tasks via the core worker and therefore are
-  // not idle.
+  // Actors will be assigned tasks via the core worker and therefore are not idle.
   return !spec.IsActorCreationTask();
 }
 

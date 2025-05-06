@@ -3,11 +3,11 @@ import sys
 import pytest
 
 import ray
-from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 def block_import(import_name):

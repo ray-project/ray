@@ -1,18 +1,19 @@
-from unittest import mock
 import re
-
-import pytest
-import pyarrow as pa
+from unittest import mock
 from unittest.mock import MagicMock, patch
-import ray
+
+import pyarrow as pa
+import pytest
 from clickhouse_connect.driver.summary import QuerySummary
-from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
+
+import ray
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
     ClickHouseTableSettings,
     SinkMode,
 )
+from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 
 
 @pytest.fixture(autouse=True)
