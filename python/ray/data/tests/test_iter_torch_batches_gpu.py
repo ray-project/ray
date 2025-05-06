@@ -334,6 +334,7 @@ class TuplePandasBatchCollateFn(BasePandasBatchCollateFn):
         tensors = self._get_tensors(modified_batch)
         return tensors["id"], tensors["value"]
 
+
 class DictPandasBatchCollateFn(BasePandasBatchCollateFn):
     """Collate function that returns id and value as a dictionary of tensors."""
 
@@ -348,6 +349,7 @@ class DictPandasBatchCollateFn(BasePandasBatchCollateFn):
         assert isinstance(batch, pd.DataFrame)
         modified_batch = self._process_batch(batch)
         return self._get_tensors(modified_batch)
+
 
 class ListPandasBatchCollateFn(BasePandasBatchCollateFn):
     """Collate function that returns id and value as a list of tensors."""
@@ -369,6 +371,7 @@ class ListPandasBatchCollateFn(BasePandasBatchCollateFn):
 @pytest.fixture
 def custom_collate_fns():
     """Fixture that provides both Arrow and Numpy custom collate functions."""
+
     def _create_collate_fns(device):
         return {
             "arrow": {
@@ -390,6 +393,7 @@ def custom_collate_fns():
                 "list": ListPandasBatchCollateFn(device=device),
             },
         }
+
     return _create_collate_fns
 
 
