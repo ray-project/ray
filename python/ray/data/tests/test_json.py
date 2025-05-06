@@ -740,11 +740,7 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize(
     "ray_start_10_cpus_shared",
-    [
-        {
-            "object_store_memory": 1 * GiB
-        }
-    ],
+    [{"object_store_memory": 1 * GiB}],
     indirect=True,
 )
 def test_json_with_http_path_parallelization(ray_start_10_cpus_shared):
