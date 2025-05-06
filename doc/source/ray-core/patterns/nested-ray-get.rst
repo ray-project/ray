@@ -21,5 +21,5 @@ For example, in the following code, prefer the latter method of invoking the dep
 
 Avoiding ``ray.get`` in nested tasks may not always be possible. Some valid reasons to call ``ray.get`` include:
 
-- :doc:`task-pattern-nested-tasks`
+- :doc:`nested-tasks`
 - If the nested task has multiple ``ObjectRefs`` to ``ray.get``, and it wants to choose the order and number to get.
