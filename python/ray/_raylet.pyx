@@ -3721,6 +3721,7 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
+                    c_string tensor_transport,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -3763,6 +3764,7 @@ cdef class CoreWorker:
                 serialized_runtime_env_info,
                 enable_task_events,
                 c_labels,
+                tensor_transport,
                 )
 
             current_c_task_id = current_task.native()
@@ -3970,7 +3972,8 @@ cdef class CoreWorker:
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
-                          c_bool enable_task_events):
+                          c_bool enable_task_events,
+                          c_string tensor_transport):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -4017,7 +4020,8 @@ cdef class CoreWorker:
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        tensor_transport),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

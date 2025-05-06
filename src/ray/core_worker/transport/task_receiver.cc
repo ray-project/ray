@@ -38,6 +38,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
+  RAY_LOG(INFO) << "TaskReceiver::HandleTask " << task_spec.GetMessage().DebugString();
+
   // If GCS server is restarted after sending an actor creation task to this core worker,
   // the restarted GCS server will send the same actor creation task to the core worker
   // again. We just need to ignore it and reply ok.

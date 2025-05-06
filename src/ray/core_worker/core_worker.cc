@@ -2419,7 +2419,8 @@ void CoreWorker::BuildCommonTaskSpec(
     bool include_job_config,
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels) {
+    const std::unordered_map<std::string, std::string> &labels,
+    const std::string &tensor_transport) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2467,7 +2468,8 @@ void CoreWorker::BuildCommonTaskSpec(
       override_runtime_env_info,
       concurrency_group_name,
       enable_task_events,
-      labels);
+      labels,
+      tensor_transport);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2895,7 +2897,9 @@ Status CoreWorker::SubmitActorTask(
                       /*include_job_config*/ false,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_events*/ task_options.enable_task_events);
+                      /*enable_task_events*/ task_options.enable_task_events,
+                      /*labels*/ {},
+                      /*tensor_transport*/ task_options.tensor_transport);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 

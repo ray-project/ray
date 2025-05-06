@@ -506,6 +506,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
 
+  const std::string &TensorTransport() const;
+
  private:
   void ComputeResources();
 

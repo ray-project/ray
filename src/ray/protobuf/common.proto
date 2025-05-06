@@ -564,6 +564,8 @@ message TaskSpec {
   // format depends on the language. Only populated if environment variable
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 42;
+  // The tensor transport type for this task.
+  string tensor_transport = 43;
 }
 
 message TaskInfoEntry {

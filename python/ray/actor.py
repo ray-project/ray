@@ -440,6 +440,7 @@ class ActorMethod:
                     _generator_backpressure_num_objects
                 ),
                 enable_task_events=enable_task_events,
+                tensor_transport=tensor_transport,
             )
 
         # Apply the decorator if there is one.
@@ -1549,6 +1550,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
+        tensor_transport: Optional[str] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1636,6 +1638,7 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
+            tensor_transport if tensor_transport is not None else b"",
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

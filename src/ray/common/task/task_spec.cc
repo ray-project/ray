@@ -463,6 +463,11 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
+const std::string &TaskSpecification::TensorTransport() const {
+  RAY_CHECK(IsActorTask());
+  return message_->tensor_transport();
+}
+
 bool TaskSpecification::ExecuteOutOfOrder() const {
   return IsActorCreationTask() &&
          message_->actor_creation_task_spec().execute_out_of_order();
