@@ -2673,6 +2673,7 @@ class AlgorithmConfig(_Config):
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
         offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
         num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
         custom_resources_per_offline_eval_runner: Optional[
             Dict[str, Any]
         ] = NotProvided,
@@ -2815,6 +2816,10 @@ class AlgorithmConfig(_Config):
                 their `learner_only` flag set to True.
             num_cpus_per_offline_eval_runner: Number of CPUs to allocate per
                 OfflineEvaluationRunner.
+            num_gpus_per_offline_eval_runner: Number of GPUs to allocate per
+                OfflineEvaluationRunner. This can be fractional. This is usually needed only if
+                your (custom) loss function itself requires a GPU (i.e., it contains GPU-
+                intensive computations), or model inference is unusually expensive.
             custom_resources_per_eval_runner: Any custom Ray resources to allocate per
                 OfflineEvaluationRunner.
             offline_evaluation_timeout_s: The timeout in seconds for calling `run()` on remote
@@ -2947,6 +2952,8 @@ class AlgorithmConfig(_Config):
             )
         if num_cpus_per_offline_eval_runner is not NotProvided:
             self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if num_gpus_per_offline_eval_runner is not NotProvided:
+            self.num_gpus_per_offline_eval_runner = num_gpus_per_offline_eval_runner
         if custom_resources_per_offline_eval_runner is not NotProvided:
             self.custom_resources_per_offline_eval_runner = (
                 custom_resources_per_offline_eval_runner

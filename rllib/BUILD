@@ -569,6 +569,8 @@ py_test(
     args = [
         "--as-test",
         "--enable-new-api-stack",
+        "--offline-evaluation-interval=1",
+        "--num-offline-eval-runners=2",
     ],
     # Include the offline data files.
     data = [
@@ -580,6 +582,34 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation_gpu",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-gpus-per-learner=1",
+        "--offline-evaluation-interval=1",
+        "--num-offline-eval-runners=2",
+        "--num-gpus-per-offline-eval-runner=0.5",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "multi_gpu",
         "team:rllib",
         "torch_only",
     ],
