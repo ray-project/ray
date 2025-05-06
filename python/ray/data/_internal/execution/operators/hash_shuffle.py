@@ -44,8 +44,8 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockStats,
-    to_stats,
     BlockType,
+    to_stats,
 )
 
 logger = logging.getLogger(__name__)
