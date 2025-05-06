@@ -8,12 +8,13 @@ import pytest
 
 import ray
 from ray._private.test_utils import placement_group_assert_no_leak
+import ray.remote_function
 from ray.tests.test_placement_group import are_pairwise_unique
 from ray.util.state import list_actors, list_placement_groups
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, fetch_prometheus_metrics
 from click.testing import CliRunner
 import ray.scripts.scripts as scripts
 
@@ -649,6 +650,87 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
         )
         == head_node_id
     )
+
+
+def test_remove_placement_group_with_pending_actor_waiting_for_pg_resource(
+    shutdown_only,
+):
+    """
+    Test deleting a pg with a pending actor.
+    details: https://github.com/ray-project/ray/issues/51124
+    Specific test steps:
+      1. Launch a placement group with only 1 bundle.
+      2. Create two actors using the aforementioned pg. At this point,
+         the latter actor will definitely be pending in dispatch queue due to insufficient pg
+         bundle resources.
+      3. Remove the pg while the latter actor is pending.
+      4. Verify that the pending actor will not be scheduled to the pg during removal and the pg
+         can be removed successfully.
+    """
+    context = ray.init(num_cpus=1)
+    prom_address = f"{context.address_info['node_ip_address']}:{context.address_info['metrics_export_port']}"
+
+    pg = ray.util.placement_group(
+        [{"CPU": 1}],
+    )
+
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    )
+    class Actor:
+        def ping(self):
+            pass
+
+    actor1 = Actor.remote()
+    ray.get(actor1.ping.remote())
+
+    actor2 = Actor.remote()
+
+    def wait_for_actor2_added_to_dispatch_queue():
+        metrics = fetch_prometheus_metrics([prom_address])
+        samples = metrics.get("ray_scheduler_tasks", None)
+        if samples is None:
+            return False
+        for sample in samples:
+            if sample.labels["State"] == "Dispatched" and sample.value == 1:
+                # actor2 is in the local task manager dispatch queue
+                return True
+        return False
+
+    wait_for_condition(wait_for_actor2_added_to_dispatch_queue, timeout=30)
+
+    ray.util.remove_placement_group(pg)
+
+    def check_pg_removed():
+        pgs = list_placement_groups()
+        assert len(pgs) == 1
+        assert "REMOVED" == pgs[0].state
+        return True
+
+    wait_for_condition(check_pg_removed, timeout=10)
+
+    # Actor1 should be dead due to the pg removal.
+    def check_actor_dead():
+        actors = list_actors()
+        assert len(actors) == 2
+        assert {actors[0].state, actors[1].state} == {"DEAD", "DEAD"}
+        return True
+
+    wait_for_condition(check_actor_dead)
+
+    # Actor2 should be cancelled due to the pg removal.
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        ray.get(actor2.ping.remote())
+
+    # Check that the raylet is still running.
+    @ray.remote
+    def task():
+        return 1
+
+    assert ray.get(task.remote()) == 1
 
 
 if __name__ == "__main__":
