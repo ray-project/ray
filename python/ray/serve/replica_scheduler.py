@@ -1,3 +1,4 @@
+from ray.serve._private.common import ReplicaID, ReplicaSchedulingInfo  # noqa: F401
 from ray.serve._private.replica_scheduler.common import (  # noqa: F401
     PendingRequest,
 )
