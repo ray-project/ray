@@ -101,8 +101,6 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
-        _finalize_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterable[DataBatch]:
         """Return a batched iterable over the dataset.
 
@@ -140,6 +138,27 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over record batches.
         """
+        return self._iter_batches(
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    def _iter_batches(
+        self,
+        *,
+        prefetch_batches: int = 1,
+        batch_size: int = 256,
+        batch_format: Optional[str] = "default",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
+        _finalize_fn: Optional[Callable[[Any], Any]] = None,
+    ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
@@ -207,7 +226,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over rows of the dataset.
         """
-        batch_iterable = self.iter_batches(
+        batch_iterable = self._iter_batches(
             batch_size=None, batch_format=None, prefetch_batches=1
         )
 
@@ -370,7 +389,7 @@ class DataIterator(abc.ABC):
         else:
             finalize_fn = None
 
-        return self.iter_batches(
+        return self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             drop_last=drop_last,
@@ -442,7 +461,7 @@ class DataIterator(abc.ABC):
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
-        batch_iterable = self.iter_batches(
+        batch_iterable = self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             drop_last=drop_last,
@@ -606,7 +625,7 @@ class DataIterator(abc.ABC):
                     raise ValueError("column list may not be empty")
 
         def make_generator():
-            for batch in self.iter_batches(
+            for batch in self._iter_batches(
                 batch_size=batch_size,
                 batch_format="pandas",
                 prefetch_batches=prefetch_batches,
@@ -825,7 +844,7 @@ class DataIterator(abc.ABC):
             }
 
         def generator():
-            for batch in self.iter_batches(
+            for batch in self._iter_batches(
                 prefetch_batches=prefetch_batches,
                 batch_size=batch_size,
                 drop_last=drop_last,
