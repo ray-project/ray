@@ -394,10 +394,9 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert not ds._plan.has_started_execution
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
 
     # Schema isn't available, so we do a partial read.
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert ds._plan.has_started_execution
     assert not ds._plan.has_computed_output()
 
     # Forces a data read.
@@ -477,7 +476,7 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert ds._plan.has_started_execution
+    assert not ds._plan.has_started_execution
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
