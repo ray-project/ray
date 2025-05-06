@@ -319,7 +319,10 @@ class DataIterator(abc.ABC):
                 assigned to the current worker. The input to `collate_fn` may be:
 
                 1. pyarrow.Table, where you should provide a callable class that
-                   subclasses `ArrowBatchCollateFn` (recommended for best performance)
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                   Note that you should use util function `arrow_batch_to_tensors` to
+                   convert the pyarrow.Table to a dictionary of non-contiguous tensor
+                   batches.
                 2. Dict[str, np.ndarray], where you should provide a callable class that
                    subclasses `NumpyBatchCollateFn`
                 3. pd.DataFrame, where you should provide a callable class that

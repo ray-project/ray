@@ -277,7 +277,7 @@ steps:
     instance_type: gpu-large
     parallelism: 2
     commands:
-      - bazel run //ci/ray_ci:test_in_docker --  -- //... data
+      - bazel run //ci/ray_ci:test_in_docker  -- //... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name datalgpubuild
         --only-tags gpu,gpu_only
