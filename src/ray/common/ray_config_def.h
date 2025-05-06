@@ -24,7 +24,7 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
-/// Whether to enbale Ray event stats metrics export.
+/// Whether to enable Ray event stats metrics export.
 /// Note that enabling this adds high overhead to
 /// Ray metrics agent.
 RAY_CONFIG(bool, event_stats_metrics, false)
@@ -78,7 +78,7 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
 /// The TTL for when the task failure entry is considered
-/// eligble for garbage colletion.
+/// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
 /// The number of retries for the task or actor when
@@ -160,12 +160,12 @@ RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-// If true, we place a soft cap on the numer of scheduling classes, see
+// If true, we place a soft cap on the number of scheduling classes, see
 // `worker_cap_initial_backoff_delay_ms`.
 RAY_CONFIG(bool, worker_cap_enabled, true)
 
 /// We place a soft cap on the number of tasks of a given scheduling class that
-/// can run at once to limit the total nubmer of worker processes. After the
+/// can run at once to limit the total number of worker processes. After the
 /// specified interval, the new task above that cap is allowed to run. The time
 /// before the next tasks (above the cap) are allowed to run increases
 /// exponentially. The soft cap is needed to prevent deadlock in the case where
@@ -633,6 +633,13 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
 
+/// The path to spill objects to. The same path will be used as the object store
+/// fallback directory as well. When both object_spilling_config and
+/// object_spilling_directory are set, object_spilling_directory will take
+/// precedence. When object_spilling_directory is set ray.init() or ray start as well,
+/// the directory set with ray.init() or ray start will take precedence.
+RAY_CONFIG(std::string, object_spilling_directory, "")
+
 /// Log an ERROR-level message about spilling every time this amount of bytes has been
 /// spilled, with exponential increase in interval. This can be set to zero to disable.
 RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
@@ -647,7 +654,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 
 /// Ray's object spilling fuses small objects into a single file before flushing them
 /// to optimize the performance.
-/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// Ray will try to spill at least this size or up to max_fused_object_count. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
@@ -916,10 +923,8 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // Costs an extra RPC.
 // TODO(vitsai): Remove this flag
 RAY_CONFIG(bool, enable_reap_actor_death, true)
-// The number of sockets between object manager.
-// The higher the number the higher throughput of the data
-// trasfer it'll be, but it'll also user more sockets and
-// more CPU resources.
+
+// The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
 
 // The number of object manager thread. By default, it's
@@ -927,5 +932,29 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
-// Write export API events to file if enabled
+// Write export API event of all resource types to file if enabled.
+// RAY_enable_export_api_write_config will not be considered if
+// this is enabled.
 RAY_CONFIG(bool, enable_export_api_write, false)
+
+// Comma separated string containing individual resource
+// types to write export API events for. This configuration is only used if
+// RAY_enable_export_api_write is not enabled. Full list of valid
+// resource types in ExportEvent.SourceType enum in
+// src/ray/protobuf/export_api/export_event.proto
+// Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
+RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
+
+// Configuration for pipe logger buffer size.
+RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
+
+// Configuration to enable or disable the infeasible task early termination feature. If
+// set to true, whenever the autoscaler detects that a task is infeasible, the task will
+// be cancelled with SCHEDULING_CANCELLED_UNSCHEDULABLE state. If set to false, the task
+// will be waiting for the required resources to become available achieved mainly by
+// updating the cluster config to add new nodes.
+RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
+
+// Frequency at which to check all local worker & driver sockets for unexpected
+// disconnects.
+RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)

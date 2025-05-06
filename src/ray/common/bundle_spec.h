@@ -126,6 +126,10 @@ std::string GetOriginalResourceName(const std::string &resource);
 // Returns "" if the resource is not a wildcard resource.
 std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource);
 
+/// Return whether the resource specified by the resource_id is a CPU resource
+/// or CPU resource inside a placement group.
+bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id);
+
 /// Parse the given resource and get the pg related information.
 ///
 /// \param resource name of the resource.

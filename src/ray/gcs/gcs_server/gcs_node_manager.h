@@ -20,6 +20,10 @@
 #include <boost/bimap/unordered_multiset_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 #include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -119,7 +123,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
   /// Get all alive nodes.
@@ -182,6 +186,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
   void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+
+  // Verify if export events should be written for EXPORT_NODE source types
+  bool IsExportAPIEnabledNode() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_NODE",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(
       rpc::GcsNodeInfo::GcsNodeState node_state) const {
@@ -268,6 +280,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
                    boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
+
+  /// If true, node events are exported for Export API
+  bool export_event_write_enabled_ = false;
 
   friend GcsAutoscalerStateManagerTest;
   friend GcsStateTest;

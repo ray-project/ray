@@ -25,8 +25,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray import train, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
@@ -42,10 +41,8 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
-
-
 from ray.tune import CLIReporter
-
+from ray.tune.result import TRAINING_ITERATION
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -289,15 +286,30 @@ def add_rllib_example_script_args(
         "--num-learners",
         type=int,
         default=None,
-        help="The number of Learners to use. If none, use the algorithm's default "
+        help="The number of Learners to use. If `None`, use the algorithm's default "
         "value.",
+    )
+    parser.add_argument(
+        "--num-cpus-per-learner",
+        type=float,
+        default=None,
+        help="The number of CPUs per Learner to use. If `None`, use the algorithm's "
+        "default value.",
     )
     parser.add_argument(
         "--num-gpus-per-learner",
         type=float,
         default=None,
-        help="The number of GPUs per Learner to use. If none and there are enough GPUs "
-        "for all required Learners (--num-learners), use a value of 1, otherwise 0.",
+        help="The number of GPUs per Learner to use. If `None` and there are enough "
+        "GPUs for all required Learners (--num-learners), use a value of 1, "
+        "otherwise 0.",
+    )
+    parser.add_argument(
+        "--num-aggregator-actors-per-learner",
+        type=int,
+        default=None,
+        help="The number of Aggregator actors to use per Learner. If `None`, use the "
+        "algorithm's default value.",
     )
 
     # Ray init options.
@@ -967,6 +979,52 @@ def check_train_results(train_results: ResultDict):
     return train_results
 
 
+# TODO (simon): Use this function in the `run_rllib_example_experiment` when
+# `no_tune` is `True`.
+def should_stop(
+    stop: Dict[str, Any], results: ResultDict, keep_ray_up: bool = False
+) -> bool:
+    """Checks stopping criteria on `ResultDict`
+
+    Args:
+        stop: Dictionary of stopping criteria. Each criterium is a mapping of
+            a metric in the `ResultDict` of the algorithm to a certain criterium.
+        results: An RLlib `ResultDict` containing all results from a training step.
+        keep_ray_up: Optionally shutting down the runnin Ray instance.
+
+    Returns: True, if any stopping criterium is fulfilled. Otherwise, False.
+    """
+    for key, threshold in stop.items():
+        val = results
+        for k in key.split("/"):
+            k = k.strip()
+            # If k exists in the current level, continue down;
+            # otherwise, set val to None and break out of this inner loop.
+            if isinstance(val, dict) and k in val:
+                val = val[k]
+            else:
+                val = None
+                break
+
+        # If the key was not found, simply skip to the next criterion.
+        if val is None:
+            continue
+
+        try:
+            # Check that val is numeric and meets the threshold.
+            if not np.isnan(val) and val >= threshold:
+                print(f"Stop criterion ({key}={threshold}) fulfilled!")
+                if not keep_ray_up:
+                    ray.shutdown()
+                return True
+        except TypeError:
+            # If val isn't numeric, skip this criterion.
+            continue
+
+    # If none of the criteria are fulfilled, return False.
+    return False
+
+
 # TODO (sven): Make this the de-facto, well documented, and unified utility for most of
 #  our tests:
 #  - CI (label: "learning_tests")
@@ -1127,26 +1185,36 @@ def run_rllib_example_script_experiment(
             if args.num_learners is not None:
                 config.learners(num_learners=args.num_learners)
 
+            # User wants to use aggregator actors per Learner.
+            if args.num_aggregator_actors_per_learner is not None:
+                config.learners(
+                    num_aggregator_actors_per_learner=(
+                        args.num_aggregator_actors_per_learner
+                    )
+                )
+
             # User wants to use GPUs if available, but doesn't hard-require them.
             if args.num_gpus_per_learner is None:
                 if num_gpus_available >= num_gpus_needed_if_available:
                     config.learners(num_gpus_per_learner=1)
                 else:
-                    config.learners(num_gpus_per_learner=0, num_cpus_per_learner=1)
-
+                    config.learners(num_gpus_per_learner=0)
             # User hard-requires n GPUs, but they are not available -> Error.
             elif num_gpus_available < num_gpus_requested:
                 raise ValueError(
                     "You are running your script with --num-learners="
                     f"{args.num_learners} and --num-gpus-per-learner="
                     f"{args.num_gpus_per_learner}, but your cluster only has "
-                    f"{num_gpus_available} GPUs! Will run "
-                    f"with {num_gpus_available} CPU Learners instead."
+                    f"{num_gpus_available} GPUs!"
                 )
 
             # All required GPUs are available -> Use them.
             else:
                 config.learners(num_gpus_per_learner=args.num_gpus_per_learner)
+
+            # Set CPUs per Learner.
+            if args.num_cpus_per_learner is not None:
+                config.learners(num_cpus_per_learner=args.num_cpus_per_learner)
 
         # Old stack (override only if arg was provided by user).
         elif args.num_gpus is not None:
@@ -1181,7 +1249,10 @@ def run_rllib_example_script_experiment(
                     EPISODE_RETURN_MEAN, np.nan
                 )
                 print(f"iter={i} R={mean_return}", end="")
-            if EVALUATION_RESULTS in results:
+            if (
+                EVALUATION_RESULTS in results
+                and ENV_RUNNER_RESULTS in results[EVALUATION_RESULTS]
+            ):
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
                 ]
@@ -1253,11 +1324,11 @@ def run_rllib_example_script_experiment(
     results = tune.Tuner(
         trainable or config.algo_class,
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -1485,14 +1556,14 @@ def check_reproducibilty(
         results1 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=train.RunConfig(stop=stop_dict, verbose=1),
+            run_config=tune.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results1 = results1.get_best_result().metrics
 
         results2 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=train.RunConfig(stop=stop_dict, verbose=1),
+            run_config=tune.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results2 = results2.get_best_result().metrics
 

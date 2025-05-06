@@ -13,15 +13,17 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/random/random.h"
-#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/object_manager/common.h"
 
-using namespace testing;
+using testing::Test;
 
 namespace ray {
 namespace experimental {

@@ -3,8 +3,7 @@
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
-load("//bazel:python.bzl", "py_test_module_list")
-load("//bazel:python.bzl", "doctest")
+load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 doctest(
     files = glob(

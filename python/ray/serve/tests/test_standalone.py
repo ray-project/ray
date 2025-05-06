@@ -37,8 +37,10 @@ from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
-from ray.tests.conftest import maybe_external_redis  # noqa: F401
-from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.tests.conftest import (
+    maybe_external_redis,  # noqa: F401
+    ray_start_with_dashboard,  # noqa: F401
+)
 from ray.util.state import list_actors
 
 
@@ -442,7 +444,7 @@ def test_http_root_path(ray_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         serve.start(http_options={"host": "bad.ip.address"})
 
 

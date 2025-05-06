@@ -16,10 +16,13 @@
 
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
+#include <deque>
 #include <list>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -41,9 +44,6 @@
 
 namespace ray {
 namespace core {
-
-/// In direct actor call task submitter and receiver, a task is directly submitted
-/// to the actor that will execute it.
 
 // Interface for testing.
 class ActorTaskSubmitterInterface {
@@ -433,7 +433,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
 
-  /// Resolve direct call object dependencies.
+  /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.

@@ -94,8 +94,8 @@ class TestAppHandleStreaming:
         with pytest.raises(
             TypeError,
             match=(
-                "Method '__call__' returned a generator. You must use "
-                "`handle.options\(stream=True\)` to call generators on a deployment."
+                r"Method '__call__' returned a generator. You must use "
+                r"`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
             h.remote(5).result()
@@ -103,8 +103,8 @@ class TestAppHandleStreaming:
         with pytest.raises(
             TypeError,
             match=(
-                "Method 'call_inner_generator' returned a generator. You must use "
-                "`handle.options\(stream=True\)` to call generators on a deployment."
+                r"Method 'call_inner_generator' returned a generator. You must use "
+                r"`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
             h.call_inner_generator.remote(5).result()
@@ -173,9 +173,9 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(
                     TypeError,
                     match=(
-                        "Method '__call__' returned a generator. You must use "
-                        "`handle.options\(stream=True\)` to call generators on a "
-                        "deployment."
+                        r"Method '__call__' returned a generator. You must use "
+                        r"`handle.options\(stream=True\)` to call generators on a "
+                        r"deployment."
                     ),
                 ):
                     await self._h.remote(5)
@@ -183,9 +183,9 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(
                     TypeError,
                     match=(
-                        "Method 'call_inner_generator' returned a generator. You must "
-                        "use `handle.options\(stream=True\)` to call generators on a "
-                        "deployment."
+                        r"Method 'call_inner_generator' returned a generator. You must "
+                        r"use `handle.options\(stream=True\)` to call generators on a "
+                        r"deployment."
                     ),
                 ):
                     await self._h.call_inner_generator.remote(5)

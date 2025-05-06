@@ -13,14 +13,21 @@
 // limitations under the License.
 
 #pragma once
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -364,22 +371,15 @@ class NodeInfoAccessor {
                                  int64_t timeout_ms,
                                  const MultiItemCallback<bool> &callback);
 
-  /// Drain (remove the information of the node from the cluster) the local node from GCS
-  /// asynchronously.
-  ///
-  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
-  ///
-  /// \param node_id The ID of node that to be unregistered.
-  /// \param callback Callback that will be called when unregistration is complete.
-  /// \return Status
-  virtual Status AsyncDrainNode(const NodeID &node_id, const StatusCallback &callback);
-
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms The timeout for this request.
+  /// \param node_id If not nullopt, only return the node info of the specified node.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                             int64_t timeout_ms);
+                             int64_t timeout_ms,
+                             std::optional<NodeID> node_id = std::nullopt);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -414,8 +414,14 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from an RPC to GCS synchronously.
   ///
-  /// \return All nodes in cache.
+  /// \return All nodes from gcs without cache.
   virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
+
+  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  ///
+  /// \return All nodes that match the given filters from the gcs without the cache.
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
+      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -981,6 +987,10 @@ class AutoscalerStateAccessor {
 
   virtual Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
 
+  virtual Status AsyncGetClusterStatus(
+      int64_t timeout_ms,
+      const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback);
+
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
 
@@ -994,6 +1004,30 @@ class AutoscalerStateAccessor {
                            int64_t timeout_ms,
                            bool &is_accepted,
                            std::string &rejection_reason_message);
+
+ private:
+  GcsClient *client_impl_;
+};
+
+/// \class PublisherAccessor
+/// `PublisherAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to
+/// publishing information to GCS.
+class PublisherAccessor {
+ public:
+  PublisherAccessor() = default;
+  explicit PublisherAccessor(GcsClient *client_impl);
+  virtual ~PublisherAccessor() = default;
+
+  virtual Status PublishError(std::string key_id,
+                              rpc::ErrorTableData data,
+                              int64_t timeout_ms);
+
+  virtual Status PublishLogs(std::string key_id, rpc::LogBatch data, int64_t timeout_ms);
+
+  virtual Status AsyncPublishNodeResourceUsage(std::string key_id,
+                                               std::string node_resource_usage_json,
+                                               const StatusCallback &done);
 
  private:
   GcsClient *client_impl_;

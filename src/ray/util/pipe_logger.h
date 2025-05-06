@@ -12,116 +12,105 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Util on logging with pipe.
+// Util on logging with redirection, which supports a few logging features, i.e., log
+// rotation, multiple sinks for logging, etc.
 
 #pragma once
 
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/util/compat.h"
+#include "ray/util/stream_redirection_options.h"
+#include "ray/util/util.h"
+#include "spdlog/logger.h"
 
 namespace ray {
 
-// Environmenr variable, which indicates the pipe size of read.
-//
-// TODO(hjiang): Should document the env variable after end-to-end integration has
-// finished.
-inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
-
-// Configuration for log rotation. By default no rotation enabled.
-struct LogRotationOption {
-  // Max number of bytes in a rotated file.
-  size_t rotation_max_size = std::numeric_limits<size_t>::max();
-  // Max number of files for all rotated files.
-  size_t rotation_max_file_count = 1;
-};
-
-class RotationFileHandle {
+// File handle requires active destruction via owner calling [Close].
+class RedirectionFileHandle {
  public:
-  RotationFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
-                     std::function<void()> termination_caller)
-      : write_handle_(write_handle), termination_caller_(std::move(termination_caller)) {}
-  RotationFileHandle(const RotationFileHandle &) = delete;
-  RotationFileHandle &operator=(const RotationFileHandle &) = delete;
+  RedirectionFileHandle() = default;
 
-  // Used to write to.
+  // @param termination_synchronizer is used to block wait until destruction operation
+  // finishes.
+  RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
+                        std::shared_ptr<spdlog::logger> logger,
+                        std::function<void()> close_fn)
+      : write_handle_(write_handle),
+        logger_(std::move(logger)),
+        close_fn_(std::move(close_fn)) {}
+  RedirectionFileHandle(const RedirectionFileHandle &) = delete;
+  RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
+  ~RedirectionFileHandle() = default;
+
+  RedirectionFileHandle(RedirectionFileHandle &&rhs) {
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = INVALID_FD;
+    logger_ = std::move(rhs.logger_);
+    close_fn_ = std::move(rhs.close_fn_);
+  }
+  RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = INVALID_FD;
+    logger_ = std::move(rhs.logger_);
+    close_fn_ = std::move(rhs.close_fn_);
+    return *this;
+  }
+  void Close() {
+    if (write_handle_ != INVALID_FD) {
+      close_fn_();
+
+      // Destruct all resources.
+      write_handle_ = INVALID_FD;
+      logger_ = nullptr;
+      close_fn_ = nullptr;
+    }
+  }
+
+  // Synchronously flush content to storage.
   //
-  // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
-  // copiable to avoid manual `dup`.
-#if defined(__APPLE__) || defined(__linux__)
-  RotationFileHandle(RotationFileHandle &&rhs) {
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = -1;
-    termination_caller_ = std::move(rhs.termination_caller_);
-  }
-  RotationFileHandle &operator=(RotationFileHandle &&rhs) {
-    if (this == &rhs) {
-      return *this;
-    }
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = -1;
-    termination_caller_ = std::move(rhs.termination_caller_);
-    return *this;
-  }
-  ~RotationFileHandle() {
-    // Only invoke termination functor when handler at a valid state.
-    if (write_handle_ != -1) {
-      termination_caller_();
-    }
-  }
+  // TODO(hjiang): Current method only flushes whatever we send to logger, but not those
+  // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
+  // until logger sync over.
+  void Flush() { logger_->flush(); }
 
-  int GetWriteHandle() const { return write_handle_; }
+  MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
 
-#elif defined(_WIN32)
-  RotationFileHandle(RotationFileHandle &&rhs) {
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = nullptr;
-    termination_caller_ = std::move(rhs.termination_caller_);
+  // Write the given data into redirection handle; currently only for testing usage.
+  void CompleteWrite(const char *data, size_t len) {
+    RAY_CHECK_OK(::ray::CompleteWrite(write_handle_, data, len));
   }
-  RotationFileHandle &operator=(RotationFileHandle &&rhs) {
-    if (this == &rhs) {
-      return *this;
-    }
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = nullptr;
-    termination_caller_ = std::move(rhs.termination_caller_);
-    return *this;
-  }
-  ~RotationFileHandle() {
-    // Only invoke termination functor when handler at a valid state.
-    if (write_handle_ != nullptr) {
-      termination_caller_();
-    }
-  }
-
-  HANDLE GetWriteHandle() const { return write_handle_; }
-
-#endif
 
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
 
-  // Termination hook, used to flush and call completion.
-  std::function<void()> termination_caller_;
+  std::shared_ptr<spdlog::logger> logger_;
+
+  std::function<void()> close_fn_;
 };
 
 // This function creates a pipe so applications could write to.
 // There're will be two threads spawned in the background, one thread continuously reads
 // from the pipe, another one dumps whatever read from pipe to the persistent file.
 //
-// The returned [RotationFileHandle] owns the lifecycle for pipe file descriptors and
+// The returned [RedirectionFileHandle] owns the lifecycle for pipe file descriptors and
 // background threads, the resource release happens at token's destruction.
 //
-// @param on_completion: called after all content has been persisted.
-// @return pipe stream token, so application could stream content into, and synchronize on
-// the destruction.
+// @return pipe stream token, so application could stream content into, flush stream and
+// block wait on flush and close completion.
 //
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
-RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
-                                             const LogRotationOption &log_rotate_opt,
-                                             std::function<void()> on_completion);
+RedirectionFileHandle CreateRedirectionFileHandle(
+    const StreamRedirectionOption &stream_redirect_opt);
 
 }  // namespace ray

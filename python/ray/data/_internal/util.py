@@ -1,18 +1,21 @@
+import functools
 import importlib
 import logging
 import os
 import pathlib
+import platform
 import random
 import sys
 import threading
 import time
 import urllib.parse
-from collections import deque
+from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Generator,
     Iterable,
     Iterator,
     List,
@@ -23,14 +26,16 @@ from typing import (
 )
 
 import numpy as np
+import psutil
+import pyarrow
+from packaging.version import parse as parse_version
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
     import pandas
-    import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -44,6 +49,9 @@ logger = logging.getLogger(__name__)
 KiB = 1024  # bytes
 MiB = 1024 * KiB
 GiB = 1024 * MiB
+
+
+SENTINEL = object()
 
 
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
@@ -60,29 +68,40 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
-class _NullSentinel:
-    """Sentinel value that sorts greater than any other value."""
+class _OrderedNullSentinel:
+    """Sentinel value that sorts greater than any other non-null value.
+
+    NOTE: Semantic of this sentinel is closely mirroring that one of
+          ``np.nan`` for the purpose of consistency in handling of
+          ``None``s and ``np.nan``s.
+    """
 
     def __eq__(self, other):
-        return isinstance(other, _NullSentinel)
-
-    def __lt__(self, other):
         return False
 
+    def __lt__(self, other):
+        # not None < _OrderedNullSentinel
+        # _OrderedNullSentinel < _OrderedNullSentinel
+        # _OrderedNullSentinel < None
+        # _OrderedNullSentinel < np.nan
+        return isinstance(other, _OrderedNullSentinel) or is_null(other)
+
     def __le__(self, other):
-        return isinstance(other, _NullSentinel)
+        # NOTE: This is just a shortened version of
+        #   self < other or self == other
+        return self.__lt__(other)
 
     def __gt__(self, other):
-        return True
+        return not self.__le__(other)
 
     def __ge__(self, other):
-        return True
+        return not self.__lt__(other)
 
     def __hash__(self):
         return id(self)
 
 
-NULL_SENTINEL = _NullSentinel()
+NULL_SENTINEL = _OrderedNullSentinel()
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -106,11 +125,9 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        version = _get_pyarrow_version()
+        version = get_pyarrow_version()
         if version is not None:
-            from packaging.version import parse as parse_version
-
-            if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
+            if version < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
                     f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
@@ -314,9 +331,8 @@ def _check_import(obj, *, module: str, package: str) -> None:
         importlib.import_module(module)
     except ImportError:
         raise ImportError(
-            f"`{obj.__class__.__name__}` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
+            f"`{obj.__class__.__name__}` depends on '{module}', but Ray Data couldn't "
+            f"import it. Install '{module}' by running `pip install {package}`."
         )
 
 
@@ -682,7 +698,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
 
 def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
@@ -714,7 +730,7 @@ def unify_block_metadata_schema(
             pa = None
         # If the result contains PyArrow schemas, unify them
         if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
-            return unify_schemas(schemas_to_unify)
+            return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
         return schemas_to_unify[0]
@@ -761,12 +777,6 @@ def find_partition_index(
         if desired_val is None:
             desired_val = NULL_SENTINEL
 
-        # Replace None/NaN values in col_vals with sentinel
-        null_mask = col_vals == None  # noqa: E711
-        if null_mask.any():
-            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
-            col_vals[null_mask] = NULL_SENTINEL
-
         prevleft = left
         if descending[i] is True:
             # ``np.searchsorted`` expects the array to be sorted in ascending
@@ -775,13 +785,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -790,38 +801,14 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+
     return right if descending[0] is True else left
-
-
-def find_partitions(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
-    boundaries: List[Tuple[Union[int, float]]],
-    sort_key: "SortKey",
-):
-    partitions = []
-
-    # For each boundary value, count the number of items that are less
-    # than it. Since the block is sorted, these counts partition the items
-    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-    # partition[i]. If `descending` is true, `boundaries` would also be
-    # in descending order and we only need to count the number of items
-    # *greater than* the boundary value instead.
-    bounds = [
-        find_partition_index(table, boundary, sort_key) for boundary in boundaries
-    ]
-
-    last_idx = 0
-    for idx in bounds:
-        partitions.append(table[last_idx:idx])
-        last_idx = idx
-    partitions.append(table[last_idx:])
-    return partitions
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
@@ -841,163 +828,536 @@ def get_attribute_from_class_name(class_name: str) -> Any:
     return getattr(import_module(module_name), attribute_name)
 
 
-class Queue:
-    """A thread-safe queue implementation for multiple producers and consumers.
-
-    Provide `release()` to exit producer threads cooperatively for resource release.
-    """
-
-    def __init__(self, queue_size: int):
-        # The queue shared across multiple producer threads.
-        self._queue = deque()
-        # The boolean varilable to indicate whether producer threads should exit.
-        self._threads_exit = False
-        # The semaphore for producer threads to put item into queue.
-        self._producer_semaphore = threading.Semaphore(queue_size)
-        # The semaphore for consumer threads to get item from queue.
-        self._consumer_semaphore = threading.Semaphore(0)
-        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
-        self._mutex = threading.Lock()
-
-    def put(self, item: Any) -> bool:
-        """Put an item into the queue.
-
-        Block if necessary until a free slot is available in queue.
-        This method is called by producer threads.
-
-        Returns:
-            True if the caller thread should exit immediately.
-        """
-        self._producer_semaphore.acquire()
-        with self._mutex:
-            if self._threads_exit:
-                return True
-            else:
-                self._queue.append(item)
-        self._consumer_semaphore.release()
-        return False
-
-    def get(self) -> Any:
-        """Remove and return an item from the queue.
-
-        Block if necessary until an item is available in queue.
-        This method is called by consumer threads.
-        """
-        self._consumer_semaphore.acquire()
-        with self._mutex:
-            next_item = self._queue.popleft()
-        self._producer_semaphore.release()
-        return next_item
-
-    def release(self, num_threads: int):
-        """Release `num_threads` of producers so they would exit cooperatively."""
-        with self._mutex:
-            self._threads_exit = True
-        for _ in range(num_threads):
-            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
-            # release all threads at once.
-            self._producer_semaphore.release()
-
-    def qsize(self):
-        """Return the size of the queue."""
-        with self._mutex:
-            return len(self._queue)
-
-
 T = TypeVar("T")
 U = TypeVar("U")
+
+
+class _InterruptibleQueue(Queue):
+    """Extension of Python's `queue.Queue` providing ability to get interrupt its
+    method callers in other threads"""
+
+    INTERRUPTION_CHECK_FREQUENCY_SEC = 0.5
+
+    def __init__(
+        self, max_size: int, interrupted_event: Optional[threading.Event] = None
+    ):
+        super().__init__(maxsize=max_size)
+        self._interrupted_event = interrupted_event or threading.Event()
+
+    def get(self, block=True, timeout=None):
+        if not block or timeout is not None:
+            return super().get(block, timeout)
+
+        # In case when the call is blocking and no timeout is specified (ie blocking
+        # indefinitely) we apply the following protocol to make it interruptible:
+        #
+        #   1. `Queue.get` is invoked w/ 500ms timeout
+        #   2. `Empty` exception is intercepted (will be raised upon timeout elapsing)
+        #   3. If interrupted flag is set `InterruptedError` is raised
+        #   4. Otherwise, protocol retried (until interrupted or queue
+        #      becoming non-empty)
+        while True:
+            if self._interrupted_event.is_set():
+                raise InterruptedError()
+
+            try:
+                return super().get(
+                    block=True, timeout=self.INTERRUPTION_CHECK_FREQUENCY_SEC
+                )
+            except Empty:
+                pass
+
+    def put(self, item, block=True, timeout=None):
+        if not block or timeout is not None:
+            super().put(item, block, timeout)
+            return
+
+        # In case when the call is blocking and no timeout is specified (ie blocking
+        # indefinitely) we apply the following protocol to make it interruptible:
+        #
+        #   1. `Queue.pet` is invoked w/ 500ms timeout
+        #   2. `Full` exception is intercepted (will be raised upon timeout elapsing)
+        #   3. If interrupted flag is set `InterruptedError` is raised
+        #   4. Otherwise, protocol retried (until interrupted or queue
+        #      becomes non-full)
+        while True:
+            if self._interrupted_event.is_set():
+                raise InterruptedError()
+
+            try:
+                super().put(
+                    item, block=True, timeout=self.INTERRUPTION_CHECK_FREQUENCY_SEC
+                )
+                return
+            except Full:
+                pass
 
 
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
+    preserve_ordering: bool,
     num_workers: int = 1,
-) -> Iterator[U]:
-    """Returns a new iterator with elements fetched from the base_iterator
-    in an async fashion using a threadpool.
+    buffer_size: int = 1,
+) -> Generator[U, None, None]:
+    """Returns a generator (iterator) mapping items from the
+    provided iterator applying provided transformation in parallel (using a
+    thread-pool).
 
-    Each thread in the threadpool will fetch data from the base_iterator in a
-    thread-safe fashion, and apply the provided `fn` computation concurrently.
+    NOTE: There are some important constraints that needs to be carefully
+          understood before using this method
+
+        1. If `preserve_ordering` is True
+            a. This method would unroll input iterator eagerly (irrespective
+                of the speed of resulting generator being consumed). This is necessary
+                as we can not guarantee liveness of the algorithm AND preserving of the
+                original ordering at the same time.
+
+            b. Resulting ordering of the output will "match" ordering of the input, ie
+               that:
+                    iterator = [A1, A2, ... An]
+                    output iterator = [map(A1), map(A2), ..., map(An)]
+
+        2. If `preserve_ordering` is False
+            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be
+                fetched from the iterator
+
+            b. Resulting ordering of the output is unspecified (and is
+            non-deterministic)
 
     Args:
-        base_iterator: The iterator to asynchronously fetch from.
-        fn: The function to run on the input iterator.
-        num_workers: The number of threads to use in the threadpool. Defaults to 1.
+        base_iterator: Iterator yielding elements to map
+        fn: Transformation to apply to each element
+        preserve_ordering: Whether ordering has to be preserved
+        num_workers: The number of threads to use in the threadpool (defaults to 1)
+        buffer_size: Number of objects to be buffered in its input/output
+                     queues (per queue; defaults to 2). Total number of objects held
+                     in memory could be calculated as:
+
+                        num_workers * buffer_size * 2 (input and output)
 
     Returns:
-        An iterator with the same elements as outputted from `fn`.
+        An generator (iterator) of the elements corresponding to the source
+        elements mapped by provided transformation (while *preserving the ordering*)
     """
+
+    gen_id = random.randint(0, 2**31 - 1)
 
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
 
-    # Use a lock to fetch from the base_iterator in a thread-safe fashion.
-    def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
-        class ThreadSafeIterator:
-            def __init__(self, it):
-                self.lock = threading.Lock()
-                self.it = it
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
 
-            def __next__(self):
-                with self.lock:
-                    return next(self.it)
+    # To apply transformations to elements in parallel *and* preserve the ordering
+    # following invariants are established:
+    #   - Every worker is handled by standalone thread
+    #   - Every worker is assigned an input and an output queue
+    #
+    # And following protocol is implemented:
+    #   - Filling worker traverses input iterator round-robin'ing elements across
+    #     the input queues (in order!)
+    #   - Transforming workers traverse respective input queue in-order: de-queueing
+    #     element, applying transformation and enqueuing the result into the output
+    #     queue
+    #   - Generator (returned from this method) traverses output queues (in the same
+    #     order as input queues) dequeues 1 mapped element at a time from each output
+    #     queue and yields it
+    #
+    # However, in case when we're preserving the ordering we can not enforce the input
+    # queue size as this could result in deadlocks since transformations could be
+    # producing sequences of arbitrary length.
+    #
+    # Check `test_make_async_gen_varying_seq_length_stress_test` for more context on
+    # this problem.
+    if preserve_ordering:
+        input_queue_buf_size = -1
+        num_input_queues = num_workers
+    else:
+        input_queue_buf_size = (buffer_size + 1) * num_workers
+        num_input_queues = 1
 
-            def __iter__(self):
-                return self
-
-        return ThreadSafeIterator(base_iterator)
-
-    thread_safe_generator = convert_to_threadsafe_iterator(base_iterator)
-
-    class Sentinel:
-        def __init__(self, thread_index: int):
-            self.thread_index = thread_index
-
-    output_queue = Queue(1)
-
-    # Because pulling from the base iterator cannot happen concurrently,
-    # we must execute the expensive computation in a separate step which
-    # can be parallelized via a threadpool.
-    def execute_computation(thread_index: int):
-        try:
-            for item in fn(thread_safe_generator):
-                if output_queue.put(item):
-                    # Return early when it's instructed to do so.
-                    return
-            output_queue.put(Sentinel(thread_index))
-        except Exception as e:
-            output_queue.put(e)
-
-    # Use separate threads to produce output batches.
-    threads = [
-        threading.Thread(target=execute_computation, args=(i,), daemon=True)
-        for i in range(num_workers)
+    input_queues = [
+        _InterruptibleQueue(input_queue_buf_size, interrupted_event)
+        for _ in range(num_input_queues)
     ]
 
-    for thread in threads:
-        thread.start()
+    output_queues = [
+        _InterruptibleQueue(buffer_size, interrupted_event) for _ in range(num_workers)
+    ]
 
-    # Use main thread to consume output batches.
-    num_threads_finished = 0
+    # Filling worker
+    def _run_filling_worker():
+        try:
+            # First, round-robin elements from the iterator into
+            # corresponding input queues (one by one)
+            for idx, item in enumerate(base_iterator):
+                input_queues[idx % num_input_queues].put(item)
+
+            # NOTE: We have to Enqueue sentinel objects for every transforming
+            #       worker:
+            #   - In case of preserving order of ``num_queues`` == ``num_workers``
+            #     we will enqueue 1 sentinel per queue
+            #   - In case of NOT preserving order all ``num_workers`` sentinels
+            #     will be enqueued into a single queue
+            for idx in range(num_workers):
+                input_queues[idx % num_input_queues].put(SENTINEL)
+
+        except InterruptedError:
+            pass
+
+        except Exception as e:
+            logger.warning("Caught exception in filling worker!", exc_info=e)
+            # In case of filling worker encountering an exception we have to propagate
+            # it back to the (main) iterating thread. To achieve that we're traversing
+            # output queues *backwards* relative to the order of iterator-thread such
+            # that they are more likely to meet w/in a single iteration.
+            for output_queue in reversed(output_queues):
+                output_queue.put(e)
+
+    # Transforming worker
+    def _run_transforming_worker(input_queue, output_queue):
+        try:
+            # Create iterator draining the queue, until it receives sentinel
+            #
+            # NOTE: `queue.get` is blocking!
+            input_queue_iter = iter(input_queue.get, SENTINEL)
+
+            for result in fn(input_queue_iter):
+                # Enqueue result of the transformation
+                output_queue.put(result)
+
+            # Enqueue sentinel (to signal that transformations are completed)
+            output_queue.put(SENTINEL)
+
+        except InterruptedError:
+            pass
+
+        except Exception as e:
+            logger.warning("Caught exception in transforming worker!", exc_info=e)
+            # NOTE: In this case we simply enqueue the exception rather than
+            #       interrupting
+            output_queue.put(e)
+
+    # Start workers threads
+    filling_worker_thread = threading.Thread(
+        target=_run_filling_worker,
+        name=f"map_tp_filling_worker-{gen_id}",
+        daemon=True,
+    )
+    filling_worker_thread.start()
+
+    transforming_worker_threads = [
+        threading.Thread(
+            target=_run_transforming_worker,
+            name=f"map_tp_transforming_worker-{gen_id}-{idx}",
+            args=(input_queues[idx % num_input_queues], output_queues[idx]),
+            daemon=True,
+        )
+        for idx in range(num_workers)
+    ]
+
+    for t in transforming_worker_threads:
+        t.start()
+
+    # Use main thread to yield output batches
     try:
-        while True:
-            next_item = output_queue.get()
-            if isinstance(next_item, Exception):
-                raise next_item
-            if isinstance(next_item, Sentinel):
-                num_threads_finished += 1
-            else:
-                yield next_item
-            if num_threads_finished >= num_workers:
-                break
+        # Keep track of remaining non-empty output queues
+        remaining_output_queues = output_queues
+
+        while len(remaining_output_queues) > 0:
+            # To provide deterministic ordering of the produced iterator we rely
+            # on the following invariants:
+            #
+            #   - Elements from the original iterator are round-robin'd into
+            #     input queues (in order)
+            #   - Individual workers drain their respective input queues populating
+            #     output queues with the results of applying transformation to the
+            #     original item (and hence preserving original ordering of the input
+            #     queue)
+            #   - To yield from the generator output queues are traversed in the same
+            #     order and one single element is dequeued (in a blocking way!) at a
+            #     time from every individual output queue
+            #
+            empty_queues = []
+
+            # At every iteration only remaining non-empty queues
+            # are traversed (to prevent blocking on exhausted queue)
+            for output_queue in remaining_output_queues:
+                # NOTE: This is blocking!
+                item = output_queue.get()
+
+                if isinstance(item, Exception):
+                    raise item
+
+                if item is SENTINEL:
+                    empty_queues.append(output_queue)
+                else:
+                    yield item
+
+            if empty_queues:
+                remaining_output_queues = [
+                    q for q in remaining_output_queues if q not in empty_queues
+                ]
+
     finally:
-        # Cooperatively exit all producer threads.
-        # This is to avoid these daemon threads hanging there with holding batches in
-        # memory, which can cause GRAM OOM easily. This can happen when caller breaks
-        # in the middle of iteration.
-        num_threads_alive = num_workers - num_threads_finished
-        if num_threads_alive > 0:
-            output_queue.release(num_threads_alive)
+        # Set flag to interrupt workers (to make sure no dangling
+        # threads holding the objects are left behind)
+        #
+        # NOTE: Interrupted event is set to interrupt the running threads
+        #       that might be blocked otherwise waiting on inputs from respective
+        #       queues. However, even though we're interrupting the threads we can't
+        #       guarantee that threads will be interrupted in time (as this is
+        #       dependent on Python's GC finalizer to close the generator by raising
+        #       `GeneratorExit`) and hence we can't join on either filling or
+        #       transforming workers.
+        interrupted_event.set()
+
+
+class RetryingContextManager:
+    def __init__(
+        self,
+        f: pyarrow.NativeFile,
+        context: DataContext,
+        max_attempts: int = 10,
+        max_backoff_s: int = 32,
+    ):
+        self._f = f
+        self._data_context = context
+        self._max_attempts = max_attempts
+        self._max_backoff_s = max_backoff_s
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} fs={self.handler.unwrap()}>"
+
+    def _retry_operation(self, operation: Callable, description: str):
+        """Execute an operation with retries."""
+        return call_with_retry(
+            operation,
+            description=description,
+            match=self._data_context.retried_io_errors,
+            max_attempts=self._max_attempts,
+            max_backoff_s=self._max_backoff_s,
+        )
+
+    def __enter__(self):
+        return self._retry_operation(self._f.__enter__, "enter file context")
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._retry_operation(
+            lambda: self._f.__exit__(exc_type, exc_value, traceback),
+            "exit file context",
+        )
+
+
+class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
+    def __init__(self, handler: "RetryingPyFileSystemHandler"):
+        if not isinstance(handler, RetryingPyFileSystemHandler):
+            assert ValueError("handler must be a RetryingPyFileSystemHandler")
+        super().__init__(handler)
+
+    @property
+    def retryable_errors(self) -> List[str]:
+        return self.handler._retryable_errors
+
+    def unwrap(self):
+        return self.handler.unwrap()
+
+    @classmethod
+    def wrap(
+        cls,
+        fs: "pyarrow.fs.FileSystem",
+        retryable_errors: List[str],
+        max_attempts: int = 10,
+        max_backoff_s: int = 32,
+    ):
+        if isinstance(fs, RetryingPyFileSystem):
+            return fs
+        handler = RetryingPyFileSystemHandler(
+            fs, retryable_errors, max_attempts, max_backoff_s
+        )
+        return cls(handler)
+
+    def __reduce__(self):
+        # Serialization of this class breaks for some reason without this
+        return (self.__class__, (self.handler,))
+
+    @classmethod
+    def __setstate__(cls, state):
+        # Serialization of this class breaks for some reason without this
+        return cls(*state)
+
+
+class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
+    """Wrapper for filesystem objects that adds retry functionality for file operations.
+
+    This class wraps any filesystem object and adds automatic retries for common
+    file operations that may fail transiently.
+    """
+
+    def __init__(
+        self,
+        fs: "pyarrow.fs.FileSystem",
+        retryable_errors: List[str] = tuple(),
+        max_attempts: int = 10,
+        max_backoff_s: int = 32,
+    ):
+        """Initialize the retrying filesystem wrapper.
+
+        Args:
+            fs: The underlying filesystem to wrap
+            context: DataContext for retry settings
+            max_attempts: Maximum number of retry attempts
+            max_backoff_s: Maximum backoff time in seconds
+        """
+        assert not isinstance(
+            fs, RetryingPyFileSystem
+        ), "Cannot wrap a RetryingPyFileSystem"
+        self._fs = fs
+        self._retryable_errors = retryable_errors
+        self._max_attempts = max_attempts
+        self._max_backoff_s = max_backoff_s
+
+    def _retry_operation(self, operation: Callable, description: str):
+        """Execute an operation with retries."""
+        return call_with_retry(
+            operation,
+            description=description,
+            match=self._retryable_errors,
+            max_attempts=self._max_attempts,
+            max_backoff_s=self._max_backoff_s,
+        )
+
+    def unwrap(self):
+        return self._fs
+
+    def copy_file(self, src: str, dest: str):
+        """Copy a file."""
+        return self._retry_operation(
+            lambda: self._fs.copy_file(src, dest), f"copy file from {src} to {dest}"
+        )
+
+    def create_dir(self, path: str, recursive: bool):
+        """Create a directory and subdirectories."""
+        return self._retry_operation(
+            lambda: self._fs.create_dir(path, recursive=recursive),
+            f"create directory {path}",
+        )
+
+    def delete_dir(self, path: str):
+        """Delete a directory and its contents, recursively."""
+        return self._retry_operation(
+            lambda: self._fs.delete_dir(path), f"delete directory {path}"
+        )
+
+    def delete_dir_contents(self, path: str, missing_dir_ok: bool = False):
+        """Delete a directory's contents, recursively."""
+        return self._retry_operation(
+            lambda: self._fs.delete_dir_contents(path, missing_dir_ok=missing_dir_ok),
+            f"delete directory contents {path}",
+        )
+
+    def delete_file(self, path: str):
+        """Delete a file."""
+        return self._retry_operation(
+            lambda: self._fs.delete_file(path), f"delete file {path}"
+        )
+
+    def delete_root_dir_contents(self):
+        return self._retry_operation(
+            lambda: self._fs.delete_dir_contents("/", accept_root_dir=True),
+            "delete root dir contents",
+        )
+
+    def equals(self, other: "pyarrow.fs.FileSystem") -> bool:
+        """Test if this filesystem equals another."""
+        return self._fs.equals(other)
+
+    def get_file_info(self, paths: List[str]):
+        """Get info for the given files."""
+        return self._retry_operation(
+            lambda: self._fs.get_file_info(paths),
+            f"get file info for {paths}",
+        )
+
+    def get_file_info_selector(self, selector):
+        return self._retry_operation(
+            lambda: self._fs.get_file_info(selector),
+            f"get file info for {selector}",
+        )
+
+    def get_type_name(self):
+        return "RetryingPyFileSystem"
+
+    def move(self, src: str, dest: str):
+        """Move / rename a file or directory."""
+        return self._retry_operation(
+            lambda: self._fs.move(src, dest), f"move from {src} to {dest}"
+        )
+
+    def normalize_path(self, path: str) -> str:
+        """Normalize filesystem path."""
+        return self._retry_operation(
+            lambda: self._fs.normalize_path(path), f"normalize path {path}"
+        )
+
+    def open_append_stream(
+        self,
+        path: str,
+        metadata=None,
+    ) -> "pyarrow.NativeFile":
+        """Open an output stream for appending.
+
+        Compression is disabled in this method because it is handled in the
+        PyFileSystem abstract class.
+        """
+        return self._retry_operation(
+            lambda: self._fs.open_append_stream(
+                path,
+                compression=None,
+                metadata=metadata,
+            ),
+            f"open append stream for {path}",
+        )
+
+    def open_input_stream(
+        self,
+        path: str,
+    ) -> "pyarrow.NativeFile":
+        """Open an input stream for sequential reading.
+
+        Compression is disabled in this method because it is handled in the
+        PyFileSystem abstract class.
+        """
+        return self._retry_operation(
+            lambda: self._fs.open_input_stream(path, compression=None),
+            f"open input stream for {path}",
+        )
+
+    def open_output_stream(
+        self,
+        path: str,
+        metadata=None,
+    ) -> "pyarrow.NativeFile":
+        """Open an output stream for sequential writing."
+
+        Compression is disabled in this method because it is handled in the
+        PyFileSystem abstract class.
+        """
+        return self._retry_operation(
+            lambda: self._fs.open_output_stream(
+                path,
+                compression=None,
+                metadata=metadata,
+            ),
+            f"open output stream for {path}",
+        )
+
+    def open_input_file(self, path: str) -> "pyarrow.NativeFile":
+        """Open an input file for random access reading."""
+        return self._retry_operation(
+            lambda: self._fs.open_input_file(path), f"open input file {path}"
+        )
 
 
 def call_with_retry(
@@ -1025,17 +1385,18 @@ def call_with_retry(
         try:
             return f()
         except Exception as e:
-            is_retryable = match is None or any(
-                [pattern in str(e) for pattern in match]
-            )
+            is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
+                logger.debug(
+                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
+                )
                 raise e from None
 
 
@@ -1076,9 +1437,7 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            is_retryable = match is None or any(
-                [pattern in str(e) for pattern in match]
-            )
+            is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
@@ -1091,13 +1450,6 @@ def iterate_with_retry(
                 raise e from None
 
 
-def create_dataset_tag(dataset_name: Optional[str], *args):
-    tag = dataset_name or "dataset"
-    for arg in args:
-        tag += f"_{arg}"
-    return tag
-
-
 def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     if num_bytes >= 1e9:
         num_bytes_str = f"{round(num_bytes / 1e9)}GB"
@@ -1108,11 +1460,49 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     return num_bytes_str
 
 
-def is_nan(value):
+def _validate_rows_per_file_args(
+    *, num_rows_per_file: Optional[int] = None, min_rows_per_file: Optional[int] = None
+) -> Optional[int]:
+    """Helper method to validate and handle rows per file arguments.
+
+    Args:
+        num_rows_per_file: Deprecated parameter for number of rows per file
+        min_rows_per_file: New parameter for minimum rows per file
+
+    Returns:
+        The effective min_rows_per_file value to use
+    """
+    if num_rows_per_file is not None:
+        import warnings
+
+        warnings.warn(
+            "`num_rows_per_file` is deprecated and will be removed in a future release. "
+            "Use `min_rows_per_file` instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if min_rows_per_file is not None:
+            raise ValueError(
+                "Cannot specify both `num_rows_per_file` and `min_rows_per_file`. "
+                "Use `min_rows_per_file` as `num_rows_per_file` is deprecated."
+            )
+        return num_rows_per_file
+    return min_rows_per_file
+
+
+def is_nan(value) -> bool:
+    """Returns true if provide value is ``np.nan``"""
+
     try:
         return isinstance(value, float) and np.isnan(value)
     except TypeError:
         return False
+
+
+def is_null(value: Any) -> bool:
+    """This generalization of ``is_nan`` util qualifying both None and np.nan
+    as null values"""
+    return value is None or is_nan(value)
 
 
 def keys_equal(keys1, keys2):
@@ -1122,3 +1512,136 @@ def keys_equal(keys1, keys2):
         if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
             return False
     return True
+
+
+def get_total_obj_store_mem_on_node() -> int:
+    """Return the total object store memory on the current node.
+
+    This function incurs an RPC. Use it cautiously.
+    """
+    node_id = ray.get_runtime_context().get_node_id()
+    total_resources_per_node = ray._private.state.total_resources_per_node()
+    assert (
+        node_id in total_resources_per_node
+    ), f"Expected node '{node_id}' to be in resources: {total_resources_per_node}"
+    return total_resources_per_node[node_id]["object_store_memory"]
+
+
+class MemoryProfiler:
+    """A context manager that polls the USS of the current process.
+
+    This class approximates the max USS by polling memory and subtracting the amount
+    of shared memory from the resident set size (RSS). It's not a
+    perfect estimate (it can underestimate, e.g., if you use Torch tensors), but
+    estimating the USS is much cheaper than computing the actual USS.
+
+    .. warning::
+
+        This class only works with Linux. If you use it on another platform,
+        `estimate_max_uss` always returns ``None``.
+
+    Example:
+
+        .. testcode::
+
+            with MemoryProfiler(poll_interval_s=1.0) as profiler:
+                for i in range(10):
+                    ...  # Your code here
+                    print(f"Max USS: {profiler.estimate_max_uss()}")
+                    profiler.reset()
+    """
+
+    def __init__(self, poll_interval_s: Optional[float]):
+        """
+
+        Args:
+            poll_interval_s: The interval to poll the USS of the process. If `None`,
+                this class won't poll the USS.
+        """
+        self._poll_interval_s = poll_interval_s
+
+        self._process = psutil.Process(os.getpid())
+        self._max_uss = None
+        self._max_uss_lock = threading.Lock()
+
+        self._uss_poll_thread = None
+        self._stop_uss_poll_event = None
+
+    def __repr__(self):
+        return f"MemoryProfiler(poll_interval_s={self._poll_interval_s})"
+
+    def __enter__(self):
+        if self._can_estimate_uss() and self._poll_interval_s is not None:
+            (
+                self._uss_poll_thread,
+                self._stop_uss_poll_event,
+            ) = self._start_uss_poll_thread()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._uss_poll_thread is not None:
+            self._stop_uss_poll_thread()
+
+    def estimate_max_uss(self) -> Optional[int]:
+        """Get an estimate of the max USS of the current process.
+
+        Returns:
+            An estimate of the max USS of the process in bytes, or ``None`` if an
+            estimate isn't available.
+        """
+        if not self._can_estimate_uss():
+            assert self._max_uss is None
+            return None
+
+        with self._max_uss_lock:
+            if self._max_uss is None:
+                self._max_uss = self._estimate_uss()
+            else:
+                self._max_uss = max(self._max_uss, self._estimate_uss())
+
+        assert self._max_uss is not None
+        return self._max_uss
+
+    def reset(self):
+        with self._max_uss_lock:
+            self._max_uss = None
+
+    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+        assert self._poll_interval_s is not None
+        assert self._can_estimate_uss()
+
+        stop_event = threading.Event()
+
+        def poll_uss():
+            while not stop_event.is_set():
+                with self._max_uss_lock:
+                    if self._max_uss is None:
+                        self._max_uss = self._estimate_uss()
+                    else:
+                        self._max_uss = max(self._max_uss, self._estimate_uss())
+                stop_event.wait(self._poll_interval_s)
+
+        thread = threading.Thread(target=poll_uss, daemon=True)
+        thread.start()
+
+        return thread, stop_event
+
+    def _stop_uss_poll_thread(self):
+        if self._stop_uss_poll_event is not None:
+            self._stop_uss_poll_event.set()
+            self._uss_poll_thread.join()
+
+    def _estimate_uss(self) -> int:
+        assert self._can_estimate_uss()
+        memory_info = self._process.memory_info()
+        # Estimate the USS (the amount of memory that'd be free if we killed the
+        # process right now) as the difference between the RSS (total physical memory)
+        # and amount of shared physical memory.
+        return memory_info.rss - memory_info.shared
+
+    @staticmethod
+    @functools.cache
+    def _can_estimate_uss() -> bool:
+        # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
+        return platform.system() == "Linux"

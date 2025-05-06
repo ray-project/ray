@@ -284,7 +284,10 @@ class _DeploymentResponseBase:
                     self._replica_result_future
                 )
             except asyncio.CancelledError:
-                raise RequestCancelledError(self.request_id) from None
+                if self._cancelled:
+                    raise RequestCancelledError(self.request_id) from None
+                else:
+                    raise asyncio.CancelledError from None
 
         return self._replica_result
 
@@ -312,11 +315,16 @@ class _DeploymentResponseBase:
             return
 
         self._cancelled = True
-        if not self._replica_result_future.done():
-            self._replica_result_future.cancel()
-        elif self._replica_result_future.exception() is None:
+        self._replica_result_future.cancel()
+        try:
+            # try to fetch the results synchronously. if it succeeds,
+            # we will explicitly cancel the replica result. if it fails,
+            # the request is already cancelled and we can return early.
             self._fetch_future_result_sync()
-            self._replica_result.cancel()
+        except RequestCancelledError:
+            # request is already cancelled nothing to do here
+            return
+        self._replica_result.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -328,7 +336,7 @@ class _DeploymentResponseBase:
         return self._cancelled
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
@@ -498,7 +506,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
@@ -621,7 +629,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return replica_result.to_object_ref_gen()
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 

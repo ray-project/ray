@@ -36,7 +36,7 @@ def test_simple_imputer():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = [1, 2, np.nan]
@@ -59,7 +59,7 @@ def test_simple_imputer():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # with missing column
     pred_in_df = pd.DataFrame.from_dict({"A": pred_col_a, "B": pred_col_b})
@@ -71,7 +71,39 @@ def test_simple_imputer():
             "C": pred_processed_col_c,
         }
     )
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
+
+    # append mode
+    with pytest.raises(ValueError):
+        SimpleImputer(columns=["B", "C"], output_columns=["B_encoded"])
+
+    imputer = SimpleImputer(
+        columns=["B", "C"],
+        output_columns=["B_imputed", "C_imputed"],
+    )
+    imputer.fit(ds)
+
+    pred_col_a = [1, 2, np.nan]
+    pred_col_b = [1, 2, np.nan]
+    pred_col_c = [None, None, None]
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+    pred_out_df = imputer.transform_batch(pred_in_df)
+
+    pred_processed_col_b = [1.0, 2.0, 2.0]
+    pred_processed_col_c = [1.0, 1.0, 1.0]
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "B_imputed": pred_processed_col_b,
+            "C_imputed": pred_processed_col_c,
+        }
+    )
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # Test "most_frequent" strategy.
     most_frequent_col_a = [1, 2, 2, None, None, None]
@@ -97,7 +129,9 @@ def test_simple_imputer():
         {"A": most_frequent_processed_col_a, "B": most_frequent_processed_col_b}
     )
 
-    assert most_frequent_out_df.equals(most_frequent_expected_df)
+    pd.testing.assert_frame_equal(
+        most_frequent_out_df, most_frequent_expected_df, check_like=True
+    )
 
     # Test "constant" strategy.
     constant_col_a = ["apple", None]
@@ -123,7 +157,9 @@ def test_simple_imputer():
     )
     constant_expected_df["B"] = constant_expected_df["B"].astype("category")
 
-    assert constant_out_df.equals(constant_expected_df)
+    pd.testing.assert_frame_equal(
+        constant_out_df, constant_expected_df, check_like=True
+    )
 
 
 def test_imputer_all_nan_raise_error():

@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 OLD_ACTION_DIST_KEY = "old_action_dist"
-OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 class APPOConfig(IMPALAConfig):
@@ -58,7 +57,6 @@ class APPOConfig(IMPALAConfig):
     .. testcode::
 
         from ray.rllib.algorithms.appo import APPOConfig
-        from ray import air
         from ray import tune
 
         config = APPOConfig()
@@ -69,7 +67,7 @@ class APPOConfig(IMPALAConfig):
         # Use to_dict() to get the old-style python config dict when running with tune.
         tune.Tuner(
             "APPO",
-            run_config=air.RunConfig(
+            run_config=tune.RunConfig(
                 stop={"training_iteration": 1},
                 verbose=0,
             ),

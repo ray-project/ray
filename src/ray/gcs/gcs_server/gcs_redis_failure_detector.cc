@@ -14,9 +14,11 @@
 
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 
+#include <memory>
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/redis_client.h"
 
 namespace ray {
 namespace gcs {

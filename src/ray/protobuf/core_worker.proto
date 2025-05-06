@@ -85,10 +85,26 @@ message PushTaskRequest {
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
   int64 sequence_number = 3;
-  // The max sequence number the client has processed responses for. This
-  // is a performance optimization that allows the client to tell the server
-  // to cancel any PushTaskRequests with seqno <= this value, rather than
-  // waiting for the server to time out waiting for missing messages.
+  // The maximum sequence number for which the client has processed responses.
+  // This is useful in the following example:
+  //
+  // 1. Client sends a PushTaskRequest with `sequence_number` 0.
+  // 2. The request is lost in the network.
+  // 3. Client resends a PushTaskRequest with `sequence_number` 1.
+  // 4. Server receives the resent request but does not process it immediately
+  //    because it is waiting for the request with `sequence_number` 0 to arrive.
+  // 5. Server times out while waiting for the request with `sequence_number` 0 to arrive.
+  // 6. Server processes the resent request with `sequence_number` 1.
+  //
+  // `client_processed_up_to` is used to tell the server to cancel any PushTaskRequests
+  // with sequence numbers <= this value because the client has already processed
+  // the responses or no longer needs them.
+  //
+  // In the example above, the first request will have `client_processed_up_to` set to -1,
+  // and the second request will have it set to 0. When the server receives the second
+  // request, it will check `client_processed_up_to` and find that it no longer needs to
+  // wait for the request with `sequence_number` 0 to arrive, so it will process the
+  // request immediately.
   int64 client_processed_up_to = 4;
   // Resource mapping ids assigned to the worker executing the task.
   repeated ResourceMapEntry resource_mapping = 5;
@@ -139,7 +155,7 @@ message PushTaskReply {
   repeated StreamingGeneratorReturnIdInfo streaming_generator_return_ids = 10;
 }
 
-message DirectActorCallArgWaitCompleteRequest {
+message ActorCallArgWaitCompleteRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
   // Id used to uniquely identify this request. This is sent back to the core
@@ -147,7 +163,7 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {}
+message ActorCallArgWaitCompleteReply {}
 
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
@@ -444,9 +460,9 @@ service CoreWorkerService {
       returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
-  // Reply from raylet that wait for direct actor call args has completed.
-  rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
-      returns (DirectActorCallArgWaitCompleteReply);
+  // Reply from raylet that wait for actor call args has completed.
+  rpc ActorCallArgWaitComplete(ActorCallArgWaitCompleteRequest)
+      returns (ActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
   // Wait for the actor's owner to decide that the actor has no references.

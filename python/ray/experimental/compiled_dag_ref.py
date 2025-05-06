@@ -97,11 +97,11 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If not yet, release native buffers to avoid execution result leak. Note that
-        # we skip python-based deserialization as the values stored in the buffers are
-        # not used.
-        if not self._ray_get_called:
-            self._dag.release_output_channel_buffers(self._execution_index)
+        if self._ray_get_called:
+            # get() was already called, no further cleanup is needed.
+            return
+
+        self._dag._delete_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -112,8 +112,11 @@ class CompiledDAGRef:
 
         self._ray_get_called = True
         try:
-            return_vals = self._dag._execute_until(
+            self._dag._execute_until(
                 self._execution_index, self._channel_index, timeout
+            )
+            return_vals = self._dag._get_execution_results(
+                self._execution_index, self._channel_index
             )
         except RayChannelTimeoutError:
             raise
@@ -213,3 +216,13 @@ class CompiledDAGFuture:
             self._execution_index, self._channel_index
         )
         return _process_return_vals(return_vals, True)
+
+    def __del__(self):
+        if self._dag.is_teardown:
+            return
+
+        if self._fut is None:
+            # await() was already called, no further cleanup is needed.
+            return
+
+        self._dag._delete_execution_results(self._execution_index, self._channel_index)

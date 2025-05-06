@@ -16,9 +16,9 @@ from prometheus_client.core import REGISTRY
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray._private.services
-import ray._private.utils
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
@@ -350,9 +350,7 @@ class ReporterAgent(
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a container in general.
             # Use ray._private.utils for this instead.
-            logical_cpu_count = ray._private.utils.get_num_cpus(
-                override_docker_cpu_warning=True
-            )
+            logical_cpu_count = utils.get_num_cpus(override_docker_cpu_warning=True)
             # (Override the docker warning to avoid dashboard log spam.)
 
             # The dashboard expects a physical CPU count as well.
@@ -363,7 +361,7 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
-        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
@@ -580,8 +578,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = ray._private.utils.get_system_memory()
-        used = ray._private.utils.get_used_memory()
+        total = utils.get_system_memory()
+        used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -597,7 +595,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = ray._private.utils.get_user_temp_dir()
+        tmp = utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
@@ -670,11 +668,11 @@ class ReporterAgent(
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
+                    result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
                 except psutil.NoSuchProcess:
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
             return result
 
     def _get_raylet_proc(self):
@@ -1237,9 +1235,9 @@ class ReporterAgent(
 
         return records_reported
 
-    async def _run_loop(self, publisher):
+    async def _run_loop(self):
         """Get any changes to the log files and push updates to kv."""
-        loop = utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         while True:
             try:
@@ -1247,7 +1245,7 @@ class ReporterAgent(
                 autoscaler_status_json_bytes: Optional[bytes] = None
                 if self._is_head_node:
                     autoscaler_status_json_bytes = (
-                        await self._gcs_aio_client.internal_kv_get(
+                        await self._gcs_client.async_internal_kv_get(
                             DEBUG_AUTOSCALING_STATUS.encode(),
                             None,
                             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -1262,7 +1260,9 @@ class ReporterAgent(
                     autoscaler_status_json_bytes,
                 )
 
-                await publisher.publish_resource_usage(self._key, json_payload)
+                await self._gcs_client.async_publish_node_resource_usage(
+                    self._key, json_payload
+                )
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -1300,7 +1300,7 @@ class ReporterAgent(
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-        await self._run_loop(self._dashboard_agent.publisher)
+        await self._run_loop()
 
     @staticmethod
     def is_minimal_module():

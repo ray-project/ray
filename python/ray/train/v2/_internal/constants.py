@@ -60,13 +60,13 @@ def is_v2_enabled() -> bool:
     return env_bool(V2_ENABLED_ENV_VAR, False)
 
 
-ENV_VARS_TO_PROPAGATE = (
+ENV_VARS_TO_PROPAGATE = {
     V2_ENABLED_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     ENABLE_PRINT_PATCH_ENV_VAR,
-)
+}
 
 
 def get_env_vars_to_propagate() -> Dict[str, str]:

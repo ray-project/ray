@@ -17,10 +17,17 @@
 #include <google/protobuf/struct.pb.h>
 #include <google/protobuf/util/json_util.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"
+#include "ray/util/random.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/timestamp_utils.h"
 
 using json = nlohmann::json;
 
@@ -71,7 +78,7 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
   log_sink_ = spdlog::get(log_sink_key);
   // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
   // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
-  // We alow to rotate for {rotate_max_file_num_} times.
+  // We allow to rotate for {rotate_max_file_num_} times.
   if (log_sink_ == nullptr) {
     log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
                                            log_dir_ + file_name_,
@@ -507,6 +514,21 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
         RayEventInit_(
             source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
       });
+}
+
+bool IsExportAPIEnabledSourceType(
+    std::string source_type,
+    bool enable_export_api_write_global,
+    std::vector<std::string> enable_export_api_write_config) {
+  if (enable_export_api_write_global) {
+    return true;
+  }
+  for (const auto &element : enable_export_api_write_config) {
+    if (element == source_type) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace ray

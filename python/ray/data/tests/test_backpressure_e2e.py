@@ -287,9 +287,15 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
     assert launched <= 10, launched
 
 
-def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
+def test_streaming_backpressure_e2e(
+    shutdown_only, monkeypatch, restore_data_context  # noqa: F811
+):
     # This test case is particularly challenging since there is a large input->output
     # increase in data size: https://github.com/ray-project/ray/issues/34041
+
+    # Increase the Ray Core spilling threshold to 100% to avoid flakiness.
+    monkeypatch.setenv("RAY_object_spilling_threshold", "1")
+
     class TestSlow:
         def __call__(self, df: np.ndarray):
             time.sleep(2)

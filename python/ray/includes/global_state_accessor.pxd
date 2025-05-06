@@ -64,13 +64,15 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
             const c_string &node_ip_address,
             c_string *node_to_connect)
         CRayStatus GetNode(
-          const c_string &node_id,
+          const c_string &node_id_hex_str,
           c_string *node_info)
 
 cdef extern from * namespace "ray::gcs" nogil:
     """
     #include <thread>
     #include "ray/gcs/gcs_server/store_client_kv.h"
+    #include "ray/gcs/redis_client.h"
+    #include "ray/gcs/store_client/redis_store_client.h"
     namespace ray {
     namespace gcs {
 
@@ -88,6 +90,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
                                              /*log_filepath=*/"",
+                                             /*err_log_filepath=*/"",
                                              /*log_rotation_max_size=*/1ULL << 29,
                                              /*log_rotation_file_num=*/10);
 
@@ -135,7 +138,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                            c_string* data)
 
 
-cdef extern from * namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs/store_client/redis_store_client.h" namespace "ray::gcs" nogil:
     c_bool RedisDelKeyPrefixSync(const c_string& host,
                                  c_int32_t port,
                                  const c_string& username,

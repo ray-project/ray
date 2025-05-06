@@ -14,7 +14,7 @@ from packaging.version import Version
 from zoopt import ValueType
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.rllib import _register_all
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search import ConcurrencyLimiter
@@ -155,7 +155,7 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         def cost(space):
             loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
-            train.report(dict(loss=loss))
+            tune.report(dict(loss=loss))
 
         search_alg = HyperOptSearch(
             space,
@@ -172,7 +172,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         space = {"width": (0, 20), "height": (-100, 100)}
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -196,7 +196,7 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         optimizer = optimizerlib.OnePlusOne(instrumentation)
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -218,7 +218,7 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         )
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -236,7 +236,7 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         }
 
         def cost(param):
-            train.report(
+            tune.report(
                 dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
             )
 
@@ -266,7 +266,7 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         space = HEBODesignSpace().parse(space_config)
 
         def cost(param):
-            train.report(
+            tune.report(
                 dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
             )
 
@@ -321,7 +321,7 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         client.create_experiment(parameters=space, objective_name="loss", minimize=True)
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -336,7 +336,7 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         def cost(space):
             for i in range(10):
-                train.report(
+                tune.report(
                     dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3 - i))
                 )
 

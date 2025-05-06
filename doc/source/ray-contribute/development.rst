@@ -108,7 +108,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 .. code-block:: shell
 
     # This links all folders except "_private" and "dashboard" without user prompt.
-    python setup-dev.py -y --skip _private dashboard
+    python python/ray/setup-dev.py -y --skip _private dashboard
 
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
@@ -140,7 +140,7 @@ To build Ray on Ubuntu, run the following commands:
 
 .. note::
   The `install-bazel.sh` script installs `bazelisk` for building Ray.
-  It's worth noticing `bazel` is installed at `$HOME/bin/bazel`, please make sure it's on the executable `PATH`.
+  Note that `bazel` is installed at `$HOME/bin/bazel`; make sure it's on the executable `PATH`.
   If you prefer to use `bazel`, only version `6.5.0` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
@@ -195,7 +195,7 @@ After that, you can now move back to the top level Ray directory:
 
 .. code-block:: shell
 
-  cd ../..
+  cd -
 
 
 Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
@@ -298,14 +298,15 @@ You can tweak the build with the following environment variables (when running `
   ``cpp``) build will not provide some ``cpp`` interfaces
 - ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no Bazel build steps will be
   executed
-- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
-  python packages
+- ``SKIP_THIRDPARTY_INSTALL_CONDA_FORGE``: If set, setup will skip installation of
+  third-party packages required for build. This is active on conda-forge where
+  pip is not used to create a build environment.
 - ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
   other value will be ignored
 - ``BAZEL_ARGS``: If set, pass a space-separated set of arguments to Bazel. This can be useful
   for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual
   for more information about valid arguments.
-- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
+- ``IS_AUTOMATED_BUILD``: Used in conda-forge CI to tweak the build for the managed CI machines
 - ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
   ``None`` which is ``cwd()``
 - ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below
@@ -353,7 +354,9 @@ you commit new code changes with git. To temporarily skip pre-commit checks, use
    git commit -n
 
 If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
-does, please report an issue on the Ray github page.
+does, please `report an issue here`_.
+
+.. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
 
 Fast, Debug, and Optimized Builds
 ---------------------------------

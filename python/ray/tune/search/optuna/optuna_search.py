@@ -607,9 +607,7 @@ class OptunaSearch(Searcher):
             ot_trial_state = OptunaTrialState.PRUNED
 
         if intermediate_values:
-            intermediate_values_dict = {
-                i: value for i, value in enumerate(intermediate_values)
-            }
+            intermediate_values_dict = dict(enumerate(intermediate_values))
         else:
             intermediate_values_dict = None
 

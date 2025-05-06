@@ -14,15 +14,13 @@
 
 #pragma once
 
-#include <algorithm>
 #include <list>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_config.h"
-#include "ray/common/status.h"
 
 namespace ray {
 
@@ -109,7 +107,7 @@ class PushManager {
     /// whether all the chunks have been sent.
     bool NoChunksToSend() { return num_chunks_to_send == 0; }
 
-    /// Send one chunck. Return true if a new chunk is sent, false if no more chunk to
+    /// Send one chunk. Return true if a new chunk is sent, false if no more chunk to
     /// send.
     bool SendOneChunk() {
       if (NoChunksToSend()) {
@@ -126,7 +124,7 @@ class PushManager {
     /// Notify that a chunk is successfully sent.
     void OnChunkComplete() { --num_chunks_inflight; }
 
-    /// Wether all chunks are successfully sent.
+    /// Whether all chunks are successfully sent.
     bool AllChunksComplete() {
       return num_chunks_inflight <= 0 && num_chunks_to_send <= 0;
     }

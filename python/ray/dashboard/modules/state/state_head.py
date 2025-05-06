@@ -3,21 +3,21 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
-from typing import AsyncIterable
+from typing import Optional
 
 import aiohttp.web
 from aiohttp.web import Response
 
-import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray
+from ray import ActorID
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
-from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
@@ -26,13 +26,15 @@ from ray.dashboard.state_api_utils import (
     handle_summary_api,
     options_from_req,
 )
-from ray.dashboard.utils import Change, RateLimitedModule
+from ray.dashboard.utils import RateLimitedModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.utils import ResponseType
 from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
@@ -42,19 +44,16 @@ RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
+class StateHead(SubprocessModule, RateLimitedModule):
     """Module to obtain state information from the Ray cluster.
 
     It is responsible for state observability APIs such as
     ray.list_actors(), ray.get_actor(), ray.summary_actors().
     """
 
-    def __init__(
-        self,
-        config: dashboard_utils.DashboardHeadModuleConfig,
-    ):
+    def __init__(self, *args, **kwargs):
         """Initialize for handling RESTful requests from State API Client"""
-        dashboard_utils.DashboardHeadModule.__init__(self, config)
+        SubprocessModule.__init__(self, *args, **kwargs)
         # We don't allow users to configure too high a rate limit
         RateLimitedModule.__init__(
             self,
@@ -72,8 +71,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             thread_name_prefix="state_head_executor",
         )
 
-        DataSource.nodes.signal.append(self._update_raylet_stubs)
-        DataSource.agents.signal.append(self._update_agent_stubs)
+        # To make sure that the internal KV is initialized by getting the lazy property
+        assert self.gcs_client is not None
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
     async def limit_handler_(self):
         return do_reply(
@@ -87,50 +87,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             ),
             result=None,
         )
-
-    async def _update_raylet_stubs(self, change: Change):
-        """Callback that's called when a new raylet is added to Datasource.
-
-        Datasource is a api-server-specific module that's updated whenever
-        api server adds/removes a new node.
-
-        Args:
-            change: The change object. Whenever a new node is added
-                or removed, this callback is invoked.
-                When new node is added: information is in `change.new`.
-                When a node is removed: information is in `change.old`.
-                When a node id is overwritten by a new node with the same node id:
-                    `change.old` contains the old node info, and
-                    `change.new` contains the new node info.
-        """
-        if change.old:
-            # When a node is deleted from the DataSource or it is overwritten.
-            node_id, node_info = change.old
-            self._state_api_data_source_client.unregister_raylet_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, node_info = change.new
-            self._state_api_data_source_client.register_raylet_client(
-                node_id,
-                node_info["nodeManagerAddress"],
-                int(node_info["nodeManagerPort"]),
-                int(node_info["runtimeEnvAgentPort"]),
-            )
-
-    async def _update_agent_stubs(self, change: Change):
-        """Callback that's called when a new agent is added to Datasource."""
-        if change.old:
-            node_id, _ = change.old
-            self._state_api_data_source_client.unregister_agent_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, ports = change.new
-            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-            self._state_api_data_source_client.register_agent_client(
-                node_id,
-                ip,
-                int(ports[1]),
-            )
 
     @routes.get("/api/v0/actors")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -213,8 +169,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 ),
                 result=None,
             )
-
-        node_id = node_id or self._log_api.ip_to_node_id(node_ip)
+        if not node_id:
+            node_id = await self._log_api.ip_to_node_id(node_ip)
         if not node_id:
             return do_reply(
                 success=False,
@@ -237,21 +193,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
         return do_reply(success=True, error_message="", result=result)
 
-    @routes.get("/api/v0/logs/{media_type}")
+    @routes.get("/api/v0/logs/{media_type}", resp_type=ResponseType.STREAM)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
         """
         Fetches logs from the given criteria.
-
-        Output format is from the query parameter `format`.
-        - `leading_1` (default): Each chunk of data is prepended with a char `1` if the
-            chunk is successful, or `0` if the chunk is failed. After a `0` and its
-            error message, the stream is closed.
-        - `text`: Plain text format. Returns the original log data as-is. If an
-            exception occurs, yields `[get_logs] Fetch log error` with error message and
-            closes the stream.
-
-        Note: all formats always return 200 even if the log fetching fails.
         """
         record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
         options = GetLogOptions(
@@ -270,57 +216,44 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             attempt_number=req.query.get("attempt_number", 0),
         )
 
-        output_format = req.query.get("format", "leading_1")
-        logger.info(f"Streaming logs with format {output_format} options: {options}")
+        logger.info(f"Streaming logs with options: {options}")
 
-        async def formatter_text(response, async_gen: AsyncIterable[bytes]):
-            try:
-                async for logs in async_gen:
-                    await response.write(logs)
-            except asyncio.CancelledError:
-                # This happens when the client side closes the connection.
-                # Force close the connection and do no-op.
-                response.force_close()
-                raise
-            except Exception as e:
-                logger.exception("Error while streaming logs")
-                await response.write(f"[get_logs] Fetch log error: {e}".encode())
-
-        async def formatter_leading_1(response, async_gen: AsyncIterable[bytes]):
-            # NOTE: The first byte indicates the success / failure of individual
-            # stream. If the first byte is b"1", it means the stream was successful.
-            # If it is b"0", it means it is failed.
-            try:
-                async for logs in async_gen:
-                    logs_to_stream = bytearray(b"1")
-                    logs_to_stream.extend(logs)
-                    await response.write(bytes(logs_to_stream))
-            except asyncio.CancelledError:
-                # This happens when the client side closes the connection.
-                # Fofce close the connection and do no-op.
-                response.force_close()
-                raise
-            except Exception as e:
-                logger.exception("Error while streaming logs")
-                error_msg = bytearray(b"0")
-                error_msg.extend(
-                    f"Closing HTTP stream due to internal server error.\n{e}".encode()
-                )
-                await response.write(bytes(error_msg))
+        async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
+            actor_info_dict = await self.gcs_client.async_get_all_actor_info(
+                actor_id=actor_id
+            )
+            if len(actor_info_dict) == 0:
+                return None
+            return actor_info_dict[actor_id]
 
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
-        await response.prepare(req)
 
-        logs_gen = self._log_api.stream_logs(options)
-        if output_format == "text":
-            await formatter_text(response, logs_gen)
-        elif output_format == "leading_1":
-            await formatter_leading_1(response, logs_gen)
-        else:
-            raise ValueError(
-                f"Unsupported format: {output_format}, use 'text' or " "'leading_1'"
-            )
+        logs_gen = self._log_api.stream_logs(options, get_actor_fn)
+        # Handle the first chunk separately and returns 500 if an error occurs.
+        try:
+            first_chunk = await logs_gen.__anext__()
+            await response.prepare(req)
+            await response.write(first_chunk)
+        except StopAsyncIteration:
+            pass
+        except asyncio.CancelledError:
+            # This happens when the client side closes the connection.
+            # Force close the connection and do no-op.
+            response.force_close()
+            raise
+        except Exception as e:
+            logger.exception("Error while streaming logs")
+            raise aiohttp.web.HTTPInternalServerError(text=str(e))
+
+        try:
+            async for logs in logs_gen:
+                await response.write(logs)
+        except Exception:
+            logger.exception("Error while streaming logs")
+            response.force_close()
+            raise
+
         await response.write_eof()
         return response
 
@@ -371,17 +304,14 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             partial_failure_warning=None,
         )
 
-    async def run(self, server):
+    async def run(self):
+        await SubprocessModule.run(self)
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self.gcs_aio_client
+            gcs_channel, self.gcs_client
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,
             self._executor,
         )
         self._log_api = LogsManager(self._state_api_data_source_client)
-
-    @staticmethod
-    def is_minimal_module():
-        return False

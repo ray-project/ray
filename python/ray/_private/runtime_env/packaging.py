@@ -17,6 +17,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+    GRPC_CPP_MAX_MESSAGE_SIZE,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.protocol import Protocol
@@ -26,6 +27,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _pin_runtime_env_uri,
 )
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", GRPC_CPP_MAX_MESSAGE_SIZE)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 
@@ -184,6 +186,21 @@ def _hash_directory(
     return hash_val
 
 
+def is_path(uri_or_path: str) -> bool:
+    """Returns True if uri_or_path is a URI and False otherwise."""
+    parsed = urlparse(uri_or_path)
+    return not parsed.scheme
+
+
+def parse_path(pkg_path: str) -> None:
+    """Parse the path to check it is well-formed and exists."""
+    path = Path(pkg_path)
+    try:
+        path.resolve(strict=True)
+    except OSError:
+        raise ValueError(f"{path} is not a valid path.")
+
+
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
     Parse package uri into protocol and package name based on its format.
@@ -215,7 +232,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-            disallowed_chars = ["/", ":", "@", "+", " "]
+            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
@@ -224,7 +241,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
-
     return (protocol, package_name)
 
 
@@ -628,6 +644,7 @@ def upload_package_if_needed(
     package_file = package_file.with_name(
         f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
     )
+
     create_package(
         module_path,
         package_file,
@@ -654,8 +671,9 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
+    gcs_client: Optional[GcsClient] = None,
     logger: Optional[logging.Logger] = default_logger,
+    overwrite: bool = False,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -666,8 +684,9 @@ async def download_and_unpack_package(
         pkg_uri: URI of the package to download.
         base_directory: Directory to use as the parent directory of the target
             directory for the unpacked files.
-        gcs_aio_client: Client to use for downloading from the GCS.
+        gcs_client: Client to use for downloading from the GCS.
         logger: The logger to use.
+        overwrite: If True, overwrite the existing package.
 
     Returns:
         Path to the local directory containing the unpacked package files.
@@ -695,18 +714,29 @@ async def download_and_unpack_package(
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
-        if local_dir.exists():
+
+        download_package: bool = True
+        if local_dir.exists() and not overwrite:
+            download_package = False
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
-        else:
+        elif local_dir.exists():
+            logger.info(f"Removing {local_dir} with pkg_file {pkg_file}")
+            shutil.rmtree(local_dir)
+
+        if download_package:
             protocol, _ = parse_uri(pkg_uri)
+            logger.info(
+                f"Downloading package from {pkg_uri} to {pkg_file} "
+                f"with protocol {protocol}"
+            )
             if protocol == Protocol.GCS:
-                if gcs_aio_client is None:
+                if gcs_client is None:
                     raise ValueError(
                         "GCS client must be provided to download from GCS."
                     )
 
                 # Download package from the GCS.
-                code = await gcs_aio_client.internal_kv_get(
+                code = await gcs_client.async_internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
                 if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):

@@ -17,32 +17,29 @@
 #include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <future>
+#include <iostream>
+#include <limits>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_split.h"
-#include "ray/util/util.h"
+#include "ray/common/ray_config.h"
+#include "ray/util/spdlog_fd_sink.h"
+#include "ray/util/spdlog_newliner_sink.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 namespace ray {
 
 namespace {
-// Default pipe log read buffer size.
-constexpr size_t kDefaultPipeLogReadBufSize = 1024;
-
-size_t GetPipeLogReadSizeOrDefault() {
-  // TODO(hjiang): Write a util function `GetEnvOrDefault`.
-  const char *var_value = std::getenv(kPipeLogReadBufSizeEnv.data());
-  if (var_value != nullptr) {
-    size_t read_buf_size = 0;
-    if (absl::SimpleAtoi(var_value, &read_buf_size) && read_buf_size > 0) {
-      return read_buf_size;
-    }
-  }
-  return kDefaultPipeLogReadBufSize;
-}
 
 struct StreamDumper {
   absl::Mutex mu;
@@ -50,92 +47,62 @@ struct StreamDumper {
   std::deque<std::string> content ABSL_GUARDED_BY(mu);
 };
 
-// Read bytes from handle into [data], return number of bytes read.
-// If read fails, throw exception.
-#if defined(__APPLE__) || defined(__linux__)
-#include <unistd.h>
-size_t Read(int read_fd, char *data, size_t len) {
-  // TODO(hjiang): Notice frequent read could cause performance issue.
-  ssize_t bytes_read = read(read_fd, data, len);
-  // TODO(hjiang): Add macros which checks for syscalls.
-  RAY_CHECK(bytes_read != -1) << "Fails to read from pipe because " << strerror(errno);
-  return bytes_read;
-}
-#elif defined(_WIN32)
-#include <windows.h>
-size_t Read(HANDLE read_handle, char *data, size_t len) {
-  DWORD bytes_read = 0;
-  BOOL success = ReadFile(read_handle, data, len, &bytes_read, nullptr);
-  RAY_CHECK(success) << "Fails to read from pipe.";
-  return bytes_read;
-}
-#endif
-
-template <typename ReadFunc>
-std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
-                                                 std::function<void()> close_read_handle,
-                                                 std::shared_ptr<spdlog::logger> logger,
-                                                 std::function<void()> on_completion) {
+// Start two threads:
+// 1. A reader thread which continuously reads from [pipe_stream] until close;
+// 2. A dumper thread which writes content to sink via [write_func].
+void StartStreamDump(
+    std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_source>>
+        pipe_instream,
+    std::shared_ptr<spdlog::logger> logger,
+    std::function<void()> on_close_completion) {
   auto stream_dumper = std::make_shared<StreamDumper>();
 
   // Create two threads, so there's no IO operation within critical section thus no
   // blocking on write.
-  std::thread([read_func = std::move(read_func),
-               close_read_handle = std::move(close_read_handle),
+  std::thread([pipe_instream = std::move(pipe_instream),
                stream_dumper = stream_dumper]() {
-    const size_t buf_size = GetPipeLogReadSizeOrDefault();
+    SetThreadName("PipeReaderThd");
+
+    const size_t buf_size = RayConfig::instance().pipe_logger_read_buf_size();
+    // Pre-allocate stream buffer to avoid excessive syscall.
     // TODO(hjiang): Should resize without initialization.
-    std::string content(buf_size, '\0');
-    // Logging are written in lines, `last_line` records part of the strings left in
-    // last `read` syscall.
-    std::string last_line;
+    std::string readsome_buffer(buf_size, '\0');
 
-    while (true) {
-      size_t bytes_read = read_func(content.data(), content.length());
-      std::string_view cur_content{content.data(), bytes_read};
-      std::vector<std::string_view> newlines = absl::StrSplit(cur_content, '\n');
-
-      for (size_t idx = 0; idx < newlines.size() - 1; ++idx) {
-        std::string cur_new_line = std::move(last_line);
-        cur_new_line += newlines[idx];
-
-        // Reached the end of stream.
-        if (cur_new_line.empty()) {
-          {
-            absl::MutexLock lock(&stream_dumper->mu);
-            stream_dumper->stopped = true;
-          }
-
-          // Place IO operation out of critical section.
-          close_read_handle();
-
-          return;
+    std::string cur_segment{"a"};
+    while (pipe_instream->read(cur_segment.data(), /*count=*/1)) {
+      // Read available bytes in non-blocking style.
+      while (true) {
+        auto bytes_read =
+            pipe_instream->readsome(readsome_buffer.data(), readsome_buffer.length());
+        if (bytes_read == 0) {
+          break;
         }
-
-        last_line.clear();
-
-        // We only log non-empty lines.
-        if (!cur_new_line.empty()) {
-          absl::MutexLock lock(&stream_dumper->mu);
-          stream_dumper->content.emplace_back(std::move(cur_new_line));
-        }
+        std::string_view cur_readsome_buffer{readsome_buffer.data(),
+                                             static_cast<uint64_t>(bytes_read)};
+        cur_segment += cur_readsome_buffer;
       }
 
-      // Special handle the last segment we've read.
-      //
-      // Nothing to do if we've read a complete newline.
-      if (content.back() == '\n') {
-        continue;
+      // Already read all we have at the moment, stream into logger.
+      {
+        absl::MutexLock lock(&stream_dumper->mu);
+        stream_dumper->content.emplace_back(std::move(cur_segment));
+        cur_segment.clear();
       }
 
-      // Otherwise record the newline so we could reuse in the next read iteration.
-      last_line += newlines.back();
+      // Read later bytes in blocking style.
+      cur_segment = "a";
     }
+
+    // Reached EOF.
+    absl::MutexLock lock(&stream_dumper->mu);
+    stream_dumper->stopped = true;
   }).detach();
 
   std::thread([stream_dumper = stream_dumper,
                logger = std::move(logger),
-               on_completion = std::move(on_completion)]() {
+               on_close_completion = std::move(on_close_completion)]() {
+    SetThreadName("PipeDumpThd");
+
     while (true) {
       std::string curline;
       {
@@ -153,81 +120,181 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
           stream_dumper->content.pop_front();
         } else if (stream_dumper->stopped) {
           logger->flush();
-          on_completion();
+          on_close_completion();
           return;
         }
       }
 
       // Perform IO operation out of critical section.
-      logger->log(spdlog::level::info, curline);
+      logger->log(spdlog::level::info, std::move(curline));
     }
   }).detach();
-
-  return stream_dumper;
 }
 
-std::shared_ptr<spdlog::logger> CreateLogger(const std::string &fname,
-                                             const LogRotationOption &log_rotate_opt) {
-  auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-      fname, log_rotate_opt.rotation_max_size, log_rotate_opt.rotation_max_file_count);
-  file_sink->set_level(spdlog::level::info);
+// Create a spdlog logger with all sinks specified by the given option.
+std::shared_ptr<spdlog::logger> CreateLogger(
+    const StreamRedirectionOption &stream_redirect_opt) {
+  absl::InlinedVector<spdlog::sink_ptr, 3> sinks;
 
-  auto logger = std::make_shared<spdlog::logger>(fname, std::move(file_sink));
-  logger->set_pattern("%v");  // Only message string is logged.
+  // Setup file sink.
+  spdlog::sink_ptr file_sink = nullptr;
+  if (stream_redirect_opt.rotation_max_size != 0) {
+    file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+        stream_redirect_opt.file_path,
+        stream_redirect_opt.rotation_max_size,
+        stream_redirect_opt.rotation_max_file_count);
+  } else {
+    file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(
+        stream_redirect_opt.file_path);
+  }
+  file_sink->set_level(spdlog::level::info);
+  // Spdlog logger's formatter only applies for its sink (which is newliner sink here),
+  // but not internal sinks recursively (aka, rotation file sink won't be set); so have to
+  // manually set formatter here.
+  file_sink->set_formatter(std::make_unique<spdlog::pattern_formatter>(
+      "%v", spdlog::pattern_time_type::local, std::string("")));
+  auto newliner_sink = std::make_shared<spdlog_newliner_sink_st>(std::move(file_sink));
+  sinks.emplace_back(std::move(newliner_sink));
+
+  // Setup fd sink for stdout and stderr.
+#if defined(__APPLE__) || defined(__linux__)
+  if (stream_redirect_opt.tee_to_stdout) {
+    int duped_stdout_fd = dup(STDOUT_FILENO);
+    RAY_CHECK_NE(duped_stdout_fd, -1) << "Fails to duplicate stdout: " << strerror(errno);
+    auto stdout_sink = std::make_shared<non_owned_fd_sink_st>(duped_stdout_fd);
+    sinks.emplace_back(std::move(stdout_sink));
+  }
+  if (stream_redirect_opt.tee_to_stderr) {
+    int duped_stderr_fd = dup(STDERR_FILENO);
+    RAY_CHECK_NE(duped_stderr_fd, -1) << "Fails to duplicate stderr: " << strerror(errno);
+    auto stderr_sink = std::make_shared<non_owned_fd_sink_st>(duped_stderr_fd);
+    sinks.emplace_back(std::move(stderr_sink));
+  }
+
+#elif defined(_WIN32)
+  if (stream_redirect_opt.tee_to_stdout) {
+    HANDLE duped_stdout_handle;
+    BOOL result = DuplicateHandle(GetCurrentProcess(),
+                                  GetStdHandle(STD_OUTPUT_HANDLE),
+                                  GetCurrentProcess(),
+                                  &duped_stdout_handle,
+                                  0,
+                                  FALSE,
+                                  DUPLICATE_SAME_ACCESS);
+    RAY_CHECK(result) << "Fails to duplicate stdout handle";
+    auto stdout_sink = std::make_shared<non_owned_fd_sink_st>(duped_stdout_handle);
+    sinks.emplace_back(std::move(stdout_sink));
+  }
+  if (stream_redirect_opt.tee_to_stderr) {
+    HANDLE duped_stderr_handle;
+    BOOL result = DuplicateHandle(GetCurrentProcess(),
+                                  GetStdHandle(STD_ERROR_HANDLE),
+                                  GetCurrentProcess(),
+                                  &duped_stderr_handle,
+                                  0,
+                                  FALSE,
+                                  DUPLICATE_SAME_ACCESS);
+    RAY_CHECK(result) << "Fails to duplicate stderr handle";
+    auto stderr_sink = std::make_shared<non_owned_fd_sink_st>(duped_stderr_handle);
+    sinks.emplace_back(std::move(stderr_sink));
+  }
+#endif
+
+  auto logger = std::make_shared<spdlog::logger>(
+      /*name=*/absl::StrFormat("pipe-logger-%s", stream_redirect_opt.file_path),
+      std::make_move_iterator(sinks.begin()),
+      std::make_move_iterator(sinks.end()));
+  logger->set_level(spdlog::level::info);
+  // Only message is logged without extra newliner.
+  auto formatter = std::make_unique<spdlog::pattern_formatter>(
+      "%v", spdlog::pattern_time_type::local, std::string(""));
+  logger->set_formatter(std::move(formatter));
   return logger;
 }
 
+// Pipe streamer is only used in certain cases:
+// 1. Log rotation is requested;
+// 2. Multiple sinks are involved.
+bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
+  const bool need_rotation = stream_redirect_opt.rotation_max_size != 0;
+  return need_rotation || stream_redirect_opt.tee_to_stdout ||
+         stream_redirect_opt.tee_to_stderr;
+}
+
+RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
+  boost::iostreams::file_descriptor_sink fd_sink{file_path, std::ios_base::out};
+  auto handle = fd_sink.handle();
+  auto ostream =
+      std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
+          std::move(fd_sink));
+
+  // In this case, we don't write to the file via logger, so no need to set formatter.
+  // spglog is used here merely to reuse the same [RedirectionFileHandle] interface.
+  auto logger_sink = std::make_shared<non_owned_fd_sink_st>(handle);
+  auto logger = std::make_shared<spdlog::logger>(
+      /*name=*/absl::StrFormat("pipe-logger-%s", file_path), std::move(logger_sink));
+
+  // Lifecycle for the file handle is bound at [ostream] thus [close_fn].
+  auto close_fn = [ostream = std::move(ostream)]() { ostream->close(); };
+
+  return RedirectionFileHandle{handle, std::move(logger), std::move(close_fn)};
+}
 }  // namespace
 
-RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
-                                             const LogRotationOption &log_rotate_opt,
-                                             std::function<void()> on_completion) {
+RedirectionFileHandle CreateRedirectionFileHandle(
+    const StreamRedirectionOption &stream_redirect_opt) {
+  // Case-1: only redirection, but not rotation and tee involved.
+  const bool should_use_pipe_stream = ShouldUsePipeStream(stream_redirect_opt);
+  if (!should_use_pipe_stream) {
+    return OpenFileForRedirection(stream_redirect_opt.file_path);
+  }
+
+  // Case-2: redirection with rotation, or tee is involved.
+  //
+  // Used to synchronize on asynchronous stream logging.
+  // Shared pointer is used here to workaround the known limitation `std::function`
+  // requires captured to be copy constructible.
+  auto promise = std::make_shared<std::promise<void>>();
+  // Invoked after flush and close finished.
+  auto on_close_completion = [promise = promise]() { promise->set_value(); };
+
 #if defined(__APPLE__) || defined(__linux__)
   int pipefd[2] = {0};
-  // TODO(hjiang): We shoud have our own syscall macro.
   RAY_CHECK_EQ(pipe(pipefd), 0);
-  int read_fd = pipefd[0];
-  int write_fd = pipefd[1];
-
-  auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
-  auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
-  auto termination_caller = [write_fd]() {
-    RAY_CHECK_EQ(close(write_fd), 0);
-  };
-
+  int read_handle = pipefd[0];
+  int write_handle = pipefd[1];
 #elif defined(_WIN32)
-  SECURITY_ATTRIBUTES sa;
-  sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-  sa.lpSecurityDescriptor = nullptr;
-  sa.bInheritHandle = TRUE;
-
-  HANDLE read_handle;
-  HANDLE write_handle;
-  RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0));
-
-  auto read_func = [read_handle](char *data, size_t len) {
-    return Read(read_handle, data, len);
-  };
-  auto close_read_handle = [read_handle]() { RAY_CHECK(CloseHandle(read_handle)); };
-  auto termination_caller = [write_handle, read_handle]() {
-    RAY_CHECK(CloseHandle(write_handle));
-  };
-
+  HANDLE read_handle = nullptr;
+  HANDLE write_handle = nullptr;
+  SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+  RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0)) << "Fails to create pipe";
 #endif
 
-  auto logger = CreateLogger(fname, log_rotate_opt);
-  CreateStreamDumper(std::move(read_func),
-                     std::move(close_read_handle),
-                     logger,
-                     std::move(on_completion));
+  boost::iostreams::file_descriptor_source pipe_read_source{
+      read_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
+  boost::iostreams::file_descriptor_sink pipe_write_sink{
+      write_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
 
-#if defined(__APPLE__) || defined(__linux__)
-  RotationFileHandle stream_token{write_fd, std::move(termination_caller)};
-#elif defined(_WIN32)
-  RotationFileHandle stream_token{write_handle, std::move(termination_caller)};
-#endif
+  auto pipe_instream = std::make_shared<
+      boost::iostreams::stream<boost::iostreams::file_descriptor_source>>(
+      std::move(pipe_read_source));
+  auto pipe_ostream =
+      std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
+          std::move(pipe_write_sink));
 
-  return stream_token;
+  auto close_fn = [pipe_ostream, promise]() mutable {
+    pipe_ostream->close();
+    // Block until destruction finishes.
+    promise->get_future().get();
+  };
+
+  auto logger = CreateLogger(stream_redirect_opt);
+  StartStreamDump(std::move(pipe_instream), logger, std::move(on_close_completion));
+
+  RedirectionFileHandle redirection_file_handle{
+      write_handle, logger, std::move(close_fn)};
+
+  return redirection_file_handle;
 }
 
 }  // namespace ray

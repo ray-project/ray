@@ -14,6 +14,11 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -97,7 +102,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_task_manager_.QueueAndScheduleTask(task,
+  cluster_task_manager_.QueueAndScheduleTask(std::move(task),
                                              /*grant_or_reject*/ false,
                                              /*is_selected_based_on_locality*/ false,
                                              /*reply*/ reply.get(),
@@ -161,8 +166,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
   int key_index = distribution(gen_);
   int index = 0;
   auto iter = alive_nodes.begin();
-  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)
-    ;
+  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter) {
+  }
   return iter->second;
 }
 

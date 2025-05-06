@@ -15,9 +15,13 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
+#include <memory>
+#include <queue>
 #include <regex>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
@@ -506,7 +510,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service;
 
   auto thread = std::make_unique<std::thread>([&]() {
-    boost::asio::io_service::work work(io_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        io_service.get_executor());
     io_service.run();
   });
 
@@ -523,7 +528,11 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",
                                RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
-  auto reply = context->RunArgvSync(cmd);
+  std::promise<std::shared_ptr<CallbackReply>> promise;
+  context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
+    promise.set_value(reply);
+  });
+  auto reply = promise.get_future().get();
   const auto &keys = reply->ReadAsStringArray();
   if (keys.empty()) {
     RAY_LOG(INFO) << "No keys found for external storage namespace "
@@ -532,7 +541,12 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   }
   auto delete_one_sync = [context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
-    auto del_reply = context->RunArgvSync(del_cmd);
+    std::promise<std::shared_ptr<CallbackReply>> promise;
+    context->RunArgvAsync(del_cmd,
+                          [&promise](const std::shared_ptr<CallbackReply> &reply) {
+                            promise.set_value(reply);
+                          });
+    auto del_reply = promise.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
   size_t num_deleted = 0;
