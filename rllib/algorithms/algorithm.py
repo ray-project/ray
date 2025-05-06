@@ -1138,10 +1138,7 @@ class Algorithm(Checkpointable, Trainable):
         # Evaluate with fixed duration.
         self._evaluate_offline_with_fixed_duration()
         # Reduce the evaluation results.
-        eval_results = self.metrics.reduce(
-            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
-            return_stats_obj=False,
-        )
+        results = self.metrics.compile()
 
         # Trigger `on_evaluate_offline_end` callback.
         make_callback(
@@ -1151,12 +1148,14 @@ class Algorithm(Checkpointable, Trainable):
             kwargs=dict(
                 algorithm=self,
                 metrics_logger=self.metrics,
-                evaluation_metrics=eval_results,
+                evaluation_metrics=results["EVALUATION_RESULTS"][
+                    "OFFLINE_EVAL_RUNNER_RESULTS"
+                ],
             ),
         )
 
         # Also return the results here for convenience.
-        return {EVALUATION_RESULTS: {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}}
+        return results
 
     @PublicAPI
     def evaluate(

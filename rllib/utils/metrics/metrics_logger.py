@@ -751,7 +751,6 @@ class MetricsLogger:
                     and base_stats._window is None
                     and base_stats._clear_on_reduce is False
                 ):
-
                     for stat in incoming_stats:
                         base_stats.push(-stat.get_reduce_history()[-2][0])
             else:

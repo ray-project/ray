@@ -1135,7 +1135,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_env_steps_sampled = batch_size_B
         num_episodes_per_sample = len(sampled_episode_idxs)
         num_env_steps_per_sample = len(sampled_env_step_idxs)
-        sampled_n_step = (sum(sampled_n_steps) / batch_size_B,)
+        sampled_n_step = sum(sampled_n_steps) / batch_size_B
         num_resamples = 0
         agent_to_num_steps_sampled = {DEFAULT_AGENT_ID: num_env_steps_sampled}
         agent_to_num_episodes_per_sample = {DEFAULT_AGENT_ID: num_episodes_per_sample}

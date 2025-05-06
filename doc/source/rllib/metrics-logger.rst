@@ -351,7 +351,7 @@ You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.
         print(logger.get_throughputs("lifetime_count"))
 
         # You can also get a dict of all throughputs at once:
-        print(logger.get_throughputs()))
+        print(logger.get_throughputs())
 
 
 Measuring throughputs with MetricsLogger.log_time()

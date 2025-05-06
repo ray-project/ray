@@ -270,7 +270,7 @@ class Stats:
                 else:
                     # In these cases, even if we compile, we return lists
                     if not self._has_new_values:
-                        return self._reduce_history[-1]
+                        return self.get_reduce_history()[-1]
                     else:
                         return self._reduced_values()[1]
             else:
@@ -278,7 +278,7 @@ class Stats:
                     return self._reduced_values()[1]
                 else:
                     if self._reduce_method:
-                        return self._reduce_history[-1]
+                        return self.get_reduce_history()[-1]
                     else:
                         return self._reduced_values()[1]
         else:
@@ -287,7 +287,7 @@ class Stats:
                 ret, reduced_values = self._reduced_values()
             else:
                 ret = None
-                reduced_values = self._reduce_history[-1]
+                reduced_values = self.get_reduce_history()[-1]
 
             if compile:
                 if ret is None:
@@ -310,7 +310,7 @@ class Stats:
             A list containing the history of reduced values.
         """
         # Make a 1 level deep copy of the reduce history to avoid mutating the original reduce history's elements
-        return [sublist.copy() for sublist in list(self._reduce_history)]
+        return list(self._reduce_history)
 
     @property
     def throughput(self) -> float:
@@ -369,7 +369,7 @@ class Stats:
             values_list = new_values_list
         else:
             reduced = None
-            values_list = self._reduce_history[-1]
+            values_list = self.get_reduce_history()[-1]
 
         values_list = self._numpy_if_necessary(values_list)
 
@@ -386,7 +386,7 @@ class Stats:
                 reduced = self._reduced_values()[0]
             return self._numpy_if_necessary(reduced)[0]
         else:
-            return self._numpy_if_necessary(values_list)
+            return values_list
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -605,7 +605,7 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "_hist": list(self._reduce_history),
+            "_hist": list(self.get_reduce_history()),
         }
         if self._throughput_stats is not None:
             state["throughput_stats"] = self._throughput_stats.get_state()
