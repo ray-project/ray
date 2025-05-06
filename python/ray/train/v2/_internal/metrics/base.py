@@ -1,7 +1,7 @@
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Type, TypeVar, Any
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
 from ray.util.metrics import Gauge
 
@@ -166,6 +166,8 @@ class MetricsTracker:
             return  # No thread running
 
         self._thread_stop_event.set()
-        self._thread.join(timeout=1.0)  # Wait for thread to finish
+        # Push metrics one final time before shutting down
+        self._push_metrics()
+        self._thread.join(timeout=1.0)  # Wait for thread to finish with timeout
         self._thread = None
         self._thread_stop_event = None
