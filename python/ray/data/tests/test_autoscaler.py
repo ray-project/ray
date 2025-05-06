@@ -141,12 +141,13 @@ def test_cluster_scaling():
     op1 = MagicMock(
         input_dependencies=[],
         incremental_resource_usage=MagicMock(
-            return_value=ExecutionResources(cpu=1, gpu=0, object_store_memory=0)
+            return_value=ExecutionResources(cpu=1, gpu=0,
+                                            object_store_memory=0)
         ),
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state1 = MagicMock(
-        total_input_enqueued=MagicMock(return_value=0),
+        _pending_dispatch_input_count=MagicMock(return_value=0),
         _scheduling_status=MagicMock(
             runnable=False,
         ),
@@ -154,12 +155,13 @@ def test_cluster_scaling():
     op2 = MagicMock(
         input_dependencies=[op1],
         incremental_resource_usage=MagicMock(
-            return_value=ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
+            return_value=ExecutionResources(cpu=2, gpu=0,
+                                            object_store_memory=0)
         ),
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state2 = MagicMock(
-        total_input_enqueued=MagicMock(return_value=1),
+        _pending_dispatch_input_count=MagicMock(return_value=1),
         _scheduling_status=MagicMock(
             runnable=False,
         ),
