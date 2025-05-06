@@ -275,6 +275,7 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
@@ -369,6 +370,14 @@ class Dataset:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
+            actor_startup_timeout_s: Timeout in seconds for actor startup when using 
+                actor-based map operations (when ``fn`` is a class). If an actor takes 
+                longer than this time to start, the operation will fail with a 
+                ``ray.exceptions.GetTimeoutError``. If not provided (None), uses the 
+                default value from ``DataContext.wait_for_min_actors_s``. This is useful
+                for operations using actors with long initialization times (such as 
+                loading large models) to avoid having to change the global timeout
+                setting.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -409,6 +418,7 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
         logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
@@ -458,6 +468,7 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -603,7 +614,8 @@ class Dataset:
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
@@ -629,6 +641,14 @@ class Dataset:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
+            actor_startup_timeout_s: Timeout in seconds for actor startup when using 
+                actor-based map operations (when ``fn`` is a class). If an actor takes 
+                longer than this time to start, the operation will fail with a 
+                ``ray.exceptions.GetTimeoutError``. If not provided (None), uses the 
+                default value from ``DataContext.wait_for_min_actors_s``. This is useful
+                for operations using actors with long initialization times (such as 
+                loading large models) to avoid having to change the global timeout
+                setting.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -692,6 +712,7 @@ class Dataset:
             memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
+            actor_startup_timeout_s=actor_startup_timeout_s,
             **ray_remote_args,
         )
 
@@ -712,6 +733,7 @@ class Dataset:
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        actor_startup_timeout_s: Optional[float],
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -766,6 +788,7 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1174,6 +1197,7 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row and then flatten results.
@@ -1262,6 +1286,14 @@ class Dataset:
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
+            actor_startup_timeout_s: Timeout in seconds for actor startup when using 
+                actor-based map operations (when ``fn`` is a class). If an actor takes 
+                longer than this time to start, the operation will fail with a 
+                ``ray.exceptions.GetTimeoutError``. If not provided (None), uses the 
+                default value from ``DataContext.wait_for_min_actors_s``. This is useful
+                for operations using actors with long initialization times (such as 
+                loading large models) to avoid having to change the global timeout
+                setting.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -1300,6 +1332,7 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
@@ -1317,6 +1350,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
@@ -1380,6 +1414,14 @@ class Dataset:
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
+            actor_startup_timeout_s: Timeout in seconds for actor startup when using 
+                actor-based map operations (when ``fn`` is a class). If an actor takes 
+                longer than this time to start, the operation will fail with a 
+                ``ray.exceptions.GetTimeoutError``. If not provided (None), uses the 
+                default value from ``DataContext.wait_for_min_actors_s``. This is useful
+                for operations using actors with long initialization times (such as 
+                loading large models) to avoid having to change the global timeout
+                setting.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1439,6 +1481,7 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)

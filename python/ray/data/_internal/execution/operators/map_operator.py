@@ -84,6 +84,7 @@ class MapOperator(OneToOneOperator, ABC):
         supports_fusion: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -95,6 +96,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
+        self._actor_startup_timeout_s = actor_startup_timeout_s
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
@@ -167,6 +169,7 @@ class MapOperator(OneToOneOperator, ABC):
         supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -194,6 +197,9 @@ class MapOperator(OneToOneOperator, ABC):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
+            actor_startup_timeout_s: Actor startup timeout to pass to the compute
+                strategy, if applicable. Only used when compute_strategy is
+                ActorPoolStrategy.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         if compute_strategy is None:
@@ -215,6 +221,7 @@ class MapOperator(OneToOneOperator, ABC):
                 supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                actor_startup_timeout_s=actor_startup_timeout_s,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -232,6 +239,7 @@ class MapOperator(OneToOneOperator, ABC):
                 supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                actor_startup_timeout_s=actor_startup_timeout_s,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
