@@ -304,7 +304,7 @@ pure-eval==0.2.2
 py-cpuinfo==9.0.0
 py-spy==0.4.0
 pyarrow==14.0.2
-pyarrow-hotfix==0.6
+pyarrow-hotfix==0.7
 pyasn1==0.5.1
 pyasn1-modules==0.3.0
 pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1732588390546/work
