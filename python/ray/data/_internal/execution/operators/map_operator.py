@@ -145,6 +145,9 @@ class MapOperator(OneToOneOperator, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
+    def internal_queue_size(self) -> int:
+        return self._block_ref_bundler.total_bundles()
+
     @property
     def name(self) -> str:
         name = super().name
@@ -574,6 +577,9 @@ class _BlockRefBundler:
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0
         self._finalized = False
+
+    def total_bundles(self):
+        return len(self._bundle_buffer)
 
     def add_bundle(self, bundle: RefBundle):
         """Add a bundle to the bundler."""

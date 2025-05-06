@@ -96,6 +96,9 @@ class AllToAllOperator(PhysicalOperator):
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
 
+    def internal_queue_size(self) -> int:
+        return len(self._input_buffer)
+
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,
