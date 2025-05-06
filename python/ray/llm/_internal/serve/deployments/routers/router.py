@@ -129,30 +129,6 @@ def _apply_openai_json_format(
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
     raise ValueError(f"Unexpected response type: {type(response)}")
-    # # Check if the response is already JSON serialized from the batcher
-    # try:
-    #     data = json.loads(response)
-    #     if isinstance(data, dict) and data.get("__json_serialized__") == True:
-    #         # Data is already in JSON format, no need to deserialize and reserialize
-    #         return "".join(f"data: {r}\n\n" for r in data["data"])
-    # except (json.JSONDecodeError, TypeError):
-    #     pass
-    
-    # # Fall back to the original implementation for backward compatibility
-    # # or for responses not coming from our optimized batcher
-    # try:
-    #     import pickle
-    #     response = pickle.loads(response)
-    #     if isinstance(response, list):
-    #         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
-    #     return "".join(f"data: {response.model_dump_json()}\n\n")
-    # except:
-    #     # Last resort: try to handle the response as is
-    #     if isinstance(response, list):
-    #         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
-    #     if hasattr(response, "model_dump_json"):
-    #         return f"data: {response.model_dump_json()}\n\n"
-    #     return ""
 
 
 async def _openai_json_wrapper(

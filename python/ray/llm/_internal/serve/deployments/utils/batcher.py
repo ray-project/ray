@@ -51,23 +51,6 @@ class Batcher(Generic[T]):
 
     def _merge_results(self, results: List[T]) -> Iterable[T]:
         return results
-        # """Convert results to JSON data format as an optimization for serialization.
-        
-        # Instead of using pickle, we serialize directly to JSON strings which will be
-        # immediately used downstream in the router.
-        # """
-        # json_strings = []
-        # for result in results:
-        #     # Get the JSON representation directly instead of pickling the entire object
-        #     if hasattr(result, "model_dump_json"):
-        #         # For Pydantic models
-        #         json_strings.append(result.model_dump_json())
-        #     else:
-        #         # Fallback for non-Pydantic objects
-        #         json_strings.append(json.dumps(result, default=lambda o: o.__dict__))
-        
-        # # Wrap in a special format to indicate this is JSON serialized data
-        # return json.dumps({"__json_serialized__": True, "data": json_strings})
 
     async def stream(self) -> AsyncGenerator[Iterable[T], None]:
         """Drain from the queue every interval_ms and yield the merged results"""
