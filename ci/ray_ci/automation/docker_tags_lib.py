@@ -492,6 +492,7 @@ def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
     except subprocess.CalledProcessError as e:
         return e.returncode, e.output
 
+
 def _call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
     try:
         with subprocess.Popen(
@@ -519,6 +520,7 @@ def _call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
             return return_code, output
     except subprocess.CalledProcessError as e:
         return e.returncode, e.output
+
 
 def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     """

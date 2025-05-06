@@ -9,6 +9,7 @@ from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
 )
 
+
 @click.command()
 @click.option("--prefix", required=True, type=str)
 def main(prefix):
@@ -19,7 +20,7 @@ def main(prefix):
     for tag in tags:
         if "-aarch64" not in tag and tag + "-aarch64" in tags:
             indexes_to_publish.append((tag, tag + "-aarch64"))
-    
+
     for tags in indexes_to_publish:
         generate_index(index_name=tags[0], tags=tags)
 
