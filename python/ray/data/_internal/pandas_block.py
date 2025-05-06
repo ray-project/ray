@@ -14,6 +14,7 @@ from typing import (
 )
 
 import numpy as np
+from pandas.api.types import is_object_dtype, is_string_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
-_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 50
+_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
 
 logger = logging.getLogger(__name__)
 
@@ -396,8 +397,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from pandas.api.types import is_object_dtype
-
         from ray.air.util.tensor_extensions.pandas import TensorArray
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
@@ -447,8 +446,10 @@ class PandasBlockAccessor(TableBlockAccessor):
                     objects.extend(current.to_numpy())
             return total_size
 
-        # Get initial memory usage including deep introspection
-        memory_usage = self._table.memory_usage(index=True, deep=True)
+        # Get initial memory usage.
+        # No need for deep inspection here, as we will handle the str, object and
+        # extension columns separately.
+        memory_usage = self._table.memory_usage(index=True, deep=False)
 
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
@@ -456,9 +457,13 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # Handle object columns separately
         for column in self._table.columns:
-            # Check pandas object dtype and the extension dtype
-            if is_object_dtype(self._table[column].dtype) or isinstance(
-                self._table[column].dtype, object_need_check
+            # For str, object and extension dtypes, we calculate the size
+            # by sampling the data.
+            dtype = self._table[column].dtype
+            if (
+                is_string_dtype(dtype)
+                or is_object_dtype(dtype)
+                or isinstance(dtype, object_need_check)
             ):
                 total_size = len(self._table[column])
 
@@ -479,7 +484,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                         )
                     # Scale back to the full column size if we sampled
                     column_memory = column_memory_sample * (total_size / sample_size)
-                    memory_usage[column] = int(column_memory)
+                    # Add the data memory usage on top of the index memory usage.
+                    memory_usage[column] += int(column_memory)
                 except Exception as e:
                     # Handle or log the exception as needed
                     logger.warning(f"Error calculating size for column '{column}': {e}")

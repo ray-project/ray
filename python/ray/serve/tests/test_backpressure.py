@@ -5,6 +5,8 @@ from typing import Tuple
 import grpc
 import pytest
 import requests
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from starlette.requests import Request
 
 import ray
@@ -189,6 +191,79 @@ def test_model_composition_backpressure(serve_instance):
         assert queued_fut.result().text == "ok"
 
     ray.get(signal_actor.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
+
+@pytest.mark.parametrize("request_type", ["async_non_gen", "sync_non_gen"])
+def test_model_composition_backpressure_with_fastapi(serve_instance, request_type):
+    """Tests backpressure behavior with FastAPI model composition.
+
+    Tests that when a Child deployment with max_ongoing_requests=1 and max_queued_requests=1
+    is called through a Parent FastAPI deployment:
+    1. First request blocks while executing
+    2. Second request gets queued
+    3. Third request gets rejected with 503 status code
+    4. After unblocking, first two requests complete successfully
+
+    Tests both async and sync non-generator endpoints.
+    """
+    signal_actor = SignalActor.remote()
+    app = FastAPI()
+
+    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
+    class Child:
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return "ok"
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        @app.get("/async_non_gen")
+        async def async_non_gen(self):
+            result = await self.child.remote()
+            return PlainTextResponse(result)
+
+        @app.get("/sync_non_gen")
+        def sync_non_gen(self):
+            result = self.child.remote().result()
+            return PlainTextResponse(result)
+
+    def send_request():
+        url_map = {
+            "async_non_gen": "http://localhost:8000/async_non_gen",
+            "sync_non_gen": "http://localhost:8000/sync_non_gen",
+        }
+        resp = requests.get(url_map[request_type])
+        return resp
+
+    serve.run(Parent.bind(child=Child.bind()))
+
+    with ThreadPoolExecutor(max_workers=3) as exc:
+        executing_fut = exc.submit(send_request)
+        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+        done, _ = wait([executing_fut], timeout=0.1, return_when=FIRST_COMPLETED)
+        assert len(done) == 0
+
+        queued_fut = exc.submit(send_request)
+        done, _ = wait(
+            [executing_fut, queued_fut], timeout=0.1, return_when=FIRST_COMPLETED
+        )
+        assert len(done) == 0
+
+        rejected_fut = exc.submit(send_request)
+        assert rejected_fut.result().status_code == 503
+
+        # Send signal, let the two requests succeed.
+        ray.get(signal_actor.send.remote())
+        assert executing_fut.result().status_code == 200
+        assert executing_fut.result().text == "ok"
+        assert queued_fut.result().status_code == 200
+        assert queued_fut.result().text == "ok"
+
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 

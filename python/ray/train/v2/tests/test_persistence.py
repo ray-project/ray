@@ -24,9 +24,9 @@ from ray.train import (
     ScalingConfig,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.storage import _download_from_fs_path
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2._internal.execution.context import get_train_context
 
 
 class TestConstants:

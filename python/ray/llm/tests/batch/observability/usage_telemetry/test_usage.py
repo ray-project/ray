@@ -78,6 +78,7 @@ def test_push_telemetry_report():
         TagKey.LLM_BATCH_TASK_TYPE: "generate,",
         TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,0",
         TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,0",
+        TagKey.LLM_BATCH_DATA_PARALLEL_SIZE: "0,0",
     }, f"actual telemetry: {telemetry}"
 
 

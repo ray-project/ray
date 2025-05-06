@@ -56,7 +56,7 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//:global_state_accessor_lib",
+        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//:ray_common",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/util",
@@ -361,7 +361,7 @@ cc_test(
         "metric_example.so",
     ],
     linkstatic = True,
-    tags = ["team:serverless"],
+    tags = ["team:core"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",

@@ -212,7 +212,8 @@ Content-Type: application/json
     },
     "grpc_options": {
         "port": 9000,
-        "grpc_servicer_functions": []
+        "grpc_servicer_functions": [],
+        "request_timeout_s": null
     },
     "proxies": {
         "cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec": {

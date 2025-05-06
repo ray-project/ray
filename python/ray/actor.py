@@ -22,7 +22,7 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
-from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     ObjectRefGenerator,
@@ -538,6 +538,9 @@ class _ActorClassMetadata:
             task.
         memory: The heap memory quota for this actor.
         resources: The default resources required by the actor creation task.
+        label_selector: The labels required for the node on which this actor
+            can be scheduled on. The label selector consist of key-value pairs, where the keys
+            are label names and the value are expressions consisting of an operator with label values or just a value to indicate equality.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
@@ -565,6 +568,7 @@ class _ActorClassMetadata:
         memory,
         object_store_memory,
         resources,
+        label_selector,
         accelerator_type,
         runtime_env,
         concurrency_groups,
@@ -583,6 +587,7 @@ class _ActorClassMetadata:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.label_selector = label_selector
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
@@ -604,7 +609,9 @@ def _process_option_dict(actor_options):
     for k, v in ray_option_utils.actor_options.items():
         if k in arg_names:
             _filled_options[k] = actor_options.get(k, v.default_value)
-    _filled_options["runtime_env"] = parse_runtime_env(_filled_options["runtime_env"])
+    _filled_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
+        _filled_options["runtime_env"]
+    )
     return _filled_options
 
 
@@ -777,6 +784,8 @@ class ActorClass:
             resources (Dict[str, float]): The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
+            label_selector (Dict[str, str]): If specified, requires that the actor run
+                on a node which meets the specified label conditions (equals, in, not in, etc.).
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -870,7 +879,7 @@ class ActorClass:
 
         # only update runtime_env when ".options()" specifies new runtime_env
         if "runtime_env" in actor_options:
-            updated_options["runtime_env"] = parse_runtime_env(
+            updated_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
                 updated_options["runtime_env"]
             )
 
@@ -1425,7 +1434,7 @@ class ActorHandle:
                 if worker.connected and hasattr(worker, "core_worker"):
                     worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
         except AttributeError:
-            # Suppress the attribtue error which is caused by
+            # Suppress the attribute error which is caused by
             # python destruction ordering issue.
             # It only happen when python exits.
             pass

@@ -1,5 +1,6 @@
 import gc
 import logging
+import platform
 import re
 import threading
 import time
@@ -8,12 +9,12 @@ from contextlib import contextmanager
 from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
-import platform
+
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -30,8 +31,8 @@ from ray.data._internal.stats import (
     _get_or_create_stats_actor,
     _StatsActor,
 )
-from ray.data.block import BlockMetadata
 from ray.data._internal.util import MemoryProfiler
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
@@ -88,6 +89,8 @@ def gen_expected_metrics(
             "'num_task_outputs_generated': N",
             "'bytes_task_outputs_generated': N",
             "'rows_task_outputs_generated': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -119,6 +122,8 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_outqueue': Z",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             (
@@ -603,6 +608,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -721,6 +728,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -794,6 +803,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_task_outputs_generated: N,\n"
         "            bytes_task_outputs_generated: N,\n"
         "            rows_task_outputs_generated: N,\n"
+        "            row_outputs_taken: N,\n"
+        "            block_outputs_taken: N,\n"
         "            num_outputs_taken: N,\n"
         "            bytes_outputs_taken: N,\n"
         "            num_outputs_of_finished_tasks: N,\n"

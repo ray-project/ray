@@ -27,6 +27,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.config import RunConfig
+from ray.train.v2.tests.util import DummyObjectRefWrapper
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -49,7 +50,7 @@ def _default_inactive_worker_group(**kwargs):
 def _default_worker_group_context(**kwargs):
     default_config = {
         "run_attempt_id": "test_run_attempt_id",
-        "train_fn": lambda: None,
+        "train_fn_ref": DummyObjectRefWrapper(lambda: None),
         "num_workers": 4,
         "resources_per_worker": {"CPU": 1},
     }
@@ -127,11 +128,8 @@ def test_start_timeout(monkeypatch):
 
 
 def test_poll_status_running():
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="test_run_attempt_id",
-        train_fn=lambda: time.sleep(60),
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=DummyObjectRefWrapper(lambda: time.sleep(60)),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
@@ -144,11 +142,8 @@ def test_poll_status_running():
 
 
 def test_poll_status_finished():
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="test_run_attempt_id",
-        train_fn=lambda: "done",
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=DummyObjectRefWrapper(lambda: "done"),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
@@ -180,11 +175,8 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
 
         monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
 
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="test_run_attempt_id",
-        train_fn=train_fn,
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=DummyObjectRefWrapper(train_fn),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()

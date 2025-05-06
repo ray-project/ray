@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING, Iterator, List, Optional, Callable
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional
+
+from ray.data.block import BlockMetadata
 
 from .operator import Operator
-from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -82,3 +83,7 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
+
+    @classmethod
+    def is_read_op(cls):
+        return False
