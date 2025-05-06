@@ -1,3 +1,5 @@
+from typing import List
+
 import ray
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.appo import APPO
@@ -43,5 +45,17 @@ class APPOWithSharedDataActor(APPO):
         if "shared_data_actor" in state:
             self.shared_data_actor.set_state.remote(state["shared_data_actor"])
 
+    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> List[int]:
+        restored = super().restore_env_runners(env_runner_group)
 
-
+        # For the restored EnvRunners, send them the latest shared, global state
+        # from the `SharedDataActor`.
+        for restored_idx in restored:
+            state_ref = (
+                self.shared_data_actor.get.remote(key=f"EnvRunner_{restored_idx}")
+            )
+            env_runner_group.foreach_env_runner(
+                lambda env_runner, state=state_ref: env_runner._global_state,
+                remote_worker_ids=[restored_idx],
+                timeout_seconds=0.0,
+            )
