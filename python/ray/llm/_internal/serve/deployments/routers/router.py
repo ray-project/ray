@@ -466,24 +466,13 @@ class LLMRouter:
 
         async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
 
-            # Do streaming from llm_server perspective
-            # body.stream = True
             gen = self._get_response(body=body, call_method=call_method)
-
-            # async def print_results(_results, tag):
-            #     async for result in _results:
-            #         # print(f"in router [{tag}], {result=}")
-            #         yield result
-
-            # gen = print_results(gen, tag="llm_server results")
-
-            # # TO REMOVE
-            # aggregator = convert_chat_stream_to_chat_completion if is_chat else convert_completion_stream_to_completion
-            # gen = aggregator(gen)
 
             first_response = await gen.__anext__()
 
-            # print(f"in router, {first_response=}")
+            # In case of streaming the first response can be batched.
+            if body.stream and isinstance(first_response, list):
+                first_response = first_response[0]
 
             if isinstance(first_response, ErrorResponse):
                 raise OpenAIHTTPException(
@@ -498,34 +487,9 @@ class LLMRouter:
 
             openai_stream_generator = _openai_json_wrapper(gen, first_response)
 
-            # openai_stream_generator = print_results(openai_stream_generator, tag="router wrapper")
-
             return StreamingResponse(
                 openai_stream_generator, media_type="text/event-stream"
             )
-
-            # if body.stream:
-            #     first_response, wrapper = await _peek_at_openai_json_generator(results)
-            #     if isinstance(first_response, ErrorResponse):
-            #         raise OpenAIHTTPException(
-            #             message=first_response.message,
-            #             status_code=first_response.code,
-            #             type=first_response.type,
-            #         )
-
-            #     wrapper = print_results(wrapper, tag="router wrapper")
-            #     return StreamingResponse(wrapper, media_type="text/event-stream")
-
-            # result = await results.__anext__()
-            # if isinstance(result, ErrorResponse):
-            #     raise OpenAIHTTPException(
-            #         message=result.message,
-            #         status_code=result.code,
-            #         type=result.type,
-            #     )
-
-            # if isinstance(result, NoneStreamingResponseType):
-            #     return JSONResponse(content=result.model_dump())
 
     @fastapi_router_app.post("/v1/completions")
     async def completions(self, body: CompletionRequest) -> Response:
@@ -536,41 +500,6 @@ class LLMRouter:
             A response object with completions.
         """
         return await self._process_llm_request(body, is_chat=False)
-        # async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-
-        #     # Do streaming from llm_server perspective
-        #     body.stream = True
-        #     results = self._get_response(body=body, call_method="completions")
-
-        #     async def print_results(_results, tag):
-        #         async for result in _results:
-        #             print(f"in router [{tag}], {result=}")
-        #             yield result
-
-        #     results = print_results(results, tag="llm_server results")
-
-        #     if body.stream:
-        #         first_response, wrapper = await _peek_at_openai_json_generator(results)
-        #         if isinstance(first_response, ErrorResponse):
-        #             raise OpenAIHTTPException(
-        #                 message=first_response.message,
-        #                 status_code=first_response.code,
-        #                 type=first_response.type,
-        #             )
-
-        #         wrapper = print_results(wrapper, tag="router wrapper")
-        #         return StreamingResponse(wrapper, media_type="text/event-stream")
-
-        #     result = await results.__anext__()
-        #     if isinstance(result, ErrorResponse):
-        #         raise OpenAIHTTPException(
-        #             message=result.message,
-        #             status_code=result.code,
-        #             type=result.type,
-        #         )
-
-        #     if isinstance(result, CompletionResponse):
-        #         return JSONResponse(content=result.model_dump())
 
     @fastapi_router_app.post("/v1/chat/completions")
     async def chat(self, body: ChatCompletionRequest) -> Response:
@@ -582,28 +511,6 @@ class LLMRouter:
         """
 
         return await self._process_llm_request(body, is_chat=True)
-        # async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-        #     results = self._get_response(body=body, call_method="chat")
-        #     if body.stream:
-        #         first_response, wrapper = await _peek_at_openai_json_generator(results)
-        #         if isinstance(first_response, ErrorResponse):
-        #             raise OpenAIHTTPException(
-        #                 message=first_response.message,
-        #                 status_code=first_response.code,
-        #                 type=first_response.type,
-        #             )
-        #         return StreamingResponse(wrapper, media_type="text/event-stream")
-
-        #     result = await results.__anext__()
-        #     if isinstance(result, ErrorResponse):
-        #         raise OpenAIHTTPException(
-        #             message=result.message,
-        #             status_code=result.code,
-        #             type=result.type,
-        #         )
-
-        #     if isinstance(result, ChatCompletionResponse):
-        #         return JSONResponse(content=result.model_dump())
 
     @classmethod
     def as_deployment(
