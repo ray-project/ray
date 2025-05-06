@@ -391,9 +391,9 @@ class SGLangEngineStage(StatefulStage):
         ret = {"prompt": "The text prompt (str)."}
         task_type = self.fn_constructor_kwargs.get("task_type", SGLangTaskType.GENERATE)
         if task_type == SGLangTaskType.GENERATE:
-            ret["sampling_params"] = (
-                "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.htmlfor details."
-            )
+            ret[
+                "sampling_params"
+            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.htmlfor details."
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:
