@@ -13,6 +13,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
+from ray.data._internal.util import GiB
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -737,6 +738,15 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
+@pytest.mark.parametrize(
+    "ray_start_10_cpus_shared",
+    [
+        {
+            "object_store_memory": 1 * GiB
+        }
+    ],
+    indirect=True,
+)
 def test_json_with_http_path_parallelization(ray_start_10_cpus_shared):
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
