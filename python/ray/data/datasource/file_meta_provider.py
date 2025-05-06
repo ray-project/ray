@@ -263,7 +263,7 @@ def _expand_paths(
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )
-    from ray.data.datasource.path_util import _unwrap_protocol
+    from ray.data.datasource.path_util import _is_http_url, _unwrap_protocol
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
@@ -290,10 +290,13 @@ def _expand_paths(
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
-        if (
-            partitioning is not None
-            and common_path == _unwrap_protocol(partitioning.base_dir)
-        ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
+        if not _is_http_url(common_path) and (
+            (
+                partitioning is not None
+                and common_path == _unwrap_protocol(partitioning.base_dir)
+            )
+            or all(str(pathlib.Path(path).parent) == common_path for path in paths)
+        ):
             yield from _get_file_infos_common_path_prefix(
                 paths, common_path, filesystem, ignore_missing_paths
             )

@@ -11,214 +11,13 @@ from pprint import pformat
 
 _ALL_TAGS = set(
     """
+    always
     lint python cpp core_cpp java workflow accelerated_dag dashboard
     data serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python
+    release_tests compiled_python k8s_doc
     """.split()
 )
-
-_TAG_RULE = """
-python/ray/air/
-@ ml train tune data linux_wheels macos_wheels
-;
-
-python/ray/llm/
-.buildkite/llm.rayci.yml
-ci/docker/llm.build.Dockerfile
-@ llm
-;
-
-python/ray/data/
-.buildkite/data.rayci.yml
-ci/docker/data.build.Dockerfile
-ci/docker/data.build.wanda.yaml
-ci/docker/datan.build.wanda.yaml
-ci/docker/data9.build.wanda.yaml
-ci/docker/datal.build.wanda.yaml
-@ data ml train linux_wheels macos_wheels
-;
-
-python/ray/workflow/
-@ workflow linux_wheels macos_wheels
-;
-
-python/ray/tune/
-@ ml train tune linux_wheels macos_wheels
-;
-
-python/ray/train/
-@ ml train linux_wheels macos_wheels
-;
-
-.buildkite/ml.rayci.yml
-.buildkite/pipeline.test.yml
-ci/docker/ml.build.Dockerfile
-.buildkite/pipeline.gpu.yml
-.buildkite/pipeline.gpu_large.yml
-ci/docker/ml.build.wanda.yaml
-ci/ray_ci/ml.tests.yml
-ci/docker/min.build.Dockerfile
-ci/docker/min.build.wanda.yaml
-@ ml train tune
-;
-
-rllib/
-python/ray/rllib/
-ray_ci/rllib.tests.yml
-.buildkite/rllib.rayci.yml
-@ rllib rllib_gpu rllib_directly linux_wheels macos_wheels
-;
-
-python/ray/serve/
-.buildkite/serve.rayci.yml
-ci/docker/serve.build.Dockerfile
-@ serve linux_wheels macos_wheels java
-;
-
-python/ray/dashboard/
-@ dashboard linux_wheels macos_wheels
-;
-
-python/setup.py
-python/requirements.txt
-python/requirements_compiled.txt
-python/requirements/
-@ ml tune train serve workflow data
-@ python dashboard linux_wheels macos_wheels java
-@ python_dependencies
-;
-
-python/ray/dag/
-python/ray/experimental/channel/
-@ ml tune train serve workflow data
-@ python dashboard linux_wheels macos_wheels java
-@ accelerated_dag
-;
-
-python/
-@ ml tune train serve workflow data
-# Python changes might impact cross language stack in Java.
-# Java also depends on Python CLI to manage processes.
-@ python dashboard linux_wheels macos_wheels java
-;
-
-.buildkite/core.rayci.yml
-@ python core_cpp
-;
-
-.buildkite/serverless.rayci.yml
-@ python
-;
-
-java/
-.buildkite/others.rayci.yml
-@ java
-;
-
-cpp/
-.buildkite/pipeline.build_cpp.yml
-@ cpp
-;
-
-docker/
-.buildkite/pipeline.build_cpp.yml
-@ docker linux_wheels
-;
-
-.readthedocs.yaml
-@ doc
-;
-
-doc/*.py
-doc/*.ipynb
-doc/BUILD
-doc/*/BUILD
-doc/*.rst
-@ doc
-;
-
-ci/docker/doctest.build.Dockerfile
-ci/docker/doctest.build.wanda.yaml
-# pass
-;
-
-release/ray_release/
-# Release test unit tests are ALWAYS RUN, so pass
-;
-
-release/*.md
-release/*.yaml
-# Do not run on config changes
-;
-
-release/
-@ release_tests
-;
-
-doc/
-examples/
-dev/
-kubernetes/
-site/
-# pass
-;
-
-ci/lint/
-.buildkite/lint.rayci.yml
-@ tools
-;
-
-.buildkite/macos.rayci.yml
-.buildkite/pipeline.macos.yml
-ci/ray_ci/macos/macos_ci.sh
-ci/ray_ci/macos/macos_ci_build.sh
-@ macos_wheels
-;
-
-ci/pipeline/
-ci/build/
-ci/ray_ci/
-.buildkite/_forge.rayci.yml
-.buildkite/_forge.aarch64.rayci.yml
-ci/docker/forge.wanda.yaml
-ci/docker/forge.aarch64.wanda.yaml
-.buildkite/pipeline.build.yml
-.buildkite/hooks/post-command
-@ tools
-;
-
-.buildkite/base.rayci.yml
-.buildkite/build.rayci.yml
-.buildkite/pipeline.arm64.yml
-ci/docker/manylinux.Dockerfile
-ci/docker/manylinux.wanda.yaml
-ci/docker/manylinux.aarch64.wanda.yaml
-ci/docker/ray.cpu.base.wanda.yaml
-ci/docker/ray.cpu.base.aarch64.wanda.yaml
-ci/docker/ray.cuda.base.wanda.yaml
-ci/docker/ray.cuda.base.aarch64.wanda.yaml
-ci/docker/windows.build.Dockerfile
-ci/docker/windows.build.wanda.yaml
-@ docker linux_wheels tools
-;
-
-ci/run/
-ci/ci.sh
-@ tools
-;
-
-src/
-@ ml tune train serve core_cpp cpp
-@ java python linux_wheels macos_wheels
-@ dashboard release_tests accelerated_dag
-;
-
-.github/
-# pass
-;
-
-"""
 
 
 def _list_changed_files(commit_range):
@@ -355,8 +154,14 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
 
 
 class TagRuleSet:
-    def __init__(self, content: str):
-        self.rules = _parse_rules(content)
+    def __init__(self, content: Optional[str] = None):
+        if content is not None:
+            self.rules = _parse_rules(content)
+        else:
+            self.rules = []
+
+    def add_rules(self, content: str):
+        self.rules.extend(_parse_rules(content))
 
     def match_tags(self, changed_file: str) -> Tuple[Set[str], bool]:
         for rule in self.rules:
@@ -370,10 +175,22 @@ if __name__ == "__main__":
     assert os.environ.get("BUILDKITE")
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "configs", nargs="+", help="Config files that define the rules."
+    )
     args = parser.parse_args()
+
+    if len(args.configs) == 0:
+        raise ValueError("No config files provided.")
+
+    rules = TagRuleSet()
+    for config in args.configs:
+        with open(config) as f:
+            rules.add_rules(f.read())
 
     tags: Set[str] = set()
 
+    tags.add("always")
     tags.add("lint")
 
     def _emit(line: str):
@@ -385,10 +202,8 @@ if __name__ == "__main__":
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
-        rule_set = TagRuleSet(_TAG_RULE)
-
         for changed_file in files:
-            match_tags, matched = rule_set.match_tags(changed_file)
+            match_tags, matched = rules.match_tags(changed_file)
             if matched:
                 tags.update(match_tags)
                 continue
@@ -402,15 +217,14 @@ if __name__ == "__main__":
 
             _emit("ml tune train data serve core_cpp cpp java python doc")
             _emit("linux_wheels macos_wheels dashboard tools release_tests")
+
+        # Log the modified environment variables visible in console.
+        output_string = " ".join(list(tags))
+        for tag in tags:
+            assert tag in _ALL_TAGS, f"Unknown tag {tag}"
+
+        print(output_string, file=sys.stderr)  # Debug purpose
+        print(output_string)
     else:
-        _emit("ml tune train rllib rllib_directly serve")
-        _emit("cpp core_cpp java python doc linux_wheels macos_wheels docker")
-        _emit("dashboard tools workflow data release_tests")
-
-    # Log the modified environment variables visible in console.
-    output_string = " ".join(list(tags))
-    for tag in tags:
-        assert tag in _ALL_TAGS, f"Unknown tag {tag}"
-
-    print(output_string, file=sys.stderr)  # Debug purpose
-    print(output_string)
+        print("Run all tags", file=sys.stderr)
+        print("*")

@@ -50,7 +50,7 @@ ray_cc_test(
     ],
     deps = [
         "//:grpc_common_lib",
-        "//:ray_mock",
+        "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
         "@com_google_googletest//:gtest",
     ],

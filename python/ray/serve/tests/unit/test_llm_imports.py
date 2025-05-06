@@ -1,7 +1,8 @@
 import sys
+
+import pydantic
 import pytest
 from packaging import version
-import pydantic
 
 # skip the test if vllm is installed
 HAS_VLLM = False
@@ -27,17 +28,17 @@ def test_serve_llm_import_does_not_error():
     with pytest.raises(ImportError):
         import ray.serve.llm  # noqa: F401
     with pytest.raises(ImportError):
-        from ray.serve.llm.configs import (
+        from ray.serve.llm import (
             LLMConfig,  # noqa: F401
         )
     with pytest.raises(ImportError):
-        from ray.serve.llm.deployments import (
-            VLLMService,  # noqa: F401
+        from ray.serve.llm import (
             LLMRouter,  # noqa: F401
+            LLMServer,  # noqa: F401
         )
     with pytest.raises(ImportError):
-        from ray.serve.llm.builders import (
-            build_vllm_deployment,  # noqa: F401
+        from ray.serve.llm import (
+            build_llm_deployment,  # noqa: F401
             build_openai_app,  # noqa: F401
         )
 

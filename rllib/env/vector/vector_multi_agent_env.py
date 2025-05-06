@@ -1,10 +1,10 @@
-import gymnasium as gym
-import numpy as np
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
+import gymnasium as gym
 from gymnasium.core import RenderFrame
 from gymnasium.envs.registration import EnvSpec
 from gymnasium.utils import seeding
-from typing import Any, Dict, Optional, Tuple, TypeVar
+import numpy as np
 
 
 ArrayType = TypeVar("ArrayType")
@@ -17,12 +17,17 @@ class VectorMultiAgentEnv:
     render_mode: Optional[str] = None
     closed: bool = False
 
+    envs: Optional[List] = None
+
     # TODO (simon, sven): We could think about enabling here different
     # spaces for different envs (e.g. different high/lows). In this
     # case we would need here actually "batched" spaces and not a
     # single on that holds for all sub-envs.
     single_observation_spaces: Optional[Dict[str, gym.Space]] = None
     single_action_spaces: Optional[Dict[str, gym.Space]] = None
+    # Note, the proper `gym` spaces are needed for the connector pipeline.
+    single_observation_space: Optional[gym.spaces.Dict] = None
+    single_action_space: Optional[gym.spaces.Dict] = None
 
     num_envs: int
 

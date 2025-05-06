@@ -1,6 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 import ray
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -15,10 +16,12 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    CONTROLLER_MAX_CONCURRENCY,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -163,9 +166,7 @@ def create_router(
         else None,
         availability_zone,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=(
-            not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
-        ),
+        use_replica_queue_len_cache=not is_inside_ray_client_context,
         create_replica_wrapper_func=lambda r: RunningReplica(r),
     )
 
@@ -177,10 +178,7 @@ def create_router(
         handle_source=handle_options._source,
         replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        enable_strict_max_ongoing_requests=(
-            not is_inside_ray_client_context
-            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
-        ),
+        enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,
     )
 
@@ -211,3 +209,21 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         )
 
     return handle.options(stream=not info.app_is_cross_language)
+
+
+def get_controller_impl():
+    from ray.serve._private.controller import ServeController
+
+    controller_impl = ray.remote(
+        name=SERVE_CONTROLLER_NAME,
+        namespace=SERVE_NAMESPACE,
+        num_cpus=0,
+        lifetime="detached",
+        max_restarts=-1,
+        max_task_retries=-1,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+    )(ServeController)
+
+    return controller_impl

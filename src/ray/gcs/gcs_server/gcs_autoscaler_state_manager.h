@@ -14,8 +14,14 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "ray/util/thread_checker.h"
@@ -37,7 +43,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
                             rpc::NodeManagerClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
-                            instrumented_io_context &io_context);
+                            instrumented_io_context &io_context,
+                            GcsPublisher *gcs_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -183,6 +190,9 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   InternalKVInterface &kv_;
   instrumented_io_context &io_context_;
 
+  // A publisher for publishing gcs messages.
+  GcsPublisher *gcs_publisher_;
+
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
   // We currently provide two guarantees for this version:
@@ -217,7 +227,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
-  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestGetPerNodeInfeasibleResourceRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
 };
 
 }  // namespace gcs

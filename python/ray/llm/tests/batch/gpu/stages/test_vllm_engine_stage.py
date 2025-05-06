@@ -1,8 +1,11 @@
 import asyncio
+import json
 import pytest
 import math
 import sys
 from unittest.mock import MagicMock, AsyncMock, patch
+
+from pydantic import BaseModel
 
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
@@ -106,6 +109,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
         data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
         model=model_llama_3_2_216M,
         task_type=vLLMTaskType.GENERATE,
         engine_kwargs={
@@ -146,11 +150,13 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     # Verify the wrapper was constructed with correct arguments
     mock_vllm_wrapper.assert_called_once_with(
         model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
         task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
+        dynamic_lora_loading_path=None,
     )
 
 
@@ -165,6 +171,9 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
         patch(
             "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v0"
         ) as mock_generate_async_v0,
+        patch(
+            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v1"
+        ) as mock_generate_async_v1,
     ):
         mock_engine.from_engine_args.return_value = AsyncMock()
         num_running_requests = 0
@@ -201,10 +210,12 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
             )
 
         mock_generate_async_v0.side_effect = mock_generate
+        mock_generate_async_v1.side_effect = mock_generate
 
         # Create wrapper with max 2 pending requests
         wrapper = vLLMEngineWrapper(
             model=model_llama_3_2_216M,
+            model_source=model_llama_3_2_216M,
             idx_in_batch_column="__idx_in_batch",
             disable_log_stats=True,
             max_pending_requests=max_pending_requests,
@@ -220,7 +231,10 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
         await asyncio.gather(*tasks)
 
         # Verify all requests were processed
-        assert mock_generate_async_v0.call_count == 10
+        assert (
+            mock_generate_async_v0.call_count == 10
+            or mock_generate_async_v1.call_count == 10
+        )
 
 
 @pytest.mark.asyncio
@@ -230,6 +244,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
 
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -276,6 +291,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
 async def test_vllm_wrapper_embed(model_opt_125m):
     wrapper = vLLMEngineWrapper(
         model=model_opt_125m,
+        model_source=model_opt_125m,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -304,6 +320,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -347,6 +364,57 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
+    """Test the JSON output with xgrammar backend. We have to use
+    a real checkpoint as we need to verify the outputs.
+    """
+
+    class AnswerModel(BaseModel):
+        answer: int
+        explain: str
+
+    json_schema = AnswerModel.model_json_schema()
+
+    wrapper = vLLMEngineWrapper(
+        model=model_llama_3_2_1B_instruct,
+        model_source=model_llama_3_2_1B_instruct,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        task=vLLMTaskType.GENERATE,
+        max_model_len=2048,
+        guided_decoding_backend="xgrammar",
+        # Older GPUs (e.g. T4) don't support bfloat16.
+        dtype="half",
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": "Answer 2 ** 3 + 5 with a detailed explanation in JSON.",
+            "sampling_params": {
+                "max_tokens": 100,
+                "temperature": 0.7,
+                "guided_decoding": {"json": json_schema},
+            },
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    for resp in asyncio.as_completed(tasks):
+        _, output = await resp
+        json_obj = json.loads(output["generated_text"])
+        assert "answer" in json_obj
+        assert isinstance(json_obj["answer"], int)
+        assert "explain" in json_obj
+        assert isinstance(json_obj["explain"], str)
 
 
 if __name__ == "__main__":

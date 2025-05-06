@@ -14,7 +14,12 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -82,6 +87,7 @@ struct CoreWorkerOptions {
         driver_name(""),
         task_execution_callback(nullptr),
         check_signals(nullptr),
+        initialize_thread_callback(nullptr),
         gc_collect(nullptr),
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
@@ -102,7 +108,8 @@ struct CoreWorkerOptions {
         worker_launched_time_ms(-1),
         assigned_worker_port(std::nullopt),
         assigned_raylet_id(std::nullopt),
-        debug_source("") {
+        debug_source(""),
+        enable_resource_isolation(false) {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -136,7 +143,7 @@ struct CoreWorkerOptions {
   std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
-  /// Language worker callback to execute tasks.
+  /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.
   std::function<void(const WorkerID &)> on_worker_shutdown;
@@ -146,6 +153,9 @@ struct CoreWorkerOptions {
   /// any long-running operations in the core worker will short circuit and return that
   /// status.
   std::function<Status()> check_signals;
+  /// Application-language callback that initializes a thread and returns a function to
+  /// be called when the thread is destroyed.
+  std::function<std::function<void()>()> initialize_thread_callback;
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
@@ -218,6 +228,10 @@ struct CoreWorkerOptions {
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
+
+  // If true, core worker enables resource isolation through cgroupv2 by reserving
+  // resources for ray system processes.
+  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray

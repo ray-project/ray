@@ -510,6 +510,7 @@ class GcsRpcClient {
                              GcsSubscriberCommandBatch,
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
+
   /// Operations for autoscaler
   VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
                                   AutoscalerStateService,

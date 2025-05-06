@@ -5,7 +5,6 @@ from libcpp.vector cimport vector as c_vector
 from ray.includes.common cimport (
     CObjectLocation,
     CGcsClientOptions,
-    CPythonGcsPublisher,
     CPythonGcsSubscriber,
     kWorkerSetupHookKeyName,
     kResourceUnitScaling,
@@ -62,7 +61,7 @@ cdef class GcsClientOptions:
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
 
-cdef int check_status(const CRayStatus& status) nogil except -1:
+cdef int check_status(const CRayStatus& status) except -1 nogil:
     if status.ok():
         return 0
 
@@ -107,7 +106,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     else:
         raise RaySystemError(message)
 
-cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
+cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) except -1 nogil:
     """
     Same as check_status, except that it raises RpcError for timeout. This is for
     backward compatibility: on timeout, `ray.get` raises GetTimeoutError, while

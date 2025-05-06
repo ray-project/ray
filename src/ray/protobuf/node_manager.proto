@@ -123,16 +123,14 @@ message CommitBundleResourcesRequest {
   repeated Bundle bundle_specs = 1;
 }
 
-message CommitBundleResourcesReply {
-}
+message CommitBundleResourcesReply {}
 
 message CancelResourceReserveRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReserveReply {
-}
+message CancelResourceReserveReply {}
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
@@ -149,8 +147,7 @@ message ReturnWorkerRequest {
   string disconnect_worker_error_detail = 5;
 }
 
-message ReturnWorkerReply {
-}
+message ReturnWorkerReply {}
 
 message ReleaseUnusedActorWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
@@ -249,11 +246,9 @@ message GetNodeStatsReply {
   ObjectStoreStats store_stats = 6;
 }
 
-message GlobalGCRequest {
-}
+message GlobalGCRequest {}
 
-message GlobalGCReply {
-}
+message GlobalGCReply {}
 
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
@@ -278,11 +273,9 @@ message ReleaseUnusedBundlesRequest {
   repeated Bundle bundles_in_use = 1;
 }
 
-message ReleaseUnusedBundlesReply {
-}
+message ReleaseUnusedBundlesReply {}
 
-message GetSystemConfigRequest {
-}
+message GetSystemConfigRequest {}
 
 message GetSystemConfigReply {
   string system_config = 1;
@@ -371,12 +364,14 @@ message PushMutableObjectRequest {
   // The total size of the metadata (across all chunks).
   uint64 total_metadata_size = 3;
 
-  // The offset of the chunk (in bytes) within the object.
+  // The offset of the chunk (in bytes) within the object's data.
   uint64 offset = 4;
-  // The size of this chunk. Note that this size could include both data and metadata.
+  // The size of data payload chunk.
   uint64 chunk_size = 5;
-  // The chunk payload. Note that this could include both data and metadata.
-  bytes payload = 6;
+  // The data payload.
+  bytes data = 6;
+  // The metadata payload. Note that the size of metadata is minimal.
+  bytes metadata = 7;
 }
 
 message PushMutableObjectReply {

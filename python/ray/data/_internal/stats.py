@@ -1,10 +1,12 @@
 import collections
+import enum
 import logging
 import threading
 import time
+from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from dataclasses import dataclass, fields
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
@@ -13,9 +15,12 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    NODE_UNKNOWN,
     MetricsGroup,
+    NodeMetrics,
     OpRuntimeMetrics,
 )
+from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
 from ray.data.context import DataContext
@@ -27,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+UNKNOWN = "unknown"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -54,7 +60,7 @@ class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
-        self._value: float = 0
+        self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
@@ -68,7 +74,7 @@ class Timer:
             self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
-        self._value += value
+        self._total += value
         if value < self._min:
             self._min = value
         if value > self._max:
@@ -76,7 +82,7 @@ class Timer:
         self._total_count += 1
 
     def get(self) -> float:
-        return self._value
+        return self._total
 
     def min(self) -> float:
         return self._min
@@ -85,7 +91,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count if self._total_count else float("inf")
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -157,6 +163,12 @@ class _StatsActor:
         self.next_dataset_id = 0
         # Dataset metadata to be queried directly by DashboardHead api.
         self.datasets: Dict[str, Any] = {}
+
+        # Cache of calls to ray.nodes() to prevent unnecessary network calls
+        self._ray_nodes_cache: Dict[str, str] = {}
+
+        # Initialize the metadata exporter
+        self._metadata_exporter = get_dataset_metadata_exporter()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -241,6 +253,14 @@ class _StatsActor:
             )
         )
 
+        # Actor related metrics
+        self.execution_metrics_actors = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.ACTORS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
@@ -248,6 +268,9 @@ class _StatsActor:
                 tag_keys=op_tags_keys,
             )
         )
+
+        # Per Node metrics
+        self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
         iter_tag_keys = ("dataset",)
         self.iter_total_blocked_s = Gauge(
@@ -266,6 +289,46 @@ class _StatsActor:
             tag_keys=iter_tag_keys,
         )
 
+        # === Dataset and Operator Metadata Metrics ===
+        dataset_tags = ("dataset", "job_id", "start_time")
+        self.data_dataset_estimated_total_blocks = Gauge(
+            "data_dataset_estimated_total_blocks",
+            description="Total work units in blocks for dataset",
+            tag_keys=dataset_tags,
+        )
+        self.data_dataset_estimated_total_rows = Gauge(
+            "data_dataset_estimated_total_rows",
+            description="Total work units in rows for dataset",
+            tag_keys=dataset_tags,
+        )
+        self.data_dataset_state = Gauge(
+            "data_dataset_state",
+            description=f"State of dataset ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
+            tag_keys=dataset_tags,
+        )
+
+        operator_tags = ("dataset", "operator")
+        self.data_operator_estimated_total_blocks = Gauge(
+            "data_operator_estimated_total_blocks",
+            description="Total work units in blocks for operator",
+            tag_keys=operator_tags,
+        )
+        self.data_operator_estimated_total_rows = Gauge(
+            "data_operator_estimated_total_rows",
+            description="Total work units in rows for operator",
+            tag_keys=operator_tags,
+        )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
+            tag_keys=operator_tags,
+        )
+        self.data_operator_state = Gauge(
+            "data_operator_state",
+            description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
+            tag_keys=operator_tags,
+        )
+
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Gauge]:
@@ -279,6 +342,17 @@ class _StatsActor:
                 metric_name,
                 description=metric_description,
                 tag_keys=tag_keys,
+            )
+        return metrics
+
+    def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
+        metrics = {}
+        for field in fields(NodeMetrics):
+            metric_name = f"data_{field.name}_per_node"
+            metrics[field.name] = Gauge(
+                metric_name,
+                description="",
+                tag_keys=("dataset", "node_ip"),
             )
         return metrics
 
@@ -334,6 +408,7 @@ class _StatsActor:
         op_metrics: List[Dict[str, Union[int, float]]],
         operator_tags: List[str],
         state: Dict[str, Any],
+        per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
@@ -342,7 +417,7 @@ class _StatsActor:
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
 
@@ -361,12 +436,42 @@ class _StatsActor:
             ) in self.execution_metrics_obj_store_memory.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
+            for field_name, prom_metric in self.execution_metrics_actors.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
+
+        # Update per node metrics if they exist, the creation of these metrics is controlled
+        # by the _data_context.enable_per_node_metrics flag in the streaming executor but
+        # that is not exposed in the _StatsActor so here we simply check if the metrics exist
+        # and if so, update them
+        if per_node_metrics is not None:
+            for node_id, node_metrics in per_node_metrics.items():
+                # Translate node_id into node_name (the node ip), cache node info
+                if node_id not in self._ray_nodes_cache:
+                    # Rebuilding this cache will fetch all nodes, this
+                    # only needs to be done up to once per loop
+                    self._rebuild_ray_nodes_cache()
+
+                node_ip = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
+
+                tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
+                for metric_name, metric_value in node_metrics.items():
+                    prom_metric = self.per_node_metrics[metric_name]
+                    prom_metric.set(metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
         self.update_dataset(dataset_tag, state)
+
+    def _rebuild_ray_nodes_cache(self) -> None:
+        current_nodes = ray.nodes()
+        for node in current_nodes:
+            node_id = node.get("NodeID", None)
+            node_name = node.get("NodeName", None)
+            if node_id is not None and node_name is not None:
+                self._ray_nodes_cache[node_id] = node_name
 
     def update_iteration_metrics(
         self,
@@ -378,36 +483,103 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(
+        self,
+        job_id: str,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
-            "state": "RUNNING",
+            "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
-            "start_time": time.time(),
+            "total_rows": 0,
+            "start_time": start_time,
             "end_time": None,
             "operators": {
                 operator: {
-                    "state": "RUNNING",
+                    "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
         }
+        if self._metadata_exporter is not None:
+            from ray.data._internal.metadata_exporter import DatasetMetadata
 
-    def update_dataset(self, dataset_tag, state):
+            dataset_metadata = DatasetMetadata(
+                job_id=job_id,
+                topology=topology,
+                dataset_id=dataset_tag,
+                start_time=start_time,
+            )
+            self._metadata_exporter.export_dataset_metadata(dataset_metadata)
+
+    def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
+        state = self.datasets[dataset_tag]
+
+        job_id = self.datasets[dataset_tag].get("job_id", "None")
+        start_time = str(int(self.datasets[dataset_tag].get("start_time", 0)))
+
+        # Update dataset-level metrics
+        dataset_tags = {
+            "dataset": dataset_tag,
+            "job_id": job_id,
+            "start_time": start_time,
+        }
+        self.data_dataset_estimated_total_blocks.set(
+            state.get("total", 0), dataset_tags
+        )
+        self.data_dataset_estimated_total_rows.set(
+            state.get("total_rows", 0), dataset_tags
+        )
+        state_string = state.get("state", DatasetState.UNKNOWN.name)
+        state_enum = DatasetState.from_string(state_string)
+        self.data_dataset_state.set(state_enum.value, dataset_tags)
+
+        # Update operator-level metrics
+        for operator, op_state in state.get("operators", {}).items():
+            operator_tags = {
+                "dataset": dataset_tag,
+                "operator": operator,
+            }
+            self.data_operator_estimated_total_blocks.set(
+                op_state.get("total", 0), operator_tags
+            )
+            self.data_operator_estimated_total_rows.set(
+                op_state.get("total_rows", 0), operator_tags
+            )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
+            )
+
+            # Get state code directly from enum
+            state_string = op_state.get("state", DatasetState.UNKNOWN.name)
+            state_enum = DatasetState.from_string(state_string)
+            self.data_operator_state.set(state_enum.value, operator_tags)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
 
-    def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
+    def _create_tags(
+        self,
+        dataset_tag: str,
+        operator_tag: Optional[str] = None,
+        node_ip_tag: Optional[str] = None,
+    ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
+        if node_ip_tag is not None:
+            tags["node_ip"] = node_ip_tag
         return tags
 
 
@@ -549,6 +721,28 @@ class _StatsManager:
 
     # Execution methods
 
+    def _aggregate_per_node_metrics(
+        self, op_metrics: List[OpRuntimeMetrics]
+    ) -> Optional[Mapping[str, Mapping[str, Union[int, float]]]]:
+        """
+        Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
+
+        If per-node metrics are disabled in the current DataContext, returns None.
+        Otherwise, it sums up all NodeMetrics fields across the provided metrics and
+        returns a nested dictionary mapping each node ID to a dict of field values.
+        """
+        if not DataContext.get_current().enable_per_node_metrics:
+            return None
+
+        aggregated_by_node = defaultdict(lambda: defaultdict(int))
+        for metrics in op_metrics:
+            for node_id, node_metrics in metrics._per_node_metrics.items():
+                agg_node_metrics = aggregated_by_node[node_id]
+                for f in fields(NodeMetrics):
+                    agg_node_metrics[f.name] += getattr(node_metrics, f.name)
+
+        return aggregated_by_node
+
     def update_execution_metrics(
         self,
         dataset_tag: str,
@@ -558,7 +752,8 @@ class _StatsManager:
         force_update: bool = False,
     ):
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
-        args = (dataset_tag, op_metrics_dicts, operator_tags, state)
+        per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
+        args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
             self._stats_actor().update_execution_metrics.remote(*args)
         else:
@@ -592,11 +787,24 @@ class _StatsManager:
 
     # Other methods
 
-    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+    def register_dataset_to_stats_actor(
+        self,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        """Register a dataset with the stats actor.
+
+        Args:
+            dataset_tag: Tag for the dataset
+            operator_tags: List of operator tags
+            topology: Optional Topology representing the DAG structure to export
+        """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
+            topology,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:
@@ -609,6 +817,26 @@ class _StatsManager:
 
 
 StatsManager = _StatsManager()
+
+
+class DatasetState(enum.IntEnum):
+    """Enum representing the possible states of a dataset during execution."""
+
+    UNKNOWN = 0
+    RUNNING = 1
+    FINISHED = 2
+    FAILED = 3
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def from_string(cls, text):
+        """Get enum by name."""
+        try:
+            return cls[text]  # This uses the name to lookup the enum
+        except KeyError:
+            return cls.UNKNOWN
 
 
 class DatasetStats:
@@ -1128,7 +1356,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round((e.max_uss_bytes or 0) / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),
@@ -1430,7 +1658,7 @@ class IterStatsSummary:
                 )
             if self.next_time.get():
                 batch_creation_str = (
-                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch creation: {} min, {} max, {} avg, {} total\n"
                 )
                 out += batch_creation_str.format(
                     fmt(self.next_time.min()),
@@ -1440,7 +1668,7 @@ class IterStatsSummary:
                 )
             if self.format_time.get():
                 format_str = (
-                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch formatting: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.format_time.min()),

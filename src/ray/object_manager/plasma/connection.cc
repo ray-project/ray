@@ -1,8 +1,27 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/object_manager/plasma/connection.h"
 
 #ifndef _WIN32
 #include "ray/object_manager/plasma/fling.h"
 #endif
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/logging.h"
@@ -50,23 +69,26 @@ static const std::vector<std::string> object_store_message_enum =
                       static_cast<int>(MessageType::MAX));
 }  // namespace
 
-Client::Client(ray::MessageHandler &message_handler, ray::local_stream_socket &&socket)
-    : ray::ClientConnection(message_handler,
+Client::Client(PrivateTag,
+               ray::MessageHandler message_handler,
+               ray::ConnectionErrorHandler connection_error_handler,
+               ray::local_stream_socket &&socket)
+    : ray::ClientConnection(std::move(message_handler),
+                            std::move(connection_error_handler),
                             std::move(socket),
                             "worker",
-                            object_store_message_enum,
-                            static_cast<int64_t>(MessageType::PlasmaDisconnectClient)) {}
+                            object_store_message_enum) {}
 
-std::shared_ptr<Client> Client::Create(PlasmaStoreMessageHandler message_handler,
-                                       ray::local_stream_socket &&socket) {
+std::shared_ptr<Client> Client::Create(
+    PlasmaStoreMessageHandler message_handler,
+    PlasmaStoreConnectionErrorHandler connection_error_handler,
+    ray::local_stream_socket &&socket) {
   ray::MessageHandler ray_message_handler =
       [message_handler](std::shared_ptr<ray::ClientConnection> client,
                         int64_t message_type,
                         const std::vector<uint8_t> &message) {
         Status s = message_handler(
-            std::static_pointer_cast<Client>(client->shared_ClientConnection_from_this()),
-            (MessageType)message_type,
-            message);
+            std::static_pointer_cast<Client>(client), (MessageType)message_type, message);
         if (!s.ok()) {
           if (!s.IsDisconnected()) {
             RAY_LOG(ERROR) << "Fail to process client message. " << s.ToString();
@@ -76,12 +98,15 @@ std::shared_ptr<Client> Client::Create(PlasmaStoreMessageHandler message_handler
           client->ProcessMessages();
         }
       };
-  // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot invoke
-  // private constructors.
-  std::shared_ptr<Client> self(new Client(ray_message_handler, std::move(socket)));
-  // Let our manager process our new connection.
-  self->ProcessMessages();
-  return self;
+
+  ray::ConnectionErrorHandler ray_connection_error_handler =
+      [connection_error_handler](std::shared_ptr<ray::ClientConnection> client,
+                                 const boost::system::error_code &error) {
+        connection_error_handler(std::static_pointer_cast<Client>(client), error);
+      };
+
+  return std::make_shared<Client>(
+      PrivateTag{}, ray_message_handler, ray_connection_error_handler, std::move(socket));
 }
 
 Status Client::SendFd(MEMFD_TYPE fd) {

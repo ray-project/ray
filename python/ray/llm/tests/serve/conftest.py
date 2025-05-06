@@ -1,7 +1,6 @@
 import ray
 from ray import serve
 import pytest
-from ray.llm._internal.serve.configs.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
@@ -28,15 +27,6 @@ def shutdown_ray_and_serve():
     serve.shutdown()
     if ray.is_initialized():
         ray.shutdown()
-
-
-@pytest.fixture
-def use_mock_vllm_engine(monkeypatch):
-    monkeypatch.setenv(
-        RAYLLM_VLLM_ENGINE_CLS_ENV,
-        "ray.llm.tests.serve.deployments.mock_vllm_engine.MockVLLMEngine",
-    )
-    yield
 
 
 @pytest.fixture
@@ -101,14 +91,16 @@ def get_rayllm_testing_model(
 
 
 @pytest.fixture
-def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b):
+def testing_model(shutdown_ray_and_serve):
     test_model_path = get_test_model_path("mock_vllm_model.yaml")
 
-    with open(test_model_path, "r") as f:
-        loaded_llm_config = yaml.safe_load(f)
+    with get_rayllm_testing_model(test_model_path) as (client, model_id):
+        yield client, model_id
 
-    loaded_llm_config["model_loading_config"]["model_source"] = model_pixtral_12b
-    test_model_path = write_yaml_file(loaded_llm_config)
+
+@pytest.fixture
+def testing_model_no_accelerator(shutdown_ray_and_serve):
+    test_model_path = get_test_model_path("mock_vllm_model_no_accelerator.yaml")
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
         yield client, model_id

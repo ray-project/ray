@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"

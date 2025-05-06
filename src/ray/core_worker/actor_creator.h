@@ -13,7 +13,10 @@
 // limitations under the License.
 
 #pragma once
+
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/gcs_client.h"

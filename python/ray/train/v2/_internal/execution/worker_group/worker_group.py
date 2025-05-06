@@ -51,7 +51,9 @@ from ray.train.v2._internal.execution.worker_group.worker import (
     Worker,
     WorkerStatus,
 )
+from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.util import (
+    ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
     ray_get_safe,
@@ -81,7 +83,7 @@ class WorkerGroupContext:
 
     Attributes:
         run_attempt_id: The ID of the run attempt.
-        train_fn: The training function to execute.
+        train_fn_ref: An object store reference to the training function to execute.
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
@@ -89,7 +91,7 @@ class WorkerGroupContext:
     """
 
     run_attempt_id: str
-    train_fn: Callable[[], None]
+    train_fn_ref: ObjectRefWrapper[Callable[[], None]]
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
@@ -319,9 +321,22 @@ class WorkerGroup:
         # This task should start a worker thread and return immediately.
         ray_get_safe(
             [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn)
+                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
             ]
+        )
+
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={w.distributed_context.world_rank}, "
+                f"local_rank={w.distributed_context.local_rank}, "
+                f"node_rank={w.distributed_context.node_rank}"
+                for w in workers
+            ]
+        )
+        logger.info(
+            f"Started training worker group of size {len(workers)}: \n{workers_info}"
         )
 
         for callback in self._callbacks:
@@ -388,6 +403,8 @@ class WorkerGroup:
             for i, worker in enumerate(workers)
         ]
         ray_get_safe(context_init_tasks)
+
+        self._decorate_worker_log_file_paths(workers)
 
     #####################################################################################
     # Shutdown Worker Group
@@ -679,6 +696,28 @@ class WorkerGroup:
                 node_rank=node_ips.index(worker.metadata.node_ip),
             )
             worker.distributed_context = distributed_context
+
+        return workers
+
+    @staticmethod
+    def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
+        """Decorate worker log file paths.
+
+        Returns:
+            workers: Workers with log file paths set.
+        """
+        # Execute all tasks in parallel and then get results
+        log_path_refs = [
+            worker.execute_async(get_train_application_worker_log_path)
+            for worker in workers
+        ]
+        log_paths = ray_get_safe(log_path_refs)
+
+        # Assign log paths to workers
+        for worker, log_path in zip(workers, log_paths):
+            if log_path is None:
+                raise ValueError("Worker log file path is not set.")
+            worker.log_file_path = log_path
 
         return workers
 

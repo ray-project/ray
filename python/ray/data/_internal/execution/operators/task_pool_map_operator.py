@@ -1,6 +1,5 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
-import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -86,14 +85,18 @@ class TaskPoolMapOperator(MapOperator):
         dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
-        data_context = self.data_context
-        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+        if (
+            "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
+            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
+        ):
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
             # 2 objects for each block: the block and the block metadata.
             dynamic_ray_remote_args["_generator_backpressure_num_objects"] = (
-                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
+
+        data_context = self.data_context
 
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
@@ -104,26 +107,13 @@ class TaskPoolMapOperator(MapOperator):
         )
         self._submit_data_task(gen, bundle)
 
-    def shutdown(self):
-        # Cancel all active tasks.
-        for _, task in self._data_tasks.items():
-            ray.cancel(task.get_waitable())
-        # Wait until all tasks have failed or been cancelled.
-        for _, task in self._data_tasks.items():
-            try:
-                ray.get(task.get_waitable())
-            except ray.exceptions.RayError:
-                # Cancellation either succeeded, or the task had already failed with
-                # a different error, or cancellation failed. In all cases, we
-                # swallow the exception.
-                pass
-        super().shutdown()
-
     def progress_str(self) -> str:
         return ""
 
-    def base_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources()
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        return self.incremental_resource_usage(), ExecutionResources.for_limits()
 
     def current_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
@@ -139,6 +129,7 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
+            memory=self._ray_remote_args.get("memory", 0),
             object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
             or 0,
         )

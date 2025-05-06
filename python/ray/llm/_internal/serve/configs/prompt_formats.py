@@ -24,7 +24,6 @@ transformers = try_import("transformers")
 
 
 class Text(BaseModel):
-    field: str = "text"
     type: str = "text"
     text: str
 
@@ -35,18 +34,23 @@ class Text(BaseModel):
 # This is to support the "content" content type in the prompt format, as opposite of
 # the "text" content from the above which most other model uses.
 class Content(BaseModel):
-    field: str = "text"
     type: str = "text"
     content: str
 
 
 class Image(BaseModel):
-    field: str = "image_url"
+    type: str = "image_url"
     image_url: Dict
 
     @field_validator("image_url")
     @classmethod
     def check_image_url(cls, value):
+        """Checks if the image_url is a dict with a 'url' key.
+        Example:
+            image_url = {
+                "url": "https://example.com/image.png"
+            }
+        """
         if "url" not in value or not value["url"] or not isinstance(value["url"], str):
             raise ValueError(
                 # TODO(xwjiang): Link to doc.
@@ -120,6 +124,7 @@ class EngineInput(BaseModel):
     image: Optional[List[ImageInput]] = None
 
 
+# TODO (Kourosh): We can delete this abstraction.
 class AbstractPromptFormat(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -139,14 +144,33 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
             trust_remote_code=trust_remote_code,
         )
 
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
+    def generate_prompt(
+        self, messages: Union[Prompt, List[Message], dict, List[dict]]
+    ) -> EngineInput:
+        # Normalize to Prompt if the input is a dict
+        if isinstance(messages, dict):
+            messages = Prompt.model_validate(messages)
+
+        # Normalize to List[Message] if the input is a Prompt object
         if isinstance(messages, Prompt):
             if isinstance(messages.prompt, str):
                 if not messages.use_prompt_format:
                     return EngineInput(text=messages.prompt)
-
                 raise ValueError("String prompts are not supported.")
             messages = messages.prompt
+
+        # If messages is a list, ensure all elements are of the same type and convert List[dict]to List[Message]
+        elif isinstance(messages, list):
+            if messages == []:
+                raise ValueError("List cannot be empty.")
+            elif all(isinstance(msg, dict) for msg in messages):
+                messages = [Message.model_validate(msg) for msg in messages]
+            elif all(isinstance(msg, Message) for msg in messages):
+                pass
+            else:
+                raise ValueError(
+                    "List must contain either all dicts or all Message objects."
+                )
 
         assert hasattr(
             self, "_processor"
