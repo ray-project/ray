@@ -596,7 +596,6 @@ def ray_start_regular_with_external_redis(request, external_redis):
 @pytest.fixture(scope="module")
 def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
-    print("PARAM", param)
     with _ray_start(**param) as res:
         yield res
 

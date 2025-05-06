@@ -24,6 +24,7 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 @pytest.fixture(scope="module")
 def ray_init_4_cpu_shared():
     yield ray.init(num_cpus=4)
+    ray.shutdown()
 
 
 @pytest.fixture
