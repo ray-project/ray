@@ -1510,10 +1510,10 @@ class Dataset:
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
 
-            Note that either `num_blocks` or `target_num_rows_per_block` must be set
-            here, but not both.
-            Additionally, note that, this operation will materialized whole dataset in memory
-            when shuffle is set to True.
+        Note that either `num_blocks` or `target_num_rows_per_block` must be set
+        here, but not both.
+        Additionally, note that, this operation will materialized whole dataset in memory
+        when shuffle is set to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
