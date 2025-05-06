@@ -181,11 +181,13 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            status_detail = str(exception) if exception else "successful completion"
+            status_detail = (
+                f"failed with {exception}" if exception else "completed successfully"
+            )
 
             logger.debug(
                 f"Shutting down executor for dataset {self._dataset_id} "
-                f"(due to {status_detail})"
+                f"({status_detail})"
             )
 
             _num_shutdown += 1
