@@ -1139,7 +1139,7 @@ class Algorithm(Checkpointable, Trainable):
         self._evaluate_offline_with_fixed_duration()
         # Reduce the evaluation results.
         eval_results = self.metrics.peek(
-            ("EVALUATION_RESULTS", "OFFLINE_EVAL_RUNNER_RESULTS")
+            ("EVALUATION_RESULTS", "OFFLINE_EVAL_RUNNER_RESULTS"), default={}
         )
 
         # Trigger `on_evaluate_offline_end` callback.
