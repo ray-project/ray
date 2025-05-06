@@ -60,7 +60,7 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
-      - sleep 3600
+      - sleep 28000
     depends_on: windowsbuild
 
   - label: ":serverless: serverless: :windows: tests"
