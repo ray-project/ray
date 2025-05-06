@@ -492,6 +492,33 @@ def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
     except subprocess.CalledProcessError as e:
         return e.returncode, e.output
 
+def _call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
+    try:
+        with subprocess.Popen(
+            [
+                _crane_binary(),
+                "index",
+                "append",
+                "-m",
+                tags[0],
+                "-m",
+                tags[1],
+                "-t",
+                index_name,
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            output = ""
+            for line in proc.stdout:
+                logger.info(line + "\n")
+                output += line
+            return_code = proc.wait()
+            if return_code:
+                raise subprocess.CalledProcessError(return_code, proc.args)
+            return return_code, output
+    except subprocess.CalledProcessError as e:
+        return e.returncode, e.output
 
 def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     """
@@ -548,3 +575,14 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
     logger.info(f"Writing to {file_path}......")
     with open(file_path, "w") as f:
         f.write("\n".join(content))
+
+
+def generate_index(index_name: str, tags: List[str]) -> None:
+    # Generate Docker index manifest based on tags
+    return_code, output = _call_crane_index(index_name=index_name, tags=tags)
+    if return_code:
+        logger.info(f"Failed to generate index {index_name}......")
+        logger.info(f"Error: {output}")
+        return False
+    logger.info(f"Generated index {index_name} successfully")
+    return True

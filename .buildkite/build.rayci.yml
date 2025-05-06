@@ -122,3 +122,10 @@ steps:
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
     depends_on:
       - forge
+
+  - label: ":tapioca: Generate indexes"
+    instance_type: small
+    commands:
+      - bash .buildkite/generate_indexes.sh nightly
+    depends_on:
+      - forge
