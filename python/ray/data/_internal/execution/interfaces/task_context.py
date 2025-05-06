@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
 import threading
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.data._internal.progress_bar import ProgressBar

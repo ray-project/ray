@@ -5,11 +5,11 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from packaging.version import parse as parse_version
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
