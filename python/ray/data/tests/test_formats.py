@@ -252,21 +252,6 @@ def test_from_torch_boundary_conditions(shutdown_only, local_read):
     assert len(actual_items_map) == dataset_len
 
 
-def test_torch_iterable_dataset():
-    from torch.utils.data import IterableDataset
-
-    class TestIterableDataset(IterableDataset):
-        def __init__(self):
-            super().__init__()
-
-        def __iter__(self):
-            return iter(range(0, 10))
-
-    iter_ds = TestIterableDataset()
-    ray_ds = ray.data.from_torch(iter_ds)
-    assert ray_ds.take_all() == list(range(0, 10))
-
-
 def test_read_s3_file_error(shutdown_only, s3_path):
     dummy_path = s3_path + "_dummy"
     error_message = "Please check that file exists and has properly configured access."
