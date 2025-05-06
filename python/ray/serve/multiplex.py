@@ -6,7 +6,7 @@ from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
 from ray.serve import metrics
-from ray.serve._private.common import ReplicaSchedulingInfo
+from ray.serve._private.common import ReplicaID, ReplicaSchedulingInfo
 from ray.serve._private.constants import (
     MODEL_LOAD_LATENCY_BUCKETS_MS,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
@@ -102,7 +102,7 @@ class _ModelMultiplexWrapper:
 
         self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
-        self._replica_id: str = context.replica_id
+        self._replica_id: ReplicaID = context.replica_id
 
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
