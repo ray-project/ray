@@ -127,7 +127,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("lopsided-pend")
         .env_runners(
-            num_envs_per_env_runner=10,
+            num_envs_per_env_runner=1 if args.num_agents > 0 else 20,
             # Define a single connector piece to be prepended to the env-to-module
             # connector pipeline.
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
@@ -140,7 +140,7 @@ if __name__ == "__main__":
             ),
         )
         .training(
-            train_batch_size_per_learner=1000,
+            train_batch_size_per_learner=512,
             gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
             lr=0.0003 * (args.num_learners or 1),
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     # PPO specific settings.
     if args.algo == "PPO":
         base_config.training(
-            minibatch_size=128,
+            minibatch_size=64,
             lambda_=0.1,
             vf_clip_param=10.0,
         )
