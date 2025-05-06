@@ -115,6 +115,9 @@ Connectors
    This type of filtering can improve learning stability in environments with highly variable state magnitudes
    by scaling observations to a normalized range.
 
+- `Multi-agent connector mapping global observations to different per-agent/policy observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_with_different_observation_spaces.py>`__:
+   A connector example showing how to map from a global, multi-agent observation space to n individual, per-agent, per-module observation spaces.
+
 - `Prev-actions, prev-rewards connector <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
    Augments observations with previous actions and rewards, giving the agent a short-term memory of past events, which can improve
    decision-making in partially observable or sequentially dependent tasks.
