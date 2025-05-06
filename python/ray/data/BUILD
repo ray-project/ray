@@ -1378,3 +1378,18 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_iter_torch_batches_gpu",
+    size = "medium",
+    srcs = ["tests/test_iter_torch_batches_gpu.py"],
+    tags = [
+        "exclusive",
+        "gpu_only",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
