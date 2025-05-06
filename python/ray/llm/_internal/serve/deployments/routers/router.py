@@ -10,7 +10,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Tuple,
     Union,
 )
 
@@ -159,124 +158,6 @@ async def _openai_json_wrapper(
         yield packet
 
     yield "data: [DONE]\n\n"
-
-
-async def _peek_at_openai_json_generator(
-    generator: Union[LLMChatResponse, LLMCompletionsResponse],
-) -> Tuple[
-    Union[ChatCompletionStreamResponse, CompletionStreamResponse, ErrorResponse],
-    AsyncGenerator[str, None],
-]:
-    """Runs one iteration of the underlying generator
-    and returns the result, alongside the generator itself (with the
-    first iteration still there).
-    """
-    first_response = await generator.__anext__()
-
-    return first_response, _openai_json_wrapper(generator, first_response)
-
-
-async def convert_chat_stream_to_chat_completion(
-    chat_stream: AsyncGenerator[ChatCompletionStreamResponse, None]
-) -> AsyncGenerator[ChatCompletionResponse, None]:
-    """Converts a ChatCompletionStreamResponse to a CompletionStreamResponse."""
-
-    from ray.llm._internal.serve.configs.openai_api_models import (
-        ChatCompletionResponse,
-        ChatCompletionResponseChoice,
-        ChatMessage,
-        UsageInfo,
-    )
-
-    text = ""
-
-    completion_id = None
-    model = None
-
-    last_chunk = None
-    async for batched_chunk in chat_stream:
-        for chunk in batched_chunk:
-            text += chunk.choices[0].delta.content
-
-            # print(f"[debug] {chunk=}")
-
-            if completion_id is None:
-                completion_id = chunk.id
-            if model is None:
-                model = chunk.model
-            last_chunk = chunk
-
-    # print(f"[debug] {completion_id=} {model=} {text=}")
-    # print(f"[debug] {last_chunk=}")
-    yield ChatCompletionResponse(
-        id=completion_id,
-        model=model,
-        choices=[
-            ChatCompletionResponseChoice(
-                message=ChatMessage(
-                    role="assistant",
-                    content=text,
-                ),
-                index=0,
-                finish_reason="stop",
-                # logprobs=logprobs,
-            )
-        ],
-        usage=UsageInfo(
-            prompt_tokens=last_chunk.usage.prompt_tokens or 0,
-            completion_tokens=last_chunk.usage.completion_tokens or 0,
-            total_tokens=(last_chunk.usage.prompt_tokens or 0)
-            + (last_chunk.usage.completion_tokens or 0),
-        ),
-    )
-
-
-# write a similar function for completion stream to completion response
-async def convert_completion_stream_to_completion(
-    completion_stream: AsyncGenerator[CompletionStreamResponse, None]
-) -> AsyncGenerator[CompletionResponse, None]:
-    """Converts a CompletionStreamResponse to a CompletionResponse."""
-    from ray.llm._internal.serve.configs.openai_api_models import (
-        CompletionResponse,
-        CompletionResponseChoice,
-        UsageInfo,
-    )
-
-    text = ""
-
-    completion_id = None
-    model = None
-
-    last_chunk = None
-
-    async for batched_chunk in completion_stream:
-        for chunk in batched_chunk:
-            text += chunk.choices[0].text
-
-            if completion_id is None:
-                completion_id = chunk.id
-            if model is None:
-                model = chunk.model
-            last_chunk = chunk
-
-    yield CompletionResponse(
-        id=completion_id,
-        model=model,
-        choices=[
-            CompletionResponseChoice(
-                text=text,
-                index=0,
-                logprobs={},
-                finish_reason="stop",
-            )
-        ],
-        usage=UsageInfo(
-            prompt_tokens=last_chunk.usage.prompt_tokens or 0,
-            completion_tokens=last_chunk.usage.completion_tokens or 0,
-            total_tokens=(last_chunk.usage.prompt_tokens or 0)
-            + (last_chunk.usage.completion_tokens or 0),
-        ),
-    )
 
 
 class LLMRouter:
