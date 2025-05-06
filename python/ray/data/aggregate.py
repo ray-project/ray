@@ -1,12 +1,12 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Callable, List, Optional, Any
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
 
 from ray.data._internal.util import is_null
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Schema
@@ -432,9 +432,6 @@ class AbsMax(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        return max(current_accumulator, new)
-
     def aggregate_block(self, block: Block) -> AggType:
         block_accessor = BlockAccessor.for_block(block)
 
@@ -448,6 +445,9 @@ class AbsMax(AggregateFnV2):
             abs(max_),
             abs(min_),
         )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return max(current_accumulator, new)
 
 
 @PublicAPI
