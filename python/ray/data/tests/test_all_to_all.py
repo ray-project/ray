@@ -32,7 +32,7 @@ from ray.data.aggregate import (
     AbsMax,
     Unique,
 )
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -72,6 +72,40 @@ def test_repartition_shuffle(
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
     assert large._block_num_rows() == [500] * 20
+
+
+def test_key_based_repartition_shuffle(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    disable_fallback_to_object_extension,
+):
+    context = DataContext.get_current()
+
+    context.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    context.hash_shuffle_operator_actor_num_cpus_per_partition_override = 0.001
+
+    ds = ray.data.range(20, override_num_blocks=10)
+    assert ds._plan.initial_num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_num_rows() == [2] * 10
+
+    ds2 = ds.repartition(3, keys=["id"])
+    assert ds2._plan.initial_num_blocks() == 3
+    assert ds2.sum() == 190
+
+    ds3 = ds.repartition(5, keys=["id"])
+    assert ds3._plan.initial_num_blocks() == 5
+    assert ds3.sum() == 190
+
+    large = ray.data.range(10000, override_num_blocks=100)
+    large = large.repartition(20, keys=["id"])
+    assert large._plan.initial_num_blocks() == 20
+
+    # Assert block sizes distribution
+    assert sum(large._block_num_rows()) == 10000
+    assert 495 < np.mean(large._block_num_rows()) < 505
+
+    assert large.sum() == 49995000
 
 
 def test_repartition_noshuffle(
@@ -601,6 +635,14 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
+    ctx = DataContext.get_current()
+
+    if ctx.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE and ds_format == "pandas":
+        pytest.skip(
+            "Pandas derives integer columns with null as doubles, "
+            "therefore deviating schemas for blocks containing nulls"
+        )
+
     # Test built-in sum aggregation
     random.seed(1741752320)
 
@@ -734,6 +776,7 @@ def test_groupby_tabular_min(
     seed = int(1739959110)
 
     random.seed(seed)
+
     xs = list(range(100))
     random.shuffle(xs)
 
@@ -823,6 +866,19 @@ def test_groupby_tabular_max(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
+    current = DataContext.get_current()
+    if (
+        num_parts == 30
+        and current.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
+        # NOTE: When partitioning by large number of partitions some of these
+        #       will be empty, hence resulting in the type deduced as a double
+        pytest.skip(
+            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
+            "promoting from int64 to double)"
+        )
+
     # Test built-in max aggregation
     random.seed(1738727165)
     xs = list(range(100))
@@ -1228,7 +1284,15 @@ def test_groupby_arrow_multi_agg(
     ds_format,
     disable_fallback_to_object_extension,
 ):
-    using_pyarrow = ds_format == "pyarrow"
+    using_pyarrow = (
+        ds_format == "pyarrow"
+        or
+        # NOTE: Hash-shuffle internally converts to pyarrow
+        (
+            ds_format == "pandas"
+            and configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE
+        )
+    )
 
     if using_pyarrow and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
         pytest.skip(
@@ -1402,10 +1466,10 @@ def test_groupby_multi_agg_with_nans(
                 ("mean_b", lambda s: s.mean(skipna=ignore_nulls)),
                 ("std_b", lambda s: s.std(skipna=ignore_nulls)),
                 (
-                    "quantile",
+                    "quantile_b",
                     lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
                 ),
-                ("unique", "unique"),
+                ("unique_b", "unique"),
             ]
         },
     )
@@ -1517,10 +1581,12 @@ def test_groupby_aggregations_are_associative(
                     "quantile_b",
                     lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
                 ),
-                ("unique_b", "unique"),
+                ("unique", "unique"),
             ]
         },
     )
+
+    print(grouped_df)
 
     grouped_df.columns = [
         "A",

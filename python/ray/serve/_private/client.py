@@ -28,11 +28,12 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import (
+    DeploymentArgs,
+    DeploymentRoute,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import (
     ApplicationStatus,
