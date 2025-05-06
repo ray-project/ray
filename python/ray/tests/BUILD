@@ -1147,8 +1147,6 @@ py_test(
     ],
 )
 
-# TODO(ekl) we can't currently support tagging these as flaky since there's
-# no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
     size = "large",
     env = {
