@@ -581,7 +581,6 @@ class UsageInfo(BaseModel):
     total_tokens: int = 0
     completion_tokens: Optional[int] = 0
     prompt_tokens_details: Optional[PromptTokenUsageInfo] = None
-    total_request_time_ms: Optional[float] = None
 
 
 class Logprob(BaseModel):

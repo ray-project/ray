@@ -310,8 +310,6 @@ class ResponsePostprocessor:
         request_id = get_serve_request_id()
         completion_id = get_model_request_id(model)
 
-        total_time = 0
-        last_ts = time.time()
         if stream:
             # Stream processing - preserve batching from generator
             all_results = []
@@ -344,8 +342,7 @@ class ResponsePostprocessor:
                                 completion_tokens=merged_results.num_generated_tokens
                                 or 0,
                                 total_tokens=(merged_results.num_input_tokens or 0)
-                                + (merged_results.num_generated_tokens or 0),
-                                total_request_time_ms=total_time * 1000,
+                                + (merged_results.num_generated_tokens or 0)
                             )
 
                         chunk = CompletionStreamResponse(
@@ -361,9 +358,7 @@ class ResponsePostprocessor:
                             ],
                             usage=usage,
                         )
-                        cur_ts = time.time()
-                        total_time += cur_ts - last_ts
-                        last_ts = cur_ts
+                        
                         yield chunk
 
             except Exception as e:
@@ -380,7 +375,6 @@ class ResponsePostprocessor:
                     yield results.error
                     return
 
-                total_time = time.time() - last_ts
                 yield CompletionResponse(
                     id=completion_id,
                     model=model,
@@ -397,7 +391,6 @@ class ResponsePostprocessor:
                         completion_tokens=results.num_generated_tokens or 0,
                         total_tokens=(results.num_input_tokens or 0)
                         + (results.num_generated_tokens or 0),
-                        total_request_time_ms=total_time * 1000,
                     ),
                 )
             except Exception as e:
