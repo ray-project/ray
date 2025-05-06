@@ -157,13 +157,17 @@ class MetricsLogger:
         Note that calling this method does NOT cause an actual underlying value list
         reduction, even though reduced values are being returned. It'll keep all
         internal structures as-is. By default, this returns a single reduced value or, if
-        the Stats object has no reduce method, a list of values.
+        the Stats object has no reduce method, a list of values. When when compile is False,
+        the result is a list of one or more values.
 
         Args:
-            key: The key to peek at.
-            default: The default value to return if the key is not found.
+            key: The key/key sequence of the sub-structure of `self`, whose (reduced)
+                values to return.
+            default: An optional default value in case `key` cannot be found in `self`.
+                If default is not provided and `key` cannot be found, throws a KeyError.
             compile: If True, the result is compiled into a single value if possible.
-            throughput: If True, the throughput is returned.
+            throughput: If True, the throughput is returned instead of the
+                actual (reduced) value.
 
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -180,7 +184,7 @@ class MetricsLogger:
             # Expected reduced value:
             expected_reduced = (1.0 - ema) * 2.0 + ema * 3.0
 
-            # Peek at the (reduced) value under `key` using indexing.
+            # Peek at the (reduced) value under `key`.
             check(logger.peek(key), expected_reduced)
 
             # Peek at the (reduced) nested struct under ("some", "nested").
@@ -199,7 +203,7 @@ class MetricsLogger:
             the given key or key sequence.
         """
         if throughput:
-            return self.get_throughputs(key=key, default=default)
+            return self._get_throughputs(key=key, default=default)
 
         # Create a reduced view of the entire stats structure.
         def _nested_peek(stats):
@@ -361,7 +365,7 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: <MetricsLogger>.get_throughputs([key]).
+                through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
         """
@@ -449,7 +453,7 @@ class MetricsLogger:
         stats_dict,
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
-        reduce: str = "mean",
+        reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -535,7 +539,7 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: <MetricsLogger>.get_throughputs([key]).
+                through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
         """
@@ -840,7 +844,7 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: <MetricsLogger>.get_throughputs([key]).
+                through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
         """
@@ -879,12 +883,9 @@ class MetricsLogger:
         processing.
 
         The returned result dict has the exact same structure as the logged keys (or
-        nested key sequences) combined. At the leafs of the returned structure are
-        the reduced values from the underlying Stats objects.
-
-        On first call to this method for a specific metric path, it returns a Stats object
-        instead of a reduced value. This allows us to properly merge Stats objects downstream.
-        On subsequent calls for the same path, it returns the reduced values as usual.
+        nested key sequences) combined. Values are Stats objects if this MetricsLogger
+        is not a root logger. If this MetricsLogger is a root logger, the values are
+        the actual reduced values.
 
         For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
         and n remote components (e.g. n EnvRunners), each with their own
@@ -895,10 +896,8 @@ class MetricsLogger:
         `logger.merge_and_log_n_dicts([n returned result dicts from n subcomponents])`.
 
         .. testcode::
-
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
             from ray.rllib.utils.test_utils import check
-
             logger = MetricsLogger(root=True)
 
             # Log some values under different keys.
@@ -906,24 +905,21 @@ class MetricsLogger:
             logger.log_value("loss", 0.2, window=2)
             logger.log_value("min_loss", 0.3, reduce="min", window=2)
             logger.log_value("min_loss", 0.1, reduce="min", window=2)
-
             # reduce() returns the reduced values.
             results = logger.reduce()
             check(results["loss"], 0.15)  # mean of [0.1, 0.2]
             check(results["min_loss"], 0.1)  # min of [0.3, 0.1]
-
             # We can also reduce a specific key using indexing.
             check(logger.reduce()["loss"], 0.15)  # mean of [0.1, 0.2]
-
             # Or reduce a nested key structure.
             logger.log_value(("nested", "key"), 1.0)
             check(logger.reduce()["nested"]["key"], 1.0)
 
         Returns:
             A (nested) dict matching the structure of `self.stats` (contains all ever
-            logged keys to this MetricsLogger). For paths being reduced for the first time,
-            the leafs are the Stats objects themselves. For paths that have been reduced before,
-            the leafs are the reduced values from the underlying Stats objects.
+            logged keys to this MetricsLogger) with the leafs being (reduced) Stats
+            objects if this MetricsLogger is not a root logger. If this MetricsLogger
+            is a root logger, the leafs are the actual (reduced) values.
         """
         # For better error message, catch the last key-path (reducing of which might
         # throw an error).
@@ -982,7 +978,7 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
-        reduce: str = "mean",
+        reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -1057,19 +1053,7 @@ class MetricsLogger:
             )
 
     def reset(self) -> None:
-        """Resets all data stored in this MetricsLogger.
-
-        .. testcode::
-
-            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-            from ray.rllib.utils.test_utils import check
-
-            logger = MetricsLogger()
-            logger.log_value("a", 1.0)
-            check(logger.peek("a"), 1.0)
-            logger.reset()
-            check(logger.reduce(), {})
-        """
+        """Resets all data stored in this MetricsLogger."""
         with self._threading_lock:
             self.stats = {}
 
@@ -1168,7 +1152,7 @@ class MetricsLogger:
                 if key_error:
                     raise e
 
-    def get_throughputs(
+    def _get_throughputs(
         self, key: Optional[Union[str, Tuple[str, ...]]] = None, default=None
     ) -> Union[Dict, float]:
         """Returns throughput values for Stats that have throughput tracking enabled.
@@ -1258,8 +1242,8 @@ class MetricsLogger:
     def compile(self) -> Dict:
         """Compiles all current values and throughputs into a single dictionary.
 
-        This method combines the results of `reduce()` and `get_throughputs()` into a single
-        dictionary, with throughput values having "_throughput" suffix. This is useful
+        This method combines the results of all stats and throughputs into a single
+        dictionary, with throughput values having a "_throughput" suffix. This is useful
         for getting a complete snapshot of all metrics and their throughputs in one call.
 
         Returns:
@@ -1271,7 +1255,7 @@ class MetricsLogger:
         values = self.reduce()
 
         # Get all throughputs
-        throughputs = self.get_throughputs()
+        throughputs = self._get_throughputs()
 
         deep_update(values, throughputs or {}, new_keys_allowed=True)
 
