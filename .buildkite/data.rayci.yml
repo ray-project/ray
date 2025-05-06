@@ -281,4 +281,4 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name datalgpubuild
         --only-tags gpu,gpu_only
-    depends_on: datalgpubuild
+    depends_on: [ "datalgpubuild", "forge" ]
