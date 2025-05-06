@@ -128,6 +128,7 @@ void OutOfOrderActorSchedulingQueue::Add(
   }
 
   if (request_to_cancel.has_value()) {
+    RAY_LOG(INFO) << "jjyao cancelling task " << task_id;
     request_to_cancel->Cancel(Status::SchedulingCancelled(
         "In favor of the same task with larger attempt number"));
   }
@@ -224,6 +225,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
+    RAY_LOG(INFO) << "jjyao canceling task " << task_id;
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {

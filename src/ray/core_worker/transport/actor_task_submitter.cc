@@ -678,7 +678,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     stream << "The task " << task_id << " is canceled from an actor " << actor_id
            << " before it executes.";
     const auto &msg = stream.str();
-    RAY_LOG(INFO) << "jjyao " << msg;
+    RAY_LOG(INFO) << "jjyao " << msg << " " << status.ToString();
     rpc::RayErrorInfo error_info;
     error_info.set_error_message(msg);
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
