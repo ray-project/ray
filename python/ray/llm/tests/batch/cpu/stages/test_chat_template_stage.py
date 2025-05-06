@@ -11,7 +11,8 @@ def mock_tokenizer_setup():
     # triggers lazy module import in transformers/__init__.py. This means the
     # mocking may not work without explicitly importing AutoProcessor, hence
     # the following import.
-    from transformers import AutoProcessor
+    from transformers import AutoProcessor  # noqa: F401
+
     with patch("transformers.AutoProcessor") as mock_auto_processor:
         mock_processor = MagicMock()
         mock_auto_processor.from_pretrained.return_value = mock_processor
