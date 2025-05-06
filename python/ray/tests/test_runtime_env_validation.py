@@ -11,8 +11,6 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_excludes,
     parse_and_validate_working_dir,
     parse_and_validate_conda,
-    parse_and_validate_pip,
-    parse_and_validate_env_vars,
     parse_and_validate_py_modules,
 )
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
@@ -53,6 +51,10 @@ def test_key_with_value_none():
 
 
 class TestValidateWorkingDir:
+    def test_validate_bad_path(self):
+        with pytest.raises(ValueError, match="a valid path"):
+            parse_and_validate_working_dir("/does/not/exist")
+
     def test_validate_bad_uri(self):
         with pytest.raises(ValueError, match="a valid URI"):
             parse_and_validate_working_dir("unknown://abc")
@@ -81,11 +83,21 @@ class TestValidateWorkingDir:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
 
+    def test_validate_path_valid_input(self, test_directory):
+        test_dir, _, _, _ = test_directory
+        valid_working_dir_path = str(test_dir)
+        working_dir = parse_and_validate_working_dir(str(valid_working_dir_path))
+        assert working_dir == valid_working_dir_path
+
 
 class TestValidatePyModules:
     def test_validate_not_a_list(self):
         with pytest.raises(TypeError, match="must be a list of strings"):
             parse_and_validate_py_modules(".")
+
+    def test_validate_bad_path(self):
+        with pytest.raises(ValueError, match="a valid path"):
+            parse_and_validate_py_modules(["/does/not/exist"])
 
     def test_validate_bad_uri(self):
         with pytest.raises(ValueError, match="a valid URI"):
@@ -117,6 +129,26 @@ class TestValidatePyModules:
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
+
+    def test_validate_path_valid_input(self, test_directory):
+        test_dir, _, _, _ = test_directory
+        paths = [str(test_dir)]
+        py_modules = parse_and_validate_py_modules(paths)
+        assert py_modules == paths
+
+    def test_validate_path_and_uri_valid_input(self, test_directory):
+        test_dir, _, _, _ = test_directory
+        uris_and_paths = [
+            str(test_dir),
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.whl",
+            "s3://bucket/file.whl",
+            "gs://bucket/file.whl",
+        ]
+        py_modules = parse_and_validate_py_modules(uris_and_paths)
+        assert py_modules == uris_and_paths
 
 
 class TestValidateExcludes:
@@ -173,62 +205,6 @@ class TestValidateConda:
 
     def test_validate_conda_valid_dict(self):
         assert parse_and_validate_conda(CONDA_DICT) == CONDA_DICT
-
-
-class TestValidatePip:
-    def test_validate_pip_invalid_types(self):
-        with pytest.raises(TypeError):
-            parse_and_validate_pip(1)
-
-        with pytest.raises(TypeError):
-            parse_and_validate_pip(True)
-
-    def test_validate_pip_invalid_path(self):
-        with pytest.raises(ValueError):
-            parse_and_validate_pip("../bad_path.txt")
-
-    @pytest.mark.parametrize("absolute_path", [True, False])
-    def test_validate_pip_valid_file(self, test_directory, absolute_path):
-        _, requirements_file, _, _ = test_directory
-
-        if absolute_path:
-            requirements_file = requirements_file.resolve()
-
-        result = parse_and_validate_pip(str(requirements_file))
-        assert result["packages"] == PIP_LIST
-        assert not result["pip_check"]
-        assert "pip_version" not in result
-
-    def test_validate_pip_valid_list(self):
-        result = parse_and_validate_pip(PIP_LIST)
-        assert result["packages"] == PIP_LIST
-        assert not result["pip_check"]
-        assert "pip_version" not in result
-
-    def test_validate_ray(self):
-        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
-        assert result["packages"] == ["pkg1", "ray", "pkg2"]
-        assert not result["pip_check"]
-        assert "pip_version" not in result
-
-
-class TestValidateEnvVars:
-    def test_type_validation(self):
-        # Only strings allowed.
-        with pytest.raises(TypeError, match=".*Dict[str, str]*"):
-            parse_and_validate_env_vars({"INT_ENV": 1})
-
-        with pytest.raises(TypeError, match=".*Dict[str, str]*"):
-            parse_and_validate_env_vars({1: "hi"})
-
-        with pytest.raises(TypeError, match=".*value 123 is of type <class 'int'>*"):
-            parse_and_validate_env_vars({"hi": 123})
-
-        with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
-            parse_and_validate_env_vars({"hi": True})
-
-        with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
-            parse_and_validate_env_vars({1.23: "hi"})
 
 
 class TestParsedRuntimeEnv:

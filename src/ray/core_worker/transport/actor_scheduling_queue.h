@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <map>
+#include <memory>
+#include <thread>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -21,9 +26,10 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/fiber.h"
-#include "ray/core_worker/transport/actor_scheduling_util.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 #include "ray/core_worker/transport/scheduling_queue.h"
+#include "ray/core_worker/transport/scheduling_util.h"
 #include "ray/core_worker/transport/thread_pool.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
@@ -40,8 +46,9 @@ const int kMaxReorderWaitSeconds = 30;
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
-      instrumented_io_context &main_io_service,
+      instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
+      worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio,
@@ -58,13 +65,13 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
-           std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
+           std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+               accept_request,
+           std::function<void(const TaskSpecification &,
+                              const Status &,
+                              rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
-           const std::string &concurrency_group_name,
-           const ray::FunctionDescriptor &function_descriptor,
-           TaskID task_id = TaskID::Nil(),
-           const std::vector<rpc::ObjectReference> &dependencies = {}) override;
+           TaskSpecification task_spec) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.
@@ -92,9 +99,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// io service, which is fine since it only ever fires if no tasks are running.
   boost::asio::deadline_timer wait_timer_;
   /// The id of the thread that constructed this scheduling queue.
-  boost::thread::id main_thread_id_;
+  std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
+  worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// Manage the running fiber states of actors in this worker. It works with

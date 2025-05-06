@@ -142,13 +142,13 @@ class AutoscalerEventLogger:
             for infeasible_constraint in infeasible_cluster_resource_constraints:
                 log_str = "No available node types can fulfill cluster constraint: "
                 for i, requests_by_count in enumerate(
-                    infeasible_constraint.min_bundles
+                    infeasible_constraint.resource_requests
                 ):
                     resource_map = ResourceRequestUtil.to_resource_map(
                         requests_by_count.request
                     )
                     log_str += f"{resource_map}*{requests_by_count.count}"
-                    if i < len(infeasible_constraint.min_bundles) - 1:
+                    if i < len(infeasible_constraint.resource_requests) - 1:
                         log_str += ", "
 
                 log_str += (

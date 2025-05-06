@@ -1,18 +1,137 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+import pyarrow as pa
 import pytest
+from typing_extensions import Hashable
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
     trace_deallocation,
 )
-from ray.data._internal.util import _check_pyarrow_version, _split_list
-from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
+from ray.data._internal.util import (
+    NULL_SENTINEL,
+    _check_pyarrow_version,
+    find_partition_index,
+    iterate_with_retry,
+)
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.data._internal.logical.util import (
+    _op_name_white_list,
+    _recorded_operators,
+    _recorded_operators_lock,
+)
+
+
+def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
+    """Check if operators with given names in `op_names` have been used.
+    If `clear_after_check` is True, we clear the list of recorded operators
+    (so that subsequent checks do not use existing records of operator usage)."""
+    for op_name in op_names:
+        assert op_name in _op_name_white_list
+        with _recorded_operators_lock:
+            assert _recorded_operators.get(op_name, 0) > 0, (
+                op_name,
+                _recorded_operators,
+            )
+    if clear_after_check:
+        with _recorded_operators_lock:
+            _recorded_operators.clear()
+
+
+def test_cached_remote_fn():
+    def foo():
+        pass
+
+    cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+    cached_cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+
+    assert cpu_only_foo == cached_cpu_only_foo
+
+    gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
+
+    assert cpu_only_foo != gpu_only_foo
+
+
+def test_null_sentinel():
+    """Check that NULL_SENTINEL sorts greater than any other value."""
+
+    assert NULL_SENTINEL != NULL_SENTINEL
+    assert NULL_SENTINEL < NULL_SENTINEL
+    assert NULL_SENTINEL <= NULL_SENTINEL
+    assert not NULL_SENTINEL > NULL_SENTINEL
+    assert not NULL_SENTINEL >= NULL_SENTINEL
+
+    # With NoneType
+    assert None > NULL_SENTINEL
+    assert None >= NULL_SENTINEL
+    assert NULL_SENTINEL < None
+    assert NULL_SENTINEL <= None
+    assert NULL_SENTINEL != None  # noqa: E711
+
+    # With np.nan
+    assert np.nan > NULL_SENTINEL
+    assert np.nan >= NULL_SENTINEL
+    assert NULL_SENTINEL < np.nan
+    assert NULL_SENTINEL <= np.nan
+    assert NULL_SENTINEL != np.nan
+
+    # Rest
+    assert NULL_SENTINEL > 1000
+    assert NULL_SENTINEL > "abc"
+    assert NULL_SENTINEL != 1000
+    assert NULL_SENTINEL != "abc"
+    assert not NULL_SENTINEL < 1000
+    assert not NULL_SENTINEL < "abc"
+    assert not NULL_SENTINEL <= 1000
+    assert not NULL_SENTINEL <= "abc"
+    assert NULL_SENTINEL >= 1000
+    assert NULL_SENTINEL >= "abc"
+
+
+def test_make_hashable():
+    valid_args = {
+        "int": 0,
+        "float": 1.2,
+        "str": "foo",
+        "dict": {
+            0: 0,
+            1.2: 1.2,
+        },
+        "list": list(range(10)),
+        "tuple": tuple(range(3)),
+        "type": Hashable,
+    }
+
+    hashable_args = _make_hashable(valid_args)
+
+    assert hash(hashable_args) == hash(
+        (
+            ("dict", ((0, 0), (1.2, 1.2))),
+            ("float", 1.2),
+            ("int", 0),
+            ("list", (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+            ("str", "foo"),
+            ("tuple", (0, 1, 2)),
+            ("type", Hashable),
+        )
+    )
+
+    # Invalid case # 1: can't mix up key types
+    invalid_args = {0: 1, "bar": "baz"}
+
+    with pytest.raises(TypeError) as exc_info:
+        _make_hashable(invalid_args)
+
+    assert (
+        str(exc_info.value) == "'<' not supported between instances of 'str' and 'int'"
+    )
 
 
 def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
@@ -76,21 +195,6 @@ def test_memory_tracing(enabled):
         assert "test5" not in report, report
 
 
-def test_list_splits():
-    with pytest.raises(AssertionError):
-        _split_list(list(range(5)), 0)
-
-    with pytest.raises(AssertionError):
-        _split_list(list(range(5)), -1)
-
-    assert _split_list(list(range(5)), 7) == [[0], [1], [2], [3], [4], [], []]
-    assert _split_list(list(range(5)), 2) == [[0, 1, 2], [3, 4]]
-    assert _split_list(list(range(6)), 2) == [[0, 1, 2], [3, 4, 5]]
-    assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
-    assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
-    assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
-
-
 def get_parquet_read_logical_op(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     **read_kwargs,
@@ -129,6 +233,114 @@ class ConcurrencyCounter:
 
     def get_max_concurrency(self):
         return self.max_concurrency
+
+
+def test_iterate_with_retry():
+    has_raised_error = False
+
+    class MockIterable:
+        """Iterate over the numbers 0, 1, 2, and raise an error on the first iteration
+        attempt.
+        """
+
+        def __init__(self, fail_at_index=3):
+            self._index = -1
+            self._fail_at_index = fail_at_index
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self._index += 1
+
+            if self._index >= 10:
+                raise StopIteration
+
+            nonlocal has_raised_error
+            if self._index == self._fail_at_index and not has_raised_error:
+                has_raised_error = True
+                raise RuntimeError("Transient error")
+
+            return self._index
+
+    expected = list(range(10))
+    assert list(iterate_with_retry(MockIterable, description="get item")) == expected
+
+    has_raised_error = False
+    assert (
+        list(iterate_with_retry(MockIterable, description="get item", max_attempts=2))
+        == expected
+    )
+
+
+def test_find_partition_index_single_column_ascending():
+    table = pa.table({"value": [1, 2, 2, 3, 5]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert find_partition_index(table, (0,), sort_key) == 0  # all entries > 0
+    assert find_partition_index(table, (2,), sort_key) == 1  # first match index
+    assert find_partition_index(table, (4,), sort_key) == 4  # belongs after 3, before 5
+    assert find_partition_index(table, (6,), sort_key) == 5  # all entries < 6
+
+
+def test_find_partition_index_single_column_descending():
+    table = pa.table({"value": [5, 3, 2, 2, 1]})
+    sort_key = SortKey(key=["value"], descending=[True])
+    assert find_partition_index(table, (6,), sort_key) == 0  # belongs before 5
+    assert find_partition_index(table, (3,), sort_key) == 2  # after the last 3
+    assert find_partition_index(table, (2,), sort_key) == 4  # after the last 2
+    assert find_partition_index(table, (0,), sort_key) == 5  # all entries > 0
+
+
+def test_find_partition_index_multi_column():
+    # Table sorted by col1 asc, then col2 desc.
+    table = pa.table({"col1": [1, 1, 1, 2, 2], "col2": [3, 2, 1, 2, 1]})
+    sort_key = SortKey(key=["col1", "col2"], descending=[False, True])
+    # Insert value (1,3) -> belongs before (1,2)
+    assert find_partition_index(table, (1, 3), sort_key) == 0
+    # Insert value (1,2) -> belongs after the first (1,3) and before (1,2)
+    # because col1 ties, col2 descending
+    assert find_partition_index(table, (1, 2), sort_key) == 1
+    # Insert value (2,2) -> belongs right before (2,2) that starts at index 3
+    assert find_partition_index(table, (2, 2), sort_key) == 3
+    # Insert value (0, 4) -> belongs at index 0 (all col1 > 0)
+    assert find_partition_index(table, (0, 4), sort_key) == 0
+    # Insert value (2,0) -> belongs after (2,1)
+    assert find_partition_index(table, (2, 0), sort_key) == 5
+
+
+def test_find_partition_index_with_nulls():
+    # _NullSentinel is sorted greater, so they appear after all real values.
+    table = pa.table({"value": [1, 2, 3, None, None]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    # Insert (2,) -> belongs after 1, before 2 => index 1
+    # (But the actual find_partition_index uses the table as-is.)
+    assert find_partition_index(table, (2,), sort_key) == 1
+    # Insert (4,) -> belongs before any null => index 3
+    assert find_partition_index(table, (4,), sort_key) == 3
+    # Insert (None,) -> always belongs at the end
+    assert find_partition_index(table, (None,), sort_key) == 3
+
+
+def test_find_partition_index_duplicates():
+    table = pa.table({"value": [2, 2, 2, 2, 2]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    # Insert (2,) in a table of all 2's -> first matching index is 0
+    assert find_partition_index(table, (2,), sort_key) == 0
+    # Insert (1,) -> belongs at index 0
+    assert find_partition_index(table, (1,), sort_key) == 0
+    # Insert (3,) -> belongs at index 5
+    assert find_partition_index(table, (3,), sort_key) == 5
+
+
+def test_find_partition_index_duplicates_descending():
+    table = pa.table({"value": [2, 2, 2, 2, 2]})
+    sort_key = SortKey(key=["value"], descending=[True])
+    # Insert (2,) in a table of all 2's -> belongs at index 5
+    assert find_partition_index(table, (2,), sort_key) == 5
+    # Insert (1,) -> belongs at index 5
+    assert find_partition_index(table, (1,), sort_key) == 5
+    # Insert (3,) -> belongs at index 0
+    assert find_partition_index(table, (3,), sort_key) == 0
 
 
 if __name__ == "__main__":

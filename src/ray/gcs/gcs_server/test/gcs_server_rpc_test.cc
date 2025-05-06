@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
@@ -41,8 +44,8 @@ class GcsServerTest : public ::testing::Test {
     gcs_server_->Start();
 
     thread_io_service_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       io_service_.run();
     });
 
@@ -87,10 +90,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
+  std::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
-    boost::optional<rpc::ActorTableData> actor_table_data_opt;
+    std::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
     client_->GetActorInfo(request,
                           [&actor_table_data_opt, &promise](
@@ -99,7 +102,7 @@ class GcsServerTest : public ::testing::Test {
                             if (reply.has_actor_table_data()) {
                               actor_table_data_opt = reply.actor_table_data();
                             } else {
-                              actor_table_data_opt = boost::none;
+                              actor_table_data_opt = std::nullopt;
                             }
                             promise.set_value(true);
                           });
@@ -158,10 +161,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
+  std::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
     rpc::GetWorkerInfoRequest request;
     request.set_worker_id(worker_id);
-    boost::optional<rpc::WorkerTableData> worker_table_data_opt;
+    std::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
         request,
@@ -171,7 +174,7 @@ class GcsServerTest : public ::testing::Test {
           if (reply.has_worker_table_data()) {
             worker_table_data_opt = reply.worker_table_data();
           } else {
-            worker_table_data_opt = boost::none;
+            worker_table_data_opt = std::nullopt;
           }
           promise.set_value(true);
         });
@@ -280,8 +283,8 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::ALIVE);
+  ASSERT_EQ(node_info_list.size(), 1);
+  ASSERT_EQ(node_info_list[0].state(), rpc::GcsNodeInfo::ALIVE);
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_request;
@@ -293,11 +296,104 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
   ASSERT_TRUE(UnregisterNode(unregister_node_request));
   node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_EQ(node_info_list.size(), 1);
   ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::DEAD);
   ASSERT_TRUE(node_info_list[0].death_info().reason() ==
               rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   ASSERT_TRUE(node_info_list[0].death_info().reason_message() == reason_message);
+}
+
+TEST_F(GcsServerTest, TestNodeInfoFilters) {
+  // Create gcs node info
+  auto node1 = Mocker::GenNodeInfo(1, "127.0.0.1", "node1");
+  auto node2 = Mocker::GenNodeInfo(2, "127.0.0.2", "node2");
+  auto node3 = Mocker::GenNodeInfo(3, "127.0.0.3", "node3");
+
+  // Register node infos
+  for (auto &node : {node1, node2, node3}) {
+    rpc::RegisterNodeRequest register_node_info_request;
+    register_node_info_request.mutable_node_info()->CopyFrom(*node);
+    ASSERT_TRUE(RegisterNode(register_node_info_request));
+  }
+
+  // Kill node3
+  rpc::UnregisterNodeRequest unregister_node_request;
+  unregister_node_request.set_node_id(node3->node_id());
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  std::string reason_message = "Terminate node for testing.";
+  node_death_info.set_reason_message(reason_message);
+  unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
+  ASSERT_TRUE(UnregisterNode(unregister_node_request));
+
+  {
+    // Get all
+    rpc::GetAllNodeInfoRequest request;
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 3);
+    ASSERT_EQ(reply.num_filtered(), 0);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    // Get by node id
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_id(node1->node_id());
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    // Get by state == ALIVE
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::ALIVE);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by state == DEAD
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::DEAD);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by node_name
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_name("node1");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by node_ip_address
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_ip_address("127.0.0.1");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
@@ -309,7 +405,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
   std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
-  ASSERT_TRUE(worker_table_data.size() == 1);
+  ASSERT_EQ(worker_table_data.size(), 1);
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
@@ -317,10 +413,10 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
-  ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
+  ASSERT_EQ(GetAllWorkerInfo().size(), 2);
 
   // Get worker info
-  boost::optional<rpc::WorkerTableData> result =
+  std::optional<rpc::WorkerTableData> result =
       GetWorkerInfo(worker_data->worker_address().worker_id());
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());

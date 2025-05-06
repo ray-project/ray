@@ -11,11 +11,7 @@ import pytest
 import ray
 from ray import cloudpickle
 from ray._private.test_utils import wait_for_condition
-from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
-    ExecutionResources,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -81,8 +77,8 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     # even if not using iterators.
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
-        executor = StreamingExecutor(ExecutionOptions())
-        o = InputDataBuffer([])
+        executor = StreamingExecutor(DataContext.get_current())
+        o = InputDataBuffer(DataContext.get_current(), [])
         # Start the executor. Because non-started executors don't
         # need to be shut down.
         executor.execute(o)
@@ -90,15 +86,21 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     assert streaming_executor._num_shutdown - initial == num_runs
 
 
-def test_pipelined_execution(ray_start_10_cpus_shared):
-    executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
+def test_pipelined_execution(ray_start_10_cpus_shared, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    executor = StreamingExecutor(ctx)
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        ctx,
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        ctx,
     )
 
     def reverse_sort(inputs: List[RefBundle], ctx):
@@ -106,7 +108,7 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
         return reversed_list, {}
 
     ctx = DataContext.get_current()
-    o4 = AllToAllOperator(reverse_sort, o3, ctx.target_max_block_size)
+    o4 = AllToAllOperator(reverse_sort, o3, ctx, ctx.target_max_block_size)
     it = executor.execute(o4)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]
@@ -114,10 +116,10 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
 
 
 def test_output_split_e2e(ray_start_10_cpus_shared):
-    executor = StreamingExecutor(ExecutionOptions())
+    executor = StreamingExecutor(DataContext.get_current())
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
-    o2 = OutputSplitter(o1, 2, equal=True)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = OutputSplitter(o1, 2, equal=True, data_context=DataContext.get_current())
     it = executor.execute(o2)
 
     class Consume(threading.Thread):
@@ -340,6 +342,48 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     )
 
     assert len(ready) == 2
+
+
+def test_streaming_split_error_propagation(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    # Test propagating errors from Dataset execution start-up
+    # (e.g. actor pool start-up timeout) to streaming_split iterators.
+    ctx = DataContext.get_current()
+    ctx.wait_for_min_actors_s = 1
+
+    num_splits = 5
+    ds = ray.data.range(100)
+
+    class SlowUDF:
+        def __init__(self):
+            # This UDF slows down actor creation, and thus
+            # will trigger the actor pool start-up timeout error.
+            time.sleep(10)
+
+        def __call__(self, batch):
+            return batch
+
+    ds = ds.map_batches(
+        SlowUDF,
+        concurrency=2,
+    )
+    splits = ds.streaming_split(num_splits, equal=True)
+
+    @ray.remote
+    class Consumer:
+        def consume(self, split):
+            with pytest.raises(
+                ray.exceptions.GetTimeoutError,
+                match="Timed out while starting actors.",
+            ):
+                for _ in split.iter_batches():
+                    pass
+            return "ok"
+
+    consumers = [Consumer.remote() for _ in range(num_splits)]
+    res = ray.get([c.consume.remote(split) for c, split in zip(consumers, splits)])
+    assert res == ["ok"] * num_splits
 
 
 @pytest.mark.skip(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# flake8: noqa E402
+# ruff: noqa: E402
 """This script allows you to develop Ray Python code without needing to compile
 Ray.
 See https://docs.ray.io/en/master/development.html#building-ray-python-only"""
@@ -73,8 +73,27 @@ def do_link(package, force=False, skip_list=None, local_path=None):
             print("You don't have write permission " f"to {package_home}, using sudo:")
             sudo = ["sudo"]
         print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
+
+        # Preserve ray/serve/generated
+        if package == "serve":
+            # Copy generated folder to a temp dir
+            generated_folder = os.path.join(package_home, "generated")
+            temp_dir = "/tmp/ray/_serve/"
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+            subprocess.check_call(["cp", "-r", generated_folder, temp_dir])
+
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
+
+        # Move generated folder to local_home
+        if package == "serve":
+            tmp_generated_folder = os.path.join(temp_dir, "generated")
+            package_generated_folder = os.path.join(package_home, "generated")
+            if not os.path.exists(package_generated_folder):
+                subprocess.check_call(
+                    ["mv", tmp_generated_folder, package_generated_folder]
+                )
 
 
 if __name__ == "__main__":
@@ -103,6 +122,10 @@ if __name__ == "__main__":
     if not args.yes:
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
+    # For LLMs
+    do_link("llm", force=args.yes, skip_list=args.skip)
+    do_link("serve/llm", force=args.yes, skip_list=args.skip)
+    do_link("data/llm.py", force=args.yes, skip_list=args.skip)
     do_link("rllib", force=args.yes, skip_list=args.skip, local_path="../../../rllib")
     do_link("air", force=args.yes, skip_list=args.skip)
     do_link("tune", force=args.yes, skip_list=args.skip)
@@ -121,15 +144,7 @@ if __name__ == "__main__":
     do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
     do_link("_private", force=args.yes, skip_list=args.skip)
-    # Link package's `dashboard` directly to local (repo's) dashboard.
-    # The repo's `dashboard` is a file, soft-linking to which will not work
-    # on Mac.
-    do_link(
-        "dashboard",
-        force=args.yes,
-        skip_list=args.skip,
-        local_path="../../../dashboard",
-    )
+    do_link("dashboard", force=args.yes, skip_list=args.skip)
 
     if args.extras is not None:
         for package in args.extras:

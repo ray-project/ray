@@ -41,7 +41,7 @@ Note that evaluation results (on the CartPole-v1 env) should be close to perfect
 from typing import Dict
 
 import numpy as np
-from ray import train, tune
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
@@ -69,7 +69,7 @@ def my_experiment(config: Dict):
         train_results = algo_high_lr.train()
         # Add the phase to the result dict.
         train_results["phase"] = 1
-        train.report(train_results)
+        tune.report(train_results)
         phase_high_lr_time = train_results[NUM_ENV_STEPS_SAMPLED_LIFETIME]
     checkpoint_training_high_lr = algo_high_lr.save()
     algo_high_lr.stop()
@@ -85,7 +85,7 @@ def my_experiment(config: Dict):
         train_results["phase"] = 2
         # keep time moving forward
         train_results[NUM_ENV_STEPS_SAMPLED_LIFETIME] += phase_high_lr_time
-        train.report(train_results)
+        tune.report(train_results)
 
     checkpoint_training_low_lr = algo_low_lr.save()
     algo_low_lr.stop()
@@ -101,11 +101,11 @@ def my_experiment(config: Dict):
     eval_algo.restore(checkpoint_training_low_lr)
     # The algo's local worker (SingleAgentEnvRunner) that holds a
     # gym.vector.Env object and an RLModule for computing actions.
-    local_env_runner = eval_algo.workers.local_worker()
+    local_env_runner = eval_algo.env_runner
     # Extract the gymnasium env object from the created algo (its local
     # SingleAgentEnvRunner worker). Note that the env in this single-agent
     # case is a gymnasium vector env and that we get its first sub-env here.
-    env = local_env_runner.env.envs[0]
+    env = local_env_runner.env.unwrapped.envs[0]
 
     # The local worker (SingleAgentEnvRunner)
     rl_module = local_env_runner.module
@@ -149,19 +149,11 @@ def my_experiment(config: Dict):
     # evaluation results.
     results = {**train_results, **eval_results}
     # Report everything.
-    train.report(results)
+    tune.report(results)
 
 
 if __name__ == "__main__":
-    base_config = (
-        PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
-        .environment("CartPole-v1")
-        .env_runners(num_env_runners=0)
-    )
+    base_config = PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
     # Convert to a plain dict for Tune. Note that this is usually not needed, you can
     # pass into the below Tune Tuner any instantiated RLlib AlgorithmConfig object.
     # However, for demonstration purposes, we show here how you can add other, arbitrary

@@ -8,18 +8,13 @@ ARG PYTHON=3.9
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
+ENV RAY_BUILD_ENV=ubuntu20.04_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
 ENV RAY_USE_RANDOM_PORTS=1
 ENV RAY_DEFAULT_BUILD=1
 ENV RAY_INSTALL_JAVA=0
-# For wheel build
-# https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
-ENV DOCKER_TLS_CERTDIR=/certs
-ENV DOCKER_HOST=tcp://docker:2376
-ENV DOCKER_TLS_VERIFY=1
-ENV DOCKER_CERT_PATH=/certs/client
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
 RUN <<EOF
@@ -41,7 +36,7 @@ ln -s /usr/bin/clang-12 /usr/bin/clang
 
 EOF
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a
@@ -53,7 +48,7 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 RUN mkdir /ray
 WORKDIR /ray
 
-# Below should be re-run each time
 COPY . .
 
+RUN ./ci/env/install-miniconda.sh
 RUN ./ci/env/install-bazel.sh

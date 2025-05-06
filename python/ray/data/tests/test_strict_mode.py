@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -143,15 +144,18 @@ def test_strict_default_batch_format(ray_start_regular_shared):
     assert isinstance(batch["id"], np.ndarray), batch
 
 
-def test_strict_tensor_support(ray_start_regular_shared):
-    ds = ray.data.from_items([np.ones(10), np.ones(10)])
-    assert np.array_equal(ds.take()[0]["item"], np.ones(10))
+@pytest.mark.parametrize("shape", [(10,), (10, 2)])
+def test_strict_tensor_support(ray_start_regular_shared, restore_data_context, shape):
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+
+    ds = ray.data.from_items([np.ones(shape), np.ones(shape)])
+    assert np.array_equal(ds.take()[0]["item"], np.ones(shape))
 
     ds = ds.map(lambda x: {"item": x["item"] * 2})
-    assert np.array_equal(ds.take()[0]["item"], 2 * np.ones(10))
+    assert np.array_equal(ds.take()[0]["item"], 2 * np.ones(shape))
 
     ds = ds.map_batches(lambda x: {"item": x["item"] * 2})
-    assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(10))
+    assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(shape))
 
 
 def test_strict_value_repr(ray_start_regular_shared):
@@ -179,6 +183,10 @@ def test_strict_schema(ray_start_regular_shared):
     import pyarrow as pa
 
     from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data.extensions.object_extension import (
+        ArrowPythonObjectType,
+        _object_extension_type_allowed,
+    )
     from ray.data.extensions.tensor_extension import ArrowTensorType
 
     ds = ray.data.from_items([{"x": 2}])
@@ -195,23 +203,41 @@ def test_strict_schema(ray_start_regular_shared):
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
-    assert schema.names == ["x", "y", "z"]
-    assert schema.types == [
-        pa.int64(),
-        object,
-        object,
-    ]
+    if _object_extension_type_allowed():
+        assert isinstance(schema.base_schema, pa.lib.Schema)
+        assert schema.names == ["x", "y", "z"]
+        assert schema.types == [
+            pa.int64(),
+            ArrowPythonObjectType(),
+            pa.list_(pa.int64()),
+        ]
+    else:
+        assert schema.names == ["x", "y", "z"]
+        assert schema.types == [
+            pa.int64(),
+            object,
+            object,
+        ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
     assert isinstance(schema.base_schema, pa.lib.Schema)
     assert schema.names == ["data"]
-    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
+
+    from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+    from ray.data import DataContext
+
+    if DataContext.get_current().use_arrow_tensor_v2:
+        expected_arrow_ext_type = ArrowTensorTypeV2(shape=(10,), dtype=pa.float64())
+    else:
+        expected_arrow_ext_type = ArrowTensorType(shape=(10,), dtype=pa.float64())
+
+    assert schema.types == [expected_arrow_ext_type]
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
     assert isinstance(schema.base_schema, PandasBlockSchema)
     assert schema.names == ["data"]
-    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
+    assert schema.types == [expected_arrow_ext_type]
 
 
 def test_use_raw_dicts(ray_start_regular_shared):

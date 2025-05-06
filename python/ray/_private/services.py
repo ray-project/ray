@@ -27,6 +27,7 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 resource = None
 if sys.platform != "win32":
@@ -177,7 +178,12 @@ def _build_python_executable_command_memory_profileable(
 
 
 def _get_gcs_client_options(gcs_server_address):
-    return GcsClientOptions.from_gcs_address(gcs_server_address)
+    return GcsClientOptions.create(
+        gcs_server_address,
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
+    )
 
 
 def serialize_config(config):
@@ -335,11 +341,9 @@ def _find_address_from_flag(flag: str):
 
     # The --redis-address here is what is now called the --address, but it
     # appears in the default_worker.py and agent.py calls as --redis-address.
-    pids = psutil.pids()
     addresses = set()
-    for pid in pids:
+    for proc in psutil.process_iter(["cmdline"]):
         try:
-            proc = psutil.Process(pid)
             # HACK: Workaround for UNIX idiosyncrasy
             # Normally, cmdline() is supposed to return the argument list.
             # But it in some cases (such as when setproctitle is called),
@@ -347,11 +351,11 @@ def _find_address_from_flag(flag: str):
             # the first argument.
             # Explanation: https://unix.stackexchange.com/a/432681
             # More info: https://github.com/giampaolo/psutil/issues/1179
-            cmdline = proc.cmdline()
+            cmdline = proc.info["cmdline"]
             # NOTE(kfstorm): To support Windows, we can't use
             # `os.path.basename(cmdline[0]) == "raylet"` here.
 
-            if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
+            if _is_raylet_process(cmdline):
                 for arglist in cmdline:
                     # Given we're merely seeking --redis-address, we just split
                     # every argument on spaces for now.
@@ -448,7 +452,9 @@ def wait_for_node(
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
+    gcs_options = GcsClientOptions.create(
+        gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+    )
     global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -775,11 +781,11 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
                 json.dump(cached_node_ip_address, f)
 
 
-def create_redis_client(redis_address, password=None):
+def create_redis_client(redis_address, password=None, username=None):
     """Create a Redis client.
 
     Args:
-        The IP address, port, and password of the Redis server.
+        The IP address, port, username, and password of the Redis server.
 
     Returns:
         A Redis client.
@@ -798,7 +804,10 @@ def create_redis_client(redis_address, password=None):
                 canonicalize_bootstrap_address_or_die(redis_address)
             )
             cli = redis.StrictRedis(
-                host=redis_ip_address, port=int(redis_port), password=password
+                host=redis_ip_address,
+                port=int(redis_port),
+                username=username,
+                password=password,
             )
             create_redis_client.instances[redis_address] = cli
         try:
@@ -827,8 +836,8 @@ def start_ray_process(
     use_valgrind_profiler: bool = False,
     use_perftools_profiler: bool = False,
     use_tmux: bool = False,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_file: Optional[IO[AnyStr]] = None,
+    stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
 ):
     """Start one of the Ray processes.
@@ -1091,9 +1100,8 @@ def start_log_monitor(
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
-    redirect_logging: bool = True,
-    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
-    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
 ):
     """Start a log monitor process.
 
@@ -1109,10 +1117,10 @@ def start_log_monitor(
             RotatingFileHandler's backupCount.
         redirect_logging: Whether we should redirect logging to
             the provided log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump log monitor stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump log monitor stderr.
+            If None, stderr is not redirected.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1130,7 +1138,12 @@ def start_log_monitor(
         f"--logging-rotate-backup-count={backup_count}",
     ]
 
-    if not redirect_logging:
+    if stdout_filepath:
+        command.append(f"--stdout-filepath={stdout_filepath}")
+    if stderr_filepath:
+        command.append(f"--stderr-filepath={stderr_filepath}")
+
+    if stdout_filepath is None and stderr_filepath is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -1139,9 +1152,15 @@ def start_log_monitor(
             component=ray_constants.PROCESS_TYPE_LOG_MONITOR
         )
         command.append(f"--logging-format={logging_format}")
-        # Inherit stdout/stderr streams.
-        stdout_file = None
-        stderr_file = None
+
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
@@ -1157,18 +1176,17 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    cluster_id_hex: str,
     node_ip_address: str,
     temp_dir: str,
     logdir: str,
     session_dir: str,
     port: Optional[int] = None,
-    dashboard_grpc_port: Optional[int] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
-    redirect_logging: bool = True,
-    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
-    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1183,6 +1201,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        cluster_id_hex: Cluster ID in hex.
         node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
@@ -1191,18 +1210,14 @@ def start_api_server(
         logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
-        dashboard_grpc_port: The port which the dashboard listens for
-            gRPC on. Defaults to a random, available port.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging: Whether we should redirect logging to
-            the provided log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump dashboard stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump dashboard stderr.
+            If None, stderr is not redirected.
 
     Returns:
         A tuple of :
@@ -1272,10 +1287,16 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
         ]
 
-        if not redirect_logging:
+        if stdout_filepath:
+            command.append(f"--stdout-filepath={stdout_filepath}")
+        if stderr_filepath:
+            command.append(f"--stderr-filepath={stderr_filepath}")
+
+        if stdout_filepath is None and stderr_filepath is None:
             # If not redirecting logging to files, unset log filename.
             # This will cause log records to go to stderr.
             command.append("--logging-filename=")
@@ -1284,10 +1305,6 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-            # Inherit stdout/stderr streams so that
-            # logs are redirected to stderr.
-            stdout_file = None
-            stderr_file = None
         if minimal:
             command.append("--minimal")
 
@@ -1299,8 +1316,13 @@ def start_api_server(
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
 
-        if dashboard_grpc_port is not None:
-            command.append(f"--grpc-port={dashboard_grpc_port}")
+        stdout_file = None
+        if stdout_filepath:
+            stdout_file = open(os.devnull, "w")
+
+        stderr_file = None
+        if stderr_filepath:
+            stderr_file = open(os.devnull, "w")
 
         process_info = start_ray_process(
             command,
@@ -1311,7 +1333,7 @@ def start_api_server(
         )
 
         # Retrieve the dashboard url
-        gcs_client = GcsClient(address=gcs_address)
+        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
@@ -1432,9 +1454,10 @@ def get_address(redis_address):
 def start_gcs_server(
     redis_address: str,
     log_dir: str,
+    stdout_filepath: Optional[str],
+    stderr_filepath: Optional[str],
     session_name: str,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     config: Optional[dict] = None,
     fate_share: Optional[bool] = None,
@@ -1446,13 +1469,14 @@ def start_gcs_server(
 
     Args:
         redis_address: The address that the Redis server is listening on.
-        log_dir: The path of the dir where log files are created.
+        log_dir: The path of the dir where gcs log files are created.
+        stdout_filepath: The file path to dump gcs server stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump gcs server stderr.
+            If None, stderr is not redirected.
         session_name: The session name (cluster id) of this cluster.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        redis_password: The password of the redis server.
+        redis_username: The username of the Redis server.
+        redis_password: The password of the Redis server.
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
@@ -1472,7 +1496,14 @@ def start_gcs_server(
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
+        f"--ray-commit={ray.__commit__}",
     ]
+
+    if stdout_filepath:
+        command += [f"--stdout_filepath={stdout_filepath}"]
+    if stderr_filepath:
+        command += [f"--stderr_filepath={stderr_filepath}"]
+
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
@@ -1481,8 +1512,19 @@ def start_gcs_server(
             f"--redis_port={redis_port}",
             f"--redis_enable_ssl={'true' if enable_redis_ssl else 'false'}",
         ]
+    if redis_username:
+        command += [f"--redis_username={redis_username}"]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
+
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
@@ -1511,13 +1553,16 @@ def start_raylet(
     log_dir: str,
     resource_spec,
     plasma_directory: str,
+    fallback_directory: str,
     object_store_memory: int,
     session_name: str,
     is_head_node: bool,
+    resource_isolation_config: ResourceIsolationConfig,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
     object_manager_port: Optional[int] = None,
+    redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     metrics_agent_port: Optional[int] = None,
     metrics_export_port: Optional[int] = None,
@@ -1525,9 +1570,12 @@ def start_raylet(
     runtime_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
-    config: Optional[dict] = None,
+    raylet_stdout_filepath: Optional[str] = None,
+    raylet_stderr_filepath: Optional[str] = None,
+    dashboard_agent_stdout_filepath: Optional[str] = None,
+    dashboard_agent_stderr_filepath: Optional[str] = None,
+    runtime_env_agent_stdout_filepath: Optional[str] = None,
+    runtime_env_agent_stderr_filepath: Optional[str] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1561,13 +1609,25 @@ def start_raylet(
         resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        fallback_directory: A directory where the Object store fallback files will be created.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         session_name: The session name (cluster id) of this cluster.
-        object_manager_port: The port to use for the object manager. If this is
-            None, then the object manager will choose its own port.
+        resource_isolation_config: Resource isolation configuration for reserving
+            memory and cpu resources for ray system processes through cgroupv2
+        is_head_node: whether this node is the head node.
         min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
         max_worker_port: The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
+        worker_port_list: An explicit list of ports to be used for
+            workers (comma-separated). Overrides min_worker_port and
+            max_worker_port.
+        object_manager_port: The port to use for the object manager. If this is
+            None, then the object manager will choose its own port.
+        redis_username: The username to use when connecting to Redis.
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
@@ -1579,13 +1639,21 @@ def start_raylet(
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        tracing_startup_hook: Tracing startup hook.
-        config: Optional Raylet configuration that will
-            override defaults in RayConfig.
+        raylet_stdout_filepath: The file path to dump raylet stdout.
+            If None, stdout is not redirected.
+        raylet_stderr_filepath: The file path to dump raylet stderr.
+            If None, stderr is not redirected.
+        dashboard_agent_stdout_filepath: The file path to dump
+            dashboard agent stdout. If None, stdout is not redirected.
+        dashboard_agent_stderr_filepath: The file path to dump
+            dashboard agent stderr. If None, stderr is not redirected.
+        runtime_env_agent_stdout_filepath: The file path to dump
+            runtime env agent stdout. If None, stdout is not redirected.
+        runtime_env_agent_stderr_filepath: The file path to dump
+            runtime env agent stderr. If None, stderr is not redirected.
+        huge_pages: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
+        fate_share: Whether to share fate between raylet and this process.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1593,11 +1661,13 @@ def start_raylet(
         ray_debugger_external: True if the Ray debugger should be made
             available externally to this node.
         env_updates: Environment variable overrides.
+        node_name: The name of the node.
+        webui: The url of the UI.
         labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert node_manager_port is not None and type(node_manager_port) == int
+    assert node_manager_port is not None and type(node_manager_port) is int
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1635,6 +1705,7 @@ def start_raylet(
             gcs_address,
             plasma_store_name,
             raylet_name,
+            redis_username,
             redis_password,
             session_dir,
             node_ip_address,
@@ -1648,6 +1719,7 @@ def start_raylet(
             gcs_address,
             plasma_store_name,
             raylet_name,
+            redis_username,
             redis_password,
             session_dir,
             log_dir,
@@ -1675,7 +1747,6 @@ def start_raylet(
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
             f"--metrics-agent-port={metrics_agent_port}",
-            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",
@@ -1687,10 +1758,25 @@ def start_raylet(
         ]
     )
 
+    if resource_isolation_config.is_enabled():
+        # TODO(irabbani): enable passing args to raylet once the raylet has been modified
+        logging.info(
+            f"Resource isolation enabled with cgroup_path={resource_isolation_config.cgroup_path}, "
+            f"system_reserved_cpu={resource_isolation_config.system_reserved_cpu_weight} "
+            f"system_reserved_memory={resource_isolation_config.system_reserved_memory}"
+        )
+        # start_worker_command.append("--enable-resource-isolation")
+        # start_worker_command.append(f"--cgroup-path={resource_isolation_config.cgroup_path}")
+        # start_worker_command.append(f"--system-reserved-cpu={resource_isolation_config.system_reserved_cpu_weight}")
+        # start_worker_command.append(f"--system-reserved-memory={resource_isolation_config.system_reserved_memory}")
+
     if storage is not None:
         start_worker_command.append(f"--storage={storage}")
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
+
+    if redis_username:
+        start_worker_command += [f"--redis-username={redis_username}"]
 
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
@@ -1729,8 +1815,20 @@ def start_raylet(
         f"--logging-rotate-backup-count={backup_count}",
         f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
     ]
-    if stdout_file is None and stderr_file is None:
+    if dashboard_agent_stdout_filepath:
+        dashboard_agent_command.append(
+            f"--stdout-filepath={dashboard_agent_stdout_filepath}"
+        )
+    if dashboard_agent_stderr_filepath:
+        dashboard_agent_command.append(
+            f"--stderr-filepath={dashboard_agent_stderr_filepath}"
+        )
+    if (
+        dashboard_agent_stdout_filepath is None
+        and dashboard_agent_stderr_filepath is None
+    ):
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         dashboard_agent_command.append("--logging-filename=")
@@ -1754,12 +1852,33 @@ def start_raylet(
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
         f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
         f"--runtime-env-dir={resource_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         f"--log-dir={log_dir}",
         f"--temp-dir={temp_dir}",
     ]
+    if runtime_env_agent_stdout_filepath:
+        runtime_env_agent_command.append(
+            f"--stdout-filepath={runtime_env_agent_stdout_filepath}"
+        )
+    if runtime_env_agent_stderr_filepath:
+        runtime_env_agent_command.append(
+            f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
+        )
+    if (
+        runtime_env_agent_stdout_filepath is None
+        and runtime_env_agent_stderr_filepath is None
+    ):
+        # If not redirecting logging to files, unset log filename.
+        # This will cause log records to go to stderr.
+        runtime_env_agent_command.append("--logging-filename=")
+        # Use stderr log format with the component name as a message prefix.
+        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+            component=ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT
+        )
+        runtime_env_agent_command.append(f"--logging-format={logging_format}")
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1786,12 +1905,18 @@ def start_raylet(
         f"--runtime_env_agent_port={runtime_env_agent_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
+        f"--fallback_directory={fallback_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
         f"--labels={labels_json_str}",
         f"--cluster-id={cluster_id}",
     ]
+
+    if raylet_stdout_filepath:
+        command.append(f"--stdout_filepath={raylet_stdout_filepath}")
+    if raylet_stderr_filepath:
+        command.append(f"--stderr_filepath={raylet_stderr_filepath}")
 
     if is_head_node:
         command.append("--head")
@@ -1819,6 +1944,15 @@ def start_raylet(
         command.append(
             f"--node-name={node_name}",
         )
+
+    stdout_file = None
+    if raylet_stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if raylet_stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1831,7 +1965,6 @@ def start_raylet(
         fate_share=fate_share,
         env_updates=env_updates,
     )
-
     return process_info
 
 
@@ -1853,6 +1986,7 @@ def build_java_worker_command(
     bootstrap_address: str,
     plasma_store_name: str,
     raylet_name: str,
+    redis_username: str,
     redis_password: str,
     session_dir: str,
     node_ip_address: str,
@@ -1865,9 +1999,10 @@ def build_java_worker_command(
         plasma_store_name: The name of the plasma store socket to connect
            to.
         raylet_name: The name of the raylet socket to create.
-        redis_password: The password of connect to redis.
+        redis_username: The username to connect to Redis.
+        redis_password: The password to connect to Redis.
         session_dir: The path of this session.
-        node_ip_address: The ip address for this node.
+        node_ip_address: The IP address for this node.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
     Returns:
@@ -1883,6 +2018,9 @@ def build_java_worker_command(
 
     if raylet_name is not None:
         pairs.append(("ray.raylet.socket-name", raylet_name))
+
+    if redis_username is not None:
+        pairs.append(("ray.redis.username", redis_username))
 
     if redis_password is not None:
         pairs.append(("ray.redis.password", redis_password))
@@ -1909,6 +2047,7 @@ def build_cpp_worker_command(
     bootstrap_address: str,
     plasma_store_name: str,
     raylet_name: str,
+    redis_username: str,
     redis_password: str,
     session_dir: str,
     log_dir: str,
@@ -1922,7 +2061,8 @@ def build_cpp_worker_command(
         plasma_store_name: The name of the plasma store socket to connect
            to.
         raylet_name: The name of the raylet socket to create.
-        redis_password: The password of connect to redis.
+        redis_username: The username to connect to Redis.
+        redis_password: The password to connect to Redis.
         session_dir: The path of this session.
         log_dir: The path of logs.
         node_ip_address: The ip address for this node.
@@ -1940,6 +2080,7 @@ def build_cpp_worker_command(
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--ray_address={bootstrap_address}",
+        f"--ray_redis_username={redis_username}",
         f"--ray_redis_password={redis_password}",
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",
@@ -1952,25 +2093,34 @@ def build_cpp_worker_command(
 
 def determine_plasma_store_config(
     object_store_memory: int,
+    temp_dir: str,
     plasma_directory: Optional[str] = None,
+    fallback_directory: Optional[str] = None,
     huge_pages: bool = False,
 ):
     """Figure out how to configure the plasma object store.
 
-    This will determine which directory to use for the plasma store. On Linux,
+    This will determine:
+    1. which directory to use for the plasma store. On Linux,
     we will try to use /dev/shm unless the shared memory file system is too
     small, in which case we will fall back to /tmp. If any of the object store
     memory or plasma directory parameters are specified by the user, then those
     values will be preserved.
+    2. which directory to use for the fallback files. It will default to the temp_dir
+    if it is not extracted from the object_spilling_config.
 
     Args:
         object_store_memory: The object store memory to use.
         plasma_directory: The user-specified plasma directory parameter.
+        fallback_directory: The path extracted from the object_spilling_config when the
+                            object spilling config is set and the spilling type is to
+                            filesystem.
         huge_pages: The user-specified huge pages parameter.
 
     Returns:
-        The plasma directory to use. If it is specified by the user, then that
-            value will be preserved.
+        A tuple of plasma directory to use, the fallback directory to use, and the
+        object store memory to use. If it is specified by the user, then that value will
+        be preserved.
     """
     if not isinstance(object_store_memory, int):
         object_store_memory = int(object_store_memory)
@@ -2035,7 +2185,7 @@ def determine_plasma_store_config(
 
     if not os.path.isdir(plasma_directory):
         raise ValueError(
-            f"The file {plasma_directory} does not exist or is not a directory."
+            f"The plasma directory file {plasma_directory} does not exist or is not a directory."
         )
 
     if huge_pages and plasma_directory is None:
@@ -2073,20 +2223,34 @@ def determine_plasma_store_config(
             )
         )
 
+    if fallback_directory is None:
+        fallback_directory = temp_dir
+    else:
+        fallback_directory = os.path.abspath(fallback_directory)
+
+    if not os.path.isdir(fallback_directory):
+        raise ValueError(
+            f"The fallback directory file {fallback_directory} does not exist or is not a directory."
+        )
+
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(round(object_store_memory / 10**9, 2), plasma_directory)
+        "using {} and fallback to {}".format(
+            round(object_store_memory / 10**9, 2),
+            plasma_directory,
+            fallback_directory,
+        )
     )
 
-    return plasma_directory, object_store_memory
+    return plasma_directory, fallback_directory, object_store_memory
 
 
 def start_monitor(
     gcs_address: str,
     logs_dir: str,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
@@ -2099,10 +2263,10 @@ def start_monitor(
     Args:
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump monitor stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump monitor stderr.
+            If None, stderr is not redirected.
         autoscaling_config: path to autoscaling config file.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
@@ -2129,7 +2293,12 @@ def start_monitor(
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
 
-    if stdout_file is None and stderr_file is None:
+    if stdout_filepath:
+        command.append(f"--stdout-filepath={stdout_filepath}")
+    if stderr_filepath:
+        command.append(f"--stderr-filepath={stderr_filepath}")
+
+    if stdout_filepath is None and stderr_filepath is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -2142,6 +2311,15 @@ def start_monitor(
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
+
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
@@ -2158,6 +2336,7 @@ def start_ray_client_server(
     ray_client_server_port: int,
     stdout_file: Optional[int] = None,
     stderr_file: Optional[int] = None,
+    redis_username: Optional[int] = None,
     redis_password: Optional[int] = None,
     fate_share: Optional[bool] = None,
     runtime_env_agent_address: Optional[str] = None,
@@ -2174,7 +2353,8 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        redis_password: The password of the redis server.
+        redis_username: The username of the Redis server.
+        redis_password: The password of the Redis server.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
         server_type: Whether to start the proxy version of Ray Client.
@@ -2203,6 +2383,8 @@ def start_ray_client_server(
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
     ]
+    if redis_username:
+        command.append(f"--redis-username={redis_username}")
     if redis_password:
         command.append(f"--redis-password={redis_password}")
     if serialized_runtime_env_context:
@@ -2222,3 +2404,19 @@ def start_ray_client_server(
         fate_share=fate_share,
     )
     return process_info
+
+
+def _is_raylet_process(cmdline: Optional[List[str]]) -> bool:
+    """Check if the command line belongs to a raylet process.
+
+    Args:
+        cmdline: List of command line arguments or None
+
+    Returns:
+        bool: True if this is a raylet process, False otherwise
+    """
+    if cmdline is None or len(cmdline) == 0:
+        return False
+
+    executable = os.path.basename(cmdline[0])
+    return "raylet" in executable

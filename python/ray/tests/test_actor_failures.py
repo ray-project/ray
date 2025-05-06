@@ -10,6 +10,7 @@ import time
 
 import ray
 from ray.actor import exit_actor
+from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
 from ray._private.test_utils import (
     wait_for_condition,
@@ -69,6 +70,101 @@ def test_actor_spilled(ray_start_regular):
         num_success += 1
     # All of objects should've been spilled, so all of them should succeed.
     assert num_success == len(objects)
+
+
+def test_async_generator_crash_restart(ray_start_cluster):
+    """
+    Timeline:
+    1. In worker node, creates a generator that generates 2 objects
+    2. Kills worker node, objs exist in ref, but data lost
+    3. In worker node, creates a consumer that consumes 2 objects
+    4. Start a worker node to enable the task and lineage reconstruction
+    5. Lineage reconstruction should be working here.
+        The gen is dead after it only generated 1.
+    6. Verify that the consumer task can still run (it's not)
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0, resources={"head": 0.1})
+    class Killer:
+        def __init__(self):
+            self.pid = None
+            self.at_num = None
+            self.kill_num = 0
+
+        def set_pid(self, pid):
+            self.pid = pid
+
+        def set_at_num(self, at_num):
+            self.at_num = at_num
+
+        def kill_if_needed(self, num):
+            if self.kill_num > 3:
+                return
+            self.kill_num = self.kill_num + 1
+            if self.pid is not None and self.at_num is not None and num == self.at_num:
+                import os
+                import signal
+
+                print(f"Killing the pid = {self.pid}")
+                os.kill(self.pid, signal.SIGKILL)
+
+    @ray.remote(
+        num_cpus=1, max_restarts=-1, max_task_retries=-1, resources={"worker": 1}
+    )
+    class Generator:
+        async def gen(self, nums, killer):
+            """
+            Generates "value_holder" objects. For each object, it first notifies the
+            killer, and yields the object.
+            """
+            print(f"my pid is {os.getpid()}, telling to killer")
+            await killer.set_pid.remote(os.getpid())
+            print(f"generates total {nums}")
+            for i in range(nums):
+                await killer.kill_if_needed.remote(i)
+
+                print(f"generating {i}")
+                yield np.ones((1000, 1000), dtype=np.uint8) * i
+                print(f"generated {i}")
+            print(f"generated total {nums}")
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    def consumes(objs, expected_num):
+        nums = ray.get(objs)
+        assert len(nums) == expected_num
+        print(f"consumes {len(nums)}")
+        print(nums)
+        return expected_num
+
+    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    cluster.wait_for_nodes()
+
+    generator = Generator.remote()
+    killer = Killer.remote()
+
+    # First run, no kills
+    gen = ray.get(generator.gen.remote(2, killer))  # returns ObjectRefGenerator
+    objs = list(gen)  # [ObjectRef, ...]
+    assert len(objs) == 2
+
+    # kill the worker node
+    cluster.remove_node(worker_node, allow_graceful=False)
+
+    # In the lineage reconstruction, the generator is dead after it only generated 5...
+    ray.get(killer.set_at_num.remote(1))
+
+    # ... but a consumer takes all 10
+    consumer = consumes.remote(objs, 2)
+    # start a new worker node
+    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    cluster.wait_for_nodes()
+
+    ray.get(consumer)
 
 
 def test_actor_restart(ray_init_with_task_retry_delay):
@@ -161,47 +257,31 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     class RestartableActor:
         """An actor that will be restarted at most once."""
 
-        def __init__(self):
-            self.value = 0
-
-        def increase(self, delay=0):
+        def sleep_and_echo(self, value, delay=0):
             time.sleep(delay)
-            self.value += 1
-            return self.value
+            return value
 
         def get_pid(self):
             return os.getpid()
 
     actor = RestartableActor.remote()
     pid = ray.get(actor.get_pid.remote())
-    results = [actor.increase.remote() for _ in range(100)]
+    results = [actor.sleep_and_echo.remote(i) for i in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
-    # Check that none of the tasks failed and the actor is restarted.
-    seq = list(range(1, 101))
+    # All tasks should be executed successfully.
     results = ray.get(results)
-    failed_task_index = None
-    # Make sure that all tasks were executed in order before and after the
-    # actor's death.
-    for i, res in enumerate(results):
-        if res != seq[0]:
-            if failed_task_index is None:
-                failed_task_index = i
-            assert res + failed_task_index == seq[0]
-        seq.pop(0)
-    # Check that we can still call the actor.
-    result = actor.increase.remote()
-    assert ray.get(result) == results[-1] + 1
+    assert results == list(range(100))
 
     # kill actor process one more time.
-    results = [actor.increase.remote() for _ in range(100)]
+    results = [actor.sleep_and_echo.remote(i) for i in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(actor.increase.remote())
+        ray.get(actor.sleep_and_echo.remote(0))
 
     # Create another actor.
     actor = RestartableActor.remote()
@@ -209,7 +289,7 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     actor.__ray_terminate__.remote()
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(actor.increase.remote())
+        ray.get(actor.sleep_and_echo.remote(0))
 
 
 def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
@@ -295,38 +375,19 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     class RestartableActor:
         """An actor that will be reconstructed at most once."""
 
-        def __init__(self):
-            self.value = 0
-
-        def increase(self):
-            self.value += 1
-            return self.value
-
-        def ready(self):
-            return
+        def echo(self, value):
+            return value
 
     actor = RestartableActor.options(lifetime="detached").remote()
-    ray.get(actor.ready.remote())
-    results = [actor.increase.remote() for _ in range(100)]
+    ray.get(actor.__ray_ready__.remote())
+    results = [actor.echo.remote(i) for i in range(100)]
     # Kill actor node, while the above task is still being executed.
     cluster.remove_node(actor_node)
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
-    # Check that none of the tasks failed and the actor is restarted.
-    seq = list(range(1, 101))
+    # All tasks should be executed successfully.
     results = ray.get(results)
-    failed_task_index = None
-    # Make sure that all tasks were executed in order before and after the
-    # actor's death.
-    for i, res in enumerate(results):
-        elm = seq.pop(0)
-        if res != elm:
-            if failed_task_index is None:
-                failed_task_index = i
-            assert res + failed_task_index == elm
-    # Check that we can still call the actor.
-    result = ray.get(actor.increase.remote())
-    assert result == 1 or result == results[-1] + 1
+    assert results == list(range(100))
 
 
 def test_caller_actor_restart(ray_start_regular):
@@ -418,11 +479,8 @@ def test_caller_task_reconstruction(ray_start_regular):
 )
 def test_multiple_actor_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    # This test can be made more stressful by increasing the numbers below.
-    # The total number of actors created will be
-    # num_actors_at_a_time * num_nodes.
     num_nodes = 5
-    num_actors_at_a_time = 3
+    num_actors = 15
     num_function_calls_at_a_time = 10
 
     worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
@@ -430,50 +488,41 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:
         def __init__(self):
-            self.x = 0
+            pass
 
-        def inc(self, duration):
+        def echo(self, duration, value):
             time.sleep(duration)
-            self.x += 1
-            return self.x
+            return value
 
     # Create some initial actors.
-    actors = [SlowCounter.remote() for _ in range(num_actors_at_a_time)]
-
-    # Wait for the actors to start up.
-    time.sleep(1)
+    actors = [SlowCounter.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
 
     # This is a mapping from actor handles to object refs returned by
     # methods on that actor.
     result_ids = collections.defaultdict(lambda: [])
 
-    # In a loop we are going to create some actors, run some methods, kill
-    # a raylet, and run some more methods.
+    for i in range(len(actors)):
+        actor = actors[i]
+        for value in range(num_function_calls_at_a_time):
+            result_ids[actor].append(actor.echo.remote(i**2 * 0.000001, value))
+
+    # Kill nodes
     for node in worker_nodes:
-        # Create some actors.
-        actors.extend([SlowCounter.remote() for _ in range(num_actors_at_a_time)])
-        # Run some methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
-        # Kill a node.
         cluster.remove_node(node)
 
-        # Run some more methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+    for i in range(len(actors)):
+        actor = actors[i]
+        for value in range(
+            num_function_calls_at_a_time, 2 * num_function_calls_at_a_time
+        ):
+            result_ids[actor].append(actor.echo.remote(i**2 * 0.000001, value))
 
     # Get the results and check that they have the correct values.
-    for _, result_id_list in result_ids.items():
+    for actor, result_id_list in result_ids.items():
         results = ray.get(result_id_list)
-        for i, result in enumerate(results):
-            if i == 0:
-                assert result == 1
-            else:
-                assert result == results[i - 1] + 1 or result == 1
+        expected = list(range(num_function_calls_at_a_time * 2))
+        assert results == expected
 
 
 def kill_actor(actor):
@@ -796,7 +845,7 @@ def test_failure_during_dependency_resolution(ray_start_regular):
         ray.get(ref)
 
 
-def test_exit_actor(shutdown_only, tmp_path):
+def test_exit_actor_invalid_usage_error(shutdown_only):
     """
     Verify TypeError is raised when exit_actor is not used
     inside an actor.
@@ -815,83 +864,261 @@ def test_exit_actor(shutdown_only, tmp_path):
     ):
         ray.get(f.remote())
 
-    """
-    Verify the basic case.
-    """
+
+def test_exit_actor_normal_actor_raise_immediately(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
 
     @ray.remote
     class Actor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+
         def exit(self):
             exit_actor()
-
-    @ray.remote
-    class AsyncActor:
-        async def exit(self):
-            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
 
     a = Actor.remote()
     ray.get(a.__ray_ready__.remote())
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(a.exit.remote())
     assert "exit_actor()" in str(exc_info.value)
-
-    b = AsyncActor.remote()
-    ray.get(b.__ray_ready__.remote())
-    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
-        ray.get(b.exit.remote())
-    assert "exit_actor()" in str(exc_info.value)
-
-    """
-    Verify atexit handler is called correctly.
-    """
-    sync_temp_file = tmp_path / "actor.log"
-    async_temp_file = tmp_path / "async_actor.log"
-    sync_temp_file.touch()
-    async_temp_file.touch()
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            def f():
-                print("atexit handler")
-                with open(sync_temp_file, "w") as f:
-                    f.write("Actor\n")
-
-            atexit.register(f)
-
-        def exit(self):
-            exit_actor()
-
-    @ray.remote
-    class AsyncActor:
-        def __init__(self):
-            def f():
-                print("atexit handler")
-                with open(async_temp_file, "w") as f:
-                    f.write("Async Actor\n")
-
-            atexit.register(f)
-
-        async def exit(self):
-            exit_actor()
-
-    a = Actor.remote()
-    ray.get(a.__ray_ready__.remote())
-    b = AsyncActor.remote()
-    ray.get(b.__ray_ready__.remote())
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(a.exit.remote())
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(b.exit.remote())
 
     def verify():
-        with open(async_temp_file) as f:
-            assert f.readlines() == ["Async Actor\n"]
-        with open(sync_temp_file) as f:
-            assert f.readlines() == ["Actor\n"]
-        return True
+        return temp_file_atexit.exists()
 
     wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_normal_actor_in_constructor_should_exit(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = Actor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_normal_actor_user_catch_err_should_still_exit(
+    shutdown_only, tmp_path
+):
+    temp_file = tmp_path / "actor.log"
+    assert not temp_file.exists()
+
+    @ray.remote
+    class Actor:
+        def exit(self):
+            try:
+                exit_actor()
+            except SystemExit:
+                pass
+
+        def create(self):
+            temp_file.touch()
+
+    a = Actor.remote()
+    ray.get(a.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.create.remote())
+
+    assert not temp_file.exists()
+
+
+def test_exit_actor_async_actor_raise_immediately(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+
+        async def exit(self):
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+
+    try:
+        ray.get(a.exit.remote())
+    except Exception:
+        pass
+
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(a.exit.remote())
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_in_constructor_should_exit(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_user_catch_err_should_still_exit(
+    shutdown_only, tmp_path
+):
+    temp_file = tmp_path / "actor.log"
+    assert not temp_file.exists()
+
+    @ray.remote
+    class AsyncActor:
+        async def exit(self):
+            try:
+                exit_actor()
+            except AsyncioActorExit:
+                pass
+
+        async def create(self):
+            temp_file.touch()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.create.remote())
+    assert not temp_file.exists()
+
+
+def test_exit_actor_async_actor_nested_task(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+
+        async def start_exit_task(self, signal):
+            asyncio.create_task(self.exit(signal))
+
+        async def exit(self, signal):
+            await signal.wait.remote()
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+    ray.get(a.start_exit_task.remote(signal))
+    ray.get(signal.send.remote())
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_nested_task_in_constructor_should_exit(
+    shutdown_only, tmp_path
+):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            asyncio.create_task(self.exit())
+
+        async def exit(self):
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
 
 
 def test_exit_actor_queued(shutdown_only):
@@ -933,6 +1160,87 @@ def test_exit_actor_queued(shutdown_only):
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get([a.ping.remote() for _ in range(10000)])
     assert " Worker unexpectedly exits" not in str(exc_info.value)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL not supported on windows")
+def test_actor_restart_and_actor_received_task(shutdown_only):
+    # Create an actor with max_restarts=1 and max_task_retries=1.
+    # Submit a task to the actor and kill the actor after it receives
+    # the task. Then, the actor should restart in another core worker
+    # process, and the driver should resubmit the task to the new process.
+    # The task should be executed successfully.
+    @ray.remote(max_restarts=1, max_task_retries=1)
+    class RestartableActor:
+        def __init__(self):
+            self.counter = 0
+
+        def increment(self, signal_actor_1, signal_actor_2):
+            ray.get(signal_actor_1.send.remote())
+            ray.get(signal_actor_2.wait.remote())
+            self.counter += 1
+            return self.counter
+
+        def fail(self):
+            os._exit(1)
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+
+    signal_actor_1 = SignalActor.remote()
+    signal_actor_2 = SignalActor.remote()
+    ref = actor.increment.remote(signal_actor_1, signal_actor_2)
+    # Wait for the actor to execute the task `increment`
+    ray.get(signal_actor_1.wait.remote())
+    os.kill(pid, signal.SIGKILL)
+
+    ray.get(signal_actor_2.send.remote())
+    assert ray.get(ref) == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL not supported on windows")
+def test_actor_restart_and_partial_task_not_completed(shutdown_only):
+    # Create an actor with max_restarts=1 and max_task_retries=1.
+    # Submit 3 tasks to the actor and wait for them to complete.
+    # Then, submit 3 more tasks to the actor and kill the actor.
+    # The driver will resubmit the last 3 tasks to the new core worker
+    # process, and the tasks will be executed successfully.
+    @ray.remote(max_restarts=1, max_task_retries=1)
+    class RestartableActor:
+        def __init__(self):
+            pass
+
+        def echo(self, value):
+            return value
+
+        def wait_and_echo(self, value, signal_actor_1, signal_actor_2):
+            ray.get(signal_actor_1.send.remote())
+            ray.get(signal_actor_2.wait.remote())
+            return value
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    refs = []
+    for i in range(3):
+        refs.append(actor.echo.remote(i))
+    assert ray.get(refs) == [0, 1, 2]
+
+    refs = []
+    signal_actor_1 = SignalActor.remote()
+    signal_actor_2 = SignalActor.remote()
+    refs.append(actor.wait_and_echo.remote(3, signal_actor_1, signal_actor_2))
+    ray.get(signal_actor_1.wait.remote())
+    refs.append(actor.echo.remote(4))
+    refs.append(actor.echo.remote(5))
+
+    os.kill(pid, signal.SIGKILL)
+    ray.get(signal_actor_2.send.remote())
+    assert ray.get(refs) == [3, 4, 5]
 
 
 if __name__ == "__main__":

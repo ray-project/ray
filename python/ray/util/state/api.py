@@ -487,6 +487,9 @@ class StateApiClient(SubmissionClient):
             when timeout occurs.
 
         """
+        if options.has_conflicting_filters():
+            # return early with empty list when there are conflicting filters
+            return []
 
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
@@ -553,7 +556,7 @@ def get_actor(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[ActorState]:
     """Get an actor by id.
 
     Args:
@@ -1279,19 +1282,10 @@ def get_log(
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
-        for bytes in r.iter_content(chunk_size=None):
-            bytes = bytearray(bytes)
-            # First byte 1 means success.
-            if bytes.startswith(b"1"):
-                bytes.pop(0)
-                logs = bytes
-                if encoding is not None:
-                    logs = bytes.decode(encoding=encoding, errors=errors)
-            else:
-                assert bytes.startswith(b"0")
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
-            yield logs
+        for chunk in r.iter_content(chunk_size=None):
+            if encoding is not None:
+                chunk = chunk.decode(encoding=encoding, errors=errors)
+            yield chunk
 
 
 @DeveloperAPI

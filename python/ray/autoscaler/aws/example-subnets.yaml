@@ -30,4 +30,3 @@ available_node_types:
       node_config:
         SubnetIds:
             - subnet-fffffff # Replace with your actual Worker Node Subnet ID.
-

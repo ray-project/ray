@@ -8,66 +8,26 @@ import sys
 import time
 
 from ray_release.config import RELEASE_PACKAGE_DIR
-from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
-    DATAPLANE_ECR_REPO,
-    DATAPLANE_ECR_ML_REPO,
 )
 
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20240311.tar.gz"
-DATAPLANE_DIGEST = "7b92d447f9da352cf55a92ec865224a212b07a6e86949da4025a826aba4bb3a3"
+DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
+DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
-RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+RELEASE_BYOD_DIR = (
+    os.path.join(bazel_workspace_dir, "release/ray_release/byod")
+    if bazel_workspace_dir
+    else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+)
 REQUIREMENTS_BYOD = "requirements_byod"
+REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
-
-
-def build_champagne_image(
-    ray_version: str,
-    python_version: str,
-    image_type: str,
-) -> str:
-    """
-    Builds the Anyscale champagne image.
-    """
-    _download_dataplane_build_file()
-    env = os.environ.copy()
-    env["DOCKER_BUILDKIT"] = "1"
-    if image_type == "cpu":
-        ray_project = "ray"
-        anyscale_repo = DATAPLANE_ECR_REPO
-    else:
-        ray_project = "ray-ml"
-        anyscale_repo = DATAPLANE_ECR_ML_REPO
-    ray_image = f"rayproject/{ray_project}:{ray_version}-{python_version}-{image_type}"
-    anyscale_image = (
-        f"{get_global_config()['byod_ecr']}/{anyscale_repo}:champagne-{ray_version}"
-    )
-
-    logger.info(f"Building champagne anyscale image from {ray_image}")
-    with open(DATAPLANE_FILENAME, "rb") as build_file:
-        subprocess.check_call(
-            [
-                "docker",
-                "build",
-                "--progress=plain",
-                "--build-arg",
-                f"BASE_IMAGE={ray_image}",
-                "-t",
-                anyscale_image,
-                "-",
-            ],
-            stdin=build_file,
-            stdout=sys.stderr,
-            env=env,
-        )
-    _validate_and_push(anyscale_image)
-
-    return anyscale_image
 
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
@@ -124,6 +84,8 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
             py_version = test.get_python_version()
             if test.use_byod_ml_image():
                 byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}.txt"
+            elif test.use_byod_llm_image():
+                byod_requirements = f"{REQUIREMENTS_LLM_BYOD}_{py_version}.txt"
             else:
                 byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
 

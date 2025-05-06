@@ -25,16 +25,17 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
-    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
-from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
-from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
-from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
+from ray.serve.generated.serve_pb2 import (
+    AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+    EncodingType as EncodingTypeProto,
+    LoggingConfig as LoggingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
+)
 from ray.util.placement_group import validate_placement_group
 
 
@@ -61,8 +62,19 @@ def _proto_to_dict(proto: Message) -> Dict:
     data = {}
     # Fill data with non-empty fields.
     for field, value in proto.ListFields():
+        # Handle repeated fields
+        if field.label == FieldDescriptor.LABEL_REPEATED:
+            # if we dont do this block the repeated field will be a list of
+            # `google.protobuf.internal.containers.RepeatedScalarFieldContainer
+            # Explicitly convert to list
+            if field.type == FieldDescriptor.TYPE_MESSAGE:
+                data[field.name] = [
+                    _proto_to_dict(v) for v in value
+                ]  # Convert each item
+            else:
+                data[field.name] = list(value)  # Convert to list directly
         # Recursively call if the field is another protobuf.
-        if field.type == FieldDescriptor.TYPE_MESSAGE:
+        elif field.type == FieldDescriptor.TYPE_MESSAGE:
             data[field.name] = _proto_to_dict(value)
         else:
             data[field.name] = value
@@ -75,7 +87,6 @@ def _proto_to_dict(proto: Message) -> Dict:
             and not field.containing_oneof  # skip optional fields
         ):
             data[field.name] = field.default_value
-
     return data
 
 
@@ -87,7 +98,7 @@ class DeploymentConfig(BaseModel):
             handles requests to this deployment. Defaults to 1.
         max_ongoing_requests: The maximum number of queries
             that is sent to a replica of this deployment without receiving
-            a response. Defaults to 100.
+            a response. Defaults to 5.
         max_queued_requests: Maximum number of requests to this deployment that will be
             queued at each *caller* (proxy or DeploymentHandle). Once this limit is
             reached, subsequent requests will raise a BackPressureError (for handles) or
@@ -199,7 +210,6 @@ class DeploymentConfig(BaseModel):
         from ray.serve.schema import LoggingConfig
 
         v = LoggingConfig(**v).dict()
-
         return v
 
     @validator("max_queued_requests", always=True)
@@ -332,18 +342,11 @@ def handle_num_replicas_auto(
     """Return modified `max_ongoing_requests` and `autoscaling_config`
     for when num_replicas="auto".
 
-    If `max_ongoing_requests` is unspecified (DEFAULT.VALUE), returns
-    the modified value NEW_DEFAULT_MAX_ONGOING_REQUESTS. Otherwise,
-    doesn't change `max_ongoing_requests`.
-
     If `autoscaling_config` is unspecified, returns the modified value
     AutoscalingConfig.default().
     If it is specified, the specified fields in `autoscaling_config`
     override that of AutoscalingConfig.default().
     """
-
-    if max_ongoing_requests is DEFAULT.VALUE:
-        max_ongoing_requests = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
     if autoscaling_config in [DEFAULT.VALUE, None]:
         # If autoscaling config wasn't specified, use default

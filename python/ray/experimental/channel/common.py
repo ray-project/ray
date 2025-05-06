@@ -1,12 +1,25 @@
 import asyncio
 import concurrent
-import copy
+import sys
 import threading
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
-from ray.experimental.channel.nccl_group import _NcclGroup
+import ray.exceptions
+from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.utils import get_devices
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -18,11 +31,39 @@ if TYPE_CHECKING:
     import torch
 
 
+def retry_and_check_interpreter_exit(f: Callable[[], None]) -> bool:
+    """This function is only useful when f contains channel read/write.
+
+    Keep retrying channel read/write inside `f` and check if interpreter exits.
+    It is important in case the read/write happens in a separate thread pool.
+    See https://github.com/ray-project/ray/pull/47702
+
+    f should a function that doesn't receive any input and return nothing.
+    """
+    exiting = False
+    while True:
+        try:
+            f()
+            break
+        except ray.exceptions.RayChannelTimeoutError:
+            if sys.is_finalizing():
+                # Interpreter exits. We should ignore the error and
+                # stop reading so that the thread can join.
+                exiting = True
+                break
+
+    return exiting
+
+
+# Holds the input arguments for Compiled Graph
+@PublicAPI(stability="alpha")
+class CompiledDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
+
+
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
-    def __init__(self):
-        self._contains_type: Optional["ChannelOutputType"] = None
-
     def register_custom_serializer(self) -> None:
         """
         Register any custom serializers needed to pass data of this type. This
@@ -36,46 +77,13 @@ class ChannelOutputType:
         default device. Instead, these should be extracted from the
         worker-local _SerializationContext.
         """
-        if self._contains_type is not None:
-            self._contains_type.register_custom_serializer()
-
-    @property
-    def is_direct_return(self) -> bool:
-        """
-        Some channels may contain other values that should be sent via a
-        different channel. This returns whether the value is a direct return or
-        if it is "nested" inside a different channel.
-        """
-        return True
-
-    @property
-    def contains_type(self) -> "ChannelOutputType":
-        """
-        Some channel values may contain an object that should be sent through a
-        different channel. For example, a Python object containing a GPU tensor
-        may be sent over two channels, one to serialize the Python data on CPU
-        memory and another to transfer the GPU data over NCCL. This function
-        returns the type of this nested value, if any.
-        """
-        return self._contains_type
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        """
-        Mark that values sent on this channel may contain objects that should
-        be sent through a different channel.
-        """
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-        if typ is not None:
-            assert isinstance(
-                typ, TorchTensorType
-            ), "Contained type must be of type TorchTensorType"
-        self._contains_type = copy.deepcopy(typ)
+        pass
 
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        readers: List[Optional["ray.actor.ActorHandle"]],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        driver_actor_id: Optional[str] = None,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -83,8 +91,11 @@ class ChannelOutputType:
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_and_node_list: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the actor is located.
+            driver_actor_id: If this is a CompositeChannel that is read by a driver and
+                that driver is an actual actor, this will be the actor ID of that
+                driver actor.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -92,14 +103,16 @@ class ChannelOutputType:
         raise NotImplementedError
 
     def requires_nccl(self) -> bool:
-        if self._contains_type is not None:
-            if self._contains_type.requires_nccl():
-                return True
-
         # By default, channels do not require NCCL.
         return False
 
-    def set_nccl_group_id(self, group_id: str) -> None:
+    def get_custom_communicator(self) -> Optional[Communicator]:
+        """
+        Return the custom NCCL group if one is specified.
+        """
+        return None
+
+    def set_communicator_id(self, group_id: str) -> None:
         raise NotImplementedError
 
 
@@ -107,11 +120,13 @@ class ChannelOutputType:
 @dataclass
 class ChannelContext:
     serialization_context = _SerializationContext()
+    _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
+    _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "_NcclGroup"] = {}
+        self.communicators: Dict[str, "Communicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -130,19 +145,25 @@ class ChannelContext:
             return _default_context
 
     @property
+    def torch_available(self) -> bool:
+        """
+        Check if torch package is available.
+        """
+        if self._torch_available is not None:
+            return self._torch_available
+
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            self._torch_available = False
+            return False
+        self._torch_available = True
+        return True
+
+    @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-
-            if not ray.get_gpu_ids():
-                import torch
-
-                # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-                # by Ray. We instead want the default to be CPU.
-                self._torch_device = torch.device("cpu")
-
-            from ray.air._internal import torch_utils
-
-            self._torch_device = torch_utils.get_devices()[0]
+            self._torch_device = get_devices()[0]
 
         return self._torch_device
 
@@ -186,38 +207,40 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def write(self, value: Any) -> None:
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
         Write a value to the channel.
 
         Blocks if there are still pending readers for the previous value. The
         writer may not write again until the specified number of readers have
-        called ``end_read``.
+        read the value.
 
         Args:
             value: The value to write.
+            timeout: The maximum time in seconds to wait to write the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
         """
         raise NotImplementedError
 
-    def begin_read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
-        Subsequent calls to begin_read() will *block*, until end_read() is
-        called and the next value is available to read.
+        Subsequent calls to read() may *block* if the deserialized object is
+        zero-copy (e.g., bytes or a numpy array) *and* the object is still in scope.
+
+        Args:
+            timeout: The maximum time in seconds to wait to read the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
 
         Returns:
-            Any: The deserialized value.
-        """
-        raise NotImplementedError
-
-    def end_read(self) -> None:
-        """
-        Signal to the writer that the channel is ready to write again.
-
-        If begin_read is not called first, then this call will block until a
-        value is written, then drop the value.
+            Any: The deserialized value. If the deserialized value is an
+            Exception, it will be returned directly instead of being raised.
         """
         raise NotImplementedError
 
@@ -233,19 +256,23 @@ class ChannelInterface:
 # Interfaces for channel I/O.
 @DeveloperAPI
 class ReaderInterface:
-    def __init__(self, input_channels: List[ChannelInterface]):
-        if isinstance(input_channels, List):
-            for chan in input_channels:
-                assert isinstance(chan, ChannelInterface)
-            self._has_single_output = False
-        else:
-            assert isinstance(input_channels, ChannelInterface)
-            self._has_single_output = True
-            input_channels = [input_channels]
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+    ):
+        assert isinstance(input_channels, list)
+        for chan in input_channels:
+            assert isinstance(chan, ChannelInterface)
 
         self._input_channels = input_channels
         self._closed = False
         self._num_reads = 0
+
+        # A list of channels that were not read in the last `read` call
+        # because the reader returned immediately when a RayTaskError was found.
+        # These channels must be consumed before the next read to avoid reading
+        # stale data remaining from the last read.
+        self._leftover_channels: List[ChannelInterface] = []
 
     def get_num_reads(self) -> int:
         return self._num_reads
@@ -253,40 +280,146 @@ class ReaderInterface:
     def start(self):
         raise NotImplementedError
 
-    def _begin_read_list(self) -> Any:
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Read a list of values from this reader.
+
+        Args:
+            timeout: The maximum time in seconds to wait for reading.
+                None means using default timeout which is infinite, 0 means immediate
+                timeout (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+
+        """
         raise NotImplementedError
 
-    def begin_read(self) -> Any:
-        outputs = self._begin_read_list()
+    def read(self, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Read from this reader.
+
+        Args:
+            timeout: The maximum time in seconds to wait for reading.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        outputs = self._read_list(timeout)
         self._num_reads += 1
-        if self._has_single_output:
-            return outputs[0]
-        else:
-            return outputs
-
-    def end_read(self) -> Any:
-        raise NotImplementedError
+        return outputs
 
     def close(self) -> None:
         self._closed = True
         for channel in self._input_channels:
             channel.close()
 
+    def _consume_leftover_channels_if_needed(
+        self, timeout: Optional[float] = None
+    ) -> None:
+        # Consume the channels that were not read in the last `read` call because a
+        # RayTaskError was returned from another channel. If we don't do this, the
+        # read operation will read stale versions of the object refs.
+        #
+        # If a RayTaskError is returned from a leftover channel, it will be ignored.
+        # If a read operation times out, a RayChannelTimeoutError exception will be
+        # raised.
+        #
+        # TODO(kevin85421): Currently, a DAG with NCCL channels and fast fail enabled
+        # may not be reusable. Revisit this in the future.
+        for c in self._leftover_channels:
+            start_time = time.monotonic()
+            c.read(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+        self._leftover_channels = []
+
 
 @DeveloperAPI
 class SynchronousReader(ReaderInterface):
-    def __init__(self, input_channels: List[ChannelInterface]):
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+    ):
         super().__init__(input_channels)
 
     def start(self):
         pass
 
-    def _begin_read_list(self) -> Any:
-        return [c.begin_read() for c in self._input_channels]
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        self._consume_leftover_channels_if_needed(timeout)
+        # We don't update `remaining_timeout` here because in the worst case,
+        # consuming leftover channels requires reading all `_input_channels`,
+        # which users expect to complete within the original `timeout`. Updating
+        # `remaining_timeout` could cause unexpected timeouts in subsequent read
+        # operations.
 
-    def end_read(self) -> Any:
+        # It is a special case that `timeout` is set to 0, which means
+        # read once for each channel.
+        is_zero_timeout = timeout == 0
+
+        results = [None for _ in range(len(self._input_channels))]
+        if timeout is None or timeout == -1:
+            timeout = float("inf")
+        timeout_point = time.monotonic() + timeout
+        remaining_timeout = timeout
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        iteration_timeout = ctx.read_iteration_timeout
+
+        # Iterate over the input channels with a shorter timeout for each iteration
+        # to detect RayTaskError early and fail fast.
+        done_channels = set()
+        while len(done_channels) < len(self._input_channels):
+            for i, c in enumerate(self._input_channels):
+                if c in done_channels:
+                    continue
+                try:
+                    result = c.read(min(remaining_timeout, iteration_timeout))
+                    results[i] = result
+                    done_channels.add(c)
+                    if isinstance(result, ray.exceptions.RayTaskError):
+                        # If we raise an exception immediately, it will be considered
+                        # as a system error which will cause the execution loop to
+                        # exit. Hence, return immediately and let `_process_return_vals`
+                        # handle the exception.
+                        #
+                        # Return a list of RayTaskError so that the caller will not
+                        # get an undefined partial result.
+                        self._leftover_channels = [
+                            c for c in self._input_channels if c not in done_channels
+                        ]
+                        return [result for _ in range(len(self._input_channels))]
+                except ray.exceptions.RayChannelTimeoutError as e:
+                    remaining_timeout = max(timeout_point - time.monotonic(), 0)
+                    if remaining_timeout == 0:
+                        raise e
+                    continue
+
+                remaining_timeout = max(timeout_point - time.monotonic(), 0)
+                if remaining_timeout == 0 and not is_zero_timeout:
+                    raise ray.exceptions.RayChannelTimeoutError(
+                        f"Cannot read all channels within {timeout} seconds"
+                    )
+        return results
+
+    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
         for c in self._input_channels:
-            c.end_read()
+            start_time = time.monotonic()
+            assert hasattr(
+                c, "release_buffer"
+            ), "release_buffer() is only supported for shared memory channel "
+            "(e.g., Channel, BufferedSharedMemoryChannel, CompositeChannel) "
+            "and used between the last actor and the driver, but got a channel"
+            f" of type {type(c)}."
+            c.release_buffer(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
 
 @DeveloperAPI
@@ -300,7 +433,9 @@ class AwaitableBackgroundReader(ReaderInterface):
     """
 
     def __init__(
-        self, input_channels: List[ChannelInterface], fut_queue: asyncio.Queue
+        self,
+        input_channels: List[ChannelInterface],
+        fut_queue: asyncio.Queue,
     ):
         super().__init__(input_channels)
         self._fut_queue = fut_queue
@@ -313,10 +448,36 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        vals = [c.begin_read() for c in self._input_channels]
-        if self._has_single_output:
-            vals = vals[0]
-        return vals
+        # Give it a default timeout 60 seconds to release the buffers
+        # of the channels that were not read in the last `read` call.
+        self._consume_leftover_channels_if_needed(60)
+
+        results = [None for _ in range(len(self._input_channels))]
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        iteration_timeout = ctx.read_iteration_timeout
+
+        done_channels = set()
+        while len(done_channels) < len(self._input_channels):
+            for i, c in enumerate(self._input_channels):
+                if c in done_channels:
+                    continue
+                try:
+                    result = c.read(iteration_timeout)
+                    results[i] = result
+                    done_channels.add(c)
+                    if isinstance(result, ray.exceptions.RayTaskError):
+                        self._leftover_channels = [
+                            c for c in self._input_channels if c not in done_channels
+                        ]
+                        return [result for _ in range(len(self._input_channels))]
+                except ray.exceptions.RayChannelTimeoutError:
+                    pass
+                if sys.is_finalizing():
+                    return results
+        return results
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -329,22 +490,46 @@ class AwaitableBackgroundReader(ReaderInterface):
 
             # Set the result on the main thread.
             fut.set_result(res)
-
-    def end_read(self) -> Any:
-        for c in self._input_channels:
-            c.end_read()
+            # NOTE(swang): If the object is zero-copy deserialized, then it
+            # will stay in scope as long as ret and the future are in scope.
+            # Therefore, we must delete both here after fulfilling the future.
+            del res
+            del fut
 
     def close(self):
-        self._background_task.cancel()
         super().close()
+        self._background_task_executor.shutdown(cancel_futures=True)
+        self._background_task.cancel()
 
 
 @DeveloperAPI
 class WriterInterface:
-    def __init__(self, output_channel: ChannelInterface):
-        self._output_channel = output_channel
+    def __init__(
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[Union[int, str]]],
+        is_input=False,
+    ):
+        """
+        Initialize the writer.
+
+        Args:
+            output_channels: The output channels to write to.
+            output_idxs: The indices of the values to write to each channel.
+                This has the same length as `output_channels`. If `is_input` is True,
+                the index can be an integer or a string to retrieve the corresponding
+                value from `args` or `kwargs` in the DAG's input. If `is_input`
+                is False, the entire value is written if the index is None. Otherwise,
+                the value at the specified index in the tuple is written.
+            is_input: Whether the writer is DAG input writer or not.
+        """
+
+        assert len(output_channels) == len(output_idxs)
+        self._output_channels = output_channels
+        self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
+        self._is_input = is_input
 
     def get_num_writes(self) -> int:
         return self._num_writes
@@ -352,45 +537,129 @@ class WriterInterface:
     def start(self):
         raise NotImplementedError()
 
-    def write(self, val: Any) -> None:
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        """
+        Write the value.
+
+        Args:
+            timeout: The maximum time in seconds to wait for writing. 0 means
+                immediate timeout (immediate success or timeout without blocking).
+                -1 and None mean infinite timeout (blocks indefinitely).
+        """
         raise NotImplementedError()
 
     def close(self) -> None:
         self._closed = True
-        self._output_channel.close()
+        for channel in self._output_channels:
+            channel.close()
+
+
+def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
+    """
+    Adapt the raw arguments to the key. If `is_input` is True, this method will
+    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
+    will retrieve either a partial value or the entire value from the output of
+    a ClassMethodNode.
+
+    Args:
+        raw_args: The raw arguments to adapt.
+        key: The key to adapt.
+        is_input: Whether the writer is DAG input writer or not.
+    """
+    if is_input:
+        if not isinstance(raw_args, CompiledDAGArgs):
+            # Fast path for a single input.
+            return raw_args
+        else:
+            args = raw_args.args
+            kwargs = raw_args.kwargs
+
+        if isinstance(key, int):
+            return args[key]
+        else:
+            return kwargs[key]
+    else:
+        if key is not None:
+            return raw_args[key]
+        else:
+            return raw_args
 
 
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
-        pass
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
 
-    def write(self, val: Any) -> None:
-        self._output_channel.write(val)
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        # If it is an exception, there's only 1 return value.
+        # We have to send the same data to all channels.
+        if isinstance(val, Exception):
+            if len(self._output_channels) > 1:
+                val = tuple(val for _ in range(len(self._output_channels)))
+
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(val, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(val)}"
+                    )
+                if len(val) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(val)} outputs"
+                    )
+
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            val_i = _adapt(val, idx, self._is_input)
+            channel.write(val_i, timeout)
         self._num_writes += 1
 
 
 @DeveloperAPI
 class AwaitableBackgroundWriter(WriterInterface):
     def __init__(
-        self, output_channel: ChannelInterface, max_queue_size: Optional[int] = None
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[Union[int, str]]],
+        is_input=False,
     ):
-        super().__init__(output_channel)
-        if max_queue_size is None:
-            max_queue_size = 0
-        self._queue = asyncio.Queue(max_queue_size)
+        super().__init__(output_channels, output_idxs, is_input=is_input)
+        self._queue = asyncio.Queue()
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="channel.AwaitableBackgroundWriter"
         )
 
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        self._output_channel.write(res)
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(res, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(res)}"
+                    )
+                if len(res) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(res)} outputs"
+                    )
+
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            res_i = _adapt(res, idx, self._is_input)
+            exiting = retry_and_check_interpreter_exit(
+                lambda: channel.write(res_i, timeout=1)
+            )
+            if exiting:
+                break
 
     async def run(self):
         loop = asyncio.get_event_loop()

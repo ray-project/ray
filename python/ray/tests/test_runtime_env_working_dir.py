@@ -10,7 +10,6 @@ from unittest import mock
 import pytest
 
 import ray
-from ray._private import gcs_utils
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
@@ -46,11 +45,36 @@ def insert_test_dir_in_pythonpath():
 
 
 @pytest.mark.asyncio
+async def test_working_dir_cleanup(tmpdir, ray_start_regular):
+    gcs_client = ray.worker.global_worker.gcs_client
+
+    plugin = WorkingDirPlugin(tmpdir, gcs_client)
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    # Iterate over the files and storing creation metadata.
+    creation_metadata = {}
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time = file_metadata.st_ctime
+        creation_metadata[file] = creation_time
+
+    time.sleep(1)
+
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time_after = file_metadata.st_ctime
+        assert creation_metadata[file] != creation_time_after
+
+
+@pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
-    gcs_aio_client = gcs_utils.GcsAioClient(
-        address=ray.worker.global_worker.gcs_client.address
-    )
+    gcs_client = ray.worker.global_worker.gcs_client
     # Create an arbitrary nonempty directory to upload.
     path = Path(tmpdir)
     dir_to_upload = path / "dir_to_upload"
@@ -65,7 +89,7 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
     assert uploaded
 
-    manager = WorkingDirPlugin(tmpdir, gcs_aio_client)
+    manager = WorkingDirPlugin(tmpdir, gcs_client)
 
     created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
@@ -128,6 +152,7 @@ def test_lazy_reads(
                 runtime_env={
                     "py_modules": [
                         str(Path(tmp_working_dir) / "test_module"),
+                        str(Path(tmp_working_dir) / "file_module.py"),
                         Path(os.path.dirname(__file__))
                         / "pip_install_test-0.5-py3-none-any.whl",
                     ]
@@ -140,6 +165,7 @@ def test_lazy_reads(
                     "working_dir": tmp_working_dir,
                     "py_modules": [
                         str(Path(tmp_working_dir) / "test_module"),
+                        str(Path(tmp_working_dir) / "file_module.py"),
                         Path(os.path.dirname(__file__))
                         / "pip_install_test-0.5-py3-none-any.whl",
                     ],
@@ -163,15 +189,16 @@ def test_lazy_reads(
     @ray.remote
     def test_import():
         import test_module
+        import file_module
 
         assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
-        return test_module.one()
+        return test_module.one(), file_module.hello()
 
     if option == "failure":
         with pytest.raises(ImportError):
             ray.get(test_import.remote())
     else:
-        assert ray.get(test_import.remote()) == 1
+        assert ray.get(test_import.remote()) == (1, "hello")
 
     if option in {"py_modules", "working_dir_and_py_modules"}:
 
@@ -205,9 +232,10 @@ def test_lazy_reads(
     class Actor:
         def test_import(self):
             import test_module
+            import file_module
 
             assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
-            return test_module.one()
+            return test_module.one(), file_module.hello()
 
         def test_read(self):
             assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
@@ -216,11 +244,11 @@ def test_lazy_reads(
     a = Actor.remote()
     if option == "failure":
         with pytest.raises(ImportError):
-            assert ray.get(a.test_import.remote()) == 1
+            assert ray.get(a.test_import.remote()) == (1, "hello")
         with pytest.raises(FileNotFoundError):
             assert ray.get(a.test_read.remote()) == "world"
     elif option in {"working_dir_and_py_modules", "working_dir"}:
-        assert ray.get(a.test_import.remote()) == 1
+        assert ray.get(a.test_import.remote()) == (1, "hello")
         assert ray.get(a.test_read.remote()) == "world"
 
 
@@ -243,7 +271,10 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
             ray.init(
                 address,
                 runtime_env={
-                    "py_modules": [os.path.join(tmp_working_dir, "test_module")]
+                    "py_modules": [
+                        os.path.join(tmp_working_dir, "test_module"),
+                        os.path.join(tmp_working_dir, "file_module.py"),
+                    ]
                 },
             )
 
@@ -262,31 +293,32 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
     # Import in the driver.
     sys.path.insert(0, tmp_working_dir)
     import test_module
+    import file_module
 
     @ray.remote
     def test_import():
-        return test_module.one()
+        return test_module.one(), file_module.hello()
 
     if option == "failure":
         with pytest.raises(Exception):
             ray.get(test_import.remote())
     else:
-        assert ray.get(test_import.remote()) == 1
+        assert ray.get(test_import.remote()) == (1, "hello")
 
     reinit()
 
     @ray.remote
     class Actor:
         def test_import(self):
-            return test_module.one()
+            return test_module.one(), file_module.hello()
 
     if option == "failure":
         with pytest.raises(Exception):
             a = Actor.remote()
-            assert ray.get(a.test_import.remote()) == 1
+            assert ray.get(a.test_import.remote()) == (1, "hello")
     else:
         a = Actor.remote()
-        assert ray.get(a.test_import.remote()) == 1
+        assert ray.get(a.test_import.remote()) == (1, "hello")
 
 
 def test_empty_working_dir(start_cluster):

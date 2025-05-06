@@ -4,20 +4,40 @@ from typing import List, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.utils import check_output_cmd
 
 default_logger = logging.getLogger(__name__)
 
 
+async def _create_impl(image_uri: str, logger: logging.Logger):
+    # Pull image if it doesn't exist
+    # Also get path to `default_worker.py` inside the image.
+    pull_image_cmd = [
+        "podman",
+        "run",
+        "--rm",
+        image_uri,
+        "python",
+        "-c",
+        (
+            "import ray._private.workers.default_worker as default_worker; "
+            "print(default_worker.__file__)"
+        ),
+    ]
+    logger.info("Pulling image %s", image_uri)
+    worker_path = await check_output_cmd(pull_image_cmd, logger=logger)
+    return worker_path.strip()
+
+
 def _modify_context_impl(
     image_uri: str,
+    worker_path: str,
     run_options: Optional[List[str]],
-    worker_path: Optional[str],
     context: RuntimeEnvContext,
     logger: logging.Logger,
     ray_tmp_dir: str,
 ):
-    if worker_path:
-        context.override_worker_entrypoint = worker_path
+    context.override_worker_entrypoint = worker_path
 
     container_driver = "podman"
     container_command = [
@@ -41,19 +61,29 @@ def _modify_context_impl(
         "--userns=keep-id",
     ]
 
-    # The RAY_RAYLET_PID and RAY_JOB_ID environment variables are
-    # needed for the default worker.
-    container_command.append("--env")
-    container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
+    # Environment variables to set in container
+    env_vars = dict()
+
+    # Propagate all host environment variables that have the prefix "RAY_"
+    # This should include RAY_RAYLET_PID
+    for env_var_name, env_var_value in os.environ.items():
+        if env_var_name.startswith("RAY_"):
+            env_vars[env_var_name] = env_var_value
+
+    # Support for runtime_env['env_vars']
+    env_vars.update(context.env_vars)
+
+    # Set environment variables
+    for env_var_name, env_var_value in env_vars.items():
+        container_command.append("--env")
+        container_command.append(f"{env_var_name}='{env_var_value}'")
+
+    # The RAY_JOB_ID environment variable is needed for the default worker.
+    # It won't be set at the time setup() is called, but it will be set
+    # when worker command is executed, so we use RAY_JOB_ID=$RAY_JOB_ID
+    # for the container start command
     container_command.append("--env")
     container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
-    for env_var_name, env_var_value in os.environ.items():
-        if env_var_name.startswith("RAY_") and env_var_name not in [
-            "RAY_RAYLET_PID",
-            "RAY_JOB_ID",
-        ]:
-            container_command.append("--env")
-            container_command.append(f"{env_var_name}='{env_var_value}'")
 
     if run_options:
         container_command.extend(run_options)
@@ -78,8 +108,24 @@ class ImageURIPlugin(RuntimeEnvPlugin):
 
     name = "image_uri"
 
+    @staticmethod
+    def get_compatible_keys():
+        return {"image_uri", "config", "env_vars"}
+
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
+
+    async def create(
+        self,
+        uri: Optional[str],
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> float:
+        if not runtime_env.image_uri():
+            return
+
+        self.worker_path = await _create_impl(runtime_env.image_uri(), logger)
 
     def modify_context(
         self,
@@ -92,7 +138,12 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             return
 
         _modify_context_impl(
-            runtime_env.image_uri(), [], None, context, logger, self._ray_tmp_dir
+            runtime_env.image_uri(),
+            self.worker_path,
+            [],
+            context,
+            logger,
+            self._ray_tmp_dir,
         )
 
 
@@ -104,6 +155,18 @@ class ContainerPlugin(RuntimeEnvPlugin):
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
 
+    async def create(
+        self,
+        uri: Optional[str],
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> float:
+        if not runtime_env.has_py_container() or not runtime_env.py_container_image():
+            return
+
+        self.worker_path = await _create_impl(runtime_env.py_container_image(), logger)
+
     def modify_context(
         self,
         uris: List[str],
@@ -114,10 +177,18 @@ class ContainerPlugin(RuntimeEnvPlugin):
         if not runtime_env.has_py_container() or not runtime_env.py_container_image():
             return
 
+        if runtime_env.py_container_worker_path():
+            logger.warning(
+                "You are using `container.worker_path`, but the path to "
+                "`default_worker.py` is now automatically detected from the image. "
+                "`container.worker_path` is deprecated and will be removed in future "
+                "versions."
+            )
+
         _modify_context_impl(
             runtime_env.py_container_image(),
+            runtime_env.py_container_worker_path() or self.worker_path,
             runtime_env.py_container_run_options(),
-            runtime_env.py_container_worker_path(),
             context,
             logger,
             self._ray_tmp_dir,

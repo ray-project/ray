@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -19,18 +20,19 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 // clang-format on
-using namespace ::testing;
-using namespace ray::gcs;
-using namespace ray;
+using namespace ::testing;  // NOLINT
+using namespace ray::gcs;   // NOLINT
+using namespace ray;        // NOLINT
 
 class GcsFunctionManagerTest : public Test {
  public:
   void SetUp() override {
     kv = std::make_unique<MockInternalKVInterface>();
-    function_manager = std::make_unique<GcsFunctionManager>(*kv);
+    function_manager = std::make_unique<GcsFunctionManager>(*kv, io_context);
   }
   std::unique_ptr<GcsFunctionManager> function_manager;
   std::unique_ptr<MockInternalKVInterface> kv;
+  instrumented_io_context io_context;
 };
 
 TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {

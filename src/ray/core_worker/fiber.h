@@ -16,6 +16,8 @@
 
 #include <boost/fiber/all.hpp>
 #include <chrono>
+#include <memory>
+#include <utility>
 
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
@@ -60,7 +62,7 @@ using StdEvent = Event<std::mutex, std::condition_variable>;
 /// semaphore data structure.
 class FiberRateLimiter {
  public:
-  FiberRateLimiter(int num) : num_(num) {}
+  explicit FiberRateLimiter(int num) : num_(num) {}
 
   // Enter the semaphore. Wait for the value to be > 0 and decrement the value.
   void Acquire() {
@@ -91,13 +93,15 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
-  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
+                                  bool has_other_concurrency_groups) {
     RAY_UNUSED(max_concurrency_in_default_group);
-    /// asycio mode always need a default executor.
+    RAY_UNUSED(has_other_concurrency_groups);
+    /// asyncio mode always need a default executor.
     return true;
   }
 
-  FiberState(int max_concurrency)
+  explicit FiberState(int max_concurrency)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {
@@ -145,7 +149,7 @@ class FiberState {
   }
 
   void EnqueueFiber(std::function<void()> &&callback) {
-    auto op_status = channel_.push([this, callback]() {
+    auto op_status = channel_.push([this, callback = std::move(callback)]() {
       rate_limiter_.Acquire();
       callback();
       rate_limiter_.Release();
@@ -155,20 +159,10 @@ class FiberState {
 
   void Stop() { channel_.close(); }
 
-  void Join() {
-    fiber_stopped_event_->Wait();
-  }
+  void Join() { fiber_stopped_event_->Wait(); }
 
  private:
-  // The fiber stack size. 128 KiB on Linux and Windows. 256 KiB on Mac.
-  // Note that the default fiber stack size is 128 KiB. In the Mac CI environment, this is
-  // not large enough and thus it causes segfaults. See
-  // https://github.com/ray-project/ray/pull/44331.
-#if defined(__APPLE__)
   static constexpr size_t kStackSize = 1024 * 256;
-#else
-  static constexpr size_t kStackSize = 1024 * 128;
-#endif
 
   // The fiber stack allocator.
   boost::fibers::fixedsize_stack allocator_;

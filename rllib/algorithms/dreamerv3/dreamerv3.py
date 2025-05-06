@@ -26,7 +26,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -38,21 +38,17 @@ from ray.rllib.utils.metrics import (
     GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
     LEARNER_RESULTS,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
+    REPLAY_BUFFER_RESULTS,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule
 
 
 logger = logging.getLogger(__name__)
@@ -386,12 +382,12 @@ class DreamerV3Config(AlgorithmConfig):
         super().validate()
 
         # Make sure, users are not using DreamerV3 yet for multi-agent:
-        if self.is_multi_agent():
-            raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
+        if self.is_multi_agent:
+            self._value_error("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
         if not self.enable_rl_module_and_learner:
-            raise ValueError(
+            self._value_error(
                 "DreamerV3 must be run with `config.api_stack("
                 "enable_rl_module_and_learner=True)`!"
             )
@@ -399,7 +395,7 @@ class DreamerV3Config(AlgorithmConfig):
         # If run on several Learners, the provided batch_size_B must be a multiple
         # of `num_learners`.
         if self.num_learners > 1 and (self.batch_size_B % self.num_learners != 0):
-            raise ValueError(
+            self._value_error(
                 f"Your `batch_size_B` ({self.batch_size_B}) must be a multiple of "
                 f"`num_learners` ({self.num_learners}) in order for "
                 "DreamerV3 to be able to split batches evenly across your Learner "
@@ -408,19 +404,19 @@ class DreamerV3Config(AlgorithmConfig):
 
         # Cannot train actor w/o critic.
         if self.train_actor and not self.train_critic:
-            raise ValueError(
+            self._value_error(
                 "Cannot train actor network (`train_actor=True`) w/o training critic! "
                 "Make sure you either set `train_critic=True` or `train_actor=False`."
             )
         # Use DreamerV3 specific batch size settings.
         if self.train_batch_size is not None:
-            raise ValueError(
+            self._value_error(
                 "`train_batch_size` should NOT be set! Use `batch_size_B` and "
                 "`batch_length_T` instead."
             )
         # Must be run with `EpisodeReplayBuffer` type.
         if self.replay_buffer_config.get("type") != "EpisodeReplayBuffer":
-            raise ValueError(
+            self._value_error(
                 "DreamerV3 must be run with the `EpisodeReplayBuffer` type! None "
                 "other supported."
             )
@@ -437,13 +433,13 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
                 DreamerV3TfRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=DreamerV3TfRLModule, catalog_class=DreamerV3Catalog
             )
         else:
@@ -494,14 +490,14 @@ class DreamerV3(Algorithm):
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.
         if self.config.share_module_between_env_runner_and_learner:
-            assert self.workers.local_worker().module is None
-            self.workers.local_worker().module = self.learner_group._learner.module[
+            assert self.env_runner.module is None
+            self.env_runner.module = self.learner_group._learner.module[
                 DEFAULT_MODULE_ID
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
-            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
+            self.env_runner.module.dreamer_model.summary(expand_nested=True)
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
@@ -511,9 +507,7 @@ class DreamerV3(Algorithm):
         )
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
-        env_runner = self.workers.local_worker()
-
+    def training_step(self) -> None:
         # Push enough samples into buffer initially before we start training.
         if self.training_iteration == 0:
             logger.info(
@@ -540,7 +534,7 @@ class DreamerV3(Algorithm):
             ):
                 # Sample using the env runner's module.
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_agent_steps=(
                         self.config.rollout_fragment_length
                         * self.config.num_envs_per_env_runner
@@ -565,9 +559,15 @@ class DreamerV3(Algorithm):
 
                 # If we have never sampled before (just started the algo and not
                 # recovered from a checkpoint), sample B random actions first.
-                if self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) == 0:
+                if (
+                    self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                        default=0,
+                    )
+                    == 0
+                ):
                     _episodes, _env_runner_results = synchronous_parallel_sample(
-                        worker_set=self.workers,
+                        worker_set=self.env_runner_group,
                         max_agent_steps=(
                             self.config.batch_size_B * self.config.batch_length_T
                             - env_steps_last_regular_sample
@@ -583,30 +583,18 @@ class DreamerV3(Algorithm):
                     self.replay_buffer.add(episodes=_episodes)
                     total_sampled += sum(len(eps) for eps in _episodes)
 
-                # Update lifetime counts (now that we gathered results from all
-                # EnvRunners).
-                self.metrics.log_dict(
-                    {
-                        NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
-                        ),
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
-                        ),
-                        NUM_EPISODES_LIFETIME: self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_EPISODES)
-                        ),
-                    },
-                    reduce="sum",
-                )
-
         # Summarize environment interaction and buffer data.
         report_sampling_and_replay_buffer(
             metrics=self.metrics, replay_buffer=self.replay_buffer
         )
+        # Get the replay buffer metrics.
+        replay_buffer_results = self.local_replay_buffer.get_metrics()
+        self.metrics.merge_and_log_n_dicts(
+            [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
+        )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
-        # and using these to update our models (`LearnerGroup.update_from_batch()`)
+        # and using these to update our models (`LearnerGroup.update()`)
         # until the computed `training_ratio` is larger than the configured one, meaning
         # we should go back and collect more samples again from the actual environment.
         # However, when calculating the `training_ratio` here, we use only the
@@ -630,15 +618,17 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
+                if isinstance(
+                    self.env_runner.env.single_action_space, gym.spaces.Discrete
+                ):
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
-                        depth=env_runner.env.single_action_space.n,
+                        depth=self.env_runner.env.single_action_space.n,
                     )
 
                 # Perform the actual update via our learner group.
-                learner_results = self.learner_group.update_from_batch(
+                learner_results = self.learner_group.update(
                     batch=SampleBatch(sample).as_multi_agent(),
                     # TODO(sven): Maybe we should do this broadcase of global timesteps
                     #  at the end, like for EnvRunner global env step counts. Maybe when
@@ -646,14 +636,12 @@ class DreamerV3(Algorithm):
                     #  time - send the current globally summed/reduced-timesteps.
                     timesteps={
                         NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                            default=0,
                         )
                     },
                 )
                 self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-                self.metrics.log_value(
-                    NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
-                )
 
                 sub_iter += 1
                 self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
@@ -669,7 +657,7 @@ class DreamerV3(Algorithm):
             batch_size_B=self.config.batch_size_B,
             batch_length_T=self.config.batch_length_T,
             symlog_obs=do_symlog_obs(
-                env_runner.env.single_observation_space,
+                self.env_runner.env.single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
@@ -688,9 +676,9 @@ class DreamerV3(Algorithm):
             sample=sample,
             burn_in_T=0,
             dreamed_T=self.config.horizon_H + 1,
-            dreamer_model=self.workers.local_worker().module.dreamer_model,
+            dreamer_model=self.env_runner.module.dreamer_model,
             symlog_obs=do_symlog_obs(
-                env_runner.env.single_observation_space,
+                self.env_runner.env.single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
@@ -706,7 +694,7 @@ class DreamerV3(Algorithm):
             # (local) Learner.
             if not self.config.share_module_between_env_runner_and_learner:
                 self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     from_worker_or_learner_group=self.learner_group,
                     inference_only=True,
                 )
@@ -723,9 +711,6 @@ class DreamerV3(Algorithm):
         # be close to the configured `training_ratio`.
         self.metrics.log_value("actual_training_ratio", self.training_ratio, window=1)
 
-        # Return all results.
-        return self.metrics.reduce()
-
     @property
     def training_ratio(self) -> float:
         """Returns the actual training ratio of this Algorithm (not the configured one).
@@ -736,7 +721,13 @@ class DreamerV3(Algorithm):
         """
         eps = 0.0001
         return self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0) / (
-            (self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=eps) or eps)
+            (
+                self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                    default=eps,
+                )
+                or eps
+            )
         )
 
     # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.
@@ -753,13 +744,13 @@ class DreamerV3(Algorithm):
         super().__setstate__(state=state)
 
         # Assign the module to the local `EnvRunner` if sharing is enabled.
-        # Note, in `Learner.load_state()` the module is first deleted
+        # Note, in `Learner.restore_from_path()` the module is first deleted
         # and then a new one is built - therefore the worker has no
         # longer a copy of the learner.
         if self.config.share_module_between_env_runner_and_learner:
-            assert id(self.workers.local_worker().module) != id(
+            assert id(self.env_runner.module) != id(
                 self.learner_group._learner.module[DEFAULT_MODULE_ID]
             )
-            self.workers.local_worker().module = self.learner_group._learner.module[
+            self.env_runner.module = self.learner_group._learner.module[
                 DEFAULT_MODULE_ID
             ]

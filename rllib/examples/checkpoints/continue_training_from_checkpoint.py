@@ -4,15 +4,16 @@ Use the setup shown in this script if your experiments tend to crash after some 
 and you would therefore like to make your setup more robust and fault-tolerant.
 
 This example:
-- runs a single- or multi-agent CartPole experiment (for multi-agent, we use different
-learning rates) thereby checkpointing the state of the Algorithm every n iterations.
-- stops the experiment due to an expected crash in the algorithm's main process after
-a certain number of iterations.
-- just for testing purposes, restores the entire algorithm from the latest checkpoint
-and checks, whether the state of the restored algo exactly match the state of the
-crashed one.
-- then continues training with the restored algorithm until the desired final episode
-return is reached.
+    - runs a single- or multi-agent CartPole experiment (for multi-agent, we use
+    different learning rates) thereby checkpointing the state of the Algorithm every n
+    iterations.
+    - stops the experiment due to an expected crash in the algorithm's main process
+    after a certain number of iterations.
+    - just for testing purposes, restores the entire algorithm from the latest
+    checkpoint and checks, whether the state of the restored algo exactly match the
+    state of the crashed one.
+    - then continues training with the restored algorithm until the desired final
+    episode return is reached.
 
 
 How to run this script
@@ -83,9 +84,9 @@ And if you are using the `--as-test` option, you should see a finel message:
 import re
 import time
 
-from ray import train, tune
+from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
@@ -113,7 +114,7 @@ parser.add_argument(
 parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
 
 
-class CrashAfterNIters(DefaultCallbacks):
+class CrashAfterNIters(RLlibCallback):
     """Callback that makes the algo crash after a certain avg. return is reached."""
 
     def __init__(self):
@@ -199,9 +200,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         trainable=config.algo_class,
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             callbacks=tune_callbacks,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -234,13 +235,13 @@ if __name__ == "__main__":
     assert (
         test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         >= args.stop_reward_crash
-    )
+    ), test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Train one iteration to make sure, the performance does not collapse (e.g. due
     # to the optimizer weights not having been restored properly).
     test_results = test_algo.train()
     assert (
         test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
-    )
+    ), test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Stop the test algorithm again.
     test_algo.stop()
 

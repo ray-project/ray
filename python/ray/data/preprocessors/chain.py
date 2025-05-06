@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
@@ -28,7 +28,7 @@ class Chain(Preprocessor):
         >>>
         >>> preprocessor = Chain(
         ...     StandardScaler(columns=["X0", "X1"]),
-        ...     Concatenator(include=["X0", "X1"], output_column_name="X"),
+        ...     Concatenator(columns=["X0", "X1"], output_column_name="X"),
         ...     LabelEncoder(label_column="Y")
         ... )
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
@@ -79,9 +79,22 @@ class Chain(Preprocessor):
             ds = preprocessor.fit_transform(ds)
         return ds
 
-    def _transform(self, ds: Dataset) -> Dataset:
+    def _transform(
+        self,
+        ds: Dataset,
+        batch_size: Optional[int],
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[int] = None,
+    ) -> Dataset:
         for preprocessor in self.preprocessors:
-            ds = preprocessor.transform(ds)
+            ds = preprocessor.transform(
+                ds,
+                batch_size=batch_size,
+                num_cpus=num_cpus,
+                memory=memory,
+                concurrency=concurrency,
+            )
         return ds
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":

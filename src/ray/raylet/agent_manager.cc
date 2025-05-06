@@ -14,13 +14,17 @@
 
 #include "ray/raylet/agent_manager.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
+#include "ray/util/thread_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {

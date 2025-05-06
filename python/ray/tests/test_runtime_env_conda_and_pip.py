@@ -2,20 +2,20 @@ import os
 import pytest
 import sys
 import platform
-import time
 from ray._private.test_utils import (
     wait_for_condition,
     chdir,
     check_local_files_gced,
     generate_runtime_env_dict,
 )
+from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
-from ray._private.runtime_env.pip import (
+from ray._private.runtime_env.dependency_utils import (
     INTERNAL_PIP_FILENAME,
     MAX_INTERNAL_PIP_FILENAME_TRIES,
-    _PathHelper,
 )
 from ray.runtime_env import RuntimeEnv
+from ray.util.state import list_tasks
 
 import yaml
 import tempfile
@@ -116,7 +116,7 @@ class TestGC:
         reason="Needs PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_job_level_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
@@ -139,10 +139,12 @@ class TestGC:
 
         # Ensure that the runtime env has been installed.
         assert ray.get(f.remote())
-        # Sleep some seconds before checking that we didn't GC. Otherwise this
-        # check may spuriously pass.
-        time.sleep(2)
-        assert not check_local_files_gced(cluster)
+
+        # Check that after the task is finished, the runtime_env is not GC'd
+        # because the job is still alive.
+        wait_for_condition(lambda: list_tasks()[0].state == "FINISHED")
+        for _ in range(5):
+            assert not check_local_files_gced(cluster)
 
         ray.shutdown()
 
@@ -163,7 +165,7 @@ class TestGC:
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_detached_actor_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
@@ -225,33 +227,31 @@ def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
     for ref in refs:
         with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as exc_info:
             ray.get(ref)
-        assert "doesn't exist from the output of `conda env list --json`" in str(
+        assert "doesn't exist from the output of `conda info --json`" in str(
             exc_info.value
         )  # noqa
 
 
 def test_get_requirements_file():
-    """Unit test for _PathHelper.get_requirements_file."""
+    """Unit test for dependency_utils.get_requirements_file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        path_helper = _PathHelper()
-
         # If pip_list is None, we should return the internal pip filename.
-        assert path_helper.get_requirements_file(tmpdir, pip_list=None) == os.path.join(
-            tmpdir, INTERNAL_PIP_FILENAME
-        )
+        assert dependency_utils.get_requirements_file(
+            tmpdir, pip_list=None
+        ) == os.path.join(tmpdir, INTERNAL_PIP_FILENAME)
 
         # If the internal pip filename is not in pip_list, we should return the internal
         # pip filename.
-        assert path_helper.get_requirements_file(
+        assert dependency_utils.get_requirements_file(
             tmpdir, pip_list=["foo", "bar"]
         ) == os.path.join(tmpdir, INTERNAL_PIP_FILENAME)
 
         # If the internal pip filename is in pip_list, we should append numbers to the
         # end of the filename until we find one that doesn't conflict.
-        assert path_helper.get_requirements_file(
+        assert dependency_utils.get_requirements_file(
             tmpdir, pip_list=["foo", "bar", f"-r {INTERNAL_PIP_FILENAME}"]
         ) == os.path.join(tmpdir, f"{INTERNAL_PIP_FILENAME}.1")
-        assert path_helper.get_requirements_file(
+        assert dependency_utils.get_requirements_file(
             tmpdir,
             pip_list=[
                 "foo",
@@ -263,7 +263,7 @@ def test_get_requirements_file():
 
         # If we can't find a valid filename, we should raise an error.
         with pytest.raises(RuntimeError) as excinfo:
-            path_helper.get_requirements_file(
+            dependency_utils.get_requirements_file(
                 tmpdir,
                 pip_list=[
                     "foo",

@@ -573,7 +573,7 @@ def test_actor_max_concurrency(ray_start_regular_shared):
 
         def call(self):
             # Record the current thread that runs this function.
-            self.threads.add(threading.current_thread())
+            self.threads.add(threading.get_ident())
 
         def get_num_threads(self):
             return len(self.threads)
@@ -590,52 +590,6 @@ def test_actor_max_concurrency(ray_start_regular_shared):
 
     # Check that the number of threads shouldn't be greater than CONCURRENCY.
     assert ray.get(actor.get_num_threads.remote()) <= CONCURRENCY
-
-
-def test_wait(ray_start_regular_shared):
-    @ray.remote
-    def f(delay):
-        time.sleep(delay)
-        return
-
-    object_refs = [f.remote(0), f.remote(0), f.remote(0), f.remote(0)]
-    ready_ids, remaining_ids = ray.wait(object_refs)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
-    ready_ids, remaining_ids = ray.wait(object_refs, num_returns=4)
-    assert set(ready_ids) == set(object_refs)
-    assert remaining_ids == []
-
-    object_refs = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(object_refs, timeout=0.5, num_returns=2)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 1
-
-    # Verify that calling wait with duplicate object refs throws an
-    # exception.
-    x = ray.put(1)
-    with pytest.raises(Exception):
-        ray.wait([x, x])
-
-    # Make sure it is possible to call wait with an empty list.
-    ready_ids, remaining_ids = ray.wait([])
-    assert ready_ids == []
-    assert remaining_ids == []
-
-    # Test semantics of num_returns with no timeout.
-    obj_refs = [ray.put(i) for i in range(10)]
-    (found, rest) = ray.wait(obj_refs, num_returns=2)
-    assert len(found) == 2
-    assert len(rest) == 8
-
-    # Verify that incorrect usage raises a TypeError.
-    x = ray.put(1)
-    with pytest.raises(TypeError):
-        ray.wait(x)
-    with pytest.raises(TypeError):
-        ray.wait(1)
-    with pytest.raises(TypeError):
-        ray.wait([1])
 
 
 def test_duplicate_args(ray_start_regular_shared):
@@ -734,6 +688,40 @@ if __name__ == "__main__":
             env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
         output = subprocess.check_output([sys.executable, test_driver], env=env)
         assert b"OK" in output, f"Output has no 'OK': {output.decode()}"
+
+
+def test_load_from_local_function(ray_start_regular_shared):
+    code_test = """
+import ray
+import os
+
+@ray.remote
+def wrapped_func():
+    return "OK"
+def normal_func():
+    return "OK"
+if __name__ == "__main__":
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
+    res1 = wrapped_func.remote()
+    wrapped_normal_func = ray.remote(normal_func)
+    res2 = wrapped_normal_func.remote()
+    s1 = ray.get(res1)
+    s2 = ray.get(res2)
+    print(s1+"+"+s2)
+"""
+
+    # Test code search path contains space.
+    with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
+        test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
+        with open(test_driver, "w") as f:
+            f.write(code_test.format(repr(ray_start_regular_shared["address"])))
+        env = os.environ.copy()
+        if env.get("PYTHONSAFEPATH", "") != "":
+            env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
+        output = subprocess.check_output([sys.executable, test_driver], env=env)
+        assert b"OK+OK" in output, f"Output has no 'OK+OK': {output.decode()}"
 
 
 @pytest.mark.skipif(

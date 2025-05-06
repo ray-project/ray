@@ -4,7 +4,7 @@ NOTE: Ray's usage report is currently "on by default".
       One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
-https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
+https://docs.ray.io/en/master/cluster/usage-stats.html#usage-stats-collection  # noqa
 
 # Module
 
@@ -538,7 +538,9 @@ def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
 def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     """Return the total number of running jobs in the cluster excluding internal ones"""
     try:
-        result = gcs_client.get_all_job_info()
+        result = gcs_client.get_all_job_info(
+            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
+        )
         total_num_running_jobs = 0
         for job_info in result.values():
             if not job_info.is_dead and not job_info.config.ray_namespace.startswith(
@@ -547,7 +549,7 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
                 total_num_running_jobs += 1
         return total_num_running_jobs
     except Exception as e:
-        logger.info(f"Faile to query number of running jobs in the cluster: {e}")
+        logger.info(f"Failed to query number of running jobs in the cluster: {e}")
         return None
 
 
@@ -557,11 +559,11 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
         result = gcs_client.get_all_node_info(timeout=timeout)
         total_num_nodes = 0
         for node_id, node_info in result.items():
-            if node_info["state"] == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+            if node_info.state == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:
-        logger.info(f"Faile to query number of nodes in the cluster: {e}")
+        logger.info(f"Failed to query number of nodes in the cluster: {e}")
         return None
 
 
@@ -592,7 +594,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
                 k, v = kv.split("=")
                 extra_usage_tags[k] = v
         except Exception as e:
-            logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
+            logger.info(f"Failed to parse extra usage tags env var: {e}")
 
     valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
     try:
@@ -600,16 +602,16 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
             namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
-        for key in keys:
-            value = gcs_client.internal_kv_get(
-                key, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
-            )
+        kv = gcs_client.internal_kv_multi_get(
+            keys, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
+        )
+        for key, value in kv.items():
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
             assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
-        logger.info(f"Failed to get extra usage tags from kv store {e}")
+        logger.info(f"Failed to get extra usage tags from kv store: {e}")
     return extra_usage_tags
 
 
@@ -633,8 +635,8 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
     try:
         cluster_status = get_cluster_status(gcs_client.address)
         total_resources = cluster_status.total_resources()
-        result.total_num_cpus = total_resources.get("CPU", 0)
-        result.total_num_gpus = total_resources.get("GPU", 0)
+        result.total_num_cpus = int(total_resources.get("CPU", 0))
+        result.total_num_gpus = int(total_resources.get("GPU", 0))
 
         to_GiB = 1 / 2**30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
@@ -807,11 +809,8 @@ def get_cluster_metadata(gcs_client) -> dict:
     )
 
 
-def is_ray_init_cluster(gcs_address: str) -> bool:
+def is_ray_init_cluster(gcs_client: ray._raylet.GcsClient) -> bool:
     """Return whether the cluster is started by ray.init()"""
-
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
-
     cluster_metadata = get_cluster_metadata(gcs_client)
     return cluster_metadata["ray_init_cluster"]
 
@@ -856,9 +855,7 @@ def generate_report_data(
     """
     assert cluster_id
 
-    gcs_client = ray._raylet.GcsClient(
-        address=gcs_address, nums_reconnect_retry=20, cluster_id=cluster_id
-    )
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, cluster_id=cluster_id)
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)

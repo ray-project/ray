@@ -9,7 +9,7 @@ import ray.train
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
-from ray.train import Checkpoint, CheckpointConfig
+from ray.tune import Checkpoint, CheckpointConfig
 from ray.train.tests.util import mock_storage_context
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.logger import NoopLogger
@@ -44,7 +44,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         """Test that repeated save/restore never reuses same checkpoint dir."""
 
         def train_fn(config):
-            checkpoint = ray.train.get_checkpoint()
+            checkpoint = ray.tune.get_checkpoint()
             if checkpoint:
                 with checkpoint.as_directory() as checkpoint_dir:
                     count = sum(
@@ -58,7 +58,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
                         temp_checkpoint_dir, "checkpoint-{}".format(step)
                     )
                     open(path, "a").close()
-                    ray.train.report(
+                    ray.tune.report(
                         dict(test=step),
                         checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
                     )
@@ -84,7 +84,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
                         path = os.path.join(temp_checkpoint_dir, "checkpoint.json")
                         with open(path, "w") as f:
                             json.dump({"step": step}, f)
-                    ray.train.report(
+                    ray.tune.report(
                         dict(test=step),
                         checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
                     )
@@ -134,7 +134,7 @@ class FunctionApiTest(unittest.TestCase):
 
         def train_fn(config, data=None):
             data.data[101] = 2  # Changes are local
-            ray.train.report(dict(metric=len(data.data), hundred=data.data[100]))
+            ray.tune.report(dict(metric=len(data.data), hundred=data.data[100]))
 
         trial_1, trial_2 = tune.run(
             with_parameters(train_fn, data=data), num_samples=2
@@ -150,7 +150,7 @@ class FunctionApiTest(unittest.TestCase):
         # With checkpoint dir parameter
         def train_fn(config, data=None):
             data.data[101] = 2  # Changes are local
-            ray.train.report(dict(metric=len(data.data)))
+            ray.tune.report(dict(metric=len(data.data)))
 
         trial_1, trial_2 = tune.run(
             with_parameters(train_fn, data=data), num_samples=2
@@ -186,8 +186,8 @@ class FunctionApiTest(unittest.TestCase):
         )
 
         def train_fn(config):
-            ray.train.report(
-                dict(metric=1, resources=ray.train.get_context().get_trial_resources())
+            ray.tune.report(
+                dict(metric=1, resources=ray.tune.get_context().get_trial_resources())
             )
 
         analysis = tune.run(
@@ -205,7 +205,7 @@ class FunctionApiTest(unittest.TestCase):
         # Makes sure two runs in the same script but different ray sessions
         # pass (https://github.com/ray-project/ray/issues/16609)
         def train_fn(config, extra=4):
-            ray.train.report(dict(metric=extra))
+            ray.tune.report(dict(metric=extra))
 
         trainable = tune.with_parameters(train_fn, extra=8)
         out = tune.run(trainable, metric="metric", mode="max")
@@ -215,7 +215,7 @@ class FunctionApiTest(unittest.TestCase):
         self.setUp()
 
         def train_fn_2(config, extra=5):
-            ray.train.report(dict(metric=extra))
+            ray.tune.report(dict(metric=extra))
 
         trainable = tune.with_parameters(train_fn_2, extra=9)
         out = tune.run(trainable, metric="metric", mode="max")
@@ -225,10 +225,10 @@ class FunctionApiTest(unittest.TestCase):
         # Makes sure two runs in the same script
         # pass (https://github.com/ray-project/ray/issues/16609)
         def train_fn(config, extra=4):
-            ray.train.report(dict(metric=extra))
+            ray.tune.report(dict(metric=extra))
 
         def train_fn_2(config, extra=5):
-            ray.train.report(dict(metric=extra))
+            ray.tune.report(dict(metric=extra))
 
         trainable1 = tune.with_parameters(train_fn, extra=8)
         trainable2 = tune.with_parameters(train_fn_2, extra=9)

@@ -10,6 +10,7 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
+from ray.data.block import to_stats
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 )
             )
         stats = {
-            "map": shuffle_map_metadata,
-            "reduce": new_metadata,
+            "map": to_stats(shuffle_map_metadata),
+            "reduce": to_stats(new_metadata),
         }
 
         return (output, stats)

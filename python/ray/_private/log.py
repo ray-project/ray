@@ -1,7 +1,9 @@
 import logging
-from logging.config import dictConfig
 import threading
 from typing import Union
+import time
+
+INTERNAL_TIMESTAMP_LOG_KEY = "_ray_timestamp_ns"
 
 
 def _print_loggers():
@@ -66,6 +68,26 @@ logger_initialized = False
 logging_config_lock = threading.Lock()
 
 
+def _setup_log_record_factory():
+    """Setup log record factory to add _ray_timestamp_ns to LogRecord."""
+    old_factory = logging.getLogRecordFactory()
+
+    def record_factory(*args, **kwargs):
+        record = old_factory(*args, **kwargs)
+        # Python logging module starts to use `time.time_ns()` to generate `created`
+        # from Python 3.13 to avoid the precision loss caused by the float type.
+        # Here, we generate the `created` for the LogRecord to support older Python
+        # versions.
+        ct = time.time_ns()
+        record.created = ct / 1e9
+
+        record.__dict__[INTERNAL_TIMESTAMP_LOG_KEY] = ct
+
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+
+
 def generate_logging_config():
     """Generate the default Ray logging configuration."""
     with logging_config_lock:
@@ -74,44 +96,22 @@ def generate_logging_config():
             return
         logger_initialized = True
 
-        formatters = {
-            "plain": {
-                "format": (
-                    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-                ),
-            },
-        }
-
-        handlers = {
-            "default": {
-                "()": PlainRayHandler,
-                "formatter": "plain",
-            }
-        }
-
-        loggers = {
-            # Default ray logger; any log message that gets propagated here will be
-            # logged to the console. Disable propagation, as many users will use
-            # basicConfig to set up a default handler. If so, logs will be
-            # printed twice unless we prevent propagation here.
-            "ray": {
-                "level": "INFO",
-                "handlers": ["default"],
-                "propagate": False,
-            },
-            # Special handling for ray.rllib: only warning-level messages passed through
-            # See https://github.com/ray-project/ray/pull/31858 for related PR
-            "ray.rllib": {
-                "level": "WARN",
-            },
-        }
-
-        dictConfig(
-            {
-                "version": 1,
-                "formatters": formatters,
-                "handlers": handlers,
-                "loggers": loggers,
-                "disable_existing_loggers": False,
-            }
+        plain_formatter = logging.Formatter(
+            "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
         )
+
+        default_handler = PlainRayHandler()
+        default_handler.setFormatter(plain_formatter)
+
+        ray_logger = logging.getLogger("ray")
+        ray_logger.setLevel(logging.INFO)
+        ray_logger.addHandler(default_handler)
+        ray_logger.propagate = False
+
+        # Special handling for ray.rllib: only warning-level messages passed through
+        # See https://github.com/ray-project/ray/pull/31858 for related PR
+        rllib_logger = logging.getLogger("ray.rllib")
+        rllib_logger.setLevel(logging.WARN)
+
+        # Set up the LogRecord factory.
+        _setup_log_record_factory()

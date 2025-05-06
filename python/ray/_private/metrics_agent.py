@@ -38,6 +38,8 @@ from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 from ray._private.ray_constants import env_bool
 
+from ray.util.metrics import _is_invalid_metric_name
+
 logger = logging.getLogger(__name__)
 
 # Env var key to decide worker timeout.
@@ -56,6 +58,13 @@ class Gauge(View):
     """
 
     def __init__(self, name, description, unit, tags: List[str]):
+        if _is_invalid_metric_name(name):
+            raise ValueError(
+                f"Invalid metric name: {name}. Metric will be discarded "
+                "and data will not be collected or published. "
+                "Metric names can only contain letters, numbers, _, and :. "
+                "Metric names cannot start with numbers."
+            )
         self._measure = measure_module.MeasureInt(name, description, unit)
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
@@ -541,7 +550,12 @@ class MetricsAgent:
                 gauge = record.gauge
                 value = record.value
                 tags = record.tags
-                self._record_gauge(gauge, value, {**tags, **global_tags})
+                try:
+                    self._record_gauge(gauge, value, {**tags, **global_tags})
+                except Exception as e:
+                    logger.error(
+                        f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
+                    )
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
         if gauge.name not in self._registered_views:
@@ -550,8 +564,20 @@ class MetricsAgent:
         measurement_map = self.stats_recorder.new_measurement_map()
         tag_map = tag_map_module.TagMap()
         for key, tag_val in tags.items():
-            tag_key = tag_key_module.TagKey(key)
-            tag_value = tag_value_module.TagValue(tag_val)
+            try:
+                tag_key = tag_key_module.TagKey(key)
+            except ValueError as e:
+                logger.error(
+                    f"Failed to create tag key {key} for metric {gauge.name} due to: {e!r}"
+                )
+                raise e
+            try:
+                tag_value = tag_value_module.TagValue(tag_val)
+            except ValueError as e:
+                logger.error(
+                    f"Failed to create tag value {tag_val} for key {key} for metric {gauge.name} due to: {e!r}"
+                )
+                raise e
             tag_map.insert(tag_key, tag_value)
         measurement_map.measure_float_put(gauge.measure, value)
         # NOTE: When we record this metric, timestamp will be renewed.
@@ -605,7 +631,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     """
 
     def __init__(self, gcs_address, temp_dir):
-        gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
+        gcs_client_options = ray._raylet.GcsClientOptions.create(
+            gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+        )
         self.gcs_address = gcs_address
 
         ray._private.state.state._initialize_global_state(gcs_client_options)

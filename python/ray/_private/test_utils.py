@@ -1,8 +1,6 @@
 import asyncio
-from datetime import datetime
 import inspect
 import fnmatch
-import functools
 import io
 import json
 import logging
@@ -14,13 +12,16 @@ import socket
 import subprocess
 import sys
 import tempfile
+import uuid
 import time
 import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
+from datetime import datetime
+from enum import Enum
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass
 
 import requests
@@ -37,7 +38,9 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
+import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -68,15 +71,12 @@ except (ImportError, ModuleNotFoundError):
         raise ModuleNotFoundError("`prometheus_client` not found")
 
 
-class RayTestTimeoutException(Exception):
-    """Exception used to identify timeouts from test utilities."""
-
-    pass
-
-
 def make_global_state_accessor(ray_context):
-    gcs_options = GcsClientOptions.from_gcs_address(
-        ray_context.address_info["gcs_address"]
+    gcs_options = GcsClientOptions.create(
+        ray_context.address_info["gcs_address"],
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
     )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
@@ -93,6 +93,12 @@ def redis_replicas():
     import os
 
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
+
+
+def redis_sentinel_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
 
 
 def get_redis_cli(port, enable_tls):
@@ -119,6 +125,63 @@ def get_redis_cli(port, enable_tls):
     return redis.Redis("localhost", str(port), **params)
 
 
+def start_redis_sentinel_instance(
+    session_dir_path: str,
+    port: int,
+    redis_master_port: int,
+    password: Optional[str] = None,
+    enable_tls: bool = False,
+    db_dir=None,
+    free_port=0,
+):
+    config_file = os.path.join(
+        session_dir_path, "redis-sentinel-" + uuid.uuid4().hex + ".conf"
+    )
+    config_lines = []
+    # Port for this Sentinel instance
+    if enable_tls:
+        config_lines.append(f"port {free_port}")
+    else:
+        config_lines.append(f"port {port}")
+
+    # Monitor the Redis master
+    config_lines.append(f"sentinel monitor redis-test 127.0.0.1 {redis_master_port} 1")
+    config_lines.append(
+        "sentinel down-after-milliseconds redis-test 1000"
+    )  # failover after 1 second
+    config_lines.append("sentinel failover-timeout redis-test 5000")  #
+    config_lines.append("sentinel parallel-syncs redis-test 1")
+
+    if password:
+        config_lines.append(f"sentinel auth-pass redis-test {password}")
+
+    if enable_tls:
+        config_lines.append(f"tls-port {port}")
+        if Config.REDIS_CA_CERT():
+            config_lines.append(f"tls-ca-cert-file {Config.REDIS_CA_CERT()}")
+        # Check and add TLS client certificate file
+        if Config.REDIS_CLIENT_CERT():
+            config_lines.append(f"tls-cert-file {Config.REDIS_CLIENT_CERT()}")
+        # Check and add TLS client key file
+        if Config.REDIS_CLIENT_KEY():
+            config_lines.append(f"tls-key-file {Config.REDIS_CLIENT_KEY()}")
+        config_lines.append("tls-auth-clients no")
+        config_lines.append("sentinel tls-auth-clients redis-test no")
+    if db_dir:
+        config_lines.append(f"dir {db_dir}")
+
+    with open(config_file, "w") as f:
+        f.write("\n".join(config_lines))
+
+    command = [REDIS_EXECUTABLE, config_file, "--sentinel"]
+    process_info = ray._private.services.start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        fate_share=False,
+    )
+    return process_info
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -127,7 +190,6 @@ def start_redis_instance(
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     password: Optional[str] = None,
-    redis_max_memory: Optional[int] = None,
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
@@ -158,9 +220,6 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
@@ -217,6 +276,7 @@ def start_redis_instance(
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
         command += ["--dir", str(db_dir)]
+
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -236,8 +296,8 @@ def start_redis_instance(
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
-                    print(redis_cli.cluster("replicate", leader_id))
+                    logger.info(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    logger.info(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -246,8 +306,22 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e} ")
+                logger.info(
+                    f"Waiting for redis to be up. Check failed with error: {e}. "
+                    "Will retry in 0.1s"
+                )
+
+                if process_info.process.poll() is not None:
+                    raise Exception(
+                        f"Redis process exited unexpectedly: {process_info}. "
+                        f"Exit code: {process_info.process.returncode}"
+                    )
+
                 sleep(0.1)
+
+    logger.info(
+        f"Redis started with node_id {node_id} and pid {process_info.process.pid}"
+    )
 
     return node_id, process_info
 
@@ -271,7 +345,7 @@ def _pid_alive(pid):
     return alive
 
 
-def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
+def _check_call_windows(main, argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
     stream = io.TextIOWrapper(io.BytesIO(), encoding=sys.stdout.encoding)
@@ -306,7 +380,7 @@ def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     from ray.scripts.scripts import main as ray_main
 
     if sys.platform == "win32":
-        result = check_call_module(
+        result = _check_call_windows(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
         )
     else:
@@ -330,31 +404,13 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
-def wait_for_pid_to_exit(pid, timeout=20):
+def wait_for_pid_to_exit(pid: int, timeout: float = 20):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException(f"Timed out while waiting for process {pid} to exit.")
-
-
-def wait_for_children_names_of_pid(pid, children_names, timeout=20):
-    p = psutil.Process(pid)
-    start_time = time.time()
-    children_names = set(children_names)
-    not_found_children = []
-    children = []
-    while time.time() - start_time < timeout:
-        children = p.children(recursive=False)
-        not_found_children = set(children_names) - {c.name() for c in children}
-        if len(not_found_children) == 0:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException(
-        "Timed out while waiting for process {} children to start "
-        "({} not found from children {}).".format(pid, not_found_children, children)
-    )
+    raise TimeoutError(f"Timed out while waiting for process {pid} to exit.")
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -367,7 +423,7 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
         if num_alive >= num_children:
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException(
+    raise TimeoutError(
         f"Timed out while waiting for process {pid} children to start "
         f"({num_alive}/{num_children} started: {alive})."
     )
@@ -380,7 +436,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
     _, alive = psutil.wait_procs(children, timeout=timeout)
     if len(alive) > 0:
-        raise RayTestTimeoutException(
+        raise TimeoutError(
             "Timed out while waiting for process children to exit."
             " Children still alive: {}.".format([p.name() for p in alive])
         )
@@ -416,6 +472,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
+            logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
@@ -509,40 +566,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
         ):
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
-
-
-def wait_for_num_nodes(num_nodes: int, timeout_s: int):
-    curr_nodes = 0
-    start = time.time()
-    next_feedback = start
-    max_time = start + timeout_s
-    while not curr_nodes >= num_nodes:
-        now = time.time()
-
-        if now >= max_time:
-            raise RuntimeError(
-                f"Maximum wait time reached, but only "
-                f"{curr_nodes}/{num_nodes} nodes came up. Aborting."
-            )
-
-        if now >= next_feedback:
-            passed = now - start
-            print(
-                f"Waiting for more nodes to come up: "
-                f"{curr_nodes}/{num_nodes} "
-                f"({passed:.0f} seconds passed)"
-            )
-            next_feedback = now + 10
-
-        time.sleep(5)
-        curr_nodes = len(ray.nodes())
-
-    passed = time.time() - start
-    print(
-        f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
-        f"{passed:.0f} seconds"
-    )
+    raise TimeoutError("Timed out while waiting for global state.")
 
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
@@ -629,34 +653,6 @@ async def async_wait_for_condition(
     raise RuntimeError(message)
 
 
-async def async_wait_for_condition_async_predicate(
-    async_condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if await async_condition_predictor(**kwargs):
-                return
-        except Exception as ex:
-            last_ex = ex
-        await asyncio.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
-
-
 @dataclass
 class MetricSamplePattern:
     name: Optional[str] = None
@@ -718,57 +714,6 @@ def get_metric_check_condition(
     return f
 
 
-def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
-    """Returns a decorator which waits until the stdout emitted
-    by a function contains the provided list of strings.
-    Raises an exception if the stdout doesn't have the expected output in time.
-
-    Note: The decorated function should not block!
-    (It should return soon after being called.)
-
-    Args:
-        strings_to_match: Wait until stdout contains all of these string.
-        timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
-    """
-
-    def decorator(func):
-        @functools.wraps(func)
-        def decorated_func(*args, **kwargs):
-            success = False
-            try:
-                # Redirect stdout to an in-memory stream.
-                out_stream = io.StringIO()
-                sys.stdout = out_stream
-                # Execute the func. (Make sure the function doesn't block!)
-                out = func(*args, **kwargs)
-                # Check out_stream once a second until the timeout.
-                # Raise a RuntimeError if we timeout.
-                wait_for_condition(
-                    # Does redirected stdout contain all of the expected strings?
-                    lambda: all(
-                        string in out_stream.getvalue() for string in strings_to_match
-                    ),
-                    timeout=timeout_s,
-                    retry_interval_ms=1000,
-                )
-                # out_stream has the expected strings
-                success = True
-                return out
-            # Exception raised on failure.
-            finally:
-                sys.stdout = sys.__stdout__
-                if success:
-                    print("Confirmed expected function stdout. Stdout follows:")
-                else:
-                    print("Did not confirm expected function stdout. Stdout follows:")
-                print(out_stream.getvalue())
-                out_stream.close()
-
-        return decorated_func
-
-    return decorator
-
-
 def wait_until_succeeded_without_exception(
     func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
 ):
@@ -786,7 +731,7 @@ def wait_until_succeeded_without_exception(
     Return:
         Whether exception occurs within a timeout.
     """
-    if type(exceptions) != tuple:
+    if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0
@@ -828,6 +773,18 @@ def generate_system_config_map(**kwargs):
         "_system_config": kwargs,
     }
     return ray_kwargs
+
+
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self):
+        return self.items
 
 
 @ray.remote(num_cpus=0)
@@ -1438,15 +1395,19 @@ class ResourceKillerActor:
         self,
         head_node_id,
         kill_interval_s: float = 60,
+        kill_delay_s: float = 0,
         max_to_kill: int = 2,
+        batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
+        self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
         self.killed = set()
-        self.done = ray._private.utils.get_or_create_event_loop().create_future()
+        self.done = get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
+        self.batch_size_to_kill = batch_size_to_kill
         self.kill_filter_fn = kill_filter_fn
         self.kill_immediately_after_found = False
         # -- logger. --
@@ -1457,8 +1418,11 @@ class ResourceKillerActor:
 
     async def run(self):
         self.is_running = True
+
+        time.sleep(self.kill_delay_s)
+
         while self.is_running:
-            to_kill = await self._find_resource_to_kill()
+            to_kills = await self._find_resources_to_kill()
 
             if not self.is_running:
                 break
@@ -1469,14 +1433,15 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            self._kill_resource(*to_kill)
+            for to_kill in to_kills:
+                self._kill_resource(*to_kill)
             if len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
 
-    async def _find_resource_to_kill(self):
+    async def _find_resources_to_kill(self):
         raise NotImplementedError
 
     def _kill_resource(self, *args):
@@ -1494,38 +1459,38 @@ class ResourceKillerActor:
 
 
 class NodeKillerBase(ResourceKillerActor):
-    async def _find_resource_to_kill(self):
-        node_to_kill_ip = None
-        node_to_kill_port = None
-        node_id = None
-        while node_to_kill_port is None and self.is_running:
-            nodes = ray.nodes()
-            alive_nodes = self._get_alive_nodes(nodes)
-            if self.kill_filter_fn is not None:
-                nodes = list(filter(self.kill_filter_fn(), nodes))
-            for node in nodes:
-                node_id = node["NodeID"]
-                # make sure at least 1 worker node is alive.
-                if (
-                    node["Alive"]
-                    and node_id != self.head_node_id
-                    and node_id not in self.killed
-                    and alive_nodes > 2
-                ):
-                    node_to_kill_ip = node["NodeManagerAddress"]
-                    node_to_kill_port = node["NodeManagerPort"]
-                    break
-            # Give the cluster some time to start.
-            await asyncio.sleep(0.1)
+    async def _find_resources_to_kill(self):
+        nodes_to_kill = []
+        while not nodes_to_kill and self.is_running:
+            worker_nodes = [
+                node
+                for node in ray.nodes()
+                if node["Alive"]
+                and (node["NodeID"] != self.head_node_id)
+                and (node["NodeID"] not in self.killed)
+            ]
+            if self.kill_filter_fn:
+                candidates = list(filter(self.kill_filter_fn(), worker_nodes))
+            else:
+                candidates = worker_nodes
 
-        return node_id, node_to_kill_ip, node_to_kill_port
+            # Ensure at least one worker node remains alive.
+            if len(worker_nodes) < self.batch_size_to_kill + 1:
+                # Give the cluster some time to start.
+                await asyncio.sleep(1)
+                continue
 
-    def _get_alive_nodes(self, nodes):
-        alive_nodes = 0
-        for node in nodes:
-            if node["Alive"]:
-                alive_nodes += 1
-        return alive_nodes
+            # Collect nodes to kill, limited by batch size.
+            for candidate in candidates[: self.batch_size_to_kill]:
+                nodes_to_kill.append(
+                    (
+                        candidate["NodeID"],
+                        candidate["NodeManagerAddress"],
+                        candidate["NodeManagerPort"],
+                    )
+                )
+
+        return nodes_to_kill
 
 
 @ray.remote(num_cpus=0)
@@ -1591,14 +1556,8 @@ class EC2InstanceTerminator(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
-    def __init__(
-        self,
-        head_node_id,
-        kill_interval_s: float = 60,
-        max_to_kill: int = 2,
-        kill_filter_fn: Optional[Callable] = None,
-    ):
-        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1615,7 +1574,7 @@ class WorkerKillerActor(ResourceKillerActor):
             ]
         )
 
-    async def _find_resource_to_kill(self):
+    async def _find_resources_to_kill(self):
         from ray.util.state.common import StateResource
 
         process_to_kill_task_id = None
@@ -1640,7 +1599,7 @@ class WorkerKillerActor(ResourceKillerActor):
             # Give the cluster some time to start.
             await asyncio.sleep(0.1)
 
-        return process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+        return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
     def _kill_resource(
         self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
@@ -1677,6 +1636,7 @@ def get_and_run_resource_killer(
     lifetime=None,
     no_start=False,
     max_to_kill=2,
+    batch_size_to_kill=1,
     kill_delay_s=0,
     kill_filter_fn=None,
 ):
@@ -1694,16 +1654,25 @@ def get_and_run_resource_killer(
     ).remote(
         head_node_id,
         kill_interval_s=kill_interval_s,
+        kill_delay_s=kill_delay_s,
         max_to_kill=max_to_kill,
+        batch_size_to_kill=batch_size_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
     print("Waiting for ResourceKiller to be ready...")
     ray.get(resource_killer.ready.remote())
     print("ResourceKiller is ready now.")
     if not no_start:
-        time.sleep(kill_delay_s)
         resource_killer.run.remote()
     return resource_killer
+
+
+def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
+    return ray.get(
+        actor_handle.__ray_call__.remote(
+            lambda self: ray.get_runtime_context().get_node_id()
+        )
+    )
 
 
 @contextmanager
@@ -1731,7 +1700,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster, whitelist=None):
+def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1742,9 +1711,8 @@ def check_local_files_gced(cluster, whitelist=None):
             # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
             items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-            if whitelist and set(items).issubset(whitelist):
-                continue
             if len(items) > 0:
+                print(f"runtime_env files not GC'd from subdir '{subdir}': {items}")
                 return False
     return True
 
@@ -1950,115 +1918,19 @@ def kill_raylet(raylet, graceful=False):
         assert not graceful
 
 
-# Global counter to test different return values
-# for external_ray_cluster_activity_hook1.
-ray_cluster_activity_hook_counter = 0
-ray_cluster_activity_hook_5_counter = 0
-
-
-def external_ray_cluster_activity_hook1():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns valid response and increments counter in `reason`
-    field on each call.
-    """
-    global ray_cluster_activity_hook_counter
-    ray_cluster_activity_hook_counter += 1
-
-    from pydantic import BaseModel, Extra
-
-    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
-        """
-        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
-        used in test_component_activities_hook to mimic typical
-        usage of redefining or extending response type.
-        """
-
-        is_active: str
-        reason: Optional[str] = None
-        timestamp: float
-
-    return {
-        "test_component1": TestRayActivityResponse(
-            is_active="ACTIVE",
-            reason=f"Counter: {ray_cluster_activity_hook_counter}",
-            timestamp=datetime.now().timestamp(),
-        )
-    }
-
-
-def external_ray_cluster_activity_hook2():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns invalid output because the value of `test_component2`
-    should be of type RayActivityResponse.
-    """
-    return {"test_component2": "bad_output"}
-
-
-def external_ray_cluster_activity_hook3():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns invalid output because return type is not
-    Dict[str, RayActivityResponse]
-    """
-    return "bad_output"
-
-
-def external_ray_cluster_activity_hook4():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Errors during execution.
-    """
-    raise Exception("Error in external cluster activity hook")
-
-
-def external_ray_cluster_activity_hook5():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns valid response and increments counter in `reason`
-    field on each call.
-    """
-    global ray_cluster_activity_hook_5_counter
-    ray_cluster_activity_hook_5_counter += 1
-    return {
-        "test_component5": {
-            "is_active": "ACTIVE",
-            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
-            "timestamp": datetime.now().timestamp(),
-        }
-    }
-
-
 def get_gcs_memory_used():
     import psutil
 
     m = {
-        process.name(): process.memory_info().rss
-        for process in psutil.process_iter()
+        proc.info["name"]: proc.info["memory_info"].rss
+        for proc in psutil.process_iter(["status", "name", "memory_info"])
         if (
-            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
-            and process.name() in ("gcs_server", "redis-server")
+            proc.info["status"] not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and proc.info["name"] in ("gcs_server", "redis-server")
         )
     }
     assert "gcs_server" in m
     return sum(m.values())
-
-
-def wandb_populate_run_location_hook():
-    """
-    Example external hook to populate W&B project and group env vars in
-    WandbIntegrationTest.testWandbLoggerConfig
-    """
-    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
-
-    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
-    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
 
 
 def safe_write_to_results_json(
@@ -2071,9 +1943,10 @@ def safe_write_to_results_json(
     if the job gets interrupted in the middle of writing.
     """
     test_output_json = os.environ.get(env_var, default_file_name)
-    test_output_json_tmp = test_output_json + ".tmp"
+    test_output_json_tmp = f"{test_output_json}.tmp.{str(uuid.uuid4())}"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+        f.flush()
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))
@@ -2100,63 +1973,84 @@ def get_current_unused_port():
     return port
 
 
-def search_words(string: str, words: str):
-    """Check whether each word is in the given string.
+# Global counter to test different return values
+# for external_ray_cluster_activity_hook1.
+ray_cluster_activity_hook_counter = 0
+ray_cluster_activity_hook_5_counter = 0
 
-    Args:
-        string: String to search
-        words: Space-separated string of words to search for
+
+def external_ray_cluster_activity_hook1():
     """
-    return [word in string for word in words.split(" ")]
-
-
-def has_all_words(string: str, words: str):
-    """Check that string has all of the given words.
-
-    Args:
-        string: String to search
-        words: Space-separated string of words to search for
+    Example external hook for test_component_activities_hook.
+    Returns valid response and increments counter in `reason`
+    field on each call.
     """
-    return all(search_words(string, words))
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
 
+    from pydantic import BaseModel, Extra
 
-def has_no_words(string, words):
-    """Check that string has none of the given words.
+    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
+        """
+        Redefinition of dashboard.modules.api.api_head.RayActivityResponse
+        used in test_component_activities_hook to mimic typical
+        usage of redefining or extending response type.
+        """
 
-    Args:
-        string: String to search
-        words: Space-separated string of words to search for
-    """
-    return not any(search_words(string, words))
+        is_active: str
+        reason: Optional[str] = None
+        timestamp: float
 
-
-def find_available_port(start, end, port_num=1):
-    ports = []
-    for _ in range(port_num):
-        random_port = 0
-        with socket.socket() as s:
-            s.bind(("", 0))
-            random_port = s.getsockname()[1]
-        if random_port >= start and random_port <= end and random_port not in ports:
-            ports.append(random_port)
-            continue
-
-        for port in range(start, end + 1):
-            if port in ports:
-                continue
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(("", port))
-                ports.append(port)
-                break
-            except OSError:
-                pass
-
-    if len(ports) != port_num:
-        raise RuntimeError(
-            f"Can't find {port_num} available port from {start} to {end}."
+    return {
+        "test_component1": TestRayActivityResponse(
+            is_active="ACTIVE",
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now().timestamp(),
         )
-    return ports
+    }
+
+
+def external_ray_cluster_activity_hook2():
+    """
+    Example external hook for test_component_activities_hook.
+    Returns invalid output because the value of `test_component2`
+    should be of type RayActivityResponse.
+    """
+    return {"test_component2": "bad_output"}
+
+
+def external_ray_cluster_activity_hook3():
+    """
+    Example external hook for test_component_activities_hook.
+    Returns invalid output because return type is not
+    Dict[str, RayActivityResponse]
+    """
+    return "bad_output"
+
+
+def external_ray_cluster_activity_hook4():
+    """
+    Example external hook for test_component_activities_hook.
+    Errors during execution.
+    """
+    raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_5_counter
+    ray_cluster_activity_hook_5_counter += 1
+    return {
+        "test_component5": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
+            "timestamp": datetime.now().timestamp(),
+        }
+    }
 
 
 # TODO(rickyx): We could remove this once we unify the autoscaler v1 and v2
@@ -2184,35 +2078,67 @@ def skip_flaky_core_test_premerge(reason: str):
     return wrapper
 
 
-def get_ray_default_worker_file_path():
-    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
-    return (
-        f"/home/ray/anaconda3/lib/python{py_version}/"
-        "site-packages/ray/_private/workers/default_worker.py"
+def _get_library_usages() -> Set[str]:
+    return set(
+        ray_usage_lib.get_library_usages_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
     )
 
 
-def close_common_connections(pid):
+def _get_extra_usage_tags() -> Dict[str, str]:
+    return ray_usage_lib.get_extra_usage_tags_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client()
+    )
+
+
+class TelemetryCallsite(Enum):
+    DRIVER = "driver"
+    ACTOR = "actor"
+    TASK = "task"
+
+
+def check_library_usage_telemetry(
+    use_lib_fn: Callable[[], None],
+    *,
+    callsite: TelemetryCallsite,
+    expected_library_usages: List[Set[str]],
+    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
+):
+    """Helper for writing tests to validate library usage telemetry.
+
+    `use_lib_fn` is a callable that will be called from the provided callsite.
+    After calling it, the telemetry data to export will be validated against
+    expected_library_usages and expected_extra_usage_tags.
     """
-    Closes ipv4 connections between the current process and another process specified by
-    its PID.
-    """
-    current_process = psutil.Process()
-    current_connections = current_process.connections(kind="inet")
-    try:
-        other_process = psutil.Process(pid)
-        other_connections = other_process.connections(kind="inet")
-    except psutil.NoSuchProcess:
-        print(f"No process with PID {pid} found.")
-        return
-    # Finding common connections based on matching addresses and ports.
-    common_connections = []
-    for conn1 in current_connections:
-        for conn2 in other_connections:
-            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
-                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
-    # Closing the FDs.
-    for fd, laddr, raddr in common_connections:
-        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
-            os.close(fd)
-            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+    assert len(_get_library_usages()) == 0, _get_library_usages()
+
+    if callsite == TelemetryCallsite.DRIVER:
+        use_lib_fn()
+    elif callsite == TelemetryCallsite.ACTOR:
+
+        @ray.remote
+        class A:
+            def __init__(self):
+                use_lib_fn()
+
+        a = A.remote()
+        ray.get(a.__ray_ready__.remote())
+    elif callsite == TelemetryCallsite.TASK:
+
+        @ray.remote
+        def f():
+            use_lib_fn()
+
+        ray.get(f.remote())
+    else:
+        assert False, f"Unrecognized callsite: {callsite}"
+
+    library_usages = _get_library_usages()
+    extra_usage_tags = _get_extra_usage_tags()
+
+    assert library_usages in expected_library_usages, library_usages
+    if expected_extra_usage_tags:
+        assert all(
+            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
+        ), extra_usage_tags

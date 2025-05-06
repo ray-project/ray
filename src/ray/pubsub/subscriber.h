@@ -17,8 +17,11 @@
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest_prod.h>
 
-#include <boost/any.hpp>
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -35,7 +38,7 @@ namespace pubsub {
 using SubscriberID = UniqueID;
 using PublisherID = UniqueID;
 using SubscribeDoneCallback = std::function<void(const Status &)>;
-using SubscriptionItemCallback = std::function<void(const rpc::PubMessage &)>;
+using SubscriptionItemCallback = std::function<void(rpc::PubMessage &&)>;
 using SubscriptionFailureCallback =
     std::function<void(const std::string &, const Status &)>;
 
@@ -113,7 +116,7 @@ class SubscriberChannel {
   /// \param publisher_address The address of the publisher.
   /// \param pub_message The message to handle from the publisher.
   void HandlePublishedMessage(const rpc::Address &publisher_address,
-                              const rpc::PubMessage &pub_message) const;
+                              rpc::PubMessage &&pub_message) const;
 
   /// Handle the RPC failure of the given publisher.
   /// Note that this will ensure that the callback is running on a designated IO service.
@@ -151,7 +154,7 @@ class SubscriberChannel {
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
-  absl::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
+  std::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
@@ -170,7 +173,7 @@ class SubscriberChannel {
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
   /// subscribed.
-  absl::optional<SubscriptionFailureCallback> GetFailureCallback(
+  std::optional<SubscriptionFailureCallback> GetFailureCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
@@ -432,7 +435,7 @@ class Subscriber : public SubscriberInterface {
   /// published messages.
   void HandleLongPollingResponse(const rpc::Address &publisher_address,
                                  const Status &status,
-                                 const rpc::PubsubLongPollingReply &reply)
+                                 rpc::PubsubLongPollingReply &&reply)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Make a long polling connection if it never made the one with this publisher for

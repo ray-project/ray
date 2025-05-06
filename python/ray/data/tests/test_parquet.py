@@ -5,28 +5,96 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from packaging.version import parse as parse_version
 import pyarrow as pa
+import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
+from ray.data import FileShuffleConfig, Schema
+from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    NUM_CPUS_FOR_META_FETCH_TASK,
+    ParquetDatasource,
+    SerializedFragment,
+    _deserialize_fragments_with_retry,
+)
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
-from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
-from ray.data.datasource.parquet_datasource import (
-    NUM_CPUS_FOR_META_FETCH_TASK,
-    ParquetDatasource,
-    _deserialize_fragments_with_retry,
-    _SerializedFragment,
-)
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
+from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
+    ray.data.range(1).write_parquet(tmp_path, compression="gzip")
+
+    # Test that all written files are gzip compressed.
+    for filename in os.listdir(tmp_path):
+        file_metadata = pq.ParquetFile(tmp_path / filename).metadata
+        compression = file_metadata.row_group(0).column(0).compression
+        assert compression == "GZIP", compression
+
+    # Test that you can read the written files.
+    assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
+
+
+def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
+    num_partitions = 10
+    rows_per_partition = 10
+    num_rows = num_partitions * rows_per_partition
+
+    df = pd.DataFrame(
+        {
+            "a": list(range(num_partitions)) * rows_per_partition,
+            "b": list(range(num_partitions)) * rows_per_partition,
+            "c": list(range(num_rows)),
+            "d": list(range(num_rows)),
+            # Make sure algorithm does not fail for tensor types.
+            "e": list(np.random.random((num_rows, 128))),
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(tmp_path, partition_cols=["a", "b"])
+
+    # Test that files are written in partition style
+    for i in range(num_partitions):
+        partition = os.path.join(tmp_path, f"a={i}", f"b={i}")
+        ds_partition = ray.data.read_parquet(partition)
+        dsf_partition = ds_partition.to_pandas()
+        c_expected = [k * i for k in range(rows_per_partition)].sort()
+        d_expected = [k * i for k in range(rows_per_partition)].sort()
+        assert c_expected == dsf_partition["c"].tolist().sort()
+        assert d_expected == dsf_partition["d"].tolist().sort()
+        assert dsf_partition["e"].shape == (rows_per_partition,)
+
+    # Test that partition are read back properly into original dataset schema
+    ds1 = ray.data.read_parquet(tmp_path)
+    assert set(ds.schema().names) == set(ds1.schema().names)
+    assert ds.count() == ds1.count()
+
+    df = df.sort_values(by=["a", "b", "c", "d"])
+    df1 = ds1.to_pandas().sort_values(by=["a", "b", "c", "d"])
+    for (index1, row1), (index2, row2) in zip(df.iterrows(), df1.iterrows()):
+        row1_dict = row1.to_dict()
+        row2_dict = row2.to_dict()
+        assert row1_dict["c"] == row2_dict["c"]
+        assert row1_dict["d"] == row2_dict["d"]
 
 
 def test_include_paths(ray_start_regular_shared, tmp_path):
@@ -61,9 +129,11 @@ def test_parquet_deserialize_fragments_with_retry(
 
     dataset_kwargs = {}
     pq_ds = pq.ParquetDataset(
-        data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
+        data_path,
+        **dataset_kwargs,
+        filesystem=fs,
     )
-    serialized_fragments = [_SerializedFragment(p) for p in pq_ds.fragments]
+    serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
     # test 1st attempt succeed
     fragments = _deserialize_fragments_with_retry(serialized_fragments)
@@ -80,7 +150,7 @@ def test_parquet_deserialize_fragments_with_retry(
         def __call__(self, *args: Any, **kwds: Any) -> Any:
             exp_or_ret = self.planned_exp_or_return[self.cur_index]
             self.cur_index += 1
-            if type(exp_or_ret) == Exception:
+            if isinstance(exp_or_ret, Exception):
                 raise exp_or_ret
             else:
                 return exp_or_ret
@@ -93,7 +163,7 @@ def test_parquet_deserialize_fragments_with_retry(
         ]
     )
     monkeypatch.setattr(
-        ray.data.datasource.parquet_datasource,
+        ray.data._internal.datasource.parquet_datasource,
         "_deserialize_fragments",
         mock_deserializer,
     )
@@ -136,13 +206,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert ds.size_bytes() > 0
     # Schema information is available from Parquet metadata, so
     # we do not need to compute the first block.
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
@@ -211,13 +279,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 6
     assert ds.size_bytes() > 0
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -330,9 +396,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert not ds._plan.has_started_execution
 
     # Schema isn't available, so we do a partial read.
-    assert ds.schema() is not None
-    assert str(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     assert ds._plan.has_started_execution
     assert not ds._plan.has_computed_output()
 
@@ -412,9 +476,7 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
 
     assert ds.count() == 6
     assert ds.size_bytes() > 0
-    assert ds.schema() is not None
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     assert ds._plan.has_started_execution
 
     # Forces a data read.
@@ -451,7 +513,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
         filesystem=fs,
-        use_legacy_dataset=False,
     )
 
     ds = ray.data.read_parquet(data_path, filesystem=fs)
@@ -461,39 +522,25 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
     # so we do not need to compute the first block.
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"two": pa.string(), "one": pa.string()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=6,\n"
-        "   schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
-    ), ds
-    assert repr(ds) == (
-        "Dataset(\n"
-        "   num_rows=6,\n"
-        "   schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
-    ), ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
     assert sorted(values) == [
-        [1, "a"],
-        [1, "b"],
-        [1, "c"],
-        [3, "e"],
-        [3, "f"],
-        [3, "g"],
+        ["1", "a"],
+        ["1", "b"],
+        ["1", "c"],
+        ["3", "e"],
+        ["3", "f"],
+        ["3", "g"],
     ]
 
     # Test column selection.
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
-    assert sorted(values) == [1, 1, 1, 3, 3, 3]
+    assert sorted(values) == ["1", "1", "1", "3", "3", "3"]
 
 
 def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path):
@@ -502,7 +549,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
 
     # 2 partitions, 1 empty partition, 1 block/read task
@@ -512,7 +561,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert sorted(values) == [["1", "a"], ["1", "a"]]
     assert ds.count() == 2
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -522,7 +571,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert sorted(values) == [["1", "a"], ["1", "a"]]
     assert ds.count() == 2
 
 
@@ -550,7 +599,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -559,7 +607,7 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         columns=["y", "z"],
         filesystem=fs,
     )
-    assert ds.columns() == ["y", "z"]
+    assert set(ds.columns()) == {"y", "z"}
     values = [[s["y"], s["z"]] for s in ds.take()]
     assert sorted(values) == [
         ["a", 0.1],
@@ -571,13 +619,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
     ]
 
 
-# Skip this test if pyarrow is below version 7. As the old
-# pyarrow does not support single path with partitioning,
-# this issue cannot be resolved by Ray data itself.
-@pytest.mark.skipif(
-    tuple(pa.__version__.split(".")) < ("7",),
-    reason="Old pyarrow behavior cannot be fixed.",
-)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -607,7 +648,6 @@ def test_parquet_read_partitioned_with_partition_filter(
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -620,9 +660,17 @@ def test_parquet_read_partitioned_with_partition_filter(
         ),
     )
 
-    assert ds.columns() == ["x", "y", "z"]
+    # Where we insert partition columns is an implementation detail, so we don't check
+    # the order of the columns.
+    assert sorted(zip(ds.schema().names, ds.schema().types)) == [
+        ("x", pa.string()),
+        ("y", pa.string()),
+        ("z", pa.float64()),
+    ]
+
     values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
-    assert sorted(values) == [[0, "a", 0.1]]
+
+    assert sorted(values) == [["0", "a", 0.1]]
 
 
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
@@ -634,25 +682,19 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         table,
         root_path=str(tmp_path),
         partition_cols=["one"],
-        use_legacy_dataset=False,
     )
 
-    schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
-    partitioning = pa.dataset.partitioning(schema, flavor="hive")
-    ds = ray.data.read_parquet(
-        str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
-    )
+    partitioning = Partitioning("hive", field_types={"one": int})
+    ds = ray.data.read_parquet(str(tmp_path), partitioning=partitioning)
 
     # Test metadata-only parquet ops.
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
     # so we do not need to compute the first block.
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"two": pa.string(), "one": pa.int64()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -671,7 +713,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["two"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["two"],
     )
 
     def _block_udf(block: pa.Table):
@@ -702,7 +746,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(
         str(tmp_path),
         override_num_blocks=2,
-        filter=(pa.dataset.field("two") == "a"),
+        partition_filter=PathPartitionFilter.of(
+            lambda partitions: partitions["two"] == "a"
+        ),
         _block_udf=_block_udf,
     )
 
@@ -864,6 +910,26 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
+def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+    )
+    # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
+    )
+
+    parquet_output_path = os.path.join(tmp_path, "parquet")
+    ds.write_parquet(parquet_output_path, num_rows_per_file=6)
+
+
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     table = pa.table({"food": ["spam", "ham", "eggs"]})
     pq.write_table(table, tmp_path / "table.parquet")
@@ -1016,22 +1082,27 @@ def test_parquet_write_create_dir(
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    ds._set_uuid("data")
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:
         os.mkdir(path)
     else:
         fs.create_dir(_unwrap_protocol(path))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
     ds.write_parquet(path, filesystem=fs)
-    ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
-    ds2df = ds2.to_pandas()
-    assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
+
+    ds2 = ray.data.read_parquet(path, filesystem=fs)
+
+    read_data = set(ds2.to_pandas().itertuples(index=False))
+    written_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert read_data == written_data
+
     # Test metadata ops.
     for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
     if fs is None:
         shutil.rmtree(path)
     else:
@@ -1042,8 +1113,10 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
     pq.write_table(table, path)
+
     ds = ray.data.read_parquet(path)
-    pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+    assert ds.take_all() == []
 
 
 def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
@@ -1108,15 +1181,20 @@ def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path):
+def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
         num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
         _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(
+        resources={"bar:2": 100},
+        num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
+    )
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
@@ -1136,16 +1214,20 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
+    # Minimize the block size to prevent Ray Data from reading multiple fragments in a
+    # single task.
+    ray.data.DataContext.get_current().target_max_block_size = 1
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
-    blocks = ds.get_internal_block_refs()
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
+    bundles = ds.iter_internal_ref_bundles()
+    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+    ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(block_refs)
     locations = []
-    for block in blocks:
+    for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
+    assert set(locations) == {node1_id, node2_id}, set(locations)
 
 
 def test_parquet_bulk_columns(ray_start_regular_shared):
@@ -1154,17 +1236,307 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     assert ds.columns() == ["variety"]
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     import pyarrow.parquet as pq
 
     ray.data.range(100, override_num_blocks=20).write_parquet(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) == num_rows_per_file
+        assert len(table) == min_rows_per_file
+
+
+@pytest.mark.parametrize("shuffle", [True, False, "file"])
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+
+    with pytest.raises(ValueError):
+        ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+@pytest.mark.parametrize("shuffle", [None, "files"])
+def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+    ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        ray.data.read_parquet(
+            "example://iris.parquet", dataset_kwargs=dict(partitioning="hive")
+        )
+
+
+def test_tensors_in_tables_parquet(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    """This test verifies both V1 and V2 Tensor Type extensions of
+    Arrow Array types
+    """
+
+    num_rows = 10_000
+    num_groups = 10
+
+    inner_shape = (2, 2, 2)
+    shape = (num_rows,) + inner_shape
+    num_tensor_elem = np.prod(np.array(shape))
+
+    arr = np.arange(num_tensor_elem).reshape(shape)
+
+    id_col_name = "_id"
+    group_col_name = "group"
+    tensor_col_name = "tensor"
+
+    id_vals = list(range(num_rows))
+    group_vals = [i % num_groups for i in id_vals]
+
+    df = pd.DataFrame(
+        {
+            id_col_name: id_vals,
+            group_col_name: group_vals,
+            tensor_col_name: [a.tobytes() for a in arr],
+        }
+    )
+
+    #
+    # Test #1: Verify writing tensors as ArrowTensorType (v1)
+    #
+
+    tensor_v1_path = f"{tmp_path}/tensor_v1"
+
+    ds = ray.data.from_pandas([df])
+    ds.write_parquet(tensor_v1_path)
+
+    ds = ray.data.read_parquet(
+        tensor_v1_path,
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
+        override_num_blocks=10,
+    )
+
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        get_arrow_extension_fixed_shape_tensor_types(),
+    )
+
+    expected_tuples = list(zip(id_vals, group_vals, arr))
+
+    def _assert_equal(rows, expected):
+        values = [[s[id_col_name], s[group_col_name], s[tensor_col_name]] for s in rows]
+
+        assert len(values) == len(expected)
+
+        for v, e in zip(sorted(values, key=lambda v: v[0]), expected):
+            np.testing.assert_equal(v, e)
+
+    _assert_equal(ds.take_all(), expected_tuples)
+
+    #
+    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    #
+
+    DataContext.get_current().use_arrow_tensor_v2 = True
+
+    tensor_v2_path = f"{tmp_path}/tensor_v2"
+
+    ds = ray.data.from_pandas([df])
+    ds.write_parquet(tensor_v2_path)
+
+    ds = ray.data.read_parquet(
+        tensor_v2_path,
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
+        override_num_blocks=10,
+    )
+
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
+    )
+
+    _assert_equal(ds.take_all(), expected_tuples)
+
+
+def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
+    # Test reading multiple parquet files, each of which has different-shaped
+    # ndarrays in the same column.
+    # See https://github.com/ray-project/ray/issues/47960 for more context.
+    num_rows = 3
+    ds = ray.data.range(num_rows)
+
+    def map(row):
+        id = row["id"] + 1
+        row["data"] = np.zeros((id * 100, id * 100), dtype=np.int8)
+        return row
+
+    # Write 3 parquet files with different-shaped ndarray values in the
+    # "data" column.
+    ds.map(map).repartition(num_rows).write_parquet(tmp_path)
+
+    # Read these 3 files, check that the result is correct.
+    ds2 = ray.data.read_parquet(tmp_path, override_num_blocks=1)
+    res = ds2.take_all()
+    res = sorted(res, key=lambda row: row["id"])
+    assert len(res) == num_rows
+    for index, item in enumerate(res):
+        assert item["id"] == index
+        assert item["data"].shape == (100 * (index + 1), 100 * (index + 1))
+
+
+def test_count_with_filter(ray_start_regular_shared):
+    ds = ray.data.read_parquet(
+        "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
+    )
+    assert ds.count() == 0
+    assert isinstance(ds.count(), int)
+
+
+def test_write_with_schema(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    schema = pa.schema({"id": pa.float32()})
+
+    ds.write_parquet(tmp_path, schema=schema)
+
+    assert pq.read_table(tmp_path).schema == schema
+
+
+@pytest.mark.parametrize(
+    "row_data",
+    [
+        [{"a": 1, "b": None}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 3}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 1}, {"a": 1, "b": None}],
+    ],
+    ids=["row1_b_null", "row1_a_null", "row_each_null"],
+)
+def test_write_auto_infer_nullable_fields(
+    tmp_path, ray_start_regular_shared, row_data, restore_data_context
+):
+    """
+    Test that when writing multiple blocks, we can automatically infer nullable
+    fields.
+    """
+    ctx = DataContext.get_current()
+    # So that we force multiple blocks on mapping.
+    ctx.target_max_block_size = 1
+    ds = ray.data.range(len(row_data)).map(lambda row: row_data[row["id"]])
+    # So we force writing to a single file.
+    ds.write_parquet(tmp_path, min_rows_per_file=2)
+
+
+def test_seed_file_shuffle(restore_data_context, tmp_path):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    # Read with deterministic shuffling
+    shuffle_config = FileShuffleConfig(seed=42)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    # Verify deterministic behavior
+    assert ds1.take_all() == ds2.take_all()
+
+
+def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
+    # Typically, partition values are excluded from the Parquet file and are instead
+    # encoded in the directory structure. However, in some cases, partition values
+    # are also included in the Parquet file. This test verifies that case.
+    table = pa.Table.from_pydict({"data": [0], "year": [2024]})
+    os.makedirs(tmp_path / "year=2024")
+    pq.write_table(table, tmp_path / "year=2024" / "data.parquet")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    assert ds.take_all() == [{"data": 0, "year": 2024}]
+
+
+def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
+    # The `read_parquet` implementation might infer the schema from the first file.
+    # This test ensures that implementation handles the case where the first file has no
+    # data and the inferred type is `null`.
+    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
+    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    rows = sorted(ds.take_all(), key=lambda row: row["data"] or "")
+    assert rows == [
+        {"data": None},
+        {"data": None},
+        {"data": None},
+        {"data": "ham"},
+        {"data": "spam"},
+    ]
+
+
+def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_shared):
+    table = pa.Table.from_pydict({})
+    pq.write_table(table, tmp_path / "no_extension")
+
+    with pytest.warns(FutureWarning, match="file_extensions"):
+        ray.data.read_parquet(tmp_path)
+
+
+def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
+    """Verify row_group_size is respected."""
+
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_5k.parquet",
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_5k.parquet",
+            use_legacy_dataset=False,  # required for .fragments attribute
+        )
+    assert ds.fragments[0].num_row_groups == 2
+
+
+def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
+    """Verify arrow_parquet_args_fn is working with row_group_size."""
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_1k.parquet",
+            arrow_parquet_args_fn=lambda: {
+                "row_group_size": 1000,  # overrides row_group_size
+            },
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_1k.parquet",
+            use_legacy_dataset=False,
+        )
+    assert ds.fragments[0].num_row_groups == 10
 
 
 if __name__ == "__main__":

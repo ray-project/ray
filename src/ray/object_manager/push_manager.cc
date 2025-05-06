@@ -14,9 +14,11 @@
 
 #include "ray/object_manager/push_manager.h"
 
-#include "ray/common/common_protocol.h"
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
 
 namespace ray {
 

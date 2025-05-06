@@ -17,12 +17,7 @@ import ray.actor
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentID,
-    DeploymentStatus,
-    ReplicaID,
-)
+from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
@@ -31,6 +26,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.context import _get_global_client
 from ray.serve.schema import (
+    ApplicationStatus,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -681,26 +677,18 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
-@pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
-def test_update_config_max_ongoing_requests(
-    client: ServeControllerClient, use_max_concurrent_queries
-):
+def test_update_config_max_ongoing_requests(client: ServeControllerClient):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
 
     signal = SignalActor.options(name="signal123").remote()
 
-    max_ongoing_requests_field_name = (
-        "max_concurrent_queries"
-        if use_max_concurrent_queries
-        else "max_ongoing_requests"
-    )
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
         "deployments": [{"name": "A"}],
     }
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 1000
+    config_template["deployments"][0]["max_ongoing_requests"] = 1000
 
-    # Deploy first time, max_concurent_queries set to 1000.
+    # Deploy first time, max_ongoing_requests set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -720,7 +708,7 @@ def test_update_config_max_ongoing_requests(
     # Reset for redeployment
     signal.send.remote(clear=True)
     # Redeploy with max concurrent queries set to 5
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 5
+    config_template["deployments"][0]["max_ongoing_requests"] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=2)
 
@@ -941,6 +929,12 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
         == ApplicationStatus.DEPLOY_FAILED
     )
 
+    # Ensure the request doesn't hang and actually returns a 503 error.
+    # The timeout is there to prevent the test from hanging and blocking
+    # the test suite if it does fail.
+    r = requests.post("http://localhost:8000/app2", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text
+
 
 def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
@@ -1127,53 +1121,6 @@ def test_get_app_handle(client: ServeControllerClient):
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
 
 
-@pytest.mark.parametrize("heavyweight", [True, False])
-def test_deploy_lightweight_multiple_route_prefix(
-    client: ServeControllerClient, heavyweight: bool
-):
-    """If user deploys a config that sets route prefix for a non-ingress deployment,
-    the deploy should fail.
-    """
-
-    config = {
-        "applications": [
-            {
-                "name": "default",
-                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
-            }
-        ]
-    }
-    client.deploy_apps(ServeDeploySchema(**config))
-
-    def check():
-        assert requests.post("http://localhost:8000/").text == "wonderful world"
-        return True
-
-    wait_for_condition(check)
-
-    # Add route prefix for non-ingress deployment
-    config["applications"][0]["deployments"] = [{"name": "f", "route_prefix": "/"}]
-    if heavyweight:
-        # Trigger re-build of the application
-        config["applications"][0]["runtime_env"] = {"env_vars": {"test": "3"}}
-    client.deploy_apps(ServeDeploySchema(**config))
-
-    def check_failed():
-        s = serve.status().applications["default"]
-        assert s.status == ApplicationStatus.DEPLOY_FAILED
-        assert "Found multiple route prefixes" in s.message
-        return True
-
-    wait_for_condition(check_failed)
-
-    # Check 10 more times to make sure the status doesn't oscillate
-    for _ in range(10):
-        s = serve.status().applications["default"]
-        assert s.status == ApplicationStatus.DEPLOY_FAILED
-        assert "Found multiple route prefixes" in s.message
-        time.sleep(0.1)
-
-
 @pytest.mark.parametrize("rebuild", [True, False])
 def test_redeploy_old_config_after_failed_deployment(
     client: ServeControllerClient, rebuild
@@ -1209,9 +1156,9 @@ def test_redeploy_old_config_after_failed_deployment(
         ] = "ray.serve.tests.test_config_files.import_error.app"
         err_msg = "ZeroDivisionError"
     else:
-        # Trying to add a route prefix for non-ingress deployment will fail
-        new_app_config["deployments"] = [{"name": "f", "route_prefix": "/"}]
-        err_msg = "Found multiple route prefixes"
+        # Set config for a nonexistent deployment
+        new_app_config["deployments"] = [{"name": "nonexistent", "num_replicas": 1}]
+        err_msg = "nonexistent deployment 'nonexistent'"
     client.deploy_apps(ServeDeploySchema(**{"applications": [new_app_config]}))
 
     def check_deploy_failed(message):
@@ -1440,7 +1387,6 @@ def test_num_replicas_auto_api(client: ServeControllerClient):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
@@ -1492,7 +1438,6 @@ def test_num_replicas_auto_basic(client: ServeControllerClient):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`

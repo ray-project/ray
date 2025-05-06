@@ -36,7 +36,7 @@ def test_ray_backend(shutdown_only):
     from ray.util.joblib.ray_backend import RayBackend
 
     with joblib.parallel_backend("ray"):
-        assert type(joblib.parallel.get_active_backend()[0]) == RayBackend
+        assert type(joblib.parallel.get_active_backend()[0]) is RayBackend
 
 
 def test_svm_single_node(shutdown_only):

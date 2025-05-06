@@ -47,7 +47,7 @@ def run():
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only test MPI on linux.")
 @pytest.mark.skipif(
-    sys.version_info < (3, 12), reason="MPI not yet supported for python 3.12+"
+    sys.version_info >= (3, 12), reason="MPI not yet supported for python 3.12+"
 )
 def test_mpi_func_pi(change_test_dir, ray_start_regular):
     @ray.remote(
@@ -67,7 +67,7 @@ def test_mpi_func_pi(change_test_dir, ray_start_regular):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only test MPI on linux.")
 @pytest.mark.skipif(
-    sys.version_info < (3, 12), reason="MPI not yet supported for python 3.12+"
+    sys.version_info >= (3, 12), reason="MPI not yet supported for python 3.12+"
 )
 def test_mpi_actor_pi(change_test_dir, ray_start_regular):
     @ray.remote(
@@ -103,6 +103,9 @@ def check_gpu_setup():
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only test MPI on linux.")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="MPI not yet supported for python 3.12+"
+)
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
 def test_gpu_set(change_test_dir, ray_start_regular):
     @ray.remote(

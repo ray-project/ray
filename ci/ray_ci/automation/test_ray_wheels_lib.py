@@ -11,9 +11,10 @@ from ci.ray_ci.automation.ray_wheels_lib import (
     download_ray_wheels_from_s3,
     _check_downloaded_wheels,
     PYTHON_VERSIONS,
-    FULL_PLATFORMS,
-    PARTIAL_PLATFORMS,
+    ALL_PLATFORMS,
     RAY_TYPES,
+    add_build_tag_to_wheels,
+    add_build_tag_to_wheel,
 )
 
 SAMPLE_WHEELS = [
@@ -26,10 +27,10 @@ SAMPLE_WHEELS = [
 
 
 def test_get_wheel_names():
-    ray_version = "1.0.0"
-    wheel_names = _get_wheel_names(ray_version, full_platform=True)
+    ray_version = "1.11.0"
+    wheel_names = _get_wheel_names(ray_version)
 
-    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(FULL_PLATFORMS) * len(
+    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(
         RAY_TYPES
     )
 
@@ -47,32 +48,7 @@ def test_get_wheel_names():
         assert ray_type in RAY_TYPES
         assert ray_version == ray_version
         assert f"{python_version}-{python_version2}" in PYTHON_VERSIONS
-        assert platform in FULL_PLATFORMS
-
-
-def test_get_wheel_names_partial_platform():
-    ray_version = "1.1.0"
-    wheel_names = _get_wheel_names(ray_version, full_platform=False)
-
-    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(PARTIAL_PLATFORMS) * len(
-        RAY_TYPES
-    )
-
-    for wheel_name in wheel_names:
-        assert len(wheel_name.split("-")) == 5
-        (
-            ray_type,
-            ray_version,
-            python_version,
-            python_version2,
-            platform,
-        ) = wheel_name.split("-")
-        platform = platform.split(".")[0]  # Remove the .whl suffix
-
-        assert ray_type in RAY_TYPES
-        assert ray_version == ray_version
-        assert f"{python_version}-{python_version2}" in PYTHON_VERSIONS
-        assert platform in PARTIAL_PLATFORMS
+        assert platform in ALL_PLATFORMS
 
 
 def test_check_downloaded_wheels():
@@ -167,9 +143,7 @@ def test_download_ray_wheels_from_s3(
             directory_path=tmp_dir,
         )
 
-        mock_get_wheel_names.assert_called_with(
-            ray_version=ray_version, full_platform=True
-        )
+        mock_get_wheel_names.assert_called_with(ray_version=ray_version)
         assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
         for i, call_args in enumerate(mock_download_wheel.call_args_list):
             assert (
@@ -199,9 +173,7 @@ def test_download_ray_wheels_from_s3_partial_platform(
             directory_path=tmp_dir,
         )
 
-        mock_get_wheel_names.assert_called_with(
-            ray_version=ray_version, full_platform=False
-        )
+        mock_get_wheel_names.assert_called_with(ray_version=ray_version)
         assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
         for i, call_args in enumerate(mock_download_wheel.call_args_list):
             assert (
@@ -259,6 +231,36 @@ def test_download_ray_wheels_from_s3_fail_download(
                 commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
             )
     assert mock_check_wheels.call_count == 0
+
+
+def test_add_build_tag_to_wheel():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wheel_name = "ray-1.0.0-cp39-cp39-manylinux2014_x86_64.whl"
+        wheel_path = os.path.join(tmp_dir, wheel_name)
+        with open(wheel_path, "w") as f:
+            f.write("")
+        add_build_tag_to_wheel(wheel_path=wheel_path, build_tag="123")
+        expected_wheel_name = "ray-1.0.0-123-cp39-cp39-manylinux2014_x86_64.whl"
+        expected_wheel_path = os.path.join(tmp_dir, expected_wheel_name)
+        assert os.path.exists(expected_wheel_path)
+
+
+def test_add_build_tag_to_wheels():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wheels = [
+            "ray-1.0.0-cp39-cp39-manylinux2014_x86_64.whl",
+            "ray-1.0.0-cp39-cp39-manylinux2014_aarch64.whl",
+        ]
+        for wheel in wheels:
+            with open(os.path.join(tmp_dir, wheel), "w") as f:
+                f.write("")
+        add_build_tag_to_wheels(directory_path=tmp_dir, build_tag="123")
+        assert os.path.exists(
+            os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_x86_64.whl")
+        )
+        assert os.path.exists(
+            os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_aarch64.whl")
+        )
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ class TestASGIProxyRequest:
         """
         proxy_request = self.create_asgi_proxy_request(scope={})
         assert isinstance(proxy_request, ProxyRequest)
-        assert proxy_request.method == "WEBSOCKET"
+        assert proxy_request.method == "WS"
 
         method = "fake-method"
         proxy_request = self.create_asgi_proxy_request(scope={"method": method})
@@ -219,7 +219,6 @@ class TestgRPCProxyRequest:
         )
         assert isinstance(proxy_request, ProxyRequest)
         assert proxy_request.route_path == application
-        assert pickle.loads(proxy_request.request) == request_proto
         assert proxy_request.method_name == method_name
         assert proxy_request.app_name == application
         assert proxy_request.request_id == request_id
@@ -232,9 +231,11 @@ class TestgRPCProxyRequest:
             ("request_id", request_id)
         ]
 
-        request_object = proxy_request.request_object()
+        serialized_arg = proxy_request.serialized_replica_arg()
+        assert isinstance(serialized_arg, bytes)
+        request_object = pickle.loads(serialized_arg)
         assert isinstance(request_object, gRPCRequest)
-        assert pickle.loads(request_object.grpc_user_request) == request_proto
+        assert request_object.user_request_proto == request_proto
 
 
 if __name__ == "__main__":

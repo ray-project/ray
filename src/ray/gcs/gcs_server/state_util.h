@@ -13,8 +13,10 @@
 // limitations under the License.
 #pragma once
 
+#include <functional>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/id.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace std {
@@ -55,8 +57,8 @@ namespace gcs {
 /// \param resources_data A node's pending task info (by shape).
 /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
 void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                       std::unordered_map<google::protobuf::Map<std::string, double>,
-                                          rpc::ResourceDemand> *aggregate_load);
+                       absl::flat_hash_map<google::protobuf::Map<std::string, double>,
+                                           rpc::ResourceDemand> *aggregate_load);
 
 }  // namespace gcs
 }  // namespace ray

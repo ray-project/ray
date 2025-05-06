@@ -2,6 +2,7 @@ import math
 import time
 from typing import TYPE_CHECKING, Dict
 
+import ray
 from .autoscaler import Autoscaler
 from .autoscaling_actor_pool import AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
@@ -69,7 +70,7 @@ class DefaultAutoscaler(Autoscaler):
         if not op_state._scheduling_status.under_resource_limits:
             return False
         # Do not scale up, if the op has enough free slots for the existing inputs.
-        if op_state.num_queued() <= actor_pool.num_free_task_slots():
+        if op_state.total_input_enqueued() <= actor_pool.num_free_task_slots():
             return False
         # Determine whether to scale up based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
@@ -137,11 +138,12 @@ class DefaultAutoscaler(Autoscaler):
         # Scale up the cluster, if no ops are allowed to run, but there are still data
         # in the input queues.
         no_runnable_op = all(
-            op_state._scheduling_status.runnable is False
+            not op_state._scheduling_status.runnable
             for _, op_state in self._topology.items()
         )
         any_has_input = any(
-            op_state.num_queued() > 0 for _, op_state in self._topology.items()
+            op_state.total_input_enqueued() > 0
+            for _, op_state in self._topology.items()
         )
         if not (no_runnable_op and any_has_input):
             return
@@ -166,7 +168,7 @@ class DefaultAutoscaler(Autoscaler):
             resource_request.extend([task_bundle] * op.num_active_tasks())
             # Only include incremental resource usage for ops that are ready for
             # dispatch.
-            if state.num_queued() > 0:
+            if state.total_input_enqueued() > 0:
                 # TODO(Clark): Scale up more aggressively by adding incremental resource
                 # usage for more than one bundle in the queue for this op?
                 resource_request.append(task_bundle)
@@ -182,3 +184,6 @@ class DefaultAutoscaler(Autoscaler):
         # Make request for zero resources to autoscaler for this execution.
         actor = get_or_create_autoscaling_requester_actor()
         actor.request_resources.remote({}, self._execution_id)
+
+    def get_total_resources(self) -> ExecutionResources:
+        return ExecutionResources.from_resource_dict(ray.cluster_resources())

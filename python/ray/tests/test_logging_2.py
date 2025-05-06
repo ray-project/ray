@@ -8,7 +8,7 @@ import json
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
-from ray.job_config import LoggingConfig
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
 
@@ -21,6 +21,7 @@ class TestCoreContextFilter:
         # Ray is not initialized so no context
         for attr in log_context:
             assert not hasattr(record, attr)
+        assert hasattr(record, "_ray_timestamp_ns")
 
         ray.init()
         record = logging.makeLogRecord({})
@@ -37,6 +38,7 @@ class TestCoreContextFilter:
         # This is not a worker process, so actor_id and task_id should not exist.
         for attr in ["actor_id", "task_id"]:
             assert not hasattr(record, attr)
+        assert hasattr(record, "_ray_timestamp_ns")
 
     def test_task_process(self, shutdown_only):
         @ray.remote
@@ -51,11 +53,15 @@ class TestCoreContextFilter:
                 "worker_id": runtime_context.get_worker_id(),
                 "node_id": runtime_context.get_node_id(),
                 "task_id": runtime_context.get_task_id(),
+                "task_name": runtime_context.get_task_name(),
+                "task_func_name": runtime_context.get_task_function_name(),
             }
             for attr in should_exist:
                 assert hasattr(record, attr)
                 assert getattr(record, attr) == expected_values[attr]
             assert not hasattr(record, "actor_id")
+            assert not hasattr(record, "actor_name")
+            assert hasattr(record, "_ray_timestamp_ns")
 
         obj_ref = f.remote()
         ray.get(obj_ref)
@@ -74,11 +80,15 @@ class TestCoreContextFilter:
                     "worker_id": runtime_context.get_worker_id(),
                     "node_id": runtime_context.get_node_id(),
                     "actor_id": runtime_context.get_actor_id(),
+                    "actor_name": runtime_context.get_actor_name(),
                     "task_id": runtime_context.get_task_id(),
+                    "task_name": runtime_context.get_task_name(),
+                    "task_func_name": runtime_context.get_task_function_name(),
                 }
                 for attr in should_exist:
                     assert hasattr(record, attr)
                     assert getattr(record, attr) == expected_values[attr]
+                assert hasattr(record, "_ray_timestamp_ns")
 
         actor = A.remote()
         ray.get(actor.f.remote())
@@ -89,8 +99,16 @@ class TestJSONFormatter:
         formatter = JSONFormatter()
         record = logging.makeLogRecord({})
         formatted = formatter.format(record)
+
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "timestamp_ns",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert len(record_dict) == len(should_exist)
@@ -112,6 +130,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "exc_text",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -123,12 +142,71 @@ class TestJSONFormatter:
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno", "user"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "user",
+            "timestamp_ns",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert record_dict["user"] == "ray"
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
+
+    def test_record_with_flatten_keys_invalid_value(self, shutdown_only):
+        formatter = JSONFormatter()
+        record = logging.makeLogRecord({"ray_serve_extra_fields": "not_a_dict"})
+        with pytest.raises(ValueError):
+            formatter.format(record)
+
+    def test_record_with_flatten_keys_valid_dict(self, shutdown_only):
+        formatter = JSONFormatter()
+        record = logging.makeLogRecord(
+            {"ray_serve_extra_fields": {"key1": "value1", "key2": 2}}
+        )
+        formatted = formatter.format(record)
+        record_dict = json.loads(formatted)
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "key1",
+            "key2",
+            "timestamp_ns",
+        ]
+        for key in should_exist:
+            assert key in record_dict
+        assert record_dict["key1"] == "value1", record_dict
+        assert record_dict["key2"] == 2
+        assert "ray_serve_extra_fields" not in record_dict
+        assert len(record_dict) == len(should_exist)
+        assert "exc_text" not in record_dict
+
+    def test_record_with_valid_additional_log_standard_attrs(self, shutdown_only):
+        formatter = JSONFormatter()
+        formatter.set_additional_log_standard_attrs(["name"])
+        record = logging.makeLogRecord({})
+        formatted = formatter.format(record)
+
+        record_dict = json.loads(formatted)
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "timestamp_ns",
+            "name",
+        ]
+        for key in should_exist:
+            assert key in record_dict
+        assert len(record_dict) == len(should_exist)
 
 
 class TestTextFormatter:
@@ -153,18 +231,22 @@ class TestTextFormatter:
         for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
 
+    def test_record_with_valid_additional_log_standard_attrs(self, shutdown_only):
+        formatter = TextFormatter()
+        formatter.set_additional_log_standard_attrs(["name"])
+        record = logging.makeLogRecord({})
+        formatted = formatter.format(record)
+        assert "name=" in formatted
 
-class TestLoggingConfig:
-    def test_log_level(self):
-        log_level = "DEBUG"
-        logging_config = LoggingConfig(log_level=log_level)
-        dict_config = logging_config._get_dict_config()
-        assert dict_config["handlers"]["console"]["level"] == log_level
-        assert dict_config["root"]["level"] == log_level
 
-    def test_invalid_dict_config(self):
-        with pytest.raises(ValueError):
-            LoggingConfig(encoding="INVALID")._get_dict_config()
+def test_invalid_encoding():
+    with pytest.raises(ValueError):
+        LoggingConfig(encoding="INVALID")
+
+
+def test_invalid_additional_log_standard_attrs():
+    with pytest.raises(ValueError):
+        LoggingConfig(additional_log_standard_attrs=["invalid"])
 
 
 class TestTextModeE2E:
@@ -174,7 +256,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 @ray.remote
@@ -187,12 +269,14 @@ ray.get(obj_ref)
 """
         stderr = run_string_as_driver(script)
         should_exist = [
+            "timestamp_ns",
             "job_id",
             "worker_id",
             "node_id",
             "task_id",
             "INFO",
             "This is a Ray task",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
@@ -204,8 +288,84 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
+
+@ray.remote
+class actor:
+    def __init__(self):
+        pass
+
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+
+actor_instance = actor.remote()
+ray.get(actor_instance.print_message.remote())
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "timestamp_ns",
+            "job_id",
+            "worker_id",
+            "node_id",
+            "actor_id",
+            "task_id",
+            "INFO",
+            "This is a Ray actor",
+            "name=",
+        ]
+        for s in should_exist:
+            assert s in stderr
+
+    def test_text_mode_driver(self, shutdown_only):
+        script = """
+import ray
+import logging
+
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
+)
+
+logger = logging.getLogger()
+logger.info("This is a Ray driver")
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "timestamp_ns",
+            "job_id",
+            "worker_id",
+            "node_id",
+            "INFO",
+            "This is a Ray driver",
+            "name=",
+        ]
+        for s in should_exist:
+            assert s in stderr
+
+        should_not_exist = ["actor_id", "task_id"]
+        for s in should_not_exist:
+            assert s not in stderr
+
+    @pytest.mark.parametrize(
+        "ray_start_cluster_head_with_env_vars",
+        [
+            {
+                "env_vars": {
+                    "RAY_LOGGING_CONFIG_ENCODING": "TEXT",
+                },
+            }
+        ],
+        indirect=True,
+    )
+    def test_env_setup_logger_encoding(
+        self, ray_start_cluster_head_with_env_vars, shutdown_only
+    ):
+        script = """
+import ray
+import logging
+
+ray.init()
 
 @ray.remote
 class actor:
@@ -228,9 +388,110 @@ ray.get(actor_instance.print_message.remote())
             "task_id",
             "INFO",
             "This is a Ray actor",
+            "timestamp_ns",
         ]
         for s in should_exist:
             assert s in stderr
+
+    def test_logger_not_set(self, shutdown_only):
+        script = """
+import ray
+import logging
+
+ray.init()
+
+@ray.remote
+class actor:
+    def __init__(self):
+        pass
+
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+
+actor_instance = actor.remote()
+ray.get(actor_instance.print_message.remote())
+"""
+        stderr = run_string_as_driver(script)
+        should_not_exist = [
+            "job_id",
+            "worker_id",
+            "node_id",
+            "actor_id",
+            "task_id",
+            "This is a Ray actor",
+            "timestamp_ns",
+        ]
+        for s in should_not_exist:
+            assert s not in stderr
+
+    def test_text_mode_driver_system_log(self, shutdown_only):
+        script = """
+import ray
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = "timestamp_ns="
+        assert should_exist in stderr
+
+
+def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
+    working_dir = tmp_path / "test-working-dir"
+    working_dir.mkdir()
+    runtime_env = {
+        "working_dir": str(working_dir),
+    }
+    ray.init(
+        runtime_env=runtime_env,
+        logging_config=ray.LoggingConfig(encoding="TEXT"),
+    )
+
+
+def test_text_mode_no_prefix(shutdown_only):
+    """
+    If logging_config is set, remove the prefix that contains
+    the actor or task's name and their PIDs.
+    """
+    script = """
+import ray
+import logging
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+@ray.remote
+class MyActor:
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+my_actor = MyActor.remote()
+ray.get(my_actor.print_message.remote())
+"""
+    stderr = run_string_as_driver(script)
+    assert "This is a Ray actor" in stderr
+    assert "(MyActor pid=" not in stderr
+
+
+def test_configure_both_structured_logging_and_lib_logging(shutdown_only):
+    """
+    Configure the `ray.test` logger. Then, configure the `root` and `ray`
+    loggers in `ray.init()`. Ensure that the `ray.test` logger is not affected.
+    """
+    script = """
+import ray
+import logging
+
+old_test_logger = logging.getLogger("ray.test")
+assert old_test_logger.getEffectiveLevel() != logging.DEBUG
+old_test_logger.setLevel(logging.DEBUG)
+
+ray.init(logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
+
+new_test_logger = logging.getLogger("ray.test")
+assert old_test_logger.getEffectiveLevel() == logging.DEBUG
+"""
+    run_string_as_driver(script)
 
 
 if __name__ == "__main__":

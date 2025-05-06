@@ -5,12 +5,8 @@ import re
 
 import ray
 from ray._private.gcs_pubsub import (
-    GcsAioPublisher,
-    GcsAioErrorSubscriber,
-    GcsAioLogSubscriber,
     GcsAioResourceUsageSubscriber,
 )
-from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
 
@@ -21,9 +17,9 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
-    publisher.publish_error(b"aaa_id", "", "test error message 1")
-    publisher.publish_error(b"bbb_id", "", "test error message 2")
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
+    gcs_client.publish_error(b"aaa_id", "", "test error message 1")
+    gcs_client.publish_error(b"bbb_id", "", "test error message 2")
 
     (key_id1, err1) = subscriber.poll()
     assert key_id1 == b"aaa_id"
@@ -35,26 +31,6 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     subscriber.close()
 
 
-@pytest.mark.asyncio
-async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
-    await subscriber.subscribe()
-
-    publisher = GcsAioPublisher(address=gcs_server_addr)
-    err1 = ErrorTableData(error_message="test error message 1")
-    err2 = ErrorTableData(error_message="test error message 2")
-    await publisher.publish_error(b"aaa_id", err1)
-    await publisher.publish_error(b"bbb_id", err2)
-
-    assert await subscriber.poll() == (b"aaa_id", err1)
-    assert await subscriber.poll() == (b"bbb_id", err2)
-
-    await subscriber.close()
-
-
 def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -62,7 +38,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     subscriber = ray._raylet.GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
     log_batch = {
         "ip": "127.0.0.1",
         "pid": 1234,
@@ -72,38 +48,13 @@ def test_publish_and_subscribe_logs(ray_start_regular):
         "actor_name": "test actor",
         "task_name": "test task",
     }
-    publisher.publish_logs(log_batch)
+    gcs_client.publish_logs(log_batch)
 
     # PID is treated as string.
     log_batch["pid"] = "1234"
     assert subscriber.poll() == log_batch
 
     subscriber.close()
-
-
-@pytest.mark.asyncio
-async def test_aio_publish_and_subscribe_logs(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = GcsAioLogSubscriber(address=gcs_server_addr)
-    await subscriber.subscribe()
-
-    publisher = GcsAioPublisher(address=gcs_server_addr)
-    log_batch = {
-        "ip": "127.0.0.1",
-        "pid": "gcs",
-        "job": "0001",
-        "is_err": False,
-        "lines": ["line 1", "line 2"],
-        "actor_name": "test actor",
-        "task_name": "test task",
-    }
-    await publisher.publish_logs(log_batch)
-
-    assert await subscriber.poll() == log_batch
-
-    await subscriber.close()
 
 
 @pytest.mark.asyncio
@@ -114,9 +65,9 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
 
-    publisher = GcsAioPublisher(address=gcs_server_addr)
-    await publisher.publish_resource_usage("aaa_id", '{"cpu": 1}')
-    await publisher.publish_resource_usage("bbb_id", '{"cpu": 2}')
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
+    await gcs_client.async_publish_node_resource_usage("aaa_id", '{"cpu": 1}')
+    await gcs_client.async_publish_node_resource_usage("bbb_id", '{"cpu": 2}')
 
     assert await subscriber.poll() == ("aaa_id", '{"cpu": 1}')
     assert await subscriber.poll() == ("bbb_id", '{"cpu": 2}')
@@ -178,10 +129,10 @@ def test_two_subscribers(ray_start_regular):
     t2 = threading.Thread(target=receive_logs)
     t2.start()
 
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
     for i in range(0, num_messages):
-        publisher.publish_error(b"msg_id", "", f"error {i}")
-        publisher.publish_logs(
+        gcs_client.publish_error(b"msg_id", "", f"error {i}")
+        gcs_client.publish_logs(
             {
                 "ip": "127.0.0.1",
                 "pid": "gcs",
