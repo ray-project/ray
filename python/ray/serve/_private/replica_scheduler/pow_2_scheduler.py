@@ -7,9 +7,6 @@ from typing import (
     Optional,
 )
 
-from ray.serve._private.common import (
-    RunningReplicaInfo,
-)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
@@ -20,6 +17,9 @@ from ray.serve._private.replica_scheduler.replica_scheduler import (
     LocalityScheduleMixin,
     MultiplexScheduleMixin,
     ReplicaScheduler,
+)
+from ray.serve._private.replica_scheduler.replica_wrapper import (
+    RunningReplica,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -53,7 +53,7 @@ class PowerOfTwoChoicesReplicaScheduler(
     async def choose_replicas(
         self,
         pending_request: Optional[PendingRequest] = None,
-    ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+    ) -> AsyncGenerator[List[RunningReplica], None]:
         """Generator that repeatedly chooses (at most) two random available replicas.
 
         In the first iteration, only replicas colocated on the same node as this router

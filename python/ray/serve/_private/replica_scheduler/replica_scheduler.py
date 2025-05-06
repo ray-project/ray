@@ -839,5 +839,5 @@ class ReplicaScheduler(ABC):
     async def choose_replicas(
         self,
         pending_request: Optional[PendingRequest] = None,
-    ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+    ) -> AsyncGenerator[List[RunningReplica], None]:
         pass
