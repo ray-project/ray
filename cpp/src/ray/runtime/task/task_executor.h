@@ -95,7 +95,8 @@ class TaskExecutor {
       bool is_reattempt,
       bool is_streaming_generator,
       bool retry_exception,
-      int64_t generator_backpressure_num_objects);
+      int64_t generator_backpressure_num_objects,
+      const std::string &tensor_transport);
 
   virtual ~TaskExecutor(){};
 

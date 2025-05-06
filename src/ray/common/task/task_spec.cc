@@ -464,8 +464,11 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
 }
 
 const std::string &TaskSpecification::TensorTransport() const {
-  RAY_CHECK(IsActorTask());
-  return message_->tensor_transport();
+  static const std::string empty_string = "";
+  if (IsActorTask()) {
+    return message_->tensor_transport();
+  }
+  return empty_string;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {

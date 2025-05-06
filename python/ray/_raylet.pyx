@@ -2286,11 +2286,15 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects) nogil:
+        int64_t generator_backpressure_num_objects,
+        c_string c_tensor_transport) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
+
+        tensor_transport = c_tensor_transport.decode("ascii")
+        print(f"task_execution_handler: tensor_transport={tensor_transport}")
 
         try:
             try:
