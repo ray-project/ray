@@ -113,7 +113,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   }
   // Connect to gcs service.
   client_call_manager_ =
-      std::make_unique<rpc::ClientCallManager>(io_service, options_.cluster_id_);
+      std::make_unique<rpc::ClientCallManager>(io_service, false, options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 

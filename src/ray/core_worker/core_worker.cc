@@ -370,7 +370,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_.get_executor()),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
+      client_call_manager_(std::make_unique<rpc::ClientCallManager>(io_service_, false)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),

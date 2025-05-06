@@ -128,7 +128,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           client_io_service_work_(client_io_service_.get_executor());
       client_io_service_.run();
     });
-    client_call_manager_.reset(new ClientCallManager(client_io_service_));
+    client_call_manager_.reset(new ClientCallManager(client_io_service_, false));
     grpc_client_.reset(new GrpcClient<TestService>(
         "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   }
