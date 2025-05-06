@@ -341,7 +341,7 @@ class ResponsePostprocessor:
                                 completion_tokens=merged_results.num_generated_tokens
                                 or 0,
                                 total_tokens=(merged_results.num_input_tokens or 0)
-                                + (merged_results.num_generated_tokens or 0)
+                                + (merged_results.num_generated_tokens or 0),
                             )
 
                         chunk = CompletionStreamResponse(

@@ -125,7 +125,7 @@ def _apply_openai_json_format(
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
     if isinstance(response, list):
-            return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+        return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
     raise ValueError(f"Unexpected response type: {type(response)}")
@@ -230,6 +230,7 @@ async def convert_chat_stream_to_chat_completion(
         ),
     )
 
+
 # write a similar function for completion stream to completion response
 async def convert_completion_stream_to_completion(
     completion_stream: AsyncGenerator[CompletionStreamResponse, None]
@@ -276,6 +277,7 @@ async def convert_completion_stream_to_completion(
             + (last_chunk.usage.completion_tokens or 0),
         ),
     )
+
 
 class LLMRouter:
     def __init__(
@@ -454,9 +456,12 @@ class LLMRouter:
             )
         return model_data
 
-
-    async def _process_llm_request(self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool):
-        NoneStreamingResponseType = ChatCompletionResponse if is_chat else CompletionResponse
+    async def _process_llm_request(
+        self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
+    ):
+        NoneStreamingResponseType = (
+            ChatCompletionResponse if is_chat else CompletionResponse
+        )
         call_method = "chat" if is_chat else "completions"
 
         async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
@@ -471,7 +476,6 @@ class LLMRouter:
             #         yield result
 
             # gen = print_results(gen, tag="llm_server results")
-
 
             # # TO REMOVE
             # aggregator = convert_chat_stream_to_chat_completion if is_chat else convert_completion_stream_to_completion
@@ -492,12 +496,13 @@ class LLMRouter:
                 # Not streaming
                 return JSONResponse(content=first_response.model_dump())
 
-
             openai_stream_generator = _openai_json_wrapper(gen, first_response)
 
             # openai_stream_generator = print_results(openai_stream_generator, tag="router wrapper")
 
-            return StreamingResponse(openai_stream_generator, media_type="text/event-stream")
+            return StreamingResponse(
+                openai_stream_generator, media_type="text/event-stream"
+            )
 
             # if body.stream:
             #     first_response, wrapper = await _peek_at_openai_json_generator(results)
@@ -507,7 +512,6 @@ class LLMRouter:
             #             status_code=first_response.code,
             #             type=first_response.type,
             #         )
-
 
             #     wrapper = print_results(wrapper, tag="router wrapper")
             #     return StreamingResponse(wrapper, media_type="text/event-stream")
@@ -553,7 +557,6 @@ class LLMRouter:
         #                 status_code=first_response.code,
         #                 type=first_response.type,
         #             )
-
 
         #         wrapper = print_results(wrapper, tag="router wrapper")
         #         return StreamingResponse(wrapper, media_type="text/event-stream")
