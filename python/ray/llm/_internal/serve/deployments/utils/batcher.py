@@ -72,7 +72,6 @@ class Batcher(Generic[T]):
 
                 # If there are results, merge and yield them
                 if results:
-                    print(f"Merging {len(results)} results")
                     output = self._merge_results(results)
                     yield output
 

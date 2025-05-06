@@ -149,12 +149,10 @@ async def _openai_json_wrapper(
         Concatenated JSON strings that represent CompletionStreamResponse.
     """
     packet = _apply_openai_json_format(first_response)
-    # print(f"on the router I am seeing: {repr(packet)}")
     yield packet
 
     async for response in generator:
         packet = _apply_openai_json_format(response)
-        # print(f"on the router I am seeing: {repr(packet)}")
         yield packet
 
     yield "data: [DONE]\n\n"
@@ -339,7 +337,7 @@ class LLMRouter:
 
     async def _process_llm_request(
         self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
-    ):
+    ) -> Response:
         NoneStreamingResponseType = (
             ChatCompletionResponse if is_chat else CompletionResponse
         )
