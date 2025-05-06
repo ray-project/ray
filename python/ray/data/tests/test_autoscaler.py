@@ -33,7 +33,7 @@ def test_actor_pool_scaling():
         _inputs_complete=False,
         internal_queue_size=MagicMock(return_value=1),
     )
-    op_state = MagicMock(total_input_enqueued=MagicMock(return_value=10))
+    op_state = MagicMock(total_enqueued_input_bundles=MagicMock(return_value=10))
     op_scheduling_status = MagicMock(under_resource_limits=True)
     op_state._scheduling_status = op_scheduling_status
 
@@ -96,7 +96,7 @@ def test_actor_pool_scaling():
 
     # Shouldn't scale up since the op has enough free slots for
     # the existing inputs.
-    with patch(op_state, "total_input_enqueued", 5):
+    with patch(op_state, "total_enqueued_input_bundles", 5):
         assert_should_scale_up(False)
 
     # === Test scaling down ===
@@ -146,7 +146,7 @@ def test_cluster_scaling():
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state1 = MagicMock(
-        total_input_enqueued=MagicMock(return_value=0),
+        _pending_dispatch_input_bundles_count=MagicMock(return_value=0),
         _scheduling_status=MagicMock(
             runnable=False,
         ),
@@ -159,7 +159,7 @@ def test_cluster_scaling():
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state2 = MagicMock(
-        total_input_enqueued=MagicMock(return_value=1),
+        _pending_dispatch_input_bundles_count=MagicMock(return_value=1),
         _scheduling_status=MagicMock(
             runnable=False,
         ),

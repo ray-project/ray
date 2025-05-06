@@ -231,13 +231,17 @@ class OpState:
             if isinstance(self.op, AllToAllOperator):
                 self.op.close_sub_progress_bars()
 
-    def total_input_enqueued(self) -> int:
-        """Return the number of enqueued bundles across all input queues."""
-        return sum(len(q) for q in self.input_queues)
+    def total_enqueued_input_bundles(self) -> int:
+        """Total number of input bundles currently enqueued among:
+            1. Input queue(s) pending dispatching (``OpState.input_queues``)
+            2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        """
+        return self._pending_dispatch_input_bundles_count() + self.op.internal_queue_size()
 
-    def total_output_enqueued(self) -> int:
-        """Return the number of enqueued bundles across all input queues."""
-        return len(self.output_queue)
+    def _pending_dispatch_input_bundles_count(self) -> int:
+        """Return the number of input bundles that are pending dispatching to the
+        operator across (external) input queues"""
+        return sum(len(q) for q in self.input_queues)
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -280,8 +284,7 @@ class OpState:
         desc += self.op.actor_info_progress_str()
 
         # Queued blocks
-        queued = self.total_input_enqueued() + self.op.internal_queue_size()
-        desc += f"; Queued blocks: {queued}"
+        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
         desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.
@@ -298,6 +301,7 @@ class OpState:
             if ref is not None:
                 self.op.add_input(ref, input_index=i)
                 return
+
         assert False, "Nothing to dispatch"
 
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
@@ -584,7 +588,7 @@ def get_eligible_operators(
         if (
             not op.completed()
             and op.should_add_input()
-            and state.total_input_enqueued() > 0
+            and state._pending_dispatch_input_bundles_count() > 0
         ):
             if not in_backpressure:
                 op_runnable = True
