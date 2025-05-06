@@ -10,9 +10,10 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import run_background_task
 from ray._private.event.event_logger import get_event_logger
-from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import run_background_task
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
 from ray.dashboard.consts import (
@@ -69,12 +70,12 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
-        self._gcs_aio_client = gcs_aio_client
+    def __init__(self, gcs_client: GcsClient, logs_dir: str):
+        self._gcs_client = gcs_client
         self._logs_dir = logs_dir
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
-        self._gcs_address = gcs_aio_client.address
-        self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
+        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._gcs_address = gcs_client.address
+        self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -359,7 +360,7 @@ class JobManager:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
-            env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -401,7 +402,7 @@ class JobManager:
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
 
-        head_node_id = await get_head_node_id(self._gcs_aio_client)
+        head_node_id = await get_head_node_id(self._gcs_client)
         if head_node_id is None:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
@@ -628,12 +629,19 @@ class JobManager:
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
+        job_finished = False
         async for lines in self._log_client.tail_logs(job_id):
             if lines is None:
-                # Return if the job has exited and there are no new log lines.
-                status = await self.get_job_status(job_id)
-                if status.is_terminal():
+                if job_finished:
+                    # Job has already finished and we have read EOF afterwards,
+                    # it's guaranteed that we won't get any more logs.
                     return
+                else:
+                    status = await self.get_job_status(job_id)
+                    if status.is_terminal():
+                        job_finished = True
+                        # Continue tailing logs generated between the
+                        # last EOF read and the finish of the job.
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:

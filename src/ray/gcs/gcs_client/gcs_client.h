@@ -19,10 +19,11 @@
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_split.h"
-#include "gtest/gtest_prod.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
@@ -209,6 +210,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *autoscaler_state_accessor_;
   }
 
+  PublisherAccessor &Publisher() {
+    RAY_CHECK(publisher_accessor_ != nullptr);
+    return *publisher_accessor_;
+  }
+
   // Gets ClusterID. If it's not set in Connect(), blocks on a sync RPC to GCS to get it.
   virtual ClusterID GetClusterId() const;
 
@@ -234,6 +240,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
+  std::unique_ptr<PublisherAccessor> publisher_accessor_;
 
  private:
   /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The

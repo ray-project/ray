@@ -14,6 +14,8 @@
 
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
+#include <memory>
+
 namespace ray {
 namespace rpc {
 

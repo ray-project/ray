@@ -57,7 +57,7 @@ spec:
       image: alpine:3.6
       command: [sh, -c]
       args: ["echo \"it was tails\""]
-  
+
   - name: heads-tails-or-twice-tails
     container:
       image: alpine:3.6

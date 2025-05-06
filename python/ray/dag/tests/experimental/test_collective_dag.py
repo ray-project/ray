@@ -5,13 +5,13 @@ import sys
 import ray.experimental.collective as collective
 
 import pytest
+from ray.dag import InputNode, MultiOutputNode
 from ray.experimental.collective.conftest import (
     AbstractNcclGroup,
     CPUTorchTensorWorker,
     check_nccl_group_init,
     check_nccl_group_teardown,
 )
-from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -177,7 +176,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -186,9 +184,10 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
 @pytest.mark.parametrize(
     "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
 )
-def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
+def test_custom_comm(ray_start_regular, monkeypatch):
     """
-    Test a custom GPU communicator is reused when possible.
+    Test a custom GPU communicator is used when specified and a default
+    communicator is used otherwise.
     """
     actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
@@ -208,8 +207,10 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
-        {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
+        {
+            (frozenset(workers), comm),
+            (frozenset(workers), None),
+        },
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -225,8 +226,10 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
-        {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
+        {
+            (frozenset(workers), comm),
+            (frozenset(workers), None),
+        },
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -259,7 +262,6 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -285,7 +287,6 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
             (frozenset(workers), comm_2),
             (frozenset(workers), comm_3),
         },
-        (frozenset(workers), comm_3),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)

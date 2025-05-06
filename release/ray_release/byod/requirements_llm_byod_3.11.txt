@@ -1,0 +1,5 @@
+pytest-asyncio==0.21.2
+pytest-timeout==2.1.0
+locust==2.33.0
+orjson==3.10.15
+backoff==2.2.1

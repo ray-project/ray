@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
+import threading
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
@@ -71,9 +72,9 @@ class RuntimeContext(object):
             AssertionError: If not called in a driver or worker. Generally,
                 this means that ray.init() was not called.
         """
-        assert ray.is_initialized(), (
-            "Job ID is not available because " "Ray has not been initialized."
-        )
+        assert (
+            ray.is_initialized()
+        ), "Job ID is not available because Ray has not been initialized."
         job_id = self.worker.current_job_id
         return job_id.hex()
 
@@ -104,9 +105,9 @@ class RuntimeContext(object):
             AssertionError: If not called in a driver or worker. Generally,
                 this means that ray.init() was not called.
         """
-        assert ray.is_initialized(), (
-            "Node ID is not available because " "Ray has not been initialized."
-        )
+        assert (
+            ray.is_initialized()
+        ), "Node ID is not available because Ray has not been initialized."
         node_id = self.worker.current_node_id
         return node_id.hex()
 
@@ -534,6 +535,7 @@ class RuntimeContext(object):
 
 
 _runtime_context = None
+_runtime_context_lock = threading.Lock()
 
 
 @PublicAPI
@@ -543,6 +545,10 @@ def get_runtime_context() -> RuntimeContext:
 
     The obtained runtime context can be used to get the metadata
     of the current task and actor.
+
+    Note: For Ray Client, ray.get_runtime_context().get_node_id() should
+    point to the head node. Also, keep in mind that ray._private.worker.global_worker
+    will create a new worker object here if global_worker doesn't point to one.
 
     Example:
 
@@ -557,8 +563,9 @@ def get_runtime_context() -> RuntimeContext:
             ray.get_runtime_context().get_task_id()
 
     """
-    global _runtime_context
-    if _runtime_context is None:
-        _runtime_context = RuntimeContext(ray._private.worker.global_worker)
+    with _runtime_context_lock:
+        global _runtime_context
+        if _runtime_context is None:
+            _runtime_context = RuntimeContext(ray._private.worker.global_worker)
 
-    return _runtime_context
+        return _runtime_context

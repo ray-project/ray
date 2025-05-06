@@ -14,14 +14,14 @@ import pytest
 
 import ray
 import ray.tune.search.sample
-from ray import train, tune
+from ray import tune
 from ray.tune import Experiment
 from ray.tune.search.util import logger
 from ray.tune.search.variant_generator import generate_variants
 
 
 def _mock_objective(config):
-    train.report(config)
+    tune.report(config)
 
 
 def assertDictAlmostEqual(a, b):

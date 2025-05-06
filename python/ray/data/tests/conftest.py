@@ -11,18 +11,23 @@ import pytest
 
 import ray
 import ray.util.state
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.tests.conftest import (
+    _ray_start,
+    pytest_runtest_makereport,  # noqa
+    wait_for_condition,
+)
+from ray.util.debug import reset_log_once
 
 
 @pytest.fixture(scope="module")
@@ -122,7 +127,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     kwargs = aws_credentials.copy()
 
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
@@ -261,13 +266,50 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
-@pytest.fixture(params=[True, False])
-def use_push_based_shuffle(request):
+@pytest.fixture
+def disable_fallback_to_object_extension(request, restore_data_context):
+    """Disables fallback to ArrowPythonObjectType"""
+    ray.data.context.DataContext.get_current().enable_fallback_to_arrow_object_ext_type = (
+        False
+    )
+
+
+@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+def configure_shuffle_method(request):
+    shuffle_strategy = request.param
+
     ctx = ray.data.context.DataContext.get_current()
-    original = ctx.use_push_based_shuffle
-    ctx.use_push_based_shuffle = request.param
+
+    original_shuffle_strategy = ctx.shuffle_strategy
+    original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+
+    ctx.shuffle_strategy = shuffle_strategy
+
+    # NOTE: We override default parallelism for hash-based shuffling to
+    #       avoid excessive partitioning of the data (to achieve desired
+    #       parallelism
+    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        ctx.default_hash_shuffle_parallelism = 8
+
     yield request.param
-    ctx.use_push_based_shuffle = original
+
+    ctx.shuffle_strategy = original_shuffle_strategy
+    ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+
+
+@pytest.fixture(params=[True, False])
+def use_polars(request):
+    use_polars = request.param
+
+    ctx = ray.data.context.DataContext.get_current()
+
+    original_use_polars = ctx.use_polars
+
+    ctx.use_polars = use_polars
+
+    yield request.param
+
+    ctx.use_polars = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -286,6 +328,12 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = request.param
     yield request.param
     ctx.enable_auto_log_stats = original
+
+
+@pytest.fixture(autouse=True)
+def reset_log_once_fixture():
+    reset_log_once()
+    yield
 
 
 @pytest.fixture(params=[1024])
@@ -368,9 +416,10 @@ def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
-    import ray._private.utils as utils
+    import ray._private.arrow_utils
 
-    utils._PYARROW_VERSION = None
+    ray._private.arrow_utils._PYARROW_INSTALLED = None
+    ray._private.arrow_utils._PYARROW_VERSION = None
     yield request.param
     pa.__version__ = orig_version
 
@@ -388,7 +437,7 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -409,7 +458,7 @@ def op_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(

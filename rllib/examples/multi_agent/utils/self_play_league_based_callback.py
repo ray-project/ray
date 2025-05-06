@@ -44,6 +44,7 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
         rl_module,
         **kwargs,
     ) -> None:
+
         num_learning_policies = (
             episode.module_for(0) in env_runner.config.policies_to_train
         ) + (episode.module_for(1) in env_runner.config.policies_to_train)
@@ -144,19 +145,40 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
 
                     print(f"adding new opponents to the mix ({new_mod_id}).")
 
-                # Update our mapping function accordingly.
+                # Initialize state variablers for agent-to-module mapping. Note, we
+                # need to keep track of the league-exploiter to always match a
+                # non-trainable policy with a trainable one - otherwise matches are
+                # a waste of resources.
+                self.type_count = 0
+                self.exploiter = None
+
                 def agent_to_module_mapping_fn(agent_id, episode, **kwargs):
-                    # Pick, whether this is ...
+                    # Pick whether this is ...
                     type_ = np.random.choice([1, 2])
+
+                    # Each second third call reset state variables. Note, there will
+                    # be always two agents playing against each others.
+                    if self.type_count >= 2:
+                        # Reset the counter.
+                        self.type_count = 0
+                        # Set the exploiter to `None`.
+                        self.exploiter = None
+
+                    # Increment the counter for each agent.
+                    self.type_count += 1
 
                     # 1) League exploiter vs any other.
                     if type_ == 1:
-                        league_exploiter = "league_exploiter_" + str(
-                            np.random.choice(list(range(len(self.league_exploiters))))
-                        )
+                        # Note, the exploiter could be either of `type_==1` or `type_==2`.
+                        if not self.exploiter:
+                            self.exploiter = "league_exploiter_" + str(
+                                np.random.choice(
+                                    list(range(len(self.league_exploiters)))
+                                )
+                            )
                         # This league exploiter is frozen: Play against a
                         # trainable policy.
-                        if league_exploiter not in self.trainable_policies:
+                        if self.exploiter not in self.trainable_policies:
                             opponent = np.random.choice(list(self.trainable_policies))
                         # League exploiter is trainable: Play against any other
                         # non-trainable policy.
@@ -167,19 +189,21 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
 
                         # Only record match stats once per match.
                         if hash(episode.id_) % 2 == agent_id:
-                            self._matching_stats[(league_exploiter, opponent)] += 1
-                            return league_exploiter
+                            self._matching_stats[(self.exploiter, opponent)] += 1
+                            return self.exploiter
                         else:
                             return opponent
 
                     # 2) Main exploiter vs main.
                     else:
-                        main_exploiter = "main_exploiter_" + str(
-                            np.random.choice(list(range(len(self.main_exploiters))))
-                        )
+                        # Note, the exploiter could be either of `type_==1` or `type_==2`.
+                        if not self.exploiter:
+                            self.exploiter = "main_exploiter_" + str(
+                                np.random.choice(list(range(len(self.main_exploiters))))
+                            )
                         # Main exploiter is frozen: Play against the main
                         # policy.
-                        if main_exploiter not in self.trainable_policies:
+                        if self.exploiter not in self.trainable_policies:
                             main = "main"
                         # Main exploiter is trainable: Play against any
                         # frozen main.
@@ -188,8 +212,8 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
 
                         # Only record match stats once per match.
                         if hash(episode.id_) % 2 == agent_id:
-                            self._matching_stats[(main_exploiter, main)] += 1
-                            return main_exploiter
+                            self._matching_stats[(self.exploiter, main)] += 1
+                            return self.exploiter
                         else:
                             return main
 

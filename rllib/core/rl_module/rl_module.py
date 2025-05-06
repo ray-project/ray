@@ -415,6 +415,7 @@ class RLModule(Checkpointable, abc.ABC):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
         #  primitive components based on obs- and action spaces.
         self.catalog = None
+        self._catalog_ctor_error = None
 
         # Deprecated
         self.config = config
@@ -478,7 +479,11 @@ class RLModule(Checkpointable, abc.ABC):
                 "[Algo]RLModule) and that you are NOT overriding the constructor, but "
                 "only the `setup()` method of your subclass."
             )
-        self.setup()
+        try:
+            self.setup()
+        except AttributeError as e:
+            if "'NoneType' object has no attribute " in e.args[0]:
+                raise (self._catalog_ctor_error or e)
         self._is_setup = True
 
     @OverrideToImplementCustomLogic

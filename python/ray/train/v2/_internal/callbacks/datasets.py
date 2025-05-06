@@ -5,7 +5,10 @@ import ray.train
 from ray.data import Dataset
 from ray.data.context import DataContext
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.worker_group.worker_group import WorkerGroup
+from ray.train.v2._internal.execution.worker_group.worker_group import (
+    Worker,
+    WorkerGroup,
+)
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -42,12 +45,10 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         these resources logically from its available pool."""
         return scaling_config.total_resources
 
-    def before_init_train_context(
-        self, worker_group: "WorkerGroup"
-    ) -> Dict[str, List[Any]]:
+    def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
         # Configure dataset shards
         datasets = {k: v() if callable(v) else v for k, v in self._datasets.items()}
-        node_ids = [worker.metadata.node_id for worker in worker_group.get_workers()]
+        node_ids = [worker.metadata.node_id for worker in workers]
 
         # Notify the DataConfig about the total resources reserved for training.
         total_train_resources = self.get_train_total_resources(self._scaling_config)
@@ -57,15 +58,15 @@ class DatasetsSetupCallback(WorkerGroupCallback):
 
         dataset_shards = self._data_config.configure(
             datasets,
-            world_size=len(worker_group),
+            world_size=len(workers),
             worker_handles=None,
             worker_node_ids=node_ids,
         )
-        assert len(dataset_shards) == len(worker_group)
+        assert len(dataset_shards) == len(workers)
 
         return {"dataset_shards": dataset_shards}
 
-    def after_worker_group_start(self, worker_group: "WorkerGroup"):
+    def after_worker_group_start(self, worker_group: WorkerGroup):
         # Propagate DataContext
         def _propagate_data_context(ctx: DataContext):
             DataContext._set_current(ctx)

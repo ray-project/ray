@@ -14,11 +14,16 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
 
+#include <memory>
+#include <thread>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 
 OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
-    instrumented_io_context &main_io_service,
+    instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -26,8 +31,8 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
-    : io_service_(main_io_service),
-      main_thread_id_(boost::this_thread::get_id()),
+    : task_execution_service_(task_execution_service),
+      main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
@@ -82,7 +87,7 @@ void OutOfOrderActorSchedulingQueue::Add(
   // The reason why we don't run multiple attempts of the same
   // task concurrently is that it's not safe to assume user's
   // code can handle concurrent execution of the same actor method.
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   auto task_id = task_spec.TaskId();
   auto request = InboundRequest(std::move(accept_request),
                                 std::move(reject_request),
@@ -179,7 +184,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
     // Make a copy since request is going to be moved.
     auto dependencies = request.PendingDependencies();
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
-      RAY_CHECK_EQ(boost::this_thread::get_id(), main_thread_id_);
+      RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
       const TaskSpecification &task_spec = request.TaskSpec();
       RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -237,7 +242,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   }
 
   if (request_to_run.has_value()) {
-    io_service_.post(
+    task_execution_service_.post(
         [this, request = std::move(*request_to_run)]() mutable {
           RunRequest(std::move(request));
         },

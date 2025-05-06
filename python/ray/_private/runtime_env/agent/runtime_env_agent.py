@@ -19,16 +19,16 @@ from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.uv import UvPlugin
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
     create_for_plugin_if_needed,
 )
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
+from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
@@ -38,6 +38,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
@@ -170,14 +171,11 @@ class RuntimeEnvAgent:
         dashboard_agent: The DashboardAgent object contains global config.
     """
 
-    LOG_FILENAME = "runtime_env_agent.log"
-
     def __init__(
         self,
         runtime_env_dir,
         logging_params,
-        gcs_address: str,
-        cluster_id_hex: str,
+        gcs_client: GcsClient,
         temp_dir,
         address,
         runtime_env_agent_port,
@@ -186,7 +184,6 @@ class RuntimeEnvAgent:
 
         self._logger = default_logger
         self._logging_params = logging_params
-        self._logging_params.update(filename=self.LOG_FILENAME)
         self._logger = setup_component_logger(
             logger_name=default_logger.name, **self._logging_params
         )
@@ -206,21 +203,18 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_aio_client = GcsAioClient(
-            address=gcs_address, cluster_id=cluster_id_hex
-        )
+        self._gcs_client = gcs_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._uv_plugin = UvPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(
-            self._runtime_env_dir, self._gcs_aio_client
+            self._runtime_env_dir, self._gcs_client
         )
-        self._java_jars_plugin = JavaJarsPlugin(
-            self._runtime_env_dir, self._gcs_aio_client
-        )
+        self._py_executable_plugin = PyExecutablePlugin()
+        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir, self._gcs_client)
         self._working_dir_plugin = WorkingDirPlugin(
-            self._runtime_env_dir, self._gcs_aio_client
+            self._runtime_env_dir, self._gcs_client
         )
         self._container_plugin = ContainerPlugin(temp_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
@@ -238,6 +232,7 @@ class RuntimeEnvAgent:
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
+            self._py_executable_plugin,
             self._java_jars_plugin,
             self._container_plugin,
             self._nsight_plugin,

@@ -3,7 +3,10 @@ from dataclasses import dataclass
 from typing import Dict
 
 from ray.train.v2._internal.execution.callback import ControllerCallback
-from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroupPollStatus,
+    WorkerGroupState,
+)
 from ray.train.v2.api.config import ScalingConfig
 
 
@@ -46,7 +49,9 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
 
     @abc.abstractmethod
     def make_decision_for_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
+        self,
+        worker_group_state: WorkerGroupState,
+        worker_group_status: WorkerGroupPollStatus,
     ) -> ScalingDecision:
         """Makes a scaling decision when monitoring healthy, running workers."""
         raise NotImplementedError

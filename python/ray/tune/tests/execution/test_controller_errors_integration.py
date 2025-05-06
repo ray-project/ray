@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.train import CheckpointConfig
+from ray.tune import CheckpointConfig
 from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, TuneError
 from ray.tune.execution.tune_controller import TuneController

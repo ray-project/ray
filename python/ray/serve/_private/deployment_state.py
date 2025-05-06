@@ -36,7 +36,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
@@ -1257,22 +1257,26 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
-        _save_checkpoint_func: Callable,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
-        self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
         self._target_state: DeploymentTargetState = DeploymentTargetState.default()
 
         self._prev_startup_warning: float = time.time()
-        self._replica_constructor_retry_counter: int = 0
         self._replica_constructor_error_msg: Optional[str] = None
+        # Counter for how many times replicas failed to start. This is reset to 0 when:
+        # (1) The deployment is deployed / re-deployed.
+        # (2) The deployment reaches the HEALTHY state.
+        self._replica_constructor_retry_counter: int = 0
+        # Flag for whether any replicas of the target version has successfully started.
+        # This is reset to False when the deployment is re-deployed.
+        self._replica_has_started: bool = False
 
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
@@ -1281,7 +1285,7 @@ class DeploymentState:
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
-        self.replica_average_ongoing_requests: Dict[str, float] = dict()
+        self.replica_average_ongoing_requests: Dict[str, float] = {}
 
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
@@ -1391,13 +1395,27 @@ class DeploymentState:
     def _failed_to_start_threshold(self) -> int:
         return min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
+            self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
-    @property
-    def is_failed(self) -> bool:
-        """Whether the deployment failed to deploy."""
-        return self._curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    def _replica_startup_failing(self) -> bool:
+        """Check whether replicas are currently failing and the number of
+        failures has exceeded a threshold.
+        """
+        return (
+            self._target_state.target_num_replicas > 0
+            and self._replica_constructor_retry_counter
+            >= self._failed_to_start_threshold
+        )
+
+    def _terminally_failed(self) -> bool:
+        """Check whether the current version is terminally errored.
+
+        The version is considered terminally errored if the number of
+        replica failures has exceeded a threshold, and there hasn't been
+        any replicas of the target version that has successfully started.
+        """
+        return not self._replica_has_started and self._replica_startup_failing()
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
@@ -1455,7 +1473,7 @@ class DeploymentState:
         multiplexed model IDs.
         """
         running_replica_infos = self.get_running_replica_infos()
-        is_available = not self.is_failed
+        is_available = not self._terminally_failed()
 
         running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
@@ -1508,15 +1526,11 @@ class DeploymentState:
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
-
-        # We must write ahead the target state in case of GCS failure (we don't
-        # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.create(
             info=self._target_state.info,
             target_num_replicas=0,
             deleting=True,
         )
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
         self._curr_status_info = self._curr_status_info.handle_transition(
@@ -1540,13 +1554,9 @@ class DeploymentState:
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
         """
-
-        # We must write ahead the target state in case of GCS failure (we don't
-        # want to set the target state, then fail because we can't checkpoint it).
         new_target_state = DeploymentTargetState.create(
             target_info, target_num_replicas, deleting=False
         )
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: new_target_state})
 
         if self._target_state.version == new_target_state.version:
             # Record either num replica or autoscaling config lightweight update
@@ -1646,6 +1656,7 @@ class DeploymentState:
             f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
+        self._replica_has_started = False
         return True
 
     def autoscale(self) -> int:
@@ -1864,16 +1875,7 @@ class DeploymentState:
 
         elif delta_replicas > 0:
             to_add = delta_replicas
-            if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-                # Don't ever exceed target_num_replicas.
-                stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
-                to_add = max(delta_replicas - stopping_replicas, 0)
-
-            if (
-                to_add > 0
-                and self._replica_constructor_retry_counter
-                < self._failed_to_start_threshold
-            ):
+            if to_add > 0 and not self._terminally_failed():
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
@@ -1922,34 +1924,29 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        failed_to_start_count = self._replica_constructor_retry_counter
-
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
-        if (
-            failed_to_start_count >= self._failed_to_start_threshold
-            and self._failed_to_start_threshold != 0
-        ):
-            if running_at_target_version_replica_cnt > 0:
-                # At least one RUNNING replica at target state, partial
-                # success; We can stop tracking constructor failures and
-                # leave it to the controller to fully scale to target
-                # number of replicas and only return as completed once
-                # reached target replica count
-                self._replica_constructor_retry_counter = -1
-            else:
-                self._curr_status_info = self._curr_status_info.handle_transition(
-                    trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
-                    message=(
-                        f"The deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with its "
-                        "constructor or initial health check failing. See "
-                        "controller logs for details. Error:\n"
-                        f"{self._replica_constructor_error_msg}"
-                    ),
-                )
-                return False, any_replicas_recovering
+        if running_at_target_version_replica_cnt > 0:
+            # At least one RUNNING replica at target state, partial
+            # success; We can stop tracking constructor failures and
+            # leave it to the controller to fully scale to target
+            # number of replicas and only return as completed once
+            # reached target replica count
+            self._replica_has_started = True
+        elif self._replica_startup_failing():
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
+                message=(
+                    "The deployment failed to start "
+                    f"{self._replica_constructor_retry_counter} times "
+                    "in a row. This may be due to a problem with its "
+                    "constructor or initial health check failing. See "
+                    "controller logs for details. Error:\n"
+                    f"{self._replica_constructor_error_msg}"
+                ),
+            )
+            return False, any_replicas_recovering
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1975,6 +1972,7 @@ class DeploymentState:
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
+                self._replica_constructor_retry_counter = 0
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
@@ -2042,25 +2040,31 @@ class DeploymentState:
     def record_replica_startup_failure(self, error_msg: str):
         """Record that a replica failed to start."""
 
-        if self._replica_constructor_retry_counter >= 0:
-            # Increase startup failure counter if we're tracking it
-            self._replica_constructor_retry_counter += 1
-            self._replica_constructor_error_msg = error_msg
+        # There is no need to record replica failures if the target is 0.
+        if self._target_state.target_num_replicas == 0:
+            return
 
-            retrying_msg = "Retrying"
-            if self._failed_to_start_threshold != 0:
-                remaining_retries = max(
-                    self._failed_to_start_threshold
-                    - self._replica_constructor_retry_counter,
-                    0,
-                )
-                retrying_msg += f" {remaining_retries} more time(s)"
+        # Increase startup failure counter
+        self._replica_constructor_retry_counter += 1
+        self._replica_constructor_error_msg = error_msg
 
-            message = (
-                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
-                f"{error_msg}"
+        # Update the deployment message only if replicas are failing during
+        # the very first time the controller is trying to start replicas of
+        # this version.
+        retrying_msg = ""
+        if not self._replica_has_started:
+            remaining_retries = max(
+                self._failed_to_start_threshold
+                - self._replica_constructor_retry_counter,
+                0,
             )
-            self._curr_status_info = self._curr_status_info.update_message(message)
+            retrying_msg = f" {remaining_retries} more time(s)"
+
+        message = (
+            f"A replica failed to start with exception. Retrying{retrying_msg}. "
+            f"Error:\n{error_msg}"
+        )
+        self._curr_status_info = self._curr_status_info.update_message(message)
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
@@ -2225,8 +2229,8 @@ class DeploymentState:
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
         """
-        to_stop = list()
-        remaining = list()
+        to_stop = []
+        remaining = []
 
         # Stop replicas whose deadline is up
         for replica in replicas:
@@ -2364,7 +2368,9 @@ class DeploymentStateManager:
         )
         self._autoscaling_state_manager = autoscaling_state_manager
 
-        self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
+        self._shutting_down = False
+
+        self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
@@ -2381,7 +2387,6 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
-            self._save_checkpoint_func,
         )
 
     def _map_actor_names_to_deployment(
@@ -2502,6 +2507,7 @@ class DeploymentStateManager:
         One can send multiple shutdown signals but won't effectively make any
         difference compare to calling it once.
         """
+        self._shutting_down = True
 
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
@@ -2520,27 +2526,22 @@ class DeploymentStateManager:
         Check there are no deployment states and no checkpoints.
         """
         return (
-            len(self._deployment_states) == 0
+            self._shutting_down
+            and len(self._deployment_states) == 0
             and self._kv_store.get(CHECKPOINT_KEY) is None
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, Tuple]]
-    ) -> None:
-        """Write a checkpoint of all deployment states.
-        By default, this checkpoints the current in-memory state of each
-        deployment. However, these can be overwritten by passing
-        `writeahead_checkpoints` in order to checkpoint an update before
-        applying it to the in-memory state.
-        """
+    def save_checkpoint(self) -> None:
+        """Write a checkpoint of all deployment states."""
+        if self._shutting_down:
+            # Once we're told to shut down, stop writing checkpoints.
+            # Calling .shutdown() deletes any existing checkpoint.
+            return
 
         deployment_state_info = {
             deployment_id: deployment_state.get_checkpoint_data()
             for deployment_id, deployment_state in self._deployment_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            deployment_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
@@ -2724,6 +2725,10 @@ class DeploymentStateManager:
             if deleted:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
+
+        # Take a checkpoint before actually affecting the state of the cluster
+        # by starting/stopping replicas.
+        self.save_checkpoint()
 
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(

@@ -7,6 +7,7 @@ ARG BUILDKITE_BAZEL_CACHE_URL
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
+ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \

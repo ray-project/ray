@@ -1,11 +1,13 @@
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig
-from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.train.tensorflow import TensorflowConfig
 
 
 @PublicAPI(stability="beta")
@@ -165,7 +167,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        tensorflow_config: Optional[TensorflowConfig] = None,
+        tensorflow_config: Optional["TensorflowConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -174,13 +176,12 @@ class TensorflowTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not tensorflow_config:
-            tensorflow_config = TensorflowConfig()
+        from ray.train.tensorflow import TensorflowConfig
 
         super(TensorflowTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
-            backend_config=tensorflow_config,
+            backend_config=tensorflow_config or TensorflowConfig(),
             scaling_config=scaling_config,
             dataset_config=dataset_config,
             run_config=run_config,

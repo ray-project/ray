@@ -1,8 +1,8 @@
 import pytest
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private.pydantic_compat import ValidationError
-from ray._private.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
@@ -14,9 +14,11 @@ from ray.serve.config import (
     ProxyLocation,
     gRPCOptions,
 )
-from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import (
+    AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+)
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
 from ray.serve.schema import (
     DeploymentSchema,
@@ -216,7 +218,7 @@ class TestReplicaConfig:
         # Invalid: not in the range of [1, 100]
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -227,7 +229,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -238,7 +240,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -312,7 +314,7 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=("Bundles must be a non-empty list " "of resource dictionaries."),
+            match=("Bundles must be a non-empty list of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,
@@ -590,20 +592,24 @@ def test_grpc_options():
     assert default_grpc_options.port == DEFAULT_GRPC_PORT
     assert default_grpc_options.grpc_servicer_functions == []
     assert default_grpc_options.grpc_servicer_func_callable == []
+    assert default_grpc_options.request_timeout_s is None
 
     port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     ]
+    request_timeout_s = 1
     grpc_options = gRPCOptions(
         port=port,
         grpc_servicer_functions=grpc_servicer_functions,
+        request_timeout_s=request_timeout_s,
     )
     assert grpc_options.port == port
     assert grpc_options.grpc_servicer_functions == grpc_servicer_functions
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+    assert grpc_options.request_timeout_s == request_timeout_s
 
     # Import not found should raise ModuleNotFoundError.
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
@@ -769,13 +775,17 @@ class TestProtoToDict:
     def test_repeated_field(self):
         """Test _proto_to_dict() to deserialize protobuf with repeated field"""
         user_configured_option_names = ["foo", "bar"]
-        proto = DeploymentConfigProto(
+        config = DeploymentConfig.from_default(
             user_configured_option_names=user_configured_option_names,
         )
+        proto_bytes = config.to_proto_bytes()
+        proto = DeploymentConfigProto.FromString(proto_bytes)
         result = _proto_to_dict(proto)
-
         # Repeated field is filled correctly as list.
-        assert result["user_configured_option_names"] == user_configured_option_names
+        assert set(result["user_configured_option_names"]) == set(
+            user_configured_option_names
+        )
+        assert isinstance(result["user_configured_option_names"], list)
 
     def test_enum_field(self):
         """Test _proto_to_dict() to deserialize protobuf with enum field"""

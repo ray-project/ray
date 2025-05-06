@@ -376,13 +376,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
-            object (*)(CRayStatus, c_vector[T] &&) nogil,
+            object (*)(CRayStatus, c_vector[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
     cdef cppclass OptionalItemPyCallback[T]:
         OptionalItemPyCallback(
-            object (*)(CRayStatus, const optional[T]&) nogil,
+            object (*)(CRayStatus, optional[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
@@ -579,6 +579,23 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &rejection_reason_message
         )
 
+    cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
+        CRayStatus PublishError(
+            c_string key_id,
+            CErrorTableData data,
+            int64_t timeout_ms)
+
+        CRayStatus PublishLogs(
+            c_string key_id,
+            CLogBatch data,
+            int64_t timeout_ms)
+
+        CRayStatus AsyncPublishNodeResourceUsage(
+            c_string key_id,
+            c_string node_resource_usage,
+            const StatusPyCallback &callback
+        )
+
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -606,6 +623,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CNodeResourceInfoAccessor& NodeResources()
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
+        CPublisherAccessor& Publisher()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
@@ -614,18 +632,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
         const CGcsNodeInfo& node_info)
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
-
-    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
-
-        CPythonGcsPublisher(const c_string& gcs_address)
-
-        CRayStatus Connect()
-
-        CRayStatus PublishError(
-            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
-
-        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
-
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(

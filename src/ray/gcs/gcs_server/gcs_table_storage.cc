@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -49,7 +53,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
   return store_client_->AsyncGet(
       table_name_, key.Binary(), std::move(callback).Rebind([](auto callback) {
         return [callback = std::move(callback)](Status status,
-                                                std::optional<std::string> &&result) {
+                                                std::optional<std::string> result) {
           std::optional<Data> value;
           if (result) {
             Data data;
@@ -195,16 +199,16 @@ Status GcsTableWithJobId<Key, Data>::AsyncRebuildIndexAndGetAll(
       }));
 }
 
-template class GcsTable<JobID, JobTableData>;
-template class GcsTable<NodeID, GcsNodeInfo>;
-template class GcsTable<NodeID, ResourceUsageBatchData>;
-template class GcsTable<JobID, ErrorTableData>;
-template class GcsTable<WorkerID, WorkerTableData>;
-template class GcsTable<ActorID, ActorTableData>;
-template class GcsTable<ActorID, TaskSpec>;
-template class GcsTableWithJobId<ActorID, ActorTableData>;
-template class GcsTableWithJobId<ActorID, TaskSpec>;
-template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
+template class GcsTable<JobID, rpc::JobTableData>;
+template class GcsTable<NodeID, rpc::GcsNodeInfo>;
+template class GcsTable<NodeID, rpc::ResourceUsageBatchData>;
+template class GcsTable<JobID, rpc::ErrorTableData>;
+template class GcsTable<WorkerID, rpc::WorkerTableData>;
+template class GcsTable<ActorID, rpc::ActorTableData>;
+template class GcsTable<ActorID, rpc::TaskSpec>;
+template class GcsTableWithJobId<ActorID, rpc::ActorTableData>;
+template class GcsTableWithJobId<ActorID, rpc::TaskSpec>;
+template class GcsTable<PlacementGroupID, rpc::PlacementGroupTableData>;
 
 }  // namespace gcs
 }  // namespace ray

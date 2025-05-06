@@ -15,7 +15,10 @@
 #include "ray/object_manager/plasma/create_request_queue.h"
 
 #include <cstdlib>
+#include <list>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
