@@ -346,6 +346,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_label_scheduling.py",
         "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
