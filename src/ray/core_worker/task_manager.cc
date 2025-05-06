@@ -1052,7 +1052,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   const rpc::RayErrorInfo *ray_error_info) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+  RAY_LOG(ERROR) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
                  << ((ray_error_info == nullptr) ? "nullptr"
                                                  : ray_error_info->DebugString());
@@ -1144,6 +1144,7 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   }
 
   if (!will_retry && mark_task_object_failed) {
+    RAY_LOG(INFO) << "jjyao fail task " << task_id;
     FailPendingTask(task_id, error_type, status, ray_error_info);
   }
 

@@ -142,6 +142,7 @@ void ActorSchedulingQueue::Add(
 }
 
 bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
+  RAY_LOG(INFO) << "Canceling task " << task_id;
   absl::MutexLock lock(&mu_);
   if (pending_task_id_to_is_canceled.find(task_id) !=
       pending_task_id_to_is_canceled.end()) {
@@ -226,6 +227,7 @@ void ActorSchedulingQueue::OnSequencingWaitTimeout() {
                  << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {
     auto head = pending_actor_tasks_.begin();
+    RAY_LOG(INFO) << "Cancelling stable rpc " << head->second.TaskID();
     head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
     next_seq_no_ = std::max(next_seq_no_, head->first + 1);
     {
@@ -249,6 +251,7 @@ void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
+    RAY_LOG(INFO) << task_id << " is canceled before it is scheduled.";
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {

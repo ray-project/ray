@@ -451,6 +451,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
           error_info.actor_died_error().oom_context().fail_immediately();
+      RAY_LOG(INFO) << "Fail task " << task_id << " " << fail_immediatedly;
       GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
                                                         error_type,
                                                         &status,
@@ -459,8 +460,8 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                                         fail_immediatedly);
     }
     if (!wait_for_death_info_tasks.empty()) {
-      RAY_LOG(DEBUG).WithField(actor_id) << "Failing tasks waiting for death info, size="
-                                         << wait_for_death_info_tasks.size();
+      RAY_LOG(INFO).WithField(actor_id) << "Failing tasks waiting for death info, size="
+                                        << wait_for_death_info_tasks.size();
       for (auto &task : wait_for_death_info_tasks) {
         GetTaskFinisherWithoutMu().FailPendingTask(
             task->task_spec.TaskId(), error_type, &task->status, &error_info);
@@ -490,6 +491,8 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
     error_info.set_error_message("Actor died by preemption.");
   }
+  RAY_LOG(INFO) << "Fail task " << task.task_spec.TaskId() << " "
+                << error_info.DebugString();
   GetTaskFinisherWithoutMu().FailPendingTask(
       task.task_spec.TaskId(), error_info.error_type(), &task.status, &error_info);
 }
@@ -675,7 +678,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     stream << "The task " << task_id << " is canceled from an actor " << actor_id
            << " before it executes.";
     const auto &msg = stream.str();
-    RAY_LOG(DEBUG) << msg;
+    RAY_LOG(INFO) << "jjyao " << msg;
     rpc::RayErrorInfo error_info;
     error_info.set_error_message(msg);
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
