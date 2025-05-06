@@ -78,8 +78,8 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
+    Zip,
 )
-from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
