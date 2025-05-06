@@ -180,32 +180,32 @@ async def convert_chat_stream_to_chat_completion(
     chat_stream: AsyncGenerator[ChatCompletionStreamResponse, None]
 ) -> AsyncGenerator[ChatCompletionResponse, None]:
     """Converts a ChatCompletionStreamResponse to a CompletionStreamResponse."""
-    
+
     from ray.llm._internal.serve.configs.openai_api_models import (
         ChatCompletionResponse,
         ChatCompletionResponseChoice,
         ChatMessage,
         UsageInfo,
     )
-    
+
     text = ""
-    
+
     completion_id = None
     model = None
-    
+
     last_chunk = None
     async for batched_chunk in chat_stream:
         for chunk in batched_chunk:
             text += chunk.choices[0].delta.content
-            
+
             # print(f"[debug] {chunk=}")
-            
+
             if completion_id is None:
                 completion_id = chunk.id
             if model is None:
                 model = chunk.model
             last_chunk = chunk
-    
+
     # print(f"[debug] {completion_id=} {model=} {text=}")
     # print(f"[debug] {last_chunk=}")
     yield ChatCompletionResponse(
@@ -240,24 +240,24 @@ async def convert_completion_stream_to_completion(
         CompletionResponseChoice,
         UsageInfo,
     )
-    
+
     text = ""
-    
+
     completion_id = None
     model = None
-    
+
     last_chunk = None
 
     async for batched_chunk in completion_stream:
         for chunk in batched_chunk:
             text += chunk.choices[0].text
-            
+
             if completion_id is None:
                 completion_id = chunk.id
             if model is None:
                 model = chunk.model
             last_chunk = chunk
-            
+
     yield CompletionResponse(
         id=completion_id,
         model=model,
@@ -453,52 +453,52 @@ class LLMRouter:
                 type="InvalidModel",
             )
         return model_data
-    
-    
+
+
     async def _process_llm_request(self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool):
         NoneStreamingResponseType = ChatCompletionResponse if is_chat else CompletionResponse
         call_method = "chat" if is_chat else "completions"
-        
+
         async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-            
+
             # Do streaming from llm_server perspective
             # body.stream = True
             gen = self._get_response(body=body, call_method=call_method)
-            
+
             # async def print_results(_results, tag):
             #     async for result in _results:
             #         # print(f"in router [{tag}], {result=}")
             #         yield result
-            
+
             # gen = print_results(gen, tag="llm_server results")
-            
-            
-            # # TO REMOVE   
+
+
+            # # TO REMOVE
             # aggregator = convert_chat_stream_to_chat_completion if is_chat else convert_completion_stream_to_completion
             # gen = aggregator(gen)
-            
+
             first_response = await gen.__anext__()
-            
+
             # print(f"in router, {first_response=}")
-            
+
             if isinstance(first_response, ErrorResponse):
                 raise OpenAIHTTPException(
                     message=first_response.message,
                     status_code=first_response.code,
                     type=first_response.type,
                 )
-            
+
             if isinstance(first_response, NoneStreamingResponseType):
                 # Not streaming
                 return JSONResponse(content=first_response.model_dump())
-            
+
 
             openai_stream_generator = _openai_json_wrapper(gen, first_response)
-            
+
             # openai_stream_generator = print_results(openai_stream_generator, tag="router wrapper")
-            
+
             return StreamingResponse(openai_stream_generator, media_type="text/event-stream")
-            
+
             # if body.stream:
             #     first_response, wrapper = await _peek_at_openai_json_generator(results)
             #     if isinstance(first_response, ErrorResponse):
@@ -507,8 +507,8 @@ class LLMRouter:
             #             status_code=first_response.code,
             #             type=first_response.type,
             #         )
-                    
-                    
+
+
             #     wrapper = print_results(wrapper, tag="router wrapper")
             #     return StreamingResponse(wrapper, media_type="text/event-stream")
 
@@ -533,18 +533,18 @@ class LLMRouter:
         """
         return await self._process_llm_request(body, is_chat=False)
         # async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-            
+
         #     # Do streaming from llm_server perspective
         #     body.stream = True
         #     results = self._get_response(body=body, call_method="completions")
-            
+
         #     async def print_results(_results, tag):
         #         async for result in _results:
         #             print(f"in router [{tag}], {result=}")
         #             yield result
-            
+
         #     results = print_results(results, tag="llm_server results")
-            
+
         #     if body.stream:
         #         first_response, wrapper = await _peek_at_openai_json_generator(results)
         #         if isinstance(first_response, ErrorResponse):
@@ -553,8 +553,8 @@ class LLMRouter:
         #                 status_code=first_response.code,
         #                 type=first_response.type,
         #             )
-                    
-                    
+
+
         #         wrapper = print_results(wrapper, tag="router wrapper")
         #         return StreamingResponse(wrapper, media_type="text/event-stream")
 

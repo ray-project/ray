@@ -61,7 +61,6 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
-import time
 
 logger = get_logger(__name__)
 
@@ -358,7 +357,7 @@ class ResponsePostprocessor:
                             ],
                             usage=usage,
                         )
-                        
+
                         yield chunk
 
             except Exception as e:
