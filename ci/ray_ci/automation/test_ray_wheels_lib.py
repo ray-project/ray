@@ -30,9 +30,10 @@ def test_get_wheel_names():
     ray_version = "1.11.0"
     wheel_names = _get_wheel_names(ray_version)
 
-    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(
-        RAY_TYPES
-    )
+    assert (
+        len(wheel_names)
+        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(RAY_TYPES) - 2
+    )  # Except for the win_amd64 wheel for cp313 on ray and ray-cpp
 
     for wheel_name in wheel_names:
         assert len(wheel_name.split("-")) == 5
