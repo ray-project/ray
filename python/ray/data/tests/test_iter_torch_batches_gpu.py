@@ -472,8 +472,4 @@ def test_custom_batch_collate_fn(
 if __name__ == "__main__":
     import sys
 
-    if sys.version_info >= (3, 12):
-        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
-        sys.exit(0)
-
     sys.exit(pytest.main(["-v", __file__]))
