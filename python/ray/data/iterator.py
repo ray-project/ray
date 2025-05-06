@@ -25,7 +25,7 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, RayDeprecationWarning
 from ray.data.collate_fn import (
     CollateFn,
     ArrowBatchCollateFn,
@@ -407,8 +407,11 @@ class DataIterator(abc.ABC):
         elif callable(collate_fn):
             batch_format = "numpy"
             warnings.warn(
-                "Passing a raw callable `collate_fn` to `iter_torch_batches` is deprecated in Ray 2.46.",
-                DeprecationWarning,
+                "Passing a function to `iter_torch_batches(collate_fn)` is "
+                "deprecated in Ray 2.47. Please switch to using a callable class that "
+                "inherits from `ArrowBatchCollateFn`, `NumpyBatchCollateFn`, or "
+                "`PandasBatchCollateFn`.",
+                RayDeprecationWarning,
             )
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
