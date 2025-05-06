@@ -1385,7 +1385,7 @@ py_test(
     srcs = ["tests/test_iter_torch_batches_gpu.py"],
     tags = [
         "exclusive",
-        "gpu_only",
+        "gpu",
         "team:data",
     ],
     deps = [
@@ -1393,3 +1393,4 @@ py_test(
         "//:ray_lib",
     ],
 )
+
