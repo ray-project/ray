@@ -750,7 +750,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       rpc::TaskStatus status,
       std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt,
       bool include_task_info = false,
-      std::optional<int32_t> attempt_number = std::nullopt) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      std::optional<int32_t> attempt_number = std::nullopt)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
