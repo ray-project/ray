@@ -2,6 +2,7 @@ import pytest
 import time
 import ray
 from ray import serve
+import heapq
 
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
     PrefixTree,
@@ -262,8 +263,8 @@ async def test__remove_tenant_single_node():
 
 
 @pytest.mark.asyncio
-async def test_evict_tenant_by_LRU():
-    """Test the evict_tenant_by_LRU functionality of PrefixTree."""
+async def test_evict_tenant_by_lru():
+    """Test the evict_tenant_by_lru functionality of PrefixTree."""
     tree = serve.run(PrefixTree.bind())
 
     # 1. Test eviction with LRU ordering
@@ -280,7 +281,7 @@ async def test_evict_tenant_by_LRU():
     tree_rep = await tree.to_dict.remote()
     before = tree_rep["tenant_char_count"]["tenant_1"]
 
-    evicted = await tree.evict_tenant_by_LRU.remote("tenant_1", 2)
+    evicted = await tree.evict_tenant_by_lru.remote("tenant_1", 2)
 
     tree_rep = await tree.to_dict.remote()
     after = tree_rep["tenant_char_count"]["tenant_1"]
@@ -292,13 +293,13 @@ async def test_evict_tenant_by_LRU():
     # 2. Test eviction of non-existent tenant raises ValueError
     await tree.reset.remote()
     with pytest.raises(ValueError):
-        await tree.evict_tenant_by_LRU.remote("nonexistent_tenant", 5)
+        await tree.evict_tenant_by_lru.remote("nonexistent_tenant", 5)
 
     # 3. Test eviction of tenant with insufficient characters raises ValueError
     await tree.reset.remote()
     await tree.insert.remote("xyz", "tenant_2", int(time.time() * 1000))
     with pytest.raises(ValueError):
-        await tree.evict_tenant_by_LRU.remote("tenant_2", 4)
+        await tree.evict_tenant_by_lru.remote("tenant_2", 4)
 
     # 4. Test eviction of all tenant data
     await tree.reset.remote()
@@ -307,11 +308,81 @@ async def test_evict_tenant_by_LRU():
     tree_rep = await tree.to_dict.remote()
     total_size = tree_rep["tenant_char_count"]["tenant_2"]
 
-    evicted = await tree.evict_tenant_by_LRU.remote("tenant_2", total_size)
+    evicted = await tree.evict_tenant_by_lru.remote("tenant_2", total_size)
     assert evicted == total_size
 
     tree_rep = await tree.to_dict.remote()
     assert "tenant_2" in tree_rep["tenants"]
+
+    # 5. Test tree structure and LRU heap ordering
+    await tree.reset.remote()
+    
+    # Insert strings in specified order
+    await tree.insert.remote("helloworld", "tenant_1", 1)  # time 1 for tenant_1
+    await tree.insert.remote("hellothere", "tenant_2", 2)  # time 2 for tenant_2
+    await tree.insert.remote("hellothomas", "tenant_2", 3)  # time 3 for tenant_2
+    
+    # Get tree representation for testing
+    tree_rep = await tree.to_dict.remote()
+    root = tree_rep["root"]
+    
+    # Test tree structure - validate each node
+    # Root node
+    assert root.text == ""
+    assert root.tenant_last_access_time == {"tenant_1": 1, "tenant_2": 3}
+    assert "h" in root.children
+    
+    # Hello node
+    hello_node = root.children["h"]
+    assert hello_node.text == "hello"
+    assert hello_node.tenant_last_access_time == {"tenant_1": 1, "tenant_2": 3}
+    assert "w" in hello_node.children
+    assert "t" in hello_node.children
+    
+    # World node
+    world_node = hello_node.children["w"]
+    assert world_node.text == "world"
+    assert world_node.tenant_last_access_time == {"tenant_1": 1}
+    assert len(world_node.children) == 0
+    
+    # Th node
+    th_node = hello_node.children["t"]
+    assert th_node.text == "th"
+    assert th_node.tenant_last_access_time == {"tenant_2": 3}
+    assert "e" in th_node.children
+    assert "o" in th_node.children
+    
+    # Ere node
+    ere_node = th_node.children["e"]
+    assert ere_node.text == "ere"
+    assert ere_node.tenant_last_access_time == {"tenant_2": 2}
+    assert len(ere_node.children) == 0
+    
+    # Omas node
+    omas_node = th_node.children["o"]
+    assert omas_node.text == "omas"
+    assert omas_node.tenant_last_access_time == {"tenant_2": 3}
+    assert len(omas_node.children) == 0
+    
+    # Test PrefixTree instance variables
+    assert tree_rep["tenants"] == {"tenant_1", "tenant_2"}
+    
+    # Test tenant_char_count
+    assert tree_rep["tenant_char_count"]["tenant_1"] == 10  # root(0) + hello(5) + world(5) = 10
+    assert tree_rep["tenant_char_count"]["tenant_2"] == 14  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
+    
+    # Test tenant_nodes (check by text)
+    tenant1_nodes_texts = {node.text for node in tree_rep["tenant_nodes"]["tenant_1"]}
+    assert tenant1_nodes_texts == {"", "hello", "world"}
+    
+    tenant2_nodes_texts = {node.text for node in tree_rep["tenant_nodes"]["tenant_2"]}
+    assert tenant2_nodes_texts == {"", "hello", "th", "ere", "omas"}
+    
+    # Test tenant_nodes_sorted - validate heap ordering
+    assert heapq.heappop(tree_rep["tenant_nodes_sorted"]["tenant_1"]).node.tenant_last_access_time["tenant_1"] == 1
+    assert heapq.heappop(tree_rep["tenant_nodes_sorted"]["tenant_1"]).node.tenant_last_access_time["tenant_1"] == 1
+    assert heapq.heappop(tree_rep["tenant_nodes_sorted"]["tenant_2"]).node.tenant_last_access_time["tenant_2"] == 2
+    assert heapq.heappop(tree_rep["tenant_nodes_sorted"]["tenant_2"]).node.tenant_last_access_time["tenant_2"] == 3
 
 
 @pytest.mark.asyncio
