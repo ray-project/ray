@@ -559,7 +559,7 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
     from ray.exceptions import RayActorError
 
     # Override to block on actor pool provisioning at least min actors
-    data_context_override.wait_for_min_actors_s = 1
+    data_context_override.wait_for_min_actors_s = 60
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
