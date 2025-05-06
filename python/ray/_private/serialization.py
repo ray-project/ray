@@ -552,7 +552,6 @@ class SerializationContext:
         )
 
     def serialize(self, value, obj_id=None):
-        # TODO(Kai-Hsun): Pass tensor_transport flag here.
         """Serialize an object.
 
         Args:
@@ -581,8 +580,8 @@ class SerializationContext:
             tensors, _ = ctx.reset_out_of_band_tensors([])
             if tensors:
                 assert obj_id is not None
-                obj_id_str = obj_id.decode("ascii")
+                obj_id = obj_id.decode("ascii")
                 worker = ray._private.worker.global_worker
-                worker.in_actor_object_store[obj_id_str] = tensors
+                worker.in_actor_object_store[obj_id] = tensors
 
             return val

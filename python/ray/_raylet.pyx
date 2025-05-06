@@ -752,17 +752,6 @@ cdef int prepare_labels(
 
     return 0
 
-cdef int prepare_tensor_transport_dict(
-        dict tensor_transport_dict,
-        unordered_map[c_string, c_string] *tensor_transport_map) except -1:
-    if tensor_transport_dict is None:
-        return 0
-
-    for key, value in tensor_transport_dict.items():
-        tensor_transport_map[0][key.encode("utf-8")] = value.encode("utf-8")
-
-    return 0
-
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
@@ -2069,8 +2058,6 @@ cdef void execute_task(
                 # actually run the task. We should run the usual handlers for
                 # task cancellation, retrying on application exception, etc. for
                 # all generator tasks, both static and dynamic.
-
-                # TODO(Kai-Hsun): Pass tensor_transport_dict here.
                 core_worker.store_task_outputs(
                     worker, outputs,
                     caller_address,
@@ -3813,7 +3800,6 @@ cdef class CoreWorker:
                      scheduling_strategy,
                      c_bool enable_task_events,
                      labels,
-                     tensor_transport_dict,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3828,7 +3814,6 @@ cdef class CoreWorker:
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
             c_string call_site
-            unordered_map[c_string, c_string] c_tensor_transport_dict
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -3841,7 +3826,6 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
-            prepare_tensor_transport_dict(tensor_transport_dict, &c_tensor_transport_dict)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3871,8 +3855,7 @@ cdef class CoreWorker:
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
                         enable_task_events,
-                        c_labels,
-                        c_tensor_transport_dict),
+                        c_labels),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -4420,7 +4403,7 @@ cdef class CoreWorker:
                 continue
 
             context = worker.get_serialization_context()
-            # TODO: pass whether the function is decorated with tensor_transport
+
             serialized_object = context.serialize(output, return_id.Hex())
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata

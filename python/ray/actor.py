@@ -1338,7 +1338,6 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
-            tensor_transport_dict=meta.method_meta.tensor_transport,
         )
 
         if _actor_launch_hook:
