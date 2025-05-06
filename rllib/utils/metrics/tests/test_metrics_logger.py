@@ -239,7 +239,7 @@ def test_throughput_tracking(logger):
         logger.peek("count", throughput=True), approx_throughput, rtol=0.1
     )  # 10% tolerance in throughput
 
-    # Test get_throughputs() method without key (returns all throughputs)
+    # Test _get_throughputs() method without key (returns all throughputs)
     throughputs = logger.peek(throughput=True)
     check(throughputs["count_throughput"], approx_throughput, rtol=0.2)
 

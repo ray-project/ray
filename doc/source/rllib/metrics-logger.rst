@@ -190,9 +190,9 @@ to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
     logger.reduce()
     logger.peek("some_items")  # expect an empty list: []
 
-You have to pass additional arguments like ``reduce=None`` and ``clear_on_reduce=True`` to the
+You should pass additional arguments like ``reduce=None`` and ``clear_on_reduce=True`` to the
 :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method on each call.
-The MetricsLogger will raise an error otherwise to ensure that it's behaviour is always as expected.
+Otherwise, MetricsLogger will emit warnings to ensure that it's behaviour is always as expected.
 
 
 Logging a set of nested scalar values
@@ -327,7 +327,7 @@ on each ``reduce()`` operation.
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` automatically compiles an extra key for each such metric, adding the suffix ``_throughput``
 to the original key and assigning it the value for the throughput per second.
 
-You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.get_throughputs` method to access the throughput value.
+You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method to access the throughput value by passing the ``throughput=True`` flag.
 
 .. testcode::
 
@@ -344,14 +344,14 @@ You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.
 
         # Expect the first call to return NaN because we don't have a proper start time for the time delta.
         # From the second call on, expect a value of roughly 5/sec.
-        print(logger.get_throughputs("lifetime_count"))
+        print(logger.peek("lifetime_count", throughput=True))
 
         logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
         # Expect the throughput to be roughly 10/sec now.
-        print(logger.get_throughputs("lifetime_count"))
+        print(logger.peek("lifetime_count", throughput=True))
 
         # You can also get a dict of all throughputs at once:
-        print(logger.get_throughputs())
+        print(logger.peek(throughput=True))
 
 
 Measuring throughputs with MetricsLogger.log_time()
@@ -371,7 +371,7 @@ You can also use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLo
             time.sleep(1.0)
 
     # Expect the throughput to be roughly 1.0/sec.
-    print(logger.get_throughputs("my_block_to_be_timed"))
+    print(logger.peek("my_block_to_be_timed", throughput=True))
 
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks

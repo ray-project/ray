@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 import time
 import threading
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, Optional
 
 import numpy as np
 
@@ -38,25 +38,26 @@ class Stats:
 
     def __init__(
         self,
-        init_values,
-        reduce,
-        window,
-        ema_coeff,
-        clear_on_reduce,
-        throughput,
-        throughput_ema_coeff,
+        init_values: Optional[Any] = None,
+        reduce: Optional[str] = "mean",
+        window: Optional[Union[int, float]] = None,
+        ema_coeff: Optional[float] = None,
+        clear_on_reduce: bool = False,
+        throughput: Union[bool, float] = False,
+        throughput_ema_coeff: Optional[float] = None,
     ):
         """Initializes a Stats instance.
 
         Args:
-            init_values: Initial values to be placed into `self.values`.
+            init_values: Optional initial values to be placed into `self.values`. If None,
+                `self.values` will start empty.
             reduce: The name of the reduce method to be used. Allowed are "mean", "min",
                 "max", and "sum". Use None to apply no reduction method (leave
                 `self.values` as-is when reducing, except for shortening it to
                 `window`). Note that if both `reduce` and `window` are None, the user of
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
-            window: Window size to reduce over.
+            window: An optional window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
                 is shortened to hold at most `window` items (the most recent ones).
@@ -68,7 +69,7 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
-            ema_coeff: EMA coefficient to use if reduce is "mean"
+            ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
                 `reduce` must be "mean".
@@ -90,7 +91,7 @@ class Stats:
                 `throughput_per_sec = Stats.peek(throughput=True)`.
                 If a float, track throughput and also set current throughput estimate
                 to the given value.
-            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+            throughput_ema_coeff: An optional EMA coefficient to use for throughput tracking.
                 Only used if throughput=True.
         """
         # Thus far, we only support mean, max, min, and sum.
@@ -255,7 +256,7 @@ class Stats:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
-        Thus, users can call this method to get an accurate look at the reduced values
+        Thus, users can call this method to get an accurate look at the reduced value(s)
         given the current internal values list.
 
         Args:
@@ -288,7 +289,7 @@ class Stats:
         Returns:
             A list containing the history of reduced values.
         """
-        # Make a 1 level deep copy of the reduce history to avoid mutating the original reduce history's elements
+        # Turning the reduce history into a deque avoids mutating the original reduce history's elements
         return list(self._reduce_history)
 
     @property
@@ -642,7 +643,7 @@ class Stats:
     @staticmethod
     def similar_to(
         other: "Stats",
-        init_values: Any = None,
+        init_values: Optional[Any] = None,
     ) -> "Stats":
         """Returns a new Stats object that's similar to `other`.
 
