@@ -1381,11 +1381,11 @@ py_test(
 
 py_test(
     name = "test_iter_torch_batches_gpu",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_iter_torch_batches_gpu.py"],
     tags = [
         "exclusive",
-        "gpu",
+        "gpu_only",
         "team:data",
     ],
     deps = [
