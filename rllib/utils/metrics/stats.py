@@ -133,7 +133,9 @@ class Stats:
 
         # On each `.reduce()` call, we store the result of this call in reduce_history[0] and the
         # previous `reduce()` result in reduce_history[1].
-        self._reduce_history = deque([[np.nan], [np.nan], [np.nan]], maxlen=3)
+        self._reduce_history: deque[List[Any]] = deque(
+            [[np.nan], [np.nan], [np.nan]], maxlen=3
+        )
 
         self._throughput_ema_coeff = throughput_ema_coeff
         self._throughput_stats = None
@@ -377,7 +379,7 @@ class Stats:
         if self._reduce_method is not None or not self._inf_window:
             # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window.
             # We need to make a copy here because the new_values_list is a reference to the internal values list
-            self._reduce_history.append(values_list.copy())
+            self._reduce_history.append(force_list(values_list.copy()))
 
         if compile:
             if self._reduce_method is None:
@@ -648,6 +650,11 @@ class Stats:
                 throughput=False,
                 throughput_ema_coeff=None,
             )
+        # Compatibility to old checkpoints where a reduce sometimes resulted in a single values instead of a list such that the history would be a list of integers instead of a list of lists.
+        # TODO(Artur): Remove this after a few Ray releases.
+        if not isinstance(state["_hist"][0], list):
+            state["_hist"] = list(map(lambda x: [x], state["_hist"]))
+
         stats._reduce_history = deque(
             state["_hist"], maxlen=stats._reduce_history.maxlen
         )
