@@ -13,6 +13,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
     ChatMessage,
+    ErrorResponse,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer,
@@ -28,6 +29,23 @@ async def create_server(*args, **kwargs):
     return server
 
 
+async def stream_generator():
+    yield LLMRawResponse(
+        generated_text="Hello",
+        num_generated_tokens=1,
+        num_generated_tokens_batch=1,
+        num_input_tokens=5,
+        finish_reason=None,
+    )
+    yield LLMRawResponse(
+        generated_text=" world",
+        num_generated_tokens=1,
+        num_generated_tokens_batch=1,
+        num_input_tokens=5,
+        finish_reason=FinishReason.STOP,
+    )
+
+
 class TestResponsePostprocessor:
     @pytest.mark.asyncio
     async def test_process_chat_streaming(self):
@@ -35,25 +53,8 @@ class TestResponsePostprocessor:
         postprocessor = ResponsePostprocessor()
         model = "test_model"
         
-        # Create a generator that yields LLMRawResponse objects
-        async def gen():
-            yield LLMRawResponse(
-                generated_text="Hello",
-                num_generated_tokens=1,
-                num_generated_tokens_batch=1,
-                num_input_tokens=5,
-                finish_reason=None,
-            )
-            yield LLMRawResponse(
-                generated_text=" world",
-                num_generated_tokens=1,
-                num_generated_tokens_batch=1,
-                num_input_tokens=5,
-                finish_reason=FinishReason.STOP,
-            )
-        
         # Process the generator as a streaming chat response
-        response_gen = postprocessor.process_chat(model, gen(), stream=True)
+        response_gen = postprocessor.process_chat(model, stream_generator(), stream=True)
         
         # Collect all responses
         responses = [resp async for resp in response_gen]
@@ -70,18 +71,8 @@ class TestResponsePostprocessor:
         postprocessor = ResponsePostprocessor()
         model = "test_model"
         
-        # Create a generator that yields LLMRawResponse objects
-        async def gen():
-            yield LLMRawResponse(
-                generated_text="Hello world",
-                num_generated_tokens=2,
-                num_generated_tokens_batch=2,
-                num_input_tokens=5,
-                finish_reason=FinishReason.STOP,
-            )
-        
         # Process the generator as a non-streaming chat response
-        response_gen = postprocessor.process_chat(model, gen(), stream=False)
+        response_gen = postprocessor.process_chat(model, stream_generator(), stream=False)
         
         # Collect the single response
         responses = [resp async for resp in response_gen]
@@ -102,25 +93,8 @@ class TestResponsePostprocessor:
         postprocessor = ResponsePostprocessor()
         model = "test_model"
         
-        # Create a generator that yields LLMRawResponse objects
-        async def gen():
-            yield LLMRawResponse(
-                generated_text="Hello",
-                num_generated_tokens=1,
-                num_generated_tokens_batch=1,
-                num_input_tokens=5,
-                finish_reason=None,
-            )
-            yield LLMRawResponse(
-                generated_text=" world",
-                num_generated_tokens=1,
-                num_generated_tokens_batch=1,
-                num_input_tokens=5,
-                finish_reason=FinishReason.STOP,
-            )
-        
         # Process the generator as a streaming completion response
-        response_gen = postprocessor.process_completions(model, gen(), stream=True)
+        response_gen = postprocessor.process_completions(model, stream_generator(), stream=True)
         
         # Collect all responses
         responses = [resp async for resp in response_gen]
@@ -138,18 +112,8 @@ class TestResponsePostprocessor:
         postprocessor = ResponsePostprocessor()
         model = "test_model"
         
-        # Create a generator that yields LLMRawResponse objects
-        async def gen():
-            yield LLMRawResponse(
-                generated_text="Hello world",
-                num_generated_tokens=2,
-                num_generated_tokens_batch=2,
-                num_input_tokens=5,
-                finish_reason=FinishReason.STOP,
-            )
-        
         # Process the generator as a non-streaming completion response
-        response_gen = postprocessor.process_completions(model, gen(), stream=False)
+        response_gen = postprocessor.process_completions(model, stream_generator(), stream=False)
         
         # Collect the single response
         responses = [resp async for resp in response_gen]
@@ -170,19 +134,33 @@ class TestResponsePostprocessor:
         model = "test_model"
         
         # Create a generator that raises an exception
+        
+        error_response = ErrorResponse(
+            message="Test error",
+            code=500,
+            internal_message="Test error",
+            type="Test error",
+            original_exception=Exception("Test error"),
+        )
         async def gen():
             yield LLMRawResponse(
-                error=Exception("Test error"),
+                error=error_response,
+            )
+            yield LLMRawResponse(
+                generated_text="Hello",
+                num_generated_tokens=1,
+                num_generated_tokens_batch=1,
+                num_input_tokens=5,
                 finish_reason=None,
             )
-        
+
         # Process the generator as a non-streaming chat response
         response_gen = postprocessor.process_chat(model, gen(), stream=False)
         
         # Collect the responses, should contain the error
         responses = [resp async for resp in response_gen]
         assert len(responses) == 1
-        assert isinstance(responses[0], Exception)
+        assert responses[0] == error_response
     
 
 class TestLLMServer:
