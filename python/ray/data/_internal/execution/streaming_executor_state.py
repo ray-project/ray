@@ -585,7 +585,6 @@ def get_eligible_operators(
             not op.completed()
             and op.should_add_input()
             and state.total_input_enqueued() > 0
-            and not in_backpressure
         ):
             if not in_backpressure:
                 op_runnable = True
@@ -609,7 +608,7 @@ def get_eligible_operators(
         and ensure_liveness
         and all(op.num_active_tasks() == 0 for op in topology)
     ):
-        eligible_ops = dispatchable_ops
+        return dispatchable_ops
 
     return eligible_ops
 
