@@ -101,6 +101,8 @@ class DefaultCollateFn(ArrowBatchCollateFn):
             device: The device on which the tensor should be placed. Can be a string
                 (e.g. "cpu", "cuda:0") or a torch.device object.
         """
+        import torch
+
         super().__init__()
         self.dtypes = dtypes
         if isinstance(device, str):

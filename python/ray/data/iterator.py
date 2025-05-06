@@ -360,18 +360,21 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device()
 
+        from ray.air._internal.torch_utils import (
+            move_tensors_to_device,
+            TensorBatchType,
+        )
+
         # The default finalize_fn handles the host to device data transfer.
         # This is executed in a 1-thread pool separately from collate_fn
         # to allow independent parallelism of these steps.
         def default_finalize_fn(
-            batch: Union[Dict[str, List["torch.Tensor"]], Any],
+            batch: TensorBatchType,
         ) -> Union[Dict[str, "torch.Tensor"], Any]:
             """Default finalize function for moving PyTorch tensors to device.
 
             Args:
-                batch: Input batch to move to device. Can be:
-                    - Dictionary mapping column names to lists of tensors
-                    - Any other type supported by move_tensors_to_device
+                batch: Input batch to move to device.
 
             Returns:
                 Batch with tensors moved to the target device. Type matches input type:
@@ -379,8 +382,6 @@ class DataIterator(abc.ABC):
                   returns Dict[str, torch.Tensor]
                 - Otherwise returns the same type as input with tensors moved to device
             """
-            from ray.air._internal.torch_utils import move_tensors_to_device
-
             return move_tensors_to_device(batch, device=device)
 
         finalize_fn = None
@@ -401,8 +402,10 @@ class DataIterator(abc.ABC):
             finalize_fn = default_finalize_fn
             batch_format = "pyarrow"
         elif isinstance(collate_fn, NumpyBatchCollateFn):
+            finalize_fn = default_finalize_fn
             batch_format = "numpy"
         elif isinstance(collate_fn, PandasBatchCollateFn):
+            finalize_fn = default_finalize_fn
             batch_format = "pandas"
         elif callable(collate_fn):
             batch_format = "numpy"
