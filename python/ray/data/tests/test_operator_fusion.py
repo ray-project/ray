@@ -1,7 +1,10 @@
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -11,17 +14,22 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
-from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.planner import Planner
+from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_util import get_parquet_read_logical_op, _check_usage_record
+from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -252,38 +260,176 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
-    ray_start_regular_shared_2_cpus,
+def test_read_with_map_batches_fused_successfully(
+    ray_start_regular_shared_2_cpus, temp_dir
 ):
-    ctx = DataContext.get_current()
+    """Since MapBatches does NOT specify `batch_size`, successfully fused with
+    ReadParquet"""
 
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
-    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
-    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
+    ds = ray.data.read_parquet(temp_dir)
 
-    assert op.name == "MapBatches(<lambda>)"
-    # Ops are still fused.
-    assert (
-        physical_op.name == "ReadParquet->MapBatches(<lambda>)->"
-        "MapBatches(<lambda>)->MapBatches(<lambda>)"
-    )
+    mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+
+    physical_op = physical_plan.dag
     assert isinstance(physical_op, MapOperator)
-    # Target block size is set to max.
-    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+    actual_plan_str = physical_op.dag_str
+
+    # All Map ops are fused with Read
+    assert (
+        "InputDataBuffer[Input] -> "
+        "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        == actual_plan_str
+    )
+
+    # # Target min-rows requirement is not set
+    assert physical_op._block_ref_bundler._min_rows_per_bundle is None
 
     assert (
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
+    )
+
+
+@pytest.mark.parametrize(
+    "input_op,fused",
+    [
+        (
+            # No fusion (could drastically expand dataset)
+            Read(
+                datasource=MagicMock(name="Parquet"),
+                datasource_or_legacy_reader=MagicMock(
+                    get_read_tasks=lambda _: [MagicMock()]
+                ),
+                parallelism=1,
+                mem_size=1,
+            ),
+            False,
+        ),
+        (
+            # No fusion (could drastically reduce dataset)
+            Filter(InputData([]), lambda x: False),
+            False,
+        ),
+        (
+            # No fusion (could drastically expand/reduce dataset)
+            FlatMap(InputData([]), lambda x: x),
+            False,
+        ),
+        (
+            # Fusion
+            MapBatches(InputData([]), lambda x: x),
+            True,
+        ),
+        (
+            # Fusion
+            MapRows(InputData([]), lambda x: x),
+            True,
+        ),
+        (
+            # Fusion
+            Project(InputData([])),
+            True,
+        ),
+    ],
+)
+def test_map_batches_batch_size_fusion(
+    ray_start_regular_shared_2_cpus, input_op, fused
+):
+    """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
+
+    context = DataContext.get_current()
+
+    # Test that fusion of map operators merges their block sizes in the expected way
+    # (taking the max).
+    ds = Dataset(
+        ExecutionPlan(DatasetStats(metadata={}, parent=None), context),
+        LogicalPlan(input_op, context),
+    )
+
+    mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
+        lambda x: x,
+        batch_size=5,
+    )
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+
+    physical_op = physical_plan.dag
+
+    assert isinstance(physical_op, MapOperator)
+
+    actual_plan_str = physical_op.dag_str
+
+    if fused:
+        assert (
+            f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}->"
+            f"MapBatches(<lambda>)->MapBatches(<lambda>)]" == actual_plan_str
+        )
+    else:
+        assert (
+            f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
+            == actual_plan_str
+        )
+
+    # Target min-rows requirement is set to max of upstream and downstream
+    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
+    assert len(physical_op.input_dependencies) == 1
+
+    assert physical_op.actual_target_max_block_size == context.target_max_block_size
+
+
+@pytest.mark.parametrize("upstream_batch_size", [None, 1, 2])
+@pytest.mark.parametrize("downstream_batch_size", [None, 1, 2])
+def test_map_batches_with_batch_size_specified_fusion(
+    ray_start_regular_shared_2_cpus,
+    temp_dir,
+    upstream_batch_size,
+    downstream_batch_size,
+):
+    # Test that fusion of map operators merges their block sizes in the expected way
+    # (taking the max).
+    ds = ray.data.read_parquet(temp_dir)
+
+    mapped_ds = ds.map_batches(
+        lambda x: x,
+        batch_size=upstream_batch_size,
+    ).map_batches(
+        lambda x: x,
+        batch_size=downstream_batch_size,
+    )
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+
+    root_op = physical_plan.dag
+    assert isinstance(root_op, MapOperator)
+
+    actual_plan_str = root_op.dag_str
+
+    if upstream_batch_size is None and downstream_batch_size is None:
+        expected_min_rows_per_bundle = None
+        expected_plan_str = (
+            "InputDataBuffer[Input] -> "
+            "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        )
+    else:
+        expected_min_rows_per_bundle = max(
+            upstream_batch_size or 0, downstream_batch_size or 0
+        )
+        expected_plan_str = (
+            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        )
+
+    assert expected_plan_str == actual_plan_str
+
+    # Target min-rows requirement is set to max of upstream and downstream
+    assert (
+        expected_min_rows_per_bundle == root_op._block_ref_bundler._min_rows_per_bundle
     )
 
 
