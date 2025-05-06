@@ -174,14 +174,14 @@ void ActorSchedulingQueue::ScheduleRequests() {
          pending_actor_tasks_.begin()->first == next_seq_no_ &&
          pending_actor_tasks_.begin()->second.CanExecute()) {
     auto head = pending_actor_tasks_.begin();
-    auto request = head->second;
     auto task_id = head->second.TaskID();
+    auto request = std::move(head->second);
 
     if (is_asyncio_) {
       // Process async actor task.
       auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                      request.FunctionDescriptor());
-      fiber->EnqueueFiber([this, request, task_id]() mutable {
+      fiber->EnqueueFiber([this, request = std::move(request), task_id]() mutable {
         AcceptRequestOrRejectIfCanceled(task_id, request);
       });
     } else {
@@ -192,7 +192,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
       if (pool == nullptr) {
         AcceptRequestOrRejectIfCanceled(task_id, request);
       } else {
-        pool->Post([this, request, task_id]() mutable {
+        pool->Post([this, request = std::move(request), task_id]() mutable {
           AcceptRequestOrRejectIfCanceled(task_id, request);
         });
       }

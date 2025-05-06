@@ -613,6 +613,7 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     """
     cdef:
         c_vector[CObjectID] result
+    result.reserve(len(object_refs))
     for object_ref in object_refs:
         result.push_back((<ObjectRef>object_ref).native())
     return result
@@ -1036,7 +1037,9 @@ cdef store_task_errors(
         CTaskType task_type,
         proctitle,
         const CAddress &caller_address,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_vector[CObjectID] *return_ids,
+        CRepeatedPtrField[CRpcReturnObject] return_objects,
+        # c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_string* application_error):
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -1077,13 +1080,14 @@ cdef store_task_errors(
             -ray_constants.MAX_APPLICATION_ERROR_LEN:]
 
     errors = []
-    for _ in range(returns[0].size()):
+    for _ in range(return_ids[0].size()):
         errors.append(failure_object)
 
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
         caller_address,
-        returns)
+        return_ids,
+        return_objects)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -1719,8 +1723,12 @@ cdef void execute_task(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_string debugger_breakpoint,
         const c_string serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        CRepeatedPtrField<CRpcReturnObject> *return_objects,
+        CRepeatedPtrField<CRpcReturnObject> *dynamic_return_objects,
+        c_vector[CObjectID] *return_ids,
+        c_vector[CObjectID] *dynamic_return_ids,
+        # c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        # c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
@@ -1882,7 +1890,7 @@ cdef void execute_task(
                     if is_streaming_generator:
                         # Streaming generator always has a single return value
                         # which is the generator task return.
-                        assert returns[0].size() == 1
+                        assert return_ids[0].size() == 1
 
                         is_async_gen = inspect.isasyncgen(outputs)
                         is_sync_gen = inspect.isgenerator(outputs)
@@ -1894,7 +1902,7 @@ cdef void execute_task(
                                     "@ray.remote(num_returns=\"streaming\" "
                                     "must return a generator")
                         context = StreamingGeneratorExecutionContext.make(
-                                returns[0][0].first,  # generator object ID.
+                                return_ids[0][0],  # generator object ID.
                                 task_type,
                                 caller_address,
                                 task_id,
@@ -1905,7 +1913,7 @@ cdef void execute_task(
                                 actor,
                                 actor_id,
                                 name_of_concurrency_group_to_execute,
-                                returns[0].size(),
+                                1, # TODO(dayshah): don't need to pass this it's always one
                                 attempt_number,
                                 should_retry_exceptions,
                                 streaming_generator_returns,
@@ -1982,7 +1990,7 @@ cdef void execute_task(
                     if core_worker.get_current_actor_should_exit():
                         raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
-                if (returns[0].size() == 1
+                if (return_ids[0].size() == 1
                         and not inspect.isgenerator(outputs)
                         and not inspect.isasyncgen(outputs)):
                     # If there is only one return specified, we should return
@@ -2009,13 +2017,13 @@ cdef void execute_task(
                     # like GCS has such info.
                     core_worker.set_actor_repr_name(actor_repr)
 
-            if (returns[0].size() > 0
+            if (return_ids[0].size() > 0
                     and not inspect.isgenerator(outputs)
                     and not inspect.isasyncgen(outputs)
-                    and len(outputs) != int(returns[0].size())):
+                    and len(outputs) != int(return_ids[0].size())):
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
-                        len(outputs), returns[0].size()))
+                        len(outputs), return_ids[0].size()))
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
@@ -2031,10 +2039,11 @@ cdef void execute_task(
 
                     execute_dynamic_generator_and_store_task_outputs(
                             outputs,
-                            returns[0][0].first,
+                            return_ids[0][0],
                             task_type,
                             serialized_retry_exception_allowlist,
-                            dynamic_returns,
+                            dynamic_return_ids,
+                            dynamic_return_objects,
                             is_retryable_error,
                             application_error,
                             is_reattempt,
@@ -2046,9 +2055,9 @@ cdef void execute_task(
 
                     task_exception = False
                     dynamic_refs = []
-                    for idx in range(dynamic_returns.size()):
+                    for idx in range(dynamic_return_ids[0].size()):
                         dynamic_refs.append(ObjectRef(
-                            dynamic_returns[0][idx].first.Binary(),
+                            dynamic_return_ids[0][idx].Binary(),
                             caller_address.SerializeAsString(),
                         ))
                     # Swap out the generator for an ObjectRef generator.
@@ -2061,16 +2070,18 @@ cdef void execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs,
                     caller_address,
-                    returns)
+                    return_ids,
+                    return_objects)
 
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error)
-            if returns[0].size() > 0 and num_errors_stored == 0:
+                    task_type, title, caller_address, return_ids, return_objects,
+                    application_error)
+            if return_ids[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
-                        f"{returns[0].size()} return values already created. "
+                        f"{returns_ids[0].size()} return values already created. "
                         "This should only occur when using generator tasks.\n"
                         "See https://github.com/ray-project/ray/issues/28689.")
 
@@ -2085,8 +2096,10 @@ cdef execute_task_with_cancellation_handler(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_string debugger_breakpoint,
         const c_string serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        CRepeatedPtrField<CRpcReturnObject> *return_objects,
+        CRepeatedPtrField<CRpcReturnObject> *dynamic_return_objects,
+        c_vector[CObjectID] *return_ids,
+        c_vector[CObjectID] *dynamic_return_ids,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
@@ -2179,8 +2192,10 @@ cdef execute_task_with_cancellation_handler(
                      c_arg_refs,
                      debugger_breakpoint,
                      serialized_retry_exception_allowlist,
-                     returns,
-                     dynamic_returns,
+                     return_objects,
+                     dynamic_return_objects,
+                     return_ids,
+                     dynamic_return_ids,
                      streaming_generator_returns,
                      is_retryable_error,
                      application_error,
@@ -2275,8 +2290,10 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_string debugger_breakpoint,
         const c_string serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        CRepeatedPtrField<CRpcReturnObject> *return_objects,
+        CRepeatedPtrField<CRpcReturnObject> *dynamic_return_objects,
+        c_vector[CObjectID] *return_ids,
+        c_vector[CObjectID] *dynamic_return_ids,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
@@ -2304,8 +2321,10 @@ cdef CRayStatus task_execution_handler(
                         c_args, c_arg_refs,
                         debugger_breakpoint,
                         serialized_retry_exception_allowlist,
-                        returns,
-                        dynamic_returns,
+                        return_objects,
+                        dynamic_return_objects,
+                        return_ids,
+                        dynamic_return_ids,
                         streaming_generator_returns,
                         is_retryable_error,
                         application_error,
@@ -2661,9 +2680,8 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                         .join(msg_frames).encode("ascii"))
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
-    cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
-        return empty_metadata
+        return shared_ptr[CBuffer]()
     return dynamic_pointer_cast[
         CBuffer, LocalMemoryBuffer](
             make_shared[LocalMemoryBuffer](
