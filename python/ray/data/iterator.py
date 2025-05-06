@@ -1,5 +1,6 @@
 import abc
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,7 +14,6 @@ from typing import (
     TypeVar,
     Union,
 )
-import warnings
 
 import numpy as np
 
@@ -24,15 +24,15 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
-from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
 from ray.data.collate_fn import (
-    CollateFn,
     ArrowBatchCollateFn,
+    CollateFn,
+    DefaultCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
-    DefaultCollateFn,
 )
+from ray.data.context import DataContext
+from ray.util.annotations import PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -361,8 +361,8 @@ class DataIterator(abc.ABC):
             device = get_device()
 
         from ray.air._internal.torch_utils import (
-            move_tensors_to_device,
             TensorBatchType,
+            move_tensors_to_device,
         )
 
         # The default finalize_fn handles the host to device data transfer.

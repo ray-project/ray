@@ -1,22 +1,22 @@
-from typing import Dict, Optional, Tuple, List, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 import torch
-import pandas as pd
 
 import ray
-from ray.train.torch import get_device
+from ray.air._internal.torch_utils import (
+    arrow_batch_to_tensors,
+    convert_ndarray_batch_to_torch_tensor_batch,
+)
 from ray.data.iterator import (
     ArrowBatchCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
 )
-from ray.air._internal.torch_utils import (
-    arrow_batch_to_tensors,
-    convert_ndarray_batch_to_torch_tensor_batch,
-)
+from ray.train.torch import get_device
 
 
 class BaseArrowBatchCollateFn(ArrowBatchCollateFn):

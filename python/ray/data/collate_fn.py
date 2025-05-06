@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Generic, Optional, TypeVar, Union, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Generic, List, Optional, TypeVar, Union
 
 import numpy as np
 
@@ -7,9 +7,9 @@ from ray.data.block import DataBatch
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    import torch
-    import pyarrow
     import pandas
+    import pyarrow
+    import torch
 
     from ray.data.dataset import CollatedData
 
