@@ -3807,25 +3807,22 @@ py_test(
         "team:rllib",
     ],
 )
-# IMPALA
-# TODO (sven): Make IMPALA learn Pendulum OR make this script flexible to accept
-#  (lopsided obs) CartPole as well.
-# py_test(
-#    name = "examples/connectors/mean_std_filtering_impala",
-#    main = "examples/connectors/mean_std_filtering.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/connectors/mean_std_filtering.py"],
-#    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=2"]
-# )
-# py_test(
-#    name = "examples/connectors/mean_std_filtering_multi_agent_impala",
-#    main = "examples/connectors/mean_std_filtering.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/connectors/mean_std_filtering.py"],
-#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
-# )
+
+py_test(
+    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    size = "medium",
+    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--num-agents=2",
+    ],
+    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
 
 # subdirectory: curiosity/
 # ....................................
