@@ -32,13 +32,13 @@ class MockGauge:
     """
 
     def __init__(self, name: str, description: str, tag_keys: tuple = ()):
-        self._value: float = 0.0
+        self._values: dict[set[str], float] = {}
 
     def set(self, value: float, tags: dict):
-        self._value = value
+        self._values[frozenset(tags.items())] = value
 
-    def get(self):
-        return self._value
+    def get(self, tags: dict):
+        return self._values.get(frozenset(tags.items()))
 
 
 def mock_on_report(self, value: float):
@@ -61,44 +61,44 @@ def test_metrics_tracker(monkeypatch):
     monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
-    # Create a test metric
+    base_tags = {"base_tag": "base_value"}
+
     test_metric = Metric(
         name="test_metric",
         type=float,
         default=0.0,
         description="Test metric",
-        tag_keys=["tag1", "tag2"],
+        tag_keys=["base_tag"],
+    )
+
+    test_metric_with_tags = Metric(
+        name="test_metric_with_tags",
+        type=float,
+        default=0.0,
+        description="Test metric with tags",
+        tag_keys=["base_tag", "tag1", "tag2"],
     )
 
     # Initialize tracker with base tags
-    base_tags = {"base_tag": "base_value"}
-    tracker = MetricsTracker([test_metric], base_tags)
+    tracker = MetricsTracker([test_metric, test_metric_with_tags], base_tags)
     tracker.start()
 
     # Test initial state
     assert tracker.get_value(test_metric, {}) is None
-    assert tracker.get_value(test_metric, {"tag1": "value1"}) is None
+    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) is None
 
     # Test updating metric with additional tags
-    tracker.update(test_metric, {"tag1": "value1"}, 1.0)
-    time.sleep(0.1)
-    assert tracker.get_value(test_metric, {"tag1": "value1"}) == 1.0
+    tracker.update(test_metric_with_tags, {"tag1": "value1"}, 1.0)
+    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) == 1.0
 
     # Test updating same metric-tag combination
-    tracker.update(test_metric, {"tag1": "value1"}, 2.0)
-    time.sleep(0.1)
-    assert tracker.get_value(test_metric, {"tag1": "value1"}) == 3.0
+    tracker.update(test_metric_with_tags, {"tag1": "value1"}, 2.0)
+    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) == 3.0
 
     # Test updating with different tags
-    tracker.update(test_metric, {"tag2": "value2"}, 4.0)
-    time.sleep(0.1)
-    assert tracker.get_value(test_metric, {"tag2": "value2"}) == 4.0
-    assert tracker.get_value(test_metric, {"tag1": "value1"}) == 3.0
-
-    # Test updating with combined tags
-    tracker.update(test_metric, {"tag1": "value1", "tag2": "value2"}, 5.0)
-    time.sleep(0.1)
-    assert tracker.get_value(test_metric, {"tag1": "value1", "tag2": "value2"}) == 5.0
+    tracker.update(test_metric_with_tags, {"tag2": "value2"}, 4.0)
+    assert tracker.get_value(test_metric_with_tags, {"tag2": "value2"}) == 4.0
+    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) == 3.0
 
     # Test shutdown
     tracker.shutdown()
@@ -119,6 +119,70 @@ def test_metrics_tracker_unknown_metric():
 
     with pytest.raises(ValueError, match="Unknown metric: unknown_metric"):
         tracker.update(unknown_metric, {}, 1.0)
+
+
+def test_metrics_tracker_reset(monkeypatch):
+    """Test that all metric-tag combinations are properly reset."""
+    monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
+    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
+
+    # Create test metrics
+    test_metric1 = Metric(
+        name="test_metric1",
+        type=float,
+        default=0.0,
+        description="Test metric 1",
+        tag_keys=["base_tag"],
+    )
+    test_metric2 = Metric(
+        name="test_metric2",
+        type=int,
+        default=0,
+        description="Test metric 2",
+        tag_keys=["base_tag", "tag1"],
+    )
+
+    # Initialize tracker with base tags
+    base_tags = {"base_tag": "base_value"}
+    tracker = MetricsTracker([test_metric1, test_metric2], base_tags)
+    tracker.start()
+
+    # Update metrics with different tag combinations
+    tag1_value1 = {"tag1": "value1"}
+    tag1_value2 = {"tag1": "value2"}
+
+    tracker.update(test_metric1, {}, 1.0)
+    tracker.update(test_metric2, tag1_value1, 2)
+    tracker.update(test_metric2, tag1_value2, 3)
+    time.sleep(0.1)
+
+    # Verify all values are set
+    assert tracker._metrics_gauges[test_metric1.name].get(base_tags) == 1.0
+    assert (
+        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value1})
+        == 2
+    )
+    assert (
+        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value2})
+        == 3
+    )
+
+    # Reset gauges
+    tracker._stop_metrics_thread()
+    tracker._reset_gauges()
+
+    # Verify all values are reset to default
+    assert tracker._metrics_gauges[test_metric1.name].get(base_tags) == 0.0
+    assert (
+        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value1})
+        == 0
+    )
+    assert (
+        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value2})
+        == 0
+    )
+
+    tracker.shutdown()
 
 
 def test_metrics_tracker_thread_safety():

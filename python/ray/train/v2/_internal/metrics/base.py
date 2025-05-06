@@ -25,10 +25,8 @@ class MetricsTracker:
     # Interval for pushing metrics to Prometheus.
     DEFAULT_METRICS_PUSH_INTERVAL_S: float = 5.0
 
-    def __init__(self, metrics_definitions, base_tags: Dict[str, str]):
-        self._metrics_definitions = {
-            metric.name: metric for metric in metrics_definitions
-        }
+    def __init__(self, metrics: List[Metric], base_tags: Dict[str, str]):
+        self._metrics_definitions = {metric.name: metric for metric in metrics}
         self._base_tags = base_tags
         # Use a tuple of (metric_name, frozenset(tags.items())) as the key
         self._values = {}
@@ -46,6 +44,7 @@ class MetricsTracker:
         """Stop the metrics thread and reset gauges."""
         self._stop_metrics_thread()
         self._reset_gauges()
+        self._values = {}
 
     def update(self, metric: Metric, additional_tags: Dict[str, str], value: Any):
         """Update a metric value with associated tags.
@@ -88,12 +87,11 @@ class MetricsTracker:
         """Create Prometheus gauges for all metrics."""
         with self._metrics_lock:
             self._metrics_gauges = {}
-            for metric_name in self._metrics_definitions.keys():
-                metric_def = self._metrics_definitions[metric_name]
+            for metric_name, metric_definition in self._metrics_definitions.items():
                 self._metrics_gauges[metric_name] = Gauge(
                     metric_name,
-                    description=metric_def.description,
-                    tag_keys=metric_def.tag_keys,
+                    description=metric_definition.description,
+                    tag_keys=metric_definition.tag_keys,
                 )
 
     def _get_all(self):
@@ -133,20 +131,18 @@ class MetricsTracker:
                         self._metrics_gauges[metric_name].set(value, tags)
 
     def _reset_gauges(self):
-        """Reset all gauges to their default values."""
+        """Reset all gauges to their default values for all tag combinations."""
         with self._metrics_lock:
-            for metric_name, gauge in self._metrics_gauges.items():
-                metric_def = self._metrics_definitions[metric_name]
-                gauge.set(metric_def.default, self._base_tags)
+            metrics_dict = self._get_all()
+            for metric_name, metric_values in metrics_dict.items():
+                if metric_name in self._metrics_gauges:
+                    for tags, value in metric_values:
+                        self._metrics_gauges[metric_name].set(
+                            self._metrics_definitions[metric_name].default, tags
+                        )
 
-    def _start_metrics_thread(
-        self, push_interval_s: float = DEFAULT_METRICS_PUSH_INTERVAL_S
-    ):
-        """Start a thread to periodically push metrics to Prometheus.
-
-        Args:
-            push_interval_s: Interval in seconds between metrics pushes.
-        """
+    def _start_metrics_thread(self):
+        """Start a thread to periodically push metrics to Prometheus."""
         if self._thread is not None:
             return  # Thread already running
 
@@ -155,7 +151,7 @@ class MetricsTracker:
         def push_metrics_loop():
             while not self._thread_stop_event.is_set():
                 self._push_metrics()
-                time.sleep(push_interval_s)
+                time.sleep(self.DEFAULT_METRICS_PUSH_INTERVAL_S)
 
         self._thread = threading.Thread(target=push_metrics_loop, daemon=True)
         self._thread.start()
