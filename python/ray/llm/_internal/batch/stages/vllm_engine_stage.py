@@ -99,6 +99,7 @@ class vLLMOutputData(BaseModel):
         )
 
         import vllm
+
         if isinstance(output, vllm.outputs.RequestOutput):
             metrics = {}
             if output.metrics is not None:
@@ -209,6 +210,7 @@ class vLLMEngineWrapper:
             pass doc build in the environment without vLLM.
         """
         import vllm
+
         lora_request = None
         if "model" in row and row["model"] != self.model:
             if self.vllm_use_v1:
@@ -269,6 +271,7 @@ class vLLMEngineWrapper:
 
         # Prepare sampling parameters.
         import vllm
+
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
@@ -333,6 +336,7 @@ class vLLMEngineWrapper:
         """
 
         import vllm
+
         if request.images:
             # FIXME: The latest vLLM does not support multi-modal inputs
             # with tokenized prompt.
@@ -384,6 +388,7 @@ class vLLMEngineWrapper:
         # may be limited.
         assert request.prompt
         import vllm
+
         multi_modal_data = {"image": request.images} if request.images else None
         llm_prompt = vllm.inputs.data.TextPrompt(
             prompt=request.prompt, multi_modal_data=multi_modal_data
