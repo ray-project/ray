@@ -1,7 +1,6 @@
 from fastapi import HTTPException, status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
 import traceback
-import uuid
 
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve

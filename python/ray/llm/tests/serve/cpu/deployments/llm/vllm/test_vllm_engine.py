@@ -18,7 +18,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
-    ModelLoadingConfig,
 )
 from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
 

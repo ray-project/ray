@@ -70,7 +70,7 @@ class _LLMServerBase(ABC):
     This is the common interface between all the llm deployment. All llm deployments
     need to implement an async constructor, an async predict, and check_health method.
     """
-    
+
     # TODO (Kourosh): I don't know why this is an async init. Need to fix.
     async def __init__(self, llm_config: LLMConfig):
         """
