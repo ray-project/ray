@@ -59,7 +59,7 @@ class DefaultAutoscaler(Autoscaler):
         op_state: "OpState",
     ):
         # Do not scale up, if the op is completed or no more inputs are coming.
-        if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
+        if op.completed() or (op_state.total_enqueued_input_bundles() == 0):
             return False
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
@@ -81,9 +81,10 @@ class DefaultAutoscaler(Autoscaler):
         self,
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
+        op_state: "OpState",
     ):
         # Scale down, if the op is completed or no more inputs are coming.
-        if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
+        if op.completed() or (op_state.total_enqueued_input_bundles() == 0):
             return True
         if actor_pool.current_size() > actor_pool.max_size():
             # Scale down, if the actor pool is above max size.
@@ -107,7 +108,7 @@ class DefaultAutoscaler(Autoscaler):
                         state,
                     )
                     should_scale_down = self._actor_pool_should_scale_down(
-                        actor_pool, op
+                        actor_pool, op, state,
                     )
                     if should_scale_up and not should_scale_down:
                         if actor_pool.scale_up(1) == 0:

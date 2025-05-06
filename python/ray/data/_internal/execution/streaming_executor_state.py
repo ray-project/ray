@@ -25,7 +25,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     Waitable,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
+    AllToAllOperator, InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
@@ -236,8 +236,14 @@ class OpState:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
+        internal_queue_size = (
+            self.op.internal_queue_size()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
         return (
-            self._pending_dispatch_input_bundles_count() + self.op.internal_queue_size()
+            self._pending_dispatch_input_bundles_count() + internal_queue_size
         )
 
     def _pending_dispatch_input_bundles_count(self) -> int:
