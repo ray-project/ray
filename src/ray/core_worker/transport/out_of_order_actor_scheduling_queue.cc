@@ -109,8 +109,12 @@ void OutOfOrderActorSchedulingQueue::Add(
                      request.AttemptNumber());
         if (queued_actor_tasks_[task_id].AttemptNumber() > request.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
+          RAY_LOG(INFO) << "jjyao case 1 " << task_id << " " << request.AttemptNumber()
+                        << " " << queued_actor_tasks_[task_id].AttemptNumber();
           request_to_cancel = request;
         } else {
+          RAY_LOG(INFO) << "jjyao case 2 " << task_id << " " << request.AttemptNumber()
+                        << " " << queued_actor_tasks_[task_id].AttemptNumber();
           request_to_cancel = queued_actor_tasks_[task_id];
           queued_actor_tasks_[task_id] = request;
         }
@@ -128,7 +132,8 @@ void OutOfOrderActorSchedulingQueue::Add(
   }
 
   if (request_to_cancel.has_value()) {
-    RAY_LOG(INFO) << "jjyao cancelling task " << task_id;
+    RAY_LOG(INFO) << "jjyao cancelling task " << task_id << " "
+                  << request_to_cancel->TaskSpec().DebugString();
     request_to_cancel->Cancel(Status::SchedulingCancelled(
         "In favor of the same task with larger attempt number"));
   }
