@@ -294,6 +294,14 @@ class PhysicalOperator(Operator):
             self._output_block_size_option = None
 
     def mark_execution_finished(self):
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        if isinstance(self, InternalQueueOperatorMixin):
+            assert self.internal_queue_size() == 0, (
+                "Operator is marked as finished execution, but internal queue is "
+                f"non-empty (got {self.internal_queue_size()} bundles)!"
+            )
+
         """Manually mark that this operator has finished execution."""
         self._execution_finished = True
 
