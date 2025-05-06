@@ -188,6 +188,16 @@ DEFINE_stats(grpc_server_req_finished,
              ("Method"),
              (),
              ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_succeeded,
+             "Succeeded request count in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_failed,
+             "Failed request count in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
 
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,

@@ -361,7 +361,7 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
-        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
@@ -1235,7 +1235,7 @@ class ReporterAgent(
 
         return records_reported
 
-    async def _run_loop(self, publisher):
+    async def _run_loop(self):
         """Get any changes to the log files and push updates to kv."""
         loop = get_or_create_event_loop()
 
@@ -1245,7 +1245,7 @@ class ReporterAgent(
                 autoscaler_status_json_bytes: Optional[bytes] = None
                 if self._is_head_node:
                     autoscaler_status_json_bytes = (
-                        await self._gcs_aio_client.internal_kv_get(
+                        await self._gcs_client.async_internal_kv_get(
                             DEBUG_AUTOSCALING_STATUS.encode(),
                             None,
                             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -1260,7 +1260,9 @@ class ReporterAgent(
                     autoscaler_status_json_bytes,
                 )
 
-                await publisher.publish_resource_usage(self._key, json_payload)
+                await self._gcs_client.async_publish_node_resource_usage(
+                    self._key, json_payload
+                )
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -1298,7 +1300,7 @@ class ReporterAgent(
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-        await self._run_loop(self._dashboard_agent.publisher)
+        await self._run_loop()
 
     @staticmethod
     def is_minimal_module():

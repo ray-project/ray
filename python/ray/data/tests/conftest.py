@@ -11,8 +11,8 @@ import pytest
 
 import ray
 import ray.util.state
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
@@ -22,8 +22,11 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.tests.conftest import (
+    _ray_start,
+    pytest_runtest_makereport,  # noqa
+    wait_for_condition,
+)
 from ray.util.debug import reset_log_once
 
 
@@ -278,12 +281,20 @@ def configure_shuffle_method(request):
     ctx = ray.data.context.DataContext.get_current()
 
     original_shuffle_strategy = ctx.shuffle_strategy
+    original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
 
     ctx.shuffle_strategy = shuffle_strategy
+
+    # NOTE: We override default parallelism for hash-based shuffling to
+    #       avoid excessive partitioning of the data (to achieve desired
+    #       parallelism
+    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        ctx.default_hash_shuffle_parallelism = 8
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
+    ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
 
 
 @pytest.fixture(params=[True, False])
