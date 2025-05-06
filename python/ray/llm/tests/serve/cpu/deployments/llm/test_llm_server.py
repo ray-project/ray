@@ -1,0 +1,416 @@
+import sys
+import pytest
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    ModelLoadingConfig,
+    LLMRawResponse,
+    FinishReason,
+)
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest,
+    CompletionRequest,
+    ChatMessage,
+)
+from ray.llm._internal.serve.deployments.llm.llm_server import (
+    LLMServer,
+    ResponsePostprocessor,
+)
+from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+
+# Add this to your test file
+async def create_server(*args, **kwargs):
+    server = LLMServer.__new__(LLMServer)
+    await server.__init__(*args, **kwargs)
+    return server
+
+
+class TestResponsePostprocessor:
+    @pytest.mark.asyncio
+    async def test_process_chat_streaming(self):
+        """Test processing streaming chat responses."""
+        postprocessor = ResponsePostprocessor()
+        model = "test_model"
+        
+        # Create a generator that yields LLMRawResponse objects
+        async def gen():
+            yield LLMRawResponse(
+                generated_text="Hello",
+                num_generated_tokens=1,
+                num_generated_tokens_batch=1,
+                num_input_tokens=5,
+                finish_reason=None,
+            )
+            yield LLMRawResponse(
+                generated_text=" world",
+                num_generated_tokens=1,
+                num_generated_tokens_batch=1,
+                num_input_tokens=5,
+                finish_reason=FinishReason.STOP,
+            )
+        
+        # Process the generator as a streaming chat response
+        response_gen = postprocessor.process_chat(model, gen(), stream=True)
+        
+        # Collect all responses
+        responses = [resp async for resp in response_gen]
+        
+        # Verify we got the expected responses
+        assert len(responses) >= 3  # Role message + content chunks + final message
+        assert responses[0].choices[0].delta.role == "assistant"  # First message has role
+        assert responses[1].choices[0].delta.content == "Hello"  # Second has first chunk
+        assert responses[-1].choices[0].finish_reason == "stop"  # Last has finish reason
+    
+    @pytest.mark.asyncio
+    async def test_process_chat_non_streaming(self):
+        """Test processing non-streaming chat responses."""
+        postprocessor = ResponsePostprocessor()
+        model = "test_model"
+        
+        # Create a generator that yields LLMRawResponse objects
+        async def gen():
+            yield LLMRawResponse(
+                generated_text="Hello world",
+                num_generated_tokens=2,
+                num_generated_tokens_batch=2,
+                num_input_tokens=5,
+                finish_reason=FinishReason.STOP,
+            )
+        
+        # Process the generator as a non-streaming chat response
+        response_gen = postprocessor.process_chat(model, gen(), stream=False)
+        
+        # Collect the single response
+        responses = [resp async for resp in response_gen]
+        assert len(responses) == 1
+        
+        # Verify the content of the response
+        response = responses[0]
+        assert response.choices[0].message.role == "assistant"
+        assert response.choices[0].message.content == "Hello world"
+        assert response.choices[0].finish_reason == "stop"
+        assert response.usage.prompt_tokens == 5
+        assert response.usage.completion_tokens == 2
+        assert response.usage.total_tokens == 7
+    
+    @pytest.mark.asyncio
+    async def test_process_completions_streaming(self):
+        """Test processing streaming completion responses."""
+        postprocessor = ResponsePostprocessor()
+        model = "test_model"
+        
+        # Create a generator that yields LLMRawResponse objects
+        async def gen():
+            yield LLMRawResponse(
+                generated_text="Hello",
+                num_generated_tokens=1,
+                num_generated_tokens_batch=1,
+                num_input_tokens=5,
+                finish_reason=None,
+            )
+            yield LLMRawResponse(
+                generated_text=" world",
+                num_generated_tokens=1,
+                num_generated_tokens_batch=1,
+                num_input_tokens=5,
+                finish_reason=FinishReason.STOP,
+            )
+        
+        # Process the generator as a streaming completion response
+        response_gen = postprocessor.process_completions(model, gen(), stream=True)
+        
+        # Collect all responses
+        responses = [resp async for resp in response_gen]
+        
+        # Verify we got the expected responses
+        assert len(responses) == 2
+        assert responses[0].choices[0].text == "Hello"
+        assert responses[0].choices[0].finish_reason is None
+        assert responses[1].choices[0].text == " world"
+        assert responses[1].choices[0].finish_reason == "stop"
+    
+    @pytest.mark.asyncio
+    async def test_process_completions_non_streaming(self):
+        """Test processing non-streaming completion responses."""
+        postprocessor = ResponsePostprocessor()
+        model = "test_model"
+        
+        # Create a generator that yields LLMRawResponse objects
+        async def gen():
+            yield LLMRawResponse(
+                generated_text="Hello world",
+                num_generated_tokens=2,
+                num_generated_tokens_batch=2,
+                num_input_tokens=5,
+                finish_reason=FinishReason.STOP,
+            )
+        
+        # Process the generator as a non-streaming completion response
+        response_gen = postprocessor.process_completions(model, gen(), stream=False)
+        
+        # Collect the single response
+        responses = [resp async for resp in response_gen]
+        assert len(responses) == 1
+        
+        # Verify the content of the response
+        response = responses[0]
+        assert response.choices[0].text == "Hello world"
+        assert response.choices[0].finish_reason == "stop"
+        assert response.usage.prompt_tokens == 5
+        assert response.usage.completion_tokens == 2
+        assert response.usage.total_tokens == 7
+    
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        """Test error handling in response streams."""
+        postprocessor = ResponsePostprocessor()
+        model = "test_model"
+        
+        # Create a generator that raises an exception
+        async def gen():
+            yield LLMRawResponse(
+                error=Exception("Test error"),
+                finish_reason=None,
+            )
+        
+        # Process the generator as a non-streaming chat response
+        response_gen = postprocessor.process_chat(model, gen(), stream=False)
+        
+        # Collect the responses, should contain the error
+        responses = [resp async for resp in response_gen]
+        assert len(responses) == 1
+        assert isinstance(responses[0], Exception)
+    
+
+class TestLLMServer:
+    @pytest.mark.asyncio
+    async def test_get_batch_interval_ms(self):
+        """Test that the batch interval is set correctly in the config."""
+
+        # Test with a no stream_batching_interval_ms.
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+        )
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+
+        assert server._get_batch_interval_ms() == MODEL_RESPONSE_BATCH_TIMEOUT_MS
+
+        # Test with a non-zero stream_batching_interval_ms.
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+            experimental_configs={
+                "stream_batching_interval_ms": 13,
+            },
+        )
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        assert server._get_batch_interval_ms() == 13
+
+        # Test with zero stream_batching_interval_ms.
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+            experimental_configs={
+                "stream_batching_interval_ms": 0,
+            },
+        )
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        assert server._get_batch_interval_ms() == 0
+    
+    @pytest.mark.asyncio
+    async def test_chat_streaming(self):
+        """Test chat completion in streaming mode."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+        )
+        
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        
+        # Create a chat completion request
+        request = ChatCompletionRequest(
+            model="test_model",
+            messages=[ChatMessage(role="user", content="Hello")],
+            stream=True,
+        )
+        
+        # Get the response stream
+        response_stream = await server.chat(request)
+        
+        # Collect responses from the stream
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+        
+        # Check that we got responses
+        assert len(responses) > 0
+        # First response should have assistant role
+        assert responses[0].choices[0].delta.role == "assistant"
+        # Last response should have finish reason
+        assert responses[-1].choices[0].finish_reason is not None
+    
+    @pytest.mark.asyncio
+    async def test_chat_non_streaming(self):
+        """Test non-streaming chat completion."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+        )
+        
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        
+        # Create a chat completion request
+        request = ChatCompletionRequest(
+            model="test_model",
+            messages=[ChatMessage(role="user", content="Hello")],
+            stream=False,
+        )
+        
+        # Get the response
+        response_stream = await server.chat(request)
+        
+        # Collect responses (should be just one)
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+        
+        # Check that we got one response
+        assert len(responses) == 1
+        # Response should have content
+        assert responses[0].choices[0].message.content is not None
+        # Response should have finish reason
+        assert responses[0].choices[0].finish_reason is not None
+    
+    @pytest.mark.asyncio
+    async def test_completions_streaming(self):
+        """Test streaming text completion."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+        )
+        
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        
+        # Create a completion request
+        request = CompletionRequest(
+            model="test_model",
+            prompt="Hello",
+            stream=True,
+        )
+        
+        # Get the response stream
+        response_stream = await server.completions(request)
+        
+        # Collect responses from the stream
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+        
+        # Check that we got responses
+        assert len(responses) > 0
+        # Responses should have text
+        assert all(r.choices[0].text is not None for r in responses)
+        # Last response should have finish reason
+        assert responses[-1].choices[0].finish_reason is not None
+    
+    @pytest.mark.asyncio
+    async def test_completions_non_streaming(self):
+        """Test non-streaming text completion."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+        )
+        
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        
+        # Create a completion request
+        request = CompletionRequest(
+            model="test_model",
+            prompt="Hello",
+            stream=False,
+        )
+        
+        # Get the response
+        response_stream = await server.completions(request)
+        
+        # Collect responses (should be just one)
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+        
+        # Check that we got one response
+        assert len(responses) == 1
+        # Response should have text
+        assert responses[0].choices[0].text is not None
+        # Response should have finish reason
+        assert responses[0].choices[0].finish_reason is not None
+    
+    @pytest.mark.asyncio
+    async def test_check_health(self):
+        """Test health check functionality."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+        )
+        
+        # Create a server with a mocked engine
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        
+        # Mock the engine's check_health method
+        server.engine.check_health = AsyncMock(return_value=True)
+        
+        # Perform the health check
+        health_status = await server.check_health()
+        
+        # Verify the health status
+        assert health_status is True
+        server.engine.check_health.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        """Test error handling in the server."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+        )
+        
+        server = await create_server(llm_config, engine_cls=MockVLLMEngine)
+        
+        # Mock the _predict method to raise an exception
+        server._predict = AsyncMock(side_effect=Exception("Test error"))
+        
+        # Create a chat completion request
+        request = ChatCompletionRequest(
+            model="test_model",
+            messages=[ChatMessage(role="user", content="Hello")],
+            stream=False,
+        )
+        
+        # Get the response
+        response_stream = await server.chat(request)
+        
+        # Collect responses (should contain an error)
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+        
+        # Check that we got an error response
+        assert len(responses) > 0
+        assert isinstance(responses[0], Exception)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

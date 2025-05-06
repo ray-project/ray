@@ -70,7 +70,8 @@ class _LLMServerBase(ABC):
     This is the common interface between all the llm deployment. All llm deployments
     need to implement an async constructor, an async predict, and check_health method.
     """
-
+    
+    # TODO (Kourosh): I don't know why this is an async init. Need to fix.
     async def __init__(self, llm_config: LLMConfig):
         """
         Constructor takes in an LLMConfig object and start the underlying engine.
@@ -408,7 +409,7 @@ class LLMServer(_LLMServerBase):
         self,
         llm_config: LLMConfig,
         *,
-        engine_cls: Optional[Type[VLLMEngine]] = None,
+        engine_cls: Optional[Type[LLMEngine]] = None,
         image_retriever_cls: Optional[Type[ImageRetriever]] = None,
         model_downloader: Optional[LoraModelLoader] = None,
     ):
