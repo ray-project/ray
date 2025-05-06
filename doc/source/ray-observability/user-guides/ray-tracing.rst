@@ -95,7 +95,7 @@ Remote span processors
 ~~~~~~~~~~~~~~~~~~~~~~
 This configures where to export traces to. View the SpanProcessor API `here <https://opentelemetry-python.readthedocs.io/en/latest/sdk/trace.html#opentelemetry.sdk.trace.SpanProcessor>`__.
 
-Users who want to experiment with tracing can configure their remote span processors to export spans to a local JSON file. Serious users developing locally can push their traces to Jaeger containers via the `Jaeger exporter <https://opentelemetry-python.readthedocs.io/en/latest/exporter/jaeger/jaeger.html#module-opentelemetry.exporter.jaeger>`_.
+Users who want to experiment with tracing can configure their remote span processors to export spans to a local JSON file. Serious users developing locally can push their traces to Jaeger containers via the `Jaeger exporter <https://opentelemetry.io/docs/languages/js/exporters/#jaeger>`_.
 
 .. _additional-instruments:
 

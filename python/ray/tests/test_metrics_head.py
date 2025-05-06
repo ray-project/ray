@@ -13,20 +13,47 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start
+from ray._private.ray_constants import SESSION_LATEST
+from ray._private.utils import get_ray_temp_dir
 
 
 logger = logging.getLogger(__name__)
 
 
-def test_metrics_folder():
+@pytest.mark.parametrize(
+    "is_temp_dir_set, temp_dir_val",
+    [
+        (False, ""),
+        pytest.param(
+            True,
+            "/tmp/test-temp-dir",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="Path doesn't apply to Windows"
+            ),
+        ),
+    ],
+)
+def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
     """
-    Tests that the default dashboard files get created.
+    Tests that the default dashboard files get created. It also verifies paths in the
+    dashboard config files are set correctly.
+
+    It checks both the default case and the case where the _temp_dir is specified.
     """
-    with _ray_start(include_dashboard=True) as context:
+    with _ray_start(
+        include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
+    ) as context:
         session_dir = context["session_dir"]
+        temp_dir = temp_dir_val if is_temp_dir_set else get_ray_temp_dir()
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
+        with open(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml", "r"
+        ) as f:
+            target_path = os.path.join(session_dir, "metrics", "grafana", "dashboards")
+            assert f"path: {target_path}" in f.read()
+
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/dashboards"
             "/default_grafana_dashboard.json"
@@ -34,8 +61,18 @@ def test_metrics_folder():
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
+
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
+        with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
+            target_path = os.path.join(
+                temp_dir, SESSION_LATEST, "metrics", "grafana", "provisioning"
+            )
+            assert f"provisioning = {target_path}" in f.read()
+
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
+        with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
+            target_path = os.path.join(temp_dir, "prom_metrics_service_discovery.json")
+            assert f"- '{target_path}'" in f.read()
 
 
 @pytest.fixture

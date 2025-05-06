@@ -11,7 +11,7 @@ Refer to [Priority Scheduling with RayJob and Kueue](kuberay-kueue-priority-sche
 * To admit a job to start, which triggers Kubernetes to create pods.
 * To preempt a job, which triggers Kubernetes to delete active pods.
 
-Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue to manage resources consumed by RayJob and RayCluster. 
+Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue to manage resources consumed by RayJob and RayCluster.
 See the [Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
 
 ## Step 0: Create a Kind cluster
@@ -94,7 +94,7 @@ The YAML manifest configures:
 * **LocalQueue**
   * The LocalQueue `user-queue` is a namespaced object in the `default` namespace which belongs to a ClusterQueue. A typical practice is to assign a namespace to a tenant, team, or user of an organization. Users submit jobs to a LocalQueue, instead of to a ClusterQueue directly.
 * **WorkloadPriorityClass**
-  * The WorkloadPriorityClass `prod-priority` has a higher value than the WorkloadPriorityClass `dev-priority`. RayJob custom resources with the `prod-priority` priority class take precedence over RayJob custom resources with the `dev-priority` priority class.  
+  * The WorkloadPriorityClass `prod-priority` has a higher value than the WorkloadPriorityClass `dev-priority`. RayJob custom resources with the `prod-priority` priority class take precedence over RayJob custom resources with the `dev-priority` priority class.
 
 Create the Kueue resources:
 ```bash

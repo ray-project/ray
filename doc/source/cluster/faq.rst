@@ -76,7 +76,7 @@ connections. The solution for this problem is to start the worker nodes more slo
 Problems getting a SLURM cluster to work
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A class of issues exist with starting Ray on SLURM clusters. While the exact causes aren't understood, (as of June 2023), some Ray 
+A class of issues exist with starting Ray on SLURM clusters. While the exact causes aren't understood, (as of June 2023), some Ray
 improvements mitigate some of the resource contention. Some of the issues
 reported are as follows:
 

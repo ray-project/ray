@@ -20,7 +20,7 @@ worker_node_types:
       max_workers: 2
       use_spot: false
 
-aws:
+advanced_configurations_json:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:

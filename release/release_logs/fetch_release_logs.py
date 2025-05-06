@@ -6,9 +6,7 @@ Specifically, this will loop through all release test pipeline builds for the
 specified Ray version and fetch the latest available results from the respective
 tests. It will then write these to the directory in `ray/release/release_logs`.
 
-To use this script, either set the BUILDKITE_TOKEN environment variable to a
-valid Buildkite API token with read access, or authenticate in AWS with the
-OSS CI account.
+To use this script authenticate in AWS with the OSS CI account.
 
 Usage:
 
@@ -85,18 +83,12 @@ class Artifact:
 
 def get_buildkite_api() -> Buildkite:
     bk = Buildkite()
-    buildkite_token = maybe_fetch_buildkite_token()
+    buildkite_token = fetch_buildkite_token()
     bk.set_access_token(buildkite_token)
     return bk
 
 
-def maybe_fetch_buildkite_token() -> str:
-    buildkite_token = os.environ.get("BUILDKITE_TOKEN", None)
-
-    if buildkite_token:
-        return buildkite_token
-
-    print("Missing BUILDKITE_TOKEN, retrieving from AWS secrets store")
+def fetch_buildkite_token() -> str:
     buildkite_token = boto3.client(
         "secretsmanager", region_name="us-west-2"
     ).get_secret_value(

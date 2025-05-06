@@ -1,10 +1,10 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data._internal.aggregate import AbsMax, Max, Mean, Min, Std
+from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -60,12 +60,29 @@ class StandardScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
+        >>> preprocessor = StandardScaler(
+        ...     columns=["X1", "X2"],
+        ...     output_columns=["X1_scaled", "X2_scaled"]
+        ... )
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1  -1.224745  -0.707107
+        1   0  -3   1   0.000000  -0.707107
+        2   2   3   1   1.224745   1.414214
+
     Args:
         columns: The columns to separately scale.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
@@ -78,6 +95,10 @@ class StandardScaler(Preprocessor):
             s_mean = self.stats_[f"mean({s.name})"]
             s_std = self.stats_[f"std({s.name})"]
 
+            if s_std is None or s_mean is None:
+                s[:] = np.nan
+                return s
+
             # Handle division by zero.
             # TODO: extend this to handle near-zero values.
             if s_std == 0:
@@ -85,13 +106,11 @@ class StandardScaler(Preprocessor):
 
             return (s - s_mean) / s_std
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_standard_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -144,12 +163,26 @@ class MinMaxScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
+        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"], output_columns=["X1_scaled", "X2_scaled"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1        0.0        0.0
+        1   0  -3   1        0.5        0.0
+        2   2   3   1        1.0        1.0
+
     Args:
         columns: The columns to separately scale.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
@@ -169,13 +202,11 @@ class MinMaxScaler(Preprocessor):
 
             return (s - s_min) / diff
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_min_max_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_min_max_scaler)
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -224,12 +255,26 @@ class MaxAbsScaler(Preprocessor):
         0  -6   2  0.0
         1   3  -4  0.0
 
+        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"], output_columns=["X1_scaled", "X2_scaled"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1       -1.0       -1.0
+        1   0  -3   1        0.0       -1.0
+        2   2   3   1        1.0        1.0
+
     Args:
         columns: The columns to separately scale.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [AbsMax(col) for col in self.columns]
@@ -247,13 +292,11 @@ class MaxAbsScaler(Preprocessor):
 
             return s / s_abs_max
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_abs_max_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_abs_max_scaler)
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -303,18 +346,41 @@ class RobustScaler(Preprocessor):
         3  0.5 -0.750   2
         4  1.0  0.000   3
 
+        >>> preprocessor = RobustScaler(
+        ...    columns=["X1", "X2"],
+        ...    output_columns=["X1_scaled", "X2_scaled"]
+        ... )
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0   1  13   1       -1.0      0.625
+        1   2   5   2       -0.5     -0.375
+        2   3  14   2        0.0      0.750
+        3   4   2   2        0.5     -0.750
+        4   5   8   3        1.0      0.000
+
     Args:
         columns: The columns to separately scale.
         quantile_range: A tuple that defines the lower and upper quantiles. Values
             must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
             ``(0.25, 0.75)``.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
     def __init__(
-        self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
+        self,
+        columns: List[str],
+        quantile_range: Tuple[float, float] = (0.25, 0.75),
+        output_columns: Optional[List[str]] = None,
     ):
         self.columns = columns
         self.quantile_range = quantile_range
+
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         low = self.quantile_range[0]
@@ -364,13 +430,12 @@ class RobustScaler(Preprocessor):
 
             return (s - s_median) / diff
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_robust_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_robust_scaler)
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"quantile_range={self.quantile_range!r})"
+            f"quantile_range={self.quantile_range!r}), "
+            f"output_columns={self.output_columns!r})"
         )

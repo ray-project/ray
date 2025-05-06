@@ -15,7 +15,7 @@ from ray.includes.unique_ids cimport (
 
 from ray.includes.global_state_accessor cimport (
     CGlobalStateAccessor,
-    RedisDelKeySync,
+    RedisDelKeyPrefixSync,
 )
 
 from ray.includes.optional cimport (
@@ -48,10 +48,16 @@ cdef class GlobalStateAccessor:
         with nogil:
             self.inner.get().Disconnect()
 
-    def get_job_table(self):
+    def get_job_table(
+        self, *, skip_submission_job_info_field=False, skip_is_running_tasks_field=False
+    ):
         cdef c_vector[c_string] result
+        cdef c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+        cdef c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
+
         with nogil:
-            result = self.inner.get().GetAllJobInfo()
+            result = self.inner.get().GetAllJobInfo(
+                c_skip_submission_job_info_field, c_skip_is_running_tasks_field)
         return result
 
     def get_next_job_id(self):
@@ -118,6 +124,17 @@ cdef class GlobalStateAccessor:
 
         return results
 
+    def get_internal_kv(self, namespace, key):
+        cdef:
+            c_string c_namespace = namespace
+            c_string c_key = key
+            unique_ptr[c_string] result
+        with nogil:
+            result = self.inner.get().GetInternalKV(c_namespace, c_key)
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
     def get_all_available_resources(self):
         cdef c_vector[c_string] result
         with nogil:
@@ -178,7 +195,7 @@ cdef class GlobalStateAccessor:
 
     def get_worker_info(self, worker_id):
         cdef unique_ptr[c_string] worker_info
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         with nogil:
             worker_info = self.inner.get().GetWorkerInfo(cworker_id)
         if worker_info:
@@ -194,14 +211,14 @@ cdef class GlobalStateAccessor:
 
     def get_worker_debugger_port(self, worker_id):
         cdef c_uint32_t result
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         with nogil:
             result = self.inner.get().GetWorkerDebuggerPort(cworker_id)
         return result
 
     def update_worker_debugger_port(self, worker_id, debugger_port):
         cdef c_bool result
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         cdef c_uint32_t cdebugger_port = debugger_port
         with nogil:
             result = self.inner.get().UpdateWorkerDebuggerPort(
@@ -211,7 +228,7 @@ cdef class GlobalStateAccessor:
 
     def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
         cdef c_bool result
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         cdef c_int32_t cnum_paused_threads_delta = num_paused_threads_delta
 
         with nogil:

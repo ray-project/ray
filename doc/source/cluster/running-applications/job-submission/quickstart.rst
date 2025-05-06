@@ -53,7 +53,7 @@ Start with a sample script that you can run locally. The following script uses R
     ray.init()
     print(ray.get(hello_world.remote()))
 
-Create an empty working directory with the preceding Python script inside a file named ``script.py``. 
+Create an empty working directory with the preceding Python script inside a file named ``script.py``.
 
 .. code-block:: bash
 
@@ -76,10 +76,10 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray Dashboard ad
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
-Additionally, if you wish to pass headers per HTTP request to the Cluster, use the `RAY_JOB_HEADERS` environment variable.` This environment variable must be in JSON form.
+Additionally, if you wish to pass headers per HTTP request to the Cluster, use the `RAY_JOB_HEADERS` environment variable. This environment variable must be in JSON form.
 
 .. code-block:: bash
-    
+
     $ export RAY_JOB_HEADERS='{"KEY": "VALUE"}'
 
 To submit the job, use ``ray job submit``.
@@ -88,7 +88,7 @@ For local clusters this argument isn't strictly necessary, but for remote cluste
 
 .. code-block:: bash
 
-    $ ray job submit --working-dir your_working_directory -- python script.py 
+    $ ray job submit --working-dir your_working_directory -- python script.py
 
     # Job submission server address: http://127.0.0.1:8265
 
@@ -119,9 +119,9 @@ This command runs the entrypoint script on the Ray Cluster's head node and waits
 
 .. note::
 
-    By default the entrypoint script runs on the head node. To override this behavior, specify one of the 
-    `--entrypoint-num-cpus`, `--entrypoint-num-gpus`, `--entrypoint-resources`, or 
-    `--entrypoint-memory` arguments to the `ray job submit` command. 
+    By default the entrypoint script runs on the head node. To override this behavior, specify one of the
+    `--entrypoint-num-cpus`, `--entrypoint-num-gpus`, `--entrypoint-resources`, or
+    `--entrypoint-memory` arguments to the `ray job submit` command.
     See :ref:`Specifying CPU and GPU resources <ray-job-cpu-gpu-resources>` for more details.
 
 Interacting with Long-running Jobs
@@ -150,7 +150,7 @@ Now submit the job:
 
 .. code-block:: shell
 
-	$ ray job submit --no-wait --working-dir your_working_directory -- python script.py 
+	$ ray job submit --no-wait --working-dir your_working_directory -- python script.py
 	# Job submission server address: http://127.0.0.1:8265
 
 	# -------------------------------------------------------
@@ -216,7 +216,7 @@ Run the following command on your local machine, where ``cluster.yaml`` is the c
 
     ray dashboard cluster.yaml
 
-Once this command is running, verify that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
+Once this command is running, verify that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.
 Also, verify that you set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
 
 Using the CLI on Kubernetes
@@ -255,13 +255,13 @@ Submit this job using the default environment. This environment is the environme
 
 .. code-block:: bash
 
-    $ ray job submit -- python script.py 
+    $ ray job submit -- python script.py
     # Job submission server address: http://127.0.0.1:8265
-    # 
+    #
     # -------------------------------------------------------
     # Job 'raysubmit_seQk3L4nYWcUBwXD' submitted successfully
     # -------------------------------------------------------
-    # 
+    #
     # Next steps
     #   Query the logs of the job:
     #     ray job logs raysubmit_seQk3L4nYWcUBwXD
@@ -269,10 +269,10 @@ Submit this job using the default environment. This environment is the environme
     #     ray job status raysubmit_seQk3L4nYWcUBwXD
     #   Request the job to be stopped:
     #     ray job stop raysubmit_seQk3L4nYWcUBwXD
-    # 
+    #
     # Tailing logs until the job exits (disable with --no-wait):
     # requests version: 2.28.1
-    # 
+    #
     # ------------------------------------------
     # Job 'raysubmit_seQk3L4nYWcUBwXD' succeeded
     # ------------------------------------------
@@ -281,7 +281,7 @@ Now submit the job with a runtime environment that pins the version of the ``req
 
 .. code-block:: bash
 
-    $ ray job submit --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python script.py 
+    $ ray job submit --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python script.py
     # Job submission server address: http://127.0.0.1:8265
 
     # -------------------------------------------------------
@@ -308,6 +308,6 @@ Now submit the job with a runtime environment that pins the version of the ``req
     If both the Driver and Job specify a runtime environment, Ray tries to merge them and raises an exception if they conflict.
     See :ref:`runtime environments <runtime-environments-job-conflict>` for more details.
 
-- See :ref:`Ray Jobs CLI <ray-job-submission-cli-ref>` for a full API reference of the CLI. 
+- See :ref:`Ray Jobs CLI <ray-job-submission-cli-ref>` for a full API reference of the CLI.
 - See :ref:`Ray Jobs SDK <ray-job-submission-sdk-ref>` for a full API reference of the SDK.
 - For more information, see :ref:`Programmatic job submission <ray-job-sdk>` and :ref:`Job submission using REST <ray-job-rest-api>`.

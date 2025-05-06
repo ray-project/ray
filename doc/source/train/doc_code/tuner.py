@@ -3,7 +3,8 @@
 
 # __basic_start__
 import ray
-from ray import train, tune
+import ray.tune
+import ray.train
 from ray.tune import Tuner
 from ray.train.xgboost import XGBoostTrainer
 
@@ -17,27 +18,27 @@ trainer = XGBoostTrainer(
         "max_depth": 4,
     },
     datasets={"train": dataset},
-    scaling_config=train.ScalingConfig(num_workers=2),
+    scaling_config=ray.train.ScalingConfig(num_workers=2),
 )
 
 # Create Tuner
 tuner = Tuner(
     trainer,
     # Add some parameters to tune
-    param_space={"params": {"max_depth": tune.choice([4, 5, 6])}},
+    param_space={"params": {"max_depth": ray.tune.choice([4, 5, 6])}},
     # Specify tuning behavior
-    tune_config=tune.TuneConfig(metric="train-logloss", mode="min", num_samples=2),
+    tune_config=ray.tune.TuneConfig(metric="train-logloss", mode="min", num_samples=2),
 )
 # Run tuning job
 tuner.fit()
 # __basic_end__
 
 # __xgboost_start__
-import ray
-from ray import tune
+import ray.data
+import ray.train
+import ray.tune
 from ray.tune import Tuner
 from ray.train.xgboost import XGBoostTrainer
-from ray.train import ScalingConfig, RunConfig
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
@@ -55,22 +56,22 @@ trainer = XGBoostTrainer(
 
 param_space = {
     # Tune parameters directly passed into the XGBoostTrainer
-    "num_boost_round": tune.randint(5, 20),
+    "num_boost_round": ray.tune.randint(5, 20),
     # `params` will be merged with the `params` defined in the above XGBoostTrainer
     "params": {
-        "min_child_weight": tune.uniform(0.8, 1.0),
+        "min_child_weight": ray.tune.uniform(0.8, 1.0),
         # Below will overwrite the XGBoostTrainer setting
-        "max_depth": tune.randint(1, 5),
+        "max_depth": ray.tune.randint(1, 5),
     },
     # Tune the number of distributed workers
-    "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
+    "scaling_config": ray.train.ScalingConfig(num_workers=ray.tune.grid_search([1, 2])),
 }
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(name="test_tuner_xgboost"),
+    run_config=ray.tune.RunConfig(name="test_tuner_xgboost"),
     param_space=param_space,
-    tune_config=tune.TuneConfig(
+    tune_config=ray.tune.TuneConfig(
         mode="min", metric="train-logloss", num_samples=2, max_concurrent_trials=2
     ),
 )
@@ -80,7 +81,8 @@ result_grid = tuner.fit()
 # __torch_start__
 import os
 
-from ray import tune
+import ray.train
+import ray.tune
 from ray.tune import Tuner
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -90,28 +92,28 @@ from ray.train.torch import TorchTrainer
 trainer = TorchTrainer(
     train_loop_per_worker=linear_train_func,
     train_loop_config={"lr": 1e-2, "batch_size": 4, "epochs": 10},
-    scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
+    scaling_config=ray.train.ScalingConfig(num_workers=1, use_gpu=False),
 )
 
 param_space = {
     # The params will be merged with the ones defined in the TorchTrainer
     "train_loop_config": {
         # This is a parameter that hasn't been set in the TorchTrainer
-        "hidden_size": tune.randint(1, 4),
+        "hidden_size": ray.tune.randint(1, 4),
         # This will overwrite whatever was set when TorchTrainer was instantiated
-        "batch_size": tune.choice([4, 8]),
+        "batch_size": ray.tune.choice([4, 8]),
     },
     # Tune the number of distributed workers
-    "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
+    "scaling_config": ray.train.ScalingConfig(num_workers=ray.tune.grid_search([1, 2])),
 }
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(
+    run_config=ray.tune.RunConfig(
         name="test_tuner", storage_path=os.path.expanduser("~/ray_results")
     ),
     param_space=param_space,
-    tune_config=tune.TuneConfig(
+    tune_config=ray.tune.TuneConfig(
         mode="min", metric="loss", num_samples=2, max_concurrent_trials=2
     ),
 )
@@ -120,6 +122,8 @@ result_grid = tuner.fit()
 
 
 # __tune_dataset_start__
+import ray.data
+import ray.tune
 from ray.data.preprocessors import StandardScaler
 
 
@@ -142,11 +146,11 @@ def get_another_dataset():
 dataset_1 = get_dataset()
 dataset_2 = get_another_dataset()
 
-tuner = tune.Tuner(
+tuner = ray.tune.Tuner(
     trainer,
     param_space={
         "datasets": {
-            "train": tune.grid_search([dataset_1, dataset_2]),
+            "train": ray.tune.grid_search([dataset_1, dataset_2]),
         }
         # Your other parameters go here
     },
@@ -204,12 +208,12 @@ for result in result_grid:
 # __result_grid_inspection_end__
 
 # __run_config_start__
-from ray.train import CheckpointConfig, RunConfig
+import ray.tune
 
-run_config = RunConfig(
+run_config = ray.tune.RunConfig(
     name="MyExperiment",
     storage_path="s3://...",
-    checkpoint_config=CheckpointConfig(checkpoint_frequency=2),
+    checkpoint_config=ray.tune.CheckpointConfig(checkpoint_frequency=2),
 )
 # __run_config_end__
 

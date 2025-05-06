@@ -1158,7 +1158,7 @@ If enabled, Ray will use private IP addresses for communication between nodes.
 This should be omitted if your network interfaces use public IP addresses.
 
 If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
-that is part of the same VPC as the cluster. 
+that is part of the same VPC as the cluster.
 
 This option does not affect the existence of public IP addresses for the nodes, it only
 affects which IP addresses are used by Ray. The existence of public IP addresses is
@@ -1184,10 +1184,10 @@ controlled by your cloud provider's configuration.
     .. tab-item:: Azure
 
         If enabled, Ray will provision and use a public IP address for communication with the head node,
-        regardless of the value of ``use_internal_ips``. This option can be used in combination with  
+        regardless of the value of ``use_internal_ips``. This option can be used in combination with
         ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
         among nodes using private IPs, but provision a public IP for head node communication only). If
-        ``use_internal_ips`` is ``False``, then this option has no effect. 
+        ``use_internal_ips`` is ``False``, then this option has no effect.
 
         * **Required:** No
         * **Importance:** Low

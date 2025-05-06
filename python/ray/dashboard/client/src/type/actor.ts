@@ -32,6 +32,7 @@ export type Actor = {
   };
   exitDetail: string;
   reprName: string;
+  callSite?: string | undefined;
 };
 
 export type ActorDetail = {

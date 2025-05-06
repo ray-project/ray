@@ -42,7 +42,7 @@ The `RuntimeEnvAgent` exposes gRPC endpoints for `runtime_env` creation and dele
 
 The agent manager (src/ray/raylet/agent_manager.cc) runs in the Raylet and manages the connection to the agent, and calls the creation and deletion endpoints.
 
-The worker pool holds a reference to the agent manager, and uses it to send `CreateRuntimeEnvIfNeeded` and `DeleteRuntimeEnvIfPossible` requests to the `RuntimeEnvAgent` as needed for new worker processes or when worker processes are removed. 
+The worker pool holds a reference to the agent manager, and uses it to send `CreateRuntimeEnvIfNeeded` and `DeleteRuntimeEnvIfPossible` requests to the `RuntimeEnvAgent` as needed for new worker processes or when worker processes are removed.
 
 ## Starting a new worker process
 
@@ -64,7 +64,7 @@ When a reference count reaches 0, the file is deleted.
 
 #### The "temporary reference" for Ray Jobs API and Ray Client
 
-When the user specifies a local directory in `working_dir` or `py_modules`, it is zipped and uploaded to the GCS as a URI by Ray.  However, as described above, the reference count is ordinarily only incremented when a driver (or detached actor) is started that uses that URI.  In the case of Ray Jobs API and Ray Client, this uploading happens before the driver starts.  
+When the user specifies a local directory in `working_dir` or `py_modules`, it is zipped and uploaded to the GCS as a URI by Ray.  However, as described above, the reference count is ordinarily only incremented when a driver (or detached actor) is started that uses that URI.  In the case of Ray Jobs API and Ray Client, this uploading happens before the driver starts.
 
 To prevent the file from being garbage collected before the driver starts, a special "temporary reference" is added for the URI when it is uploaded.  This reference is removed after a configurable timeout (controlled by the env var `RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S` on the head node, default 600 seconds).
 

@@ -13,16 +13,11 @@ class OpenSpielEnv(MultiAgentEnv):
     def __init__(self, env):
         super().__init__()
         self.env = env
-        # Agent IDs are ints, starting from 0.
-        self.num_agents = self.env.num_players()
+        self.agents = self.possible_agents = list(range(self.env.num_players()))
         # Store the open-spiel game type.
         self.type = self.env.get_type()
         # Stores the current open-spiel game state.
         self.state = None
-
-        # Extract observation- and action spaces from game.
-        self._obs_space_in_preferred_format = True
-        self._action_space_in_preferred_format = True
 
         self.observation_space = gym.spaces.Dict(
             {
@@ -32,13 +27,13 @@ class OpenSpielEnv(MultiAgentEnv):
                     (self.env.observation_tensor_size(),),
                     dtype=np.float32,
                 )
-                for aid in range(self.num_agents)
+                for aid in self.possible_agents
             }
         )
         self.action_space = gym.spaces.Dict(
             {
                 aid: gym.spaces.Discrete(self.env.num_distinct_actions())
-                for aid in range(self.num_agents)
+                for aid in self.possible_agents
             }
         )
 
@@ -66,7 +61,7 @@ class OpenSpielEnv(MultiAgentEnv):
                 penalties[curr_player] = -0.1
 
             # Compile rewards dict.
-            rewards = {ag: r for ag, r in enumerate(self.state.returns())}
+            rewards = dict(enumerate(self.state.returns()))
         # Simultaneous game.
         else:
             assert self.state.current_player() == -2
@@ -78,7 +73,7 @@ class OpenSpielEnv(MultiAgentEnv):
 
         # Compile rewards dict and add the accumulated penalties
         # (for taking invalid actions).
-        rewards = {ag: r for ag, r in enumerate(self.state.returns())}
+        rewards = dict(enumerate(self.state.returns()))
         for ag, penalty in penalties.items():
             rewards[ag] += penalty
 

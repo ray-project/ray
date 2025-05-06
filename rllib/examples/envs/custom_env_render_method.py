@@ -76,6 +76,7 @@ parser = add_rllib_example_script_args(
     default_reward=9.0,
     default_timesteps=10000,
 )
+parser.set_defaults(enable_new_api_stack=True)
 
 
 class CustomRenderedCorridorEnv(gym.Env):
@@ -160,10 +161,6 @@ MultiAgentCustomRenderedCorridorEnv = make_multi_agent(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     # The `config` arg passed into our Env's constructor (see the class' __init__ method
     # above). Feel free to change these.

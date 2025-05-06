@@ -1,10 +1,20 @@
+"""Asynchronous Proximal Policy Optimization (APPO)
+
+The algorithm is described in [1] (under the name of "IMPACT"):
+
+Detailed documentation:
+https://docs.ray.io/en/master/rllib-algorithms.html#appo
+
+[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
+Luo et al. 2020
+https://arxiv.org/pdf/1912.00167
+"""
 from typing import Dict
 
 from ray.rllib.algorithms.appo.appo import (
     APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
-    OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.appo.appo_learner import APPOLearner
 from ray.rllib.algorithms.impala.torch.impala_torch_learner import IMPALATorchLearner
@@ -14,7 +24,11 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import (
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+    TargetNetworkAPI,
+    ValueFunctionAPI,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -35,6 +49,10 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
+        module = self.module[module_id].unwrapped()
+        assert isinstance(module, TargetNetworkAPI)
+        assert isinstance(module, ValueFunctionAPI)
+
         # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
         #  bootstrap values at the end of rollouts in the new stack, we might make
         #  this a more flexible, configurable parameter for users, e.g.
@@ -51,10 +69,9 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
         size_loss_mask = torch.sum(loss_mask)
 
-        module = self.module[module_id].unwrapped()
-        assert isinstance(module, TargetNetworkAPI)
-
-        values = fwd_out[Columns.VF_PREDS]
+        values = module.compute_values(
+            batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+        )
 
         action_dist_cls_train = module.get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(
@@ -62,7 +79,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
 
         old_target_policy_dist = action_dist_cls_train.from_logits(
-            module.forward_target(batch)[OLD_ACTION_DIST_LOGITS_KEY]
+            module.forward_target(batch)[TARGET_NETWORK_ACTION_DIST_INPUTS]
         )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[Columns.ACTIONS]

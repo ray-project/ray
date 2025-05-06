@@ -18,12 +18,15 @@
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/impl/service_type.h>
 
+#include <algorithm>
 #include <boost/asio/detail/socket_holder.hpp>
+#include <memory>
+#include <string>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
 #include "ray/stats/metric.h"
-#include "ray/util/util.h"
+#include "ray/util/thread_utils.h"
 
 namespace ray {
 namespace rpc {
@@ -40,6 +43,7 @@ void GrpcServer::Init() {
 
 void GrpcServer::Shutdown() {
   if (!is_closed_) {
+    shutdown_ = true;
     // Drain the executor threads.
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?
@@ -133,19 +137,28 @@ void GrpcServer::Run() {
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
-  // Create calls for all the server call factories.
+  // Create calls for all the server call factories
+  //
+  // NOTE: That ServerCallFactory is created for every thread processing respective
+  //       CompletionQueue
   for (auto &entry : server_call_factories_) {
-    for (int i = 0; i < num_threads_; i++) {
-      // Create a buffer of 100 calls for each RPC handler.
-      // TODO(edoakes): a small buffer should be fine and seems to have better
-      // performance, but we don't currently handle backpressure on the client.
-      int buffer_size = 100;
-      if (entry->GetMaxActiveRPCs() != -1) {
-        buffer_size = entry->GetMaxActiveRPCs();
-      }
-      for (int j = 0; j < std::max(1, buffer_size / num_threads_); j++) {
-        entry->CreateCall();
-      }
+    // Derive target max inflight RPCs buffer based on `gcs_max_active_rpcs_per_handler`
+    //
+    // NOTE: For these handlers that have set it to -1, we set default (per
+    //       thread) buffer at 32, though it doesn't have any impact on concurrency
+    //       (since we're recreating new instance of `ServerCall` as soon as one
+    //       gets occupied therefore not serving as back-pressure mechanism)
+    size_t buffer_size;
+    if (entry->GetMaxActiveRPCs() != -1) {
+      buffer_size = std::max<size_t>(
+          1, static_cast<size_t>(entry->GetMaxActiveRPCs() / num_threads_));
+    } else {
+      buffer_size = 32;
+    }
+
+    for (size_t j = 0; j < buffer_size; j++) {
+      // Create pending `ServerCall` ready to accept incoming requests
+      entry->CreateCall();
     }
   }
   // Start threads that polls incoming requests.
@@ -177,7 +190,19 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
   bool ok;
 
   // Keep reading events from the `CompletionQueue` until it's shutdown.
-  while (cqs_[index]->Next(&tag, &ok)) {
+  while (true) {
+    auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                                 gpr_time_from_millis(250, GPR_TIMESPAN));
+    auto status = cqs_[index]->AsyncNext(&tag, &ok, deadline);
+    if (status == grpc::CompletionQueue::SHUTDOWN ||
+        (status == grpc::CompletionQueue::TIMEOUT && shutdown_)) {
+      // If we timed out and shutdown, then exit immediately. This should not
+      // be needed, but gRPC seems to not return SHUTDOWN correctly in these
+      // cases (e.g., test_wait will hang on shutdown without this check).
+      break;
+    } else if (status == grpc::CompletionQueue::TIMEOUT) {
+      continue;
+    }
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
     // A new call is needed after the server sends a reply, no matter the reply is
@@ -229,6 +254,5 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     }
   }
 }
-
 }  // namespace rpc
 }  // namespace ray

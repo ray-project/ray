@@ -121,10 +121,10 @@ def test_multiple_clients_use_different_drivers(call_ray_start):
     Test that each client uses a separate JobIDs and namespaces.
     """
     with ray.client("localhost:25001").connect():
-        job_id_one = ray.get_runtime_context().job_id
+        job_id_one = ray.get_runtime_context().get_job_id()
         namespace_one = ray.get_runtime_context().namespace
     with ray.client("localhost:25001").connect():
-        job_id_two = ray.get_runtime_context().job_id
+        job_id_two = ray.get_runtime_context().get_job_id()
         namespace_two = ray.get_runtime_context().namespace
 
     assert job_id_one != job_id_two
@@ -321,9 +321,8 @@ def test_prepare_runtime_init_req_modified_job():
         (["ipython", "-m", "ray.util.client.server"], True),
         (["ipython -m ray.util.client.server"], True),
         (["ipython -m", "ray.util.client.server"], True),
-        (["bash", "ipython", "-m", "ray.util.client.server"], False),
-        (["bash", "ipython -m ray.util.client.server"], False),
-        (["python", "-m", "bash", "ipython -m ray.util.client.server"], False),
+        (["bash", "-c", "ipython -m ray.util.client.server"], True),
+        (["python", "-m", "bash", "ipython"], False),
     ],
 )
 def test_match_running_client_server(test_case):

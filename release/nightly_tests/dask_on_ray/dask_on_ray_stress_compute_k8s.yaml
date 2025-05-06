@@ -1,7 +1,7 @@
 cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
 region: us-west-2
 
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:

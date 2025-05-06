@@ -113,6 +113,19 @@ def test_get_ray_image():
         ).get_ray_image()
         == "rayproject/ray-ml:123456-py39-gpu"
     )
+    assert (
+        _stub_test(
+            {
+                "python": "3.11",
+                "cluster": {
+                    "byod": {
+                        "type": "llm-cu124",
+                    }
+                },
+            }
+        ).get_ray_image()
+        == "rayproject/ray-llm:123456-py311-cu124"
+    )
     os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
         _stub_test({"cluster": {"byod": {}}}).get_ray_image()

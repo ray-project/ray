@@ -138,7 +138,7 @@ class EventTracker {
   ///
   /// \param event_name The name of the event whose stats should be returned.
   /// \return A snapshot view of the event's stats.
-  absl::optional<EventStats> get_event_stats(const std::string &event_name) const
+  std::optional<EventStats> get_event_stats(const std::string &event_name) const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns snapshot views of the count, queueing, and execution statistics for all

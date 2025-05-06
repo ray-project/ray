@@ -587,10 +587,10 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     reason="This test is only run on linux CI machines.",
 )
 @pytest.mark.parametrize("option", ["conda", "pip"])
-def test_conda_pip_extras_ray_serve(shutdown_only, option):
+def test_conda_pip_extras_ray_default(shutdown_only, option):
     """Tests that ray[extras] can be included as a conda/pip dependency."""
     ray.init()
-    pip = ["pip-install-test==0.5", "ray[serve]"]
+    pip = ["pip-install-test==0.5", "ray[default]"]
     if option == "conda":
         runtime_env = {"conda": {"dependencies": ["pip", {"pip": pip}]}}
     elif option == "pip":
@@ -908,11 +908,6 @@ CLIENT_SERVER_PORT = 24001
     sys.platform == "linux" and platform.processor() == "aarch64",
     reason="This test is currently not supported on Linux ARM64",
 )
-# TODO(https://github.com/ray-project/ray/issues/33415)
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor >= 11,
-    reason="Some dependencies are not available with python 3.11.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT} --port 0"],
@@ -923,9 +918,8 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
     1.  Run a Ray Client job with both working_dir and pip specified. Check the
         environment using imports and file reads in tasks and actors.
-    2.  On the same cluster, run a job as above but using the Ray Summit
-        2021 demo's pip requirements.txt.  Also, check that per-task and
-        per-actor pip requirements work, all using the job's working_dir.
+    2.  On the same cluster, run another job with a requirements.txt file and
+        overriding per-actor and per-task pip requirements.
     """
     # Create a file to use to test working_dir
     specific_path = tmp_path / "test"
@@ -963,23 +957,22 @@ def test_e2e_complex(call_ray_start, tmp_path):
         a = TestActor.remote()
         assert ray.get(a.test.remote()) == "Hello"
 
-    # pip requirements file from Ray Summit 2021 demo; updated to be compatible with
-    # recent python versions
+    pandas_version = "1.5.3"
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 11:
+        pandas_version = "2.2.3"
     requirement_path = tmp_path / "requirements.txt"
     requirement_path.write_text(
         "\n".join(
             [
-                "ray[serve, tune]",
                 "PyGithub",
-                "xgboost_ray",  # has Ray as a dependency
-                "pandas==1.5.3",
+                f"pandas=={pandas_version}",
                 "typer",
                 "aiofiles",
             ]
         )
     )
 
-    # Start a new job on the same cluster using the Summit 2021 requirements.
+    # Start a new job on the same cluster using the requirements file.
     with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env(
         {"working_dir": str(tmp_path), "pip": str(requirement_path)}
     ).connect():
@@ -994,10 +987,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         @ray.remote
         def test_import():
             import ray  # noqa
-            from ray import serve  # noqa
-            from ray import tune  # noqa
             import typer  # noqa
-            import xgboost_ray  # noqa
 
             return Path("./test").read_text()
 
@@ -1008,10 +998,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         class TestActor:
             def test(self):
                 import ray  # noqa
-                from ray import serve  # noqa
-                from ray import tune  # noqa
                 import typer  # noqa
-                import xgboost_ray  # noqa
 
                 return Path("./test").read_text()
 

@@ -13,13 +13,13 @@ Note that all the long running test is running inside virtual environment, tenso
 
 Running the Workloads
 ---------------------
-The easiest approach to running these workloads is to use the 
+The easiest approach to running these workloads is to use the
 `Releaser`_ tool to run them with the command
 ``python cli.py suite:run long_running_tests``. By default, this
 will start a session to run each workload in the Anyscale product
 and kick them off.
 
-To run the tests manually, you can also use the `Anyscale UI <https://www.anyscale.dev/>`. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the run command for each test. 
+To run the tests manually, you can also use the `Anyscale UI <https://www.anyscale.dev/>`. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the run command for each test.
 
 You can also start the workloads using the CLI with:
 

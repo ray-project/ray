@@ -3,7 +3,7 @@ import time
 
 import ray
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.util.queue import Queue, Empty, Full
+from ray.util.queue import Empty, Full, Queue
 from ray._private.test_utils import wait_for_condition, BatchQueue
 
 

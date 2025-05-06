@@ -15,6 +15,10 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -60,14 +64,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
-  explicit GcsResourceManager(
-      instrumented_io_context &io_context,
-      ClusterResourceManager &cluster_resource_manager,
-      GcsNodeManager &gcs_node_manager,
-      NodeID local_node_id,
-      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
+  explicit GcsResourceManager(instrumented_io_context &io_context,
+                              ClusterResourceManager &cluster_resource_manager,
+                              GcsNodeManager &gcs_node_manager,
+                              NodeID local_node_id,
+                              ClusterTaskManager *cluster_task_manager = nullptr);
 
-  virtual ~GcsResourceManager() {}
+  virtual ~GcsResourceManager() = default;
 
   /// Handle the resource update.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
@@ -182,7 +185,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
   /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+  std::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
 
@@ -199,7 +202,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  ClusterTaskManager *cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
 };

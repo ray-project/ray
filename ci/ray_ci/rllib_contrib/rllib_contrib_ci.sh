@@ -134,12 +134,6 @@ test_slate_q() {
   bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/slate_q/...
 }
 
-test_td3() {
-  build "td3"
-  # BAZEL (learning and compilation) tests:
-  bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/td3/...
-}
-
 test_a3c() {
   build "a3c"
   # BAZEL (learning and compilation) tests:

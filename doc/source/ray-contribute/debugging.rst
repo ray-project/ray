@@ -1,7 +1,7 @@
 Debugging for Ray Developers
 ============================
 
-This debugging guide is for contributors to the Ray project. 
+This debugging guide is for contributors to the Ray project.
 
 Starting processes in a debugger
 --------------------------------
@@ -63,7 +63,7 @@ If it worked, you should see as the first line in ``raylet.err``:
 
 .. literalinclude:: /../../src/ray/util/logging.h
   :language: C
-  :lines: 52,54
+  :lines: 113,120
 
 Backend event stats
 -------------------

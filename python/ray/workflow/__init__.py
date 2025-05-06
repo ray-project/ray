@@ -1,3 +1,5 @@
+import warnings
+
 from ray.workflow.api import (
     init,
     run,
@@ -53,3 +55,8 @@ __all__ = [
     "WorkflowExecutionError",
     "WorkflowCancellationError",
 ]
+
+warnings.warn(
+    "The experimental Ray Workflows library is deprecated and will be removed "
+    "in a future version of Ray."
+)

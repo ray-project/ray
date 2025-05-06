@@ -61,19 +61,7 @@ def test_dynamic_subpackage_import():
 import sys
 import ray
 
-# ray.data
-assert "ray.data" not in sys.modules
-ray.data
-# Check that the package is cached.
-assert "ray.data" in sys.modules
-
-# ray.workflow
-assert "ray.workflow" not in sys.modules
-ray.workflow
-# Check that the package is cached.
-assert "ray.workflow" in sys.modules
-
-# ray.data
+# ray.autoscaler
 assert "ray.autoscaler" not in sys.modules
 ray.autoscaler
 # Check that the package is cached.

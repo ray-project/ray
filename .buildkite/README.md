@@ -2,7 +2,7 @@
 
 This directory contains buildkite pipelines used to start CI tests.
 
-Each step contains a buildkite step that is parsed and executed according to the 
+Each step contains a buildkite step that is parsed and executed according to the
 [Buildkite pipeline specification](https://buildkite.com/docs/pipelines).
 
 ## Conditions

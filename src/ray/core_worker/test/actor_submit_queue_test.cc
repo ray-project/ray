@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"

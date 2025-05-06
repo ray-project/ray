@@ -48,11 +48,6 @@ spec:
                 requests:
                   cpu: 14
                   memory: 54Gi
-              # Keep this preStop hook in each Ray container config.
-              lifecycle:
-                preStop:
-                  exec:
-                    command: ["/bin/sh","-c","ray stop"]
               ports: # Optional service port overrides
               - containerPort: 6379
                 name: gcs
@@ -126,7 +121,7 @@ Here are some of the subfields of the pod `template` to pay attention to:
 #### containers
 A Ray pod template specifies at minimum one container, namely the container
 that runs the Ray processes. A Ray pod template may also specify additional sidecar
-containers, for purposes such as {ref}`log processing <kuberay-logging>`. However, the KubeRay operator assumes that
+containers, for purposes such as {ref}`log processing <persist-kuberay-custom-resource-logs>`. However, the KubeRay operator assumes that
 the first container in the containers list is the main Ray container.
 Therefore, make sure to specify any sidecar containers
 **after** the main Ray container. In other words, the Ray container should be the **first**
@@ -171,7 +166,7 @@ the same Ray version as the CR's `spec.rayVersion`.
 If you are using a nightly or development Ray image, you can specify Ray's
 latest release version under `spec.rayVersion`.
 
-For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the 
+For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the
 correct image.
 
 You must install code dependencies for a given Ray task or actor on each Ray node that
@@ -182,7 +177,7 @@ Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
 using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray) as the base.
 See {ref}`this guide <docker-images>` to learn more about the official Ray images.
-For dynamic dependency management geared towards iteration and developement,
+For dynamic dependency management geared towards iteration and development,
 you can also use {ref}`Runtime Environments <runtime-environments>`.
 
 For `kuberay-operator` versions 1.1.0 and later, the Ray container image must have `wget` installed in it.
@@ -277,18 +272,6 @@ ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
 
-### ServiceType, Ingresses
-Ray Client and other services can be exposed outside the Kubernetes cluster
-using port-forwarding or an ingress.
-The simplest way to access the Ray head's services is to use port-forwarding.
-
-Other means of exposing the head's services outside the cluster may require using
-a service of type LoadBalancer or NodePort. Set `headGroupSpec.serviceType`
-to the appropriate type for your application.
-
-You may wish to set up an ingress to expose the Ray head's services outside the cluster.
-See the [KubeRay documentation][IngressDoc] for details.
-
 ### Specifying non-default ports.
 If you wish to override the ports exposed by the Ray head service, you may do so by specifying
 the Ray head container's `ports` list, under `headGroupSpec`.
@@ -315,17 +298,5 @@ rayStartParams:
   ray-client-server-port: "10002"
   ...
 ```
-(kuberay-config-miscellaneous)=
-## Pod and container lifecyle: preStopHook
-
-It is recommended for every Ray container's configuration
-to include the following blocking block:
-```yaml
-lifecycle:
-  preStop:
-    exec:
-      command: ["/bin/sh","-c","ray stop"]
-```
-To ensure graceful termination, `ray stop` is executed prior to the Ray pod's termination.
 
 [IngressDoc]: kuberay-ingress

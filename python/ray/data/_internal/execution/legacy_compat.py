@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.executor import OutputIterator
-from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
@@ -93,8 +92,7 @@ def execute_to_legacy_bundle_iterator(
             )
             return bundle
 
-    bundle_iter = CacheMetadataIterator(bundle_iter)
-    return bundle_iter
+    return CacheMetadataIterator(bundle_iter)
 
 
 def execute_to_legacy_block_list(
@@ -132,6 +130,8 @@ def _get_execution_dag(
     preserve_order: bool,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
     # Record usage of logical operators if available.
     if hasattr(plan, "_logical_plan") and plan._logical_plan is not None:
         record_operators_usage(plan._logical_plan.dag)

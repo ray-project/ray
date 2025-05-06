@@ -186,7 +186,7 @@ GlobalStats EventTracker::get_global_stats() const {
   return to_global_stats_view(global_stats_);
 }
 
-absl::optional<EventStats> EventTracker::get_event_stats(
+std::optional<EventStats> EventTracker::get_event_stats(
     const std::string &event_name) const {
   absl::ReaderMutexLock lock(&mutex_);
   auto it = post_handler_stats_.find(event_name);

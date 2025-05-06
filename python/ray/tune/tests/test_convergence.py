@@ -6,14 +6,14 @@ import numpy as np
 import pytest
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.stopper import ExperimentPlateauStopper
 
 
 def loss(config):
     x = config.get("x")
-    train.report({"loss": x**2})  # A simple function to optimize
+    tune.report({"loss": x**2})  # A simple function to optimize
 
 
 class ConvergenceTest(unittest.TestCase):

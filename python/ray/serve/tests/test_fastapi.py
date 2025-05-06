@@ -30,7 +30,6 @@ from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.http_util import make_fastapi_class_based_view
-from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
@@ -355,7 +354,7 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
 
     @app.on_event("shutdown")
     async def shutdown():
-        1 / 0
+        _ = 1 / 0
 
     @serve.deployment
     @serve.ingress(app)
@@ -440,7 +439,7 @@ def test_asgi_compatible(serve_instance):
 
 @pytest.mark.parametrize(
     "input_route_prefix,expected_route_prefix",
-    [(DEFAULT.VALUE, "/"), ("/", "/"), ("/subpath", "/subpath/")],
+    [("/", "/"), ("/subpath", "/subpath/")],
 )
 def test_doc_generation(serve_instance, input_route_prefix, expected_route_prefix):
     app = FastAPI()

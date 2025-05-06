@@ -104,8 +104,8 @@ def test_raylet_tempfiles(shutdown_only):
     }
 
     def check_all_log_file_exists():
+        log_files = set(os.listdir(node.get_logs_dir_path()))
         for expected in log_files_expected:
-            log_files = set(os.listdir(node.get_logs_dir_path()))
             if expected not in log_files:
                 raise RuntimeError(f"File {expected} not found!")
         return True
@@ -118,7 +118,7 @@ def test_raylet_tempfiles(shutdown_only):
     assert log_files.issuperset(log_files_expected)
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
-    assert socket_files == expected_socket_files
+    assert socket_files.issuperset(expected_socket_files)
     ray.shutdown()
 
     ray.init(num_cpus=2)

@@ -33,28 +33,37 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
-# V61.0 has CUDA 11.2
-DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
+# V71.0 has CUDA 11.2
+DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V71.0"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 6/10/2022.
+# Obtained with:
+# for region in $(aws ec2 describe-regions --query "Regions[].RegionName" --output text); do
+#   echo "Region: $region";
+#   aws ec2 describe-images \
+#     --region $region \
+#     --filters "Name=name,Values=Deep Learning AMI (Ubuntu 18.04) Version 71.0*" \
+#     --query "Images[].[ImageId, Name]" \
+#     --output text;
+#   echo "--------------------------";
+# done
 # TODO(alex) : write a unit test to make sure we update AMI version used in
 # ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
-    "us-east-1": "ami-0dd6adfad4ad37eec",  # US East (N. Virginia)
-    "us-east-2": "ami-0c77cd5ca05bf1281",  # US East (Ohio)
-    "us-west-1": "ami-020ab1b368a5ed1db",  # US West (N. California)
-    "us-west-2": "ami-0387d929287ab193e",  # US West (Oregon)
-    "ca-central-1": "ami-07dbafdbd38f18d98",  # Canada (Central)
-    "eu-central-1": "ami-0383bd0c1fc4c63ec",  # EU (Frankfurt)
-    "eu-west-1": "ami-0a074b0a311a837ac",  # EU (Ireland)
-    "eu-west-2": "ami-094ba2b4651f761ca",  # EU (London)
-    "eu-west-3": "ami-031da10fbf225bf5f",  # EU (Paris)
-    "sa-east-1": "ami-0be7c1f1dd96d7337",  # SA (Sao Paulo)
-    "ap-northeast-1": "ami-0d69b2fd9641af433",  # Asia Pacific (Tokyo)
-    "ap-northeast-2": "ami-0d6d00bd58046ff91",  # Asia Pacific (Seoul)
-    "ap-northeast-3": "ami-068feab7122f7558d",  # Asia Pacific (Osaka)
-    "ap-southeast-1": "ami-05006b266c1be4e8f",  # Asia Pacific (Singapore)
-    "ap-southeast-2": "ami-066aa744514f9f95c",  # Asia Pacific (Sydney)
+    "us-east-1": "ami-0271ce88f6c03e149",  # US East (N. Virginia)
+    "us-east-2": "ami-0ce21b0ce8e0f5a37",  # US East (Ohio)
+    "us-west-1": "ami-030896954b2b72361",  # US West (N. California)
+    "us-west-2": "ami-0a2b85e15b7c0ac34",  # US West (Oregon)
+    "ca-central-1": "ami-044b98bea12677052",  # Canada (Central)
+    "eu-central-1": "ami-004d285ecf53fb335",  # EU (Frankfurt)
+    "eu-west-1": "ami-0e17ed40febe794a6",  # EU (Ireland)
+    "eu-west-2": "ami-0ad9e6b9d4e22df1a",  # EU (London)
+    "eu-west-3": "ami-05698775025146698",  # EU (Paris)
+    "sa-east-1": "ami-004b19c7ed8d790bc",  # SA (Sao Paulo)
+    "ap-northeast-1": "ami-03e45b1f18378ea97",  # Asia Pacific (Tokyo)
+    "ap-northeast-2": "ami-095bae3e623e2ff99",  # Asia Pacific (Seoul)
+    "ap-northeast-3": "ami-02fd0ba69c1ef37ad",  # Asia Pacific (Osaka)
+    "ap-southeast-1": "ami-03ef1223872072e95",  # Asia Pacific (Singapore)
+    "ap-southeast-2": "ami-0bcf4f75e44e0a866",  # Asia Pacific (Sydney)
 }
 
 # todo: cli_logger should handle this assert properly

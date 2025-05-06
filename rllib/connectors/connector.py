@@ -121,7 +121,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
+    def from_state(ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state is required, so that all Connectors are serializable.

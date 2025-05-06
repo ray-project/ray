@@ -10,6 +10,7 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
+    get_uri_for_file,
     get_uri_for_directory,
     get_uri_for_package,
     install_wheel_package,
@@ -23,6 +24,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 from ray.exceptions import RuntimeEnvSetupError
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
@@ -71,15 +73,20 @@ def upload_py_modules_if_needed(
         elif isinstance(module, Path):
             module_path = str(module)
         elif isinstance(module, ModuleType):
-            # NOTE(edoakes): Python allows some installed Python packages to
-            # be split into multiple directories. We could probably handle
-            # this, but it seems tricky & uncommon. If it's a problem for
-            # users, we can add this support on demand.
-            if len(module.__path__) > 1:
-                raise ValueError(
-                    "py_modules only supports modules whose __path__ has length 1."
-                )
-            [module_path] = module.__path__
+            if not hasattr(module, "__path__"):
+                # This is a single-file module.
+                module_path = module.__file__
+            else:
+                # NOTE(edoakes): Python allows some installed Python packages to
+                # be split into multiple directories. We could probably handle
+                # this, but it seems tricky & uncommon. If it's a problem for
+                # users, we can add this support on demand.
+                if len(module.__path__) > 1:
+                    raise ValueError(
+                        "py_modules only supports modules whose __path__"
+                        " has length 1 or those who are single-file."
+                    )
+                [module_path] = module.__path__
         else:
             raise TypeError(
                 "py_modules must be a list of file paths, URIs, "
@@ -90,9 +97,13 @@ def upload_py_modules_if_needed(
             module_uri = module_path
         else:
             # module_path is a local path.
-            if Path(module_path).is_dir():
+            if Path(module_path).is_dir() or Path(module_path).suffix == ".py":
+                is_dir = Path(module_path).is_dir()
                 excludes = runtime_env.get("excludes", None)
-                module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                if is_dir:
+                    module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                else:
+                    module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
                     try:
                         upload_package_if_needed(
@@ -100,7 +111,7 @@ def upload_py_modules_if_needed(
                             scratch_dir,
                             module_path,
                             excludes=excludes,
-                            include_parent_dir=True,
+                            include_parent_dir=is_dir,
                             logger=logger,
                         )
                     except Exception as e:
@@ -136,7 +147,8 @@ def upload_py_modules_if_needed(
                     upload_fn(module_path, excludes=None, is_file=True)
             else:
                 raise ValueError(
-                    "py_modules entry must be a directory or a .whl file; "
+                    "py_modules entry must be a .py file, "
+                    "a directory, or a .whl file; "
                     f"got {module_path}"
                 )
 
@@ -153,11 +165,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     name = "py_modules"
 
-    def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
-    ):
+    def __init__(self, resources_dir: str, gcs_client: GcsClient):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
@@ -190,7 +200,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     ) -> int:
 
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri, self._resources_dir, self._gcs_client, logger=logger
         )
 
         if is_whl_uri(uri):

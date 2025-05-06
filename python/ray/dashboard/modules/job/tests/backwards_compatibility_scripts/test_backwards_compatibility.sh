@@ -24,8 +24,11 @@ for RAY_VERSION in "${RAY_VERSIONS[@]}"
 do
     env_name=${JOB_COMPATIBILITY_TEST_TEMP_ENV}
 
-    # Clean up if env name is already taken from previous leaking runs
-    conda env remove --name="${env_name}"
+    # Check if the conda env exists
+    if conda env list | grep -q "${env_name}"; then
+        # Clean up if env name is already taken from previous leaking runs
+        conda env remove --name="${env_name}"
+    fi
 
     printf "\n\n\n"
     echo "========================================================================================="

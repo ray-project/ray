@@ -1,12 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _replay-buffer-api-reference-docs:
 
 Replay Buffer API
 =================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 The following classes don't take into account the separation of experiences from different policies, multi-agent replay buffers will be explained further below.
 

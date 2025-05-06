@@ -61,19 +61,29 @@ def _modify_context_impl(
         "--userns=keep-id",
     ]
 
-    # The RAY_RAYLET_PID and RAY_JOB_ID environment variables are
-    # needed for the default worker.
-    container_command.append("--env")
-    container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
+    # Environment variables to set in container
+    env_vars = dict()
+
+    # Propagate all host environment variables that have the prefix "RAY_"
+    # This should include RAY_RAYLET_PID
+    for env_var_name, env_var_value in os.environ.items():
+        if env_var_name.startswith("RAY_"):
+            env_vars[env_var_name] = env_var_value
+
+    # Support for runtime_env['env_vars']
+    env_vars.update(context.env_vars)
+
+    # Set environment variables
+    for env_var_name, env_var_value in env_vars.items():
+        container_command.append("--env")
+        container_command.append(f"{env_var_name}='{env_var_value}'")
+
+    # The RAY_JOB_ID environment variable is needed for the default worker.
+    # It won't be set at the time setup() is called, but it will be set
+    # when worker command is executed, so we use RAY_JOB_ID=$RAY_JOB_ID
+    # for the container start command
     container_command.append("--env")
     container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
-    for env_var_name, env_var_value in os.environ.items():
-        if env_var_name.startswith("RAY_") and env_var_name not in [
-            "RAY_RAYLET_PID",
-            "RAY_JOB_ID",
-        ]:
-            container_command.append("--env")
-            container_command.append(f"{env_var_name}='{env_var_value}'")
 
     if run_options:
         container_command.extend(run_options)
@@ -97,6 +107,10 @@ class ImageURIPlugin(RuntimeEnvPlugin):
     """Starts worker in a container of a custom image."""
 
     name = "image_uri"
+
+    @staticmethod
+    def get_compatible_keys():
+        return {"image_uri", "config", "env_vars"}
 
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir

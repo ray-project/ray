@@ -578,10 +578,11 @@ def test_actor_constructor_borrow_cancellation(ray_start_regular):
     # Test with implicit cancellation by letting the actor handle go out-of-scope.
     def test_implicit_cancel():
         ref = ray.put(1)
-        Actor.remote({"foo": ref})
+        print(Actor.remote({"foo": ref}))
 
     test_implicit_cancel()
     # Confirm that the ref object is not leaked.
+
     check_refcounts({})
 
     # Test with explicit cancellation via ray.kill().

@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/publisher.h"
@@ -112,12 +118,14 @@ class MockObjectDirectory {
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
-  ObjectRecoveryManagerTestBase(bool lineage_enabled)
+  explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
       : local_raylet_id_(NodeID::FromRandom()),
+        io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
-        memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
+        memory_store_(
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
@@ -134,9 +142,9 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               object_directory_->AsyncGetLocations(object_id, callback);
               return Status::OK();
             },
-            task_resubmitter_,
-            ref_counter_,
-            memory_store_,
+            *task_resubmitter_,
+            *ref_counter_,
+            *memory_store_,
             [&](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
               RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
               failed_reconstructions_[object_id] = reason;
@@ -155,9 +163,17 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
 
+  void TearDown() override {
+    // io_context_ must be joined and stopped before any other managers being
+    // destructed, otherwise it may run callbacks that captured dangling objects.
+    io_context_.Stop();
+  }
+
   NodeID local_raylet_id_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
+  // Used by memory_store_.
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
@@ -190,7 +206,7 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
                                /*add_local_ref=*/true);
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(failed_reconstructions_.empty());
-  ASSERT_TRUE(object_directory_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(failed_reconstructions_[object_id], rpc::ErrorType::OBJECT_LOST);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 
@@ -203,7 +219,7 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
   // Ref went out of scope.
   object_id = ObjectID::FromRandom();
   ASSERT_FALSE(manager_.RecoverObject(object_id));
-  ASSERT_TRUE(failed_reconstructions_.count(object_id) == 0);
+  ASSERT_EQ(failed_reconstructions_.count(object_id), 0);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
 
@@ -220,8 +236,8 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
   object_directory_->SetLocations(object_id, addresses);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
-  ASSERT_TRUE(object_directory_->Flush() == 1);
-  ASSERT_TRUE(raylet_client_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(raylet_client_->Flush(), 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
@@ -239,11 +255,11 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   object_directory_->SetLocations(object_id, addresses);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
-  ASSERT_TRUE(object_directory_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
   // First copy is evicted so pin fails.
-  ASSERT_TRUE(raylet_client_->Flush(false) == 1);
+  ASSERT_EQ(raylet_client_->Flush(false), 1);
   // Second copy is present so pin succeeds.
-  ASSERT_TRUE(raylet_client_->Flush(true) == 1);
+  ASSERT_EQ(raylet_client_->Flush(true), 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
@@ -261,7 +277,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(ref_counter_->IsObjectPendingCreation(object_id));
-  ASSERT_TRUE(object_directory_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
 
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 1);
@@ -287,8 +303,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   rpc::Address address;
   address.set_raylet_id(remote_node_id.Binary());
   object_directory_->SetLocations(object_id, {address});
-  ASSERT_TRUE(object_directory_->Flush() == 1);
-  ASSERT_TRUE(raylet_client_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(raylet_client_->Flush(), 1);
 
   // The object has been marked as failed but it is still pinned on the new
   // node. Another attempt to recover the object will not trigger any
@@ -303,7 +319,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ASSERT_EQ(objects[0], object_id);
   memory_store_->Delete(objects);
   ASSERT_TRUE(manager_.RecoverObject(object_id));
-  ASSERT_TRUE(object_directory_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
@@ -343,7 +359,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionFails) {
                                /*add_local_ref=*/true);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
-  ASSERT_TRUE(object_directory_->Flush() == 1);
+  ASSERT_EQ(object_directory_->Flush(), 1);
 
   ASSERT_TRUE(failed_reconstructions_[object_id] ==
               rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);

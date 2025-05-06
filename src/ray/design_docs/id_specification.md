@@ -20,7 +20,7 @@ Ray ID Specification
                   |           unique bytes            |              ActorID              |  TaskID   24B
                   +-----------------------------------+-----------------------------------+
 
-                                   24B                                          4B        
+                                   24B                                          4B
 +-----------------------------------------------------------------------+-----------------+
 |                                 TaskID                                |   index bytes   |  ObjectID 28B
 +-----------------------------------------------------------------------+-----------------+
@@ -33,7 +33,7 @@ Ray ID Specification
 An `ActorID` contains two parts: 1) 12 unique bytes, and 2) its `JobID`.
 
 #### TaskID (16 bytes)
-A `TaskID` contains two parts: 1) 8 unique bytes, and 2) its `ActorID`.  
+A `TaskID` contains two parts: 1) 8 unique bytes, and 2) its `ActorID`.
 If the task is a normal task or a driver task, the part 2 is its dummy actor id.
 
 The following table shows the layouts of all kinds of task id.

@@ -26,9 +26,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-/// Limit the ID range to test for collisions.
-#define MAX_ID_TEST 8
-
 namespace ray {
 
 /// List of predefined resources.
@@ -48,14 +45,9 @@ const std::string kBundle_ResourceLabel = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
-  absl::flat_hash_map<std::string, int64_t> string_to_int_;
-  absl::flat_hash_map<int64_t, std::string> int_to_string_;
-  std::hash<std::string> hasher_;
-  mutable absl::Mutex mutex_;
-
  public:
-  StringIdMap(){};
-  ~StringIdMap(){};
+  StringIdMap() {}
+  ~StringIdMap() = default;
 
   /// Get integer ID associated with an existing string ID.
   ///
@@ -73,7 +65,7 @@ class StringIdMap {
   ///
   /// \param String ID to be inserted.
   /// \param max_id The number of unique possible ids. This is used
-  ///               to force collisions for testing. If -1, it is not used.
+  ///               to force collisions for testing. If 0, it is not used.
   /// \return The integer ID associated with string ID string_id.
   int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
 
@@ -86,6 +78,12 @@ class StringIdMap {
 
   /// Get number of identifiers.
   int64_t Count();
+
+ private:
+  absl::flat_hash_map<std::string, int64_t> string_to_int_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<int64_t, std::string> int_to_string_ ABSL_GUARDED_BY(mutex_);
+  const std::hash<std::string> hasher_{};
+  mutable absl::Mutex mutex_;
 };
 
 enum class SchedulingIDTag { Node, Resource };

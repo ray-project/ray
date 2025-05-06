@@ -724,7 +724,7 @@ class Worker:
         resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
-            output_dict = {k: v for k, v in resp.resource_table.table.items()}
+            output_dict = dict(resp.resource_table.table)
             return output_dict
         elif resp.WhichOneof("response_type") == "runtime_context":
             return resp.runtime_context

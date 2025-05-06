@@ -19,8 +19,6 @@
 
 #include "nlohmann/json.hpp"
 
-using json = nlohmann::json;
-
 namespace ray {
 
 /// This class provides interfaces of setting runtime environments for job/actor/task.
@@ -70,7 +68,7 @@ class RuntimeEnv {
   static RuntimeEnv Deserialize(const std::string &serialized_runtime_env);
 
  private:
-  json fields_;
+  nlohmann::json fields_;
 };
 
 // --------- inline implementation ------------
@@ -78,7 +76,7 @@ class RuntimeEnv {
 template <typename T>
 inline void RuntimeEnv::Set(const std::string &name, const T &value) {
   try {
-    json value_j = value;
+    nlohmann::json value_j = value;
     fields_[name] = value_j;
   } catch (std::exception &e) {
     throw ray::internal::RayRuntimeEnvException("Failed to set the field " + name + ": " +

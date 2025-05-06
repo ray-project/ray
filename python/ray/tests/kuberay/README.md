@@ -24,6 +24,7 @@ together run these things for you.
 3. Finally, make sure that the `Dockerfile` is using the same python version as
    what you're using to run the test. By default, this dockerfile is built using
    the `rayproject/ray:nightly-py310` build.
+4. Modify `EXAMPLE_CLUSTER_PATH` in `test_autoscaling_e2e.py`.
 
 Now you're ready to run the test.
 

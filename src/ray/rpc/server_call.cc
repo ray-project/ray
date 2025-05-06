@@ -14,6 +14,8 @@
 
 #include "ray/rpc/server_call.h"
 
+#include <memory>
+
 #include "ray/common/ray_config.h"
 
 namespace ray {

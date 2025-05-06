@@ -1,6 +1,7 @@
 from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -14,17 +15,14 @@ args = parser.parse_args()
 
 config = (
     SACConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("Pendulum-v1")
     .training(
         initial_alpha=1.001,
         # Use a smaller learning rate for the policy.
-        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
-        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
+        actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
+        critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
+        alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
+        # TODO (sven): Maybe go back to making this a dict of the sub-learning rates?
         lr=None,
         target_entropy="auto",
         n_step=(2, 5),
@@ -37,18 +35,18 @@ config = (
             "alpha": 1.0,
             "beta": 0.0,
         },
-        num_steps_sampled_before_learning_starts=256 * (args.num_gpus or 1),
+        num_steps_sampled_before_learning_starts=256 * (args.num_learners or 1),
     )
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "fcnet_weights_initializer": nn.init.xavier_uniform_,
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[256, 256],
+            fcnet_activation="relu",
+            fcnet_kernel_initializer=nn.init.xavier_uniform_,
+            head_fcnet_hiddens=[],
+            head_fcnet_activation=None,
+            head_fcnet_kernel_initializer="orthogonal_",
+            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+        ),
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,

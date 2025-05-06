@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/actor_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -37,9 +42,10 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                             actor_id,
                             actor_creation_return_id,
                             add_local_ref,
-                            is_self));
+                            is_self,
+                            /*owned*/ false));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
+  reference_counter_.AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
 }
 
@@ -121,13 +127,13 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
   if (owned) {
-    reference_counter_->AddOwnedObject(actor_creation_return_id,
-                                       /*inner_ids=*/{},
-                                       caller_address,
-                                       call_site,
-                                       /*object_size*/ -1,
-                                       /*is_reconstructable=*/true,
-                                       /*add_local_ref=*/true);
+    reference_counter_.AddOwnedObject(actor_creation_return_id,
+                                      /*inner_ids=*/{},
+                                      caller_address,
+                                      call_site,
+                                      /*object_size*/ -1,
+                                      /*is_reconstructable=*/true,
+                                      /*add_local_ref=*/true);
   }
 
   return AddActorHandle(std::move(actor_handle),
@@ -135,7 +141,9 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                         caller_address,
                         actor_id,
                         actor_creation_return_id,
-                        /*add_local_ref=*/false);
+                        /*add_local_ref=*/false,
+                        /*is_self*/ false,
+                        owned);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -144,16 +152,18 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const ActorID &actor_id,
                                   const ObjectID &actor_creation_return_id,
                                   bool add_local_ref,
-                                  bool is_self) {
+                                  bool is_self,
+                                  bool owned) {
   if (add_local_ref) {
-    reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
+    reference_counter_.AddLocalReference(actor_creation_return_id, call_site);
   }
-  actor_task_submitter_->AddActorQueueIfNotExists(
+  actor_task_submitter_.AddActorQueueIfNotExists(
       actor_id,
       actor_handle->MaxPendingCalls(),
       actor_handle->ExecuteOutOfOrder(),
-      /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0);
-  bool inserted;
+      /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0,
+      owned);
+  bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
     inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
@@ -163,7 +173,14 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // Current actor doesn't need to subscribe its state from GCS.
     // num_restarts is used for dropping out-of-order pub messages. Since we won't
     // subscribe any messages, we can set any value bigger than -1(we use 0 here).
-    actor_task_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
+    actor_task_submitter_.ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
+  }
+
+  if (inserted && owned) {
+    RAY_CHECK(reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+        actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
+          MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
+        }));
   }
 
   return inserted;
@@ -173,68 +190,59 @@ void ActorManager::OnActorKilled(const ActorID &actor_id) {
   MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
 }
 
-void ActorManager::WaitForActorOutOfScope(
+void ActorManager::WaitForActorRefDeleted(
     const ActorID &actor_id,
-    std::function<void(const ActorID &)> actor_out_of_scope_callback) {
-  absl::MutexLock lock(&mutex_);
-  auto it = actor_handles_.find(actor_id);
-  if (it == actor_handles_.end()) {
-    actor_out_of_scope_callback(actor_id);
-  } else {
-    auto actor_handle = it->second;
-    // GCS actor manager will wait until the actor has been created before polling the
-    // owner. This should avoid any asynchronous problems.
-    auto callback = [this, actor_id, actor_handle, actor_out_of_scope_callback](
-                        const ObjectID &object_id) {
-      MarkActorKilledOrOutOfScope(actor_handle);
-      actor_out_of_scope_callback(actor_id);
-    };
+    std::function<void(const ActorID &)> actor_ref_deleted_callback) {
+  // GCS actor manager will wait until the actor has been created before polling the
+  // owner. This should avoid any asynchronous problems.
+  auto callback =
+      [actor_id, actor_ref_deleted_callback = std::move(actor_ref_deleted_callback)](
+          const ObjectID &object_id) { actor_ref_deleted_callback(actor_id); };
 
-    // Returns true if the object was present and the callback was added. It might have
-    // already been evicted by the time we get this request, in which case we should
-    // respond immediately so the gcs server can destroy the actor.
-    const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-    if (!reference_counter_->SetObjectPrimaryCopyDeleteCallback(actor_creation_return_id,
-                                                                callback)) {
-      RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
-      MarkActorKilledOrOutOfScope(actor_handle);
-      actor_out_of_scope_callback(actor_id);
-    }
+  // Returns true if the object was present and the callback was added. It might have
+  // already been evicted by the time we get this request, in which case we should
+  // respond immediately so the gcs server can destroy the actor.
+  const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+                                                      callback)) {
+    RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
+    callback(actor_creation_return_id);
   }
 }
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
-  RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
-                << ", actor_id: " << actor_id
-                << ", ip address: " << actor_data.address().ip_address()
-                << ", port: " << actor_data.address().port() << ", worker_id: "
-                << WorkerID::FromBinary(actor_data.address().worker_id())
-                << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
-                << ", num_restarts: " << actor_data.num_restarts()
-                << ", death context type="
-                << gcs::GetActorDeathCauseString(actor_data.death_cause());
+  const auto worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
+  const auto raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(raylet_id)
+      << "received notification on actor, state: " << actor_state
+      << ", ip address: " << actor_data.address().ip_address()
+      << ", port: " << actor_data.address().port()
+      << ", num_restarts: " << actor_data.num_restarts() << ", death context type="
+      << gcs::GetActorDeathCauseString(actor_data.death_cause());
   if (actor_data.preempted()) {
-    actor_task_submitter_->SetPreempted(actor_id);
+    actor_task_submitter_.SetPreempted(actor_id);
   }
 
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    actor_task_submitter_->DisconnectActor(actor_id,
-                                           actor_data.num_restarts(),
-                                           /*is_dead=*/false,
-                                           actor_data.death_cause());
+    actor_task_submitter_.DisconnectActor(actor_id,
+                                          actor_data.num_restarts(),
+                                          /*dead=*/false,
+                                          actor_data.death_cause(),
+                                          /*is_restartable=*/true);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
-    actor_task_submitter_->DisconnectActor(actor_id,
-                                           actor_data.num_restarts(),
-                                           /*is_dead=*/true,
-                                           actor_data.death_cause());
+    actor_task_submitter_.DisconnectActor(actor_id,
+                                          actor_data.num_restarts(),
+                                          /*dead=*/true,
+                                          actor_data.death_cause(),
+                                          gcs::IsActorRestartable(actor_data));
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-    actor_task_submitter_->ConnectActor(
+    actor_task_submitter_.ConnectActor(
         actor_id, actor_data.address(), actor_data.num_restarts());
   } else {
     // The actor is being created and not yet ready, just ignore!
@@ -254,7 +262,7 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
 
 ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
   {
-    absl::MutexLock lock(&cache_mutex_);
+    absl::MutexLock cache_lock(&cache_mutex_);
     auto it = cached_actor_name_to_ids_.find(actor_name);
     if (it != cached_actor_name_to_ids_.end()) {
       absl::MutexLock lock(&mutex_);
@@ -309,7 +317,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
 }
 
 void ActorManager::MarkActorKilledOrOutOfScope(
-    std::shared_ptr<ActorHandle> actor_handle) {
+    const std::shared_ptr<ActorHandle> &actor_handle) {
   RAY_CHECK(actor_handle != nullptr);
   const auto &actor_id = actor_handle->GetActorID();
   const auto &actor_name = actor_handle->GetName();
@@ -324,8 +332,9 @@ void ActorManager::MarkActorKilledOrOutOfScope(
 
   /// Invalidate named actor cache.
   if (!actor_name.empty()) {
-    RAY_LOG(DEBUG) << "Actor name cache is invalidated for the actor of name "
-                   << actor_name << " namespace " << ray_namespace << " id " << actor_id;
+    RAY_LOG(DEBUG).WithField(actor_id)
+        << "Actor name cache is invalidated for the actor of name " << actor_name
+        << " namespace " << ray_namespace;
     cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
   }
 }

@@ -79,8 +79,7 @@ class TestStateMachine(abc.ABC):
     def get_release_blockers(cls) -> List[github.Issue.Issue]:
         repo = cls.get_ray_repo()
         blocker_label = repo.get_label(WEEKLY_RELEASE_BLOCKER_TAG)
-
-        return repo.get_issues(state="open", labels=[blocker_label])
+        return list(repo.get_issues(state="open", labels=[blocker_label]))
 
     @classmethod
     def get_issue_owner(cls, issue: github.Issue.Issue) -> str:

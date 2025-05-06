@@ -1,4 +1,5 @@
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -9,37 +10,44 @@ from typing import (
     List,
     Literal,
     Optional,
+    Tuple,
     Union,
 )
 
 import numpy as np
-from packaging.version import parse as parse_version
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
     call_with_retry,
     iterate_with_retry,
 )
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
-from ray.data.datasource._default_metadata_providers import (
-    get_generic_metadata_provider,
-)
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+    _handle_read_os_error,
+)
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
-from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.data.datasource.partitioning import (
+    PartitionDataType,
+    Partitioning,
+    PathPartitionFilter,
+    PathPartitionParser,
+)
 from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
@@ -152,6 +160,8 @@ class ParquetDatasource(Datasource):
     cost of some potential performance and/or compatibility penalties.
     """
 
+    _FUTURE_FILE_EXTENSIONS = ["parquet"]
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -164,13 +174,12 @@ class ParquetDatasource(Datasource):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         meta_provider: ParquetMetadataProvider = ParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
+        partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
-
-        import pyarrow as pa
 
         self._supports_distributed_reads = not _is_local_scheme(paths)
         if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
@@ -188,13 +197,18 @@ class ParquetDatasource(Datasource):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._unresolved_paths = paths
+        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        filesystem = RetryingPyFileSystem.wrap(
+            self._filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata
         # provider and then apply the partition filter or file extensions.
         if partition_filter is not None or file_extensions is not None:
-            default_meta_provider = get_generic_metadata_provider(file_extensions=None)
+            default_meta_provider = DefaultFileMetadataProvider()
             expanded_paths, _ = map(
                 list, zip(*default_meta_provider.expand_paths(paths, filesystem))
             )
@@ -214,32 +228,40 @@ class ParquetDatasource(Datasource):
         if dataset_kwargs is None:
             dataset_kwargs = {}
 
-        pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
-
-        if schema is None:
-            schema = pq_ds.schema
-        if columns:
-            schema = pa.schema(
-                [schema.field(column) for column in columns], schema.metadata
+        if "partitioning" in dataset_kwargs:
+            raise ValueError(
+                "The 'partitioning' parameter isn't supported in 'dataset_kwargs'. "
+                "Use the top-level 'partitioning' parameter instead."
             )
 
-        check_for_legacy_tensor_type(schema)
+        # This datasource manually adds partition data at the Ray Data-level. To avoid
+        # duplicating the partition data, we disable PyArrow's partitioning.
+        dataset_kwargs["partitioning"] = None
 
-        if _block_udf is not None:
-            # Try to infer dataset schema by passing dummy table through UDF.
-            dummy_table = schema.empty_table()
-            try:
-                inferred_schema = _block_udf(dummy_table).schema
-                inferred_schema = inferred_schema.with_metadata(schema.metadata)
-            except Exception:
-                logger.debug(
-                    "Failed to infer schema of dataset by passing dummy table "
-                    "through UDF due to the following exception:",
-                    exc_info=True,
-                )
-                inferred_schema = schema
-        else:
-            inferred_schema = schema
+        pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
+
+        # `read_schema` is the schema object that will be used to perform
+        # read operations.
+        # It should be None, unless user has specified the schema or columns.
+        # We don't use the inferred schema for read, because we infer the schema based
+        # on the first file. Thus, files with different schemas will end up producing
+        # blocks with wrong schema.
+        # See https://github.com/ray-project/ray/issues/47960 for more context.
+        read_schema = schema
+        inferred_schema = _infer_schema(
+            pq_ds, schema, columns, partitioning, _block_udf
+        )
+
+        # Users can pass both data columns and partition columns in the 'columns'
+        # argument. To prevent PyArrow from complaining about missing columns, we
+        # separate the partition columns from the data columns. When we read the
+        # fragments, we pass the data columns to PyArrow and add the partition
+        # columns manually.
+        data_columns, partition_columns = None, None
+        if columns is not None:
+            data_columns, partition_columns = _infer_data_and_partition_columns(
+                columns, pq_ds.fragments[0], partitioning
+            )
 
         try:
             prefetch_remote_args = {}
@@ -273,27 +295,39 @@ class ParquetDatasource(Datasource):
         self._pq_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._meta_provider = meta_provider
-        self._inferred_schema = inferred_schema
         self._block_udf = _block_udf
         self._to_batches_kwargs = to_batch_kwargs
-        self._columns = columns
-        self._schema = schema
+        self._data_columns = data_columns
+        self._partition_columns = partition_columns
+        self._read_schema = read_schema
+        self._inferred_schema = inferred_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
+        self._partitioning = partitioning
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         sample_infos = sample_fragments(
             self._pq_fragments,
             to_batches_kwargs=to_batch_kwargs,
-            columns=columns,
-            schema=schema,
+            columns=data_columns,
+            schema=self._read_schema,
             local_scheduling=self._local_scheduling,
         )
         self._encoding_ratio = estimate_files_encoding_ratio(sample_infos)
         self._default_read_batch_size_rows = estimate_default_read_batch_size_rows(
             sample_infos
         )
+
+        if file_extensions is None:
+            for path in self._pq_paths:
+                if not _has_file_extension(
+                    path, self._FUTURE_FILE_EXTENSIONS
+                ) and log_once("read_parquet_file_extensions_future_warning"):
+                    emit_file_extensions_future_warning(self._FUTURE_FILE_EXTENSIONS)
+                    break
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -355,16 +389,20 @@ class ParquetDatasource(Datasource):
                 block_udf,
                 to_batches_kwargs,
                 default_read_batch_size_rows,
-                columns,
-                schema,
+                data_columns,
+                partition_columns,
+                read_schema,
                 include_paths,
+                partitioning,
             ) = (
                 self._block_udf,
                 self._to_batches_kwargs,
                 self._default_read_batch_size_rows,
-                self._columns,
-                self._schema,
+                self._data_columns,
+                self._partition_columns,
+                self._read_schema,
                 self._include_paths,
+                self._partitioning,
             )
             read_tasks.append(
                 ReadTask(
@@ -372,10 +410,12 @@ class ParquetDatasource(Datasource):
                         block_udf,
                         to_batches_kwargs,
                         default_read_batch_size_rows,
-                        columns,
-                        schema,
+                        data_columns,
+                        partition_columns,
+                        read_schema,
                         f,
                         include_paths,
+                        partitioning,
                     ),
                     meta,
                 )
@@ -399,10 +439,12 @@ def read_fragments(
     block_udf,
     to_batches_kwargs,
     default_read_batch_size_rows,
-    columns,
+    data_columns,
+    partition_columns,
     schema,
     serialized_fragments: List[SerializedFragment],
     include_paths: bool,
+    partitioning: Partitioning,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -421,11 +463,23 @@ def read_fragments(
     use_threads = to_batches_kwargs.pop("use_threads", False)
     batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
+        partitions = {}
+        if partitioning is not None:
+            parse = PathPartitionParser(partitioning)
+            partitions = parse(fragment.path)
+
+        # Filter out partitions that aren't in the user-specified columns list.
+        if partition_columns is not None:
+            partitions = {
+                field_name: value
+                for field_name, value in partitions.items()
+                if field_name in partition_columns
+            }
 
         def get_batch_iterable():
             return fragment.to_batches(
                 use_threads=use_threads,
-                columns=columns,
+                columns=data_columns,
                 schema=schema,
                 batch_size=batch_size,
                 **to_batches_kwargs,
@@ -439,7 +493,12 @@ def read_fragments(
         ):
             table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:
-                table = table.append_column("path", [[fragment.path]] * len(table))
+                table = BlockAccessor.for_block(table).fill_column(
+                    "path", fragment.path
+                )
+            if partitions:
+                table = _add_partitions_to_table(partitions, table)
+
             # If the table is empty, drop it.
             if table.num_rows > 0:
                 if block_udf is not None:
@@ -536,7 +595,9 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
 
 def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
-        if sample_info.actual_bytes_per_row is None:
+        # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
+        # was all null.
+        if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
             max_parquet_reader_row_batch_size_bytes = (
@@ -564,20 +625,11 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
         paths = paths[0]
 
     try:
-        # The `use_legacy_dataset` parameter is deprecated in Arrow 15.
-        if parse_version(_get_pyarrow_version()) >= parse_version("15.0.0"):
-            dataset = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-            )
-        else:
-            dataset = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-                use_legacy_dataset=False,
-            )
+        dataset = pq.ParquetDataset(
+            paths,
+            **dataset_kwargs,
+            filesystem=filesystem,
+        )
     except OSError as e:
         _handle_read_os_error(e, paths)
 
@@ -611,7 +663,7 @@ def sample_fragments(
 
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
-    scheduling = local_scheduling or "SPREAD"
+    scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
@@ -633,3 +685,129 @@ def sample_fragments(
     sample_bar.close()
 
     return sample_infos
+
+
+def _add_partitions_to_table(
+    partitions: Dict[str, PartitionDataType], table: "pyarrow.Table"
+) -> "pyarrow.Table":
+
+    for field_name, value in partitions.items():
+        field_index = table.schema.get_field_index(field_name)
+        if field_index == -1:
+            table = BlockAccessor.for_block(table).fill_column(field_name, value)
+
+    return table
+
+
+def _add_partition_fields_to_schema(
+    partitioning: Partitioning,
+    schema: "pyarrow.Schema",
+    parquet_dataset: "pyarrow.dataset.Dataset",
+) -> "pyarrow.Schema":
+    """Return a new schema with partition fields added.
+
+    This function infers the partition fields from the first file path in the dataset.
+    """
+    import pyarrow as pa
+
+    # If the dataset is empty, we can't infer the partitioning.
+    if len(parquet_dataset.fragments) == 0:
+        return schema
+
+    # If the dataset isn't partitioned, we don't need to add any fields.
+    if partitioning is None:
+        return schema
+
+    first_path = parquet_dataset.fragments[0].path
+    parse = PathPartitionParser(partitioning)
+    partitions = parse(first_path)
+    for field_name in partitions:
+        if field_name in partitioning.field_types:
+            field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
+        else:
+            field_type = pa.string()
+        schema = schema.append(pa.field(field_name, field_type))
+
+    return schema
+
+
+def emit_file_extensions_future_warning(future_file_extensions: List[str]):
+    warnings.warn(
+        "The default `file_extensions` for `read_parquet` will change "
+        f"from `None` to {future_file_extensions} after Ray 2.43, and your dataset "
+        "contains files that don't match the new `file_extensions`. To maintain "
+        "backwards compatibility, set `file_extensions=None` explicitly.",
+        FutureWarning,
+    )
+
+
+def _infer_schema(
+    parquet_dataset, schema, columns, partitioning, _block_udf
+) -> "pyarrow.Schema":
+    """Infer the schema of read data using the user-specified parameters."""
+    import pyarrow as pa
+
+    inferred_schema = schema
+
+    if schema is None:
+        inferred_schema = parquet_dataset.schema
+        inferred_schema = _add_partition_fields_to_schema(
+            partitioning, inferred_schema, parquet_dataset
+        )
+
+    if columns:
+        inferred_schema = pa.schema(
+            [inferred_schema.field(column) for column in columns],
+            inferred_schema.metadata,
+        )
+
+    if _block_udf is not None:
+        # Try to infer dataset schema by passing dummy table through UDF.
+        dummy_table = inferred_schema.empty_table()
+        try:
+            inferred_schema = _block_udf(dummy_table).schema.with_metadata(
+                inferred_schema.metadata
+            )
+        except Exception:
+            logger.debug(
+                "Failed to infer schema of dataset by passing dummy table "
+                "through UDF due to the following exception:",
+                exc_info=True,
+            )
+
+    check_for_legacy_tensor_type(inferred_schema)
+    return inferred_schema
+
+
+def _infer_data_and_partition_columns(
+    user_specified_columns: List[str],
+    fragment: "ParquetFileFragment",
+    partitioning: Optional[Partitioning],
+) -> Tuple[List[str], List[str]]:
+    """Infer which columns are in the files and which columns are partition columns.
+
+    This function uses the schema and path of the first file to infer what columns
+    represent.
+
+    Args:
+        user_specified_columns: A list of column names that the user specified.
+        fragment: The first fragment in the dataset.
+        partitioning: The partitioning scheme used to partition the data.
+
+    Returns:
+        A tuple of lists of column names. The first list contains the columns that are
+        in the file, and the second list contains the columns that are partition
+        columns.
+    """
+    data_columns = [
+        column
+        for column in user_specified_columns
+        if column in fragment.physical_schema.names
+    ]
+    if partitioning is not None:
+        parse = PathPartitionParser(partitioning)
+        partitions = parse(fragment.path)
+        partition_columns = [
+            column for column in user_specified_columns if column in partitions
+        ]
+    return data_columns, partition_columns

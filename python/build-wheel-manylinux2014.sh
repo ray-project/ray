@@ -10,6 +10,7 @@ PYTHON_VERSIONS=(
   "py310 cp310-cp310"
   "py311 cp311-cp311"
   "py312 cp312-cp312"
+  "py313 cp313-cp313"
 )
 
 # Add the repo folder to the safe.directory global variable to avoid the failure

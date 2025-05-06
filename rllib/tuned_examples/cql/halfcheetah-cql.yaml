@@ -1,6 +1,6 @@
 # @OldAPIStack
 halfcheetah_cql:
-    env: 
+    env:
         grid_search:
             #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_random
             #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_medium

@@ -51,8 +51,13 @@ export const ServeReplicaMetricsSection = ({
   className,
   sx,
 }: ServeDeploymentMetricsSectionProps) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+    currentTimeZone,
+  } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
 
@@ -179,7 +184,7 @@ export const ServeReplicaMetricsSection = ({
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}${timeRangeParams}&var-Deployment=${encodeURIComponent(
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
                 replicaId,

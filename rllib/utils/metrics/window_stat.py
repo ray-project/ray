@@ -1,6 +1,9 @@
 import numpy as np
 
+from ray.rllib.utils.annotations import OldAPIStack
 
+
+@OldAPIStack
 class WindowStat:
     """Handles/stores incoming dataset and provides window-based statistics.
 

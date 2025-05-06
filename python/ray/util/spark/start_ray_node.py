@@ -63,14 +63,6 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
 
-    def preexec_function():
-        # Make Ray node process runs in a separate group,
-        # otherwise Ray node will be in the same group of parent process,
-        # if parent process is a Jupyter notebook kernel, when user
-        # clicks interrupt cell button, SIGINT signal is sent, then Ray node will
-        # receive SIGINT signal and it causes Ray node process dies.
-        os.setpgrp()
-
     process = subprocess.Popen(
         # 'ray start ...' command uses python that is set by
         # Shebang #! ..., the Shebang line is hardcoded in ray script,
@@ -80,14 +72,27 @@ if __name__ == "__main__":
         # '`sys.executable` `which ray` start ...'
         [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
         text=True,
-        preexec_fn=preexec_function,
     )
 
-    def try_clean_temp_dir_at_exit():
+    exit_handler_executed = False
+    sigterm_handler_executed = False
+    ON_EXIT_HANDLER_WAIT_TIME = 3
+
+    def on_exit_handler():
+        global exit_handler_executed
+
+        if exit_handler_executed:
+            # wait for exit_handler execution completed in other threads.
+            time.sleep(ON_EXIT_HANDLER_WAIT_TIME)
+            return
+
+        exit_handler_executed = True
+
         try:
             # Wait for a while to ensure the children processes of the ray node all
             # exited.
             time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
+
             if process.poll() is None:
                 # "ray start ..." command process is still alive. Force to kill it.
                 process.kill()
@@ -156,10 +161,10 @@ if __name__ == "__main__":
         while True:
             time.sleep(0.5)
             if os.getppid() != orig_parent_pid:
-                process.terminate()
-                try_clean_temp_dir_at_exit()
-                # Keep the same exit code 143 with sigterm signal.
-                os._exit(143)
+                # Note raising SIGTERM signal in a background thread
+                # doesn't work
+                sigterm_handler()
+                break
 
     threading.Thread(target=check_parent_alive, daemon=True).start()
 
@@ -179,8 +184,14 @@ if __name__ == "__main__":
         signal.signal(signal.SIGHUP, sighup_handler)
 
         def sigterm_handler(*args):
-            process.terminate()
-            try_clean_temp_dir_at_exit()
+            global sigterm_handler_executed
+            if not sigterm_handler_executed:
+                sigterm_handler_executed = True
+                process.terminate()
+                on_exit_handler()
+            else:
+                # wait for exit_handler execution completed in other threads.
+                time.sleep(ON_EXIT_HANDLER_WAIT_TIME)
             # Sigterm exit code is 143.
             os._exit(143)
 
@@ -194,8 +205,8 @@ if __name__ == "__main__":
                 # `start_ray_node` (subprocess) will receive SIGINT signal and it
                 # causes KeyboardInterrupt exception being raised.
                 pass
-        try_clean_temp_dir_at_exit()
+        on_exit_handler()
         sys.exit(ret_code)
     except Exception:
-        try_clean_temp_dir_at_exit()
+        on_exit_handler()
         raise

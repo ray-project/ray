@@ -408,7 +408,6 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
 @OldAPIStack
 def get_filter(filter_config, shape):
-    # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":
         return MeanStdFilter(shape, clip=None)
     elif filter_config == "ConcurrentMeanStdFilter":

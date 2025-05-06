@@ -2,7 +2,7 @@
 
 # Serve a StableDiffusion text-to-image model on Kubernetes
 
-> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples) repo 
+> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples) repository
 and [the Ray documentation](https://docs.ray.io/en/latest/serve/tutorials/stable-diffusion.html).
 
 ## Step 1: Create a Kubernetes cluster with GPUs
@@ -11,22 +11,18 @@ Follow [aws-eks-gpu-cluster.md](kuberay-eks-gpu-cluster-setup) or [gcp-gke-gpu-c
 
 ## Step 2: Install KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
-Please note that the YAML file in this example uses `serveConfigV2`, which is supported starting from KubeRay v0.6.0.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator using the Helm repository.
+Note that the YAML file in this example uses `serveConfigV2`. This feature requires KubeRay v0.6.0 or later.
 
 ## Step 3: Install a RayService
 
 ```sh
-# Step 3.1: Download `ray-service.stable-diffusion.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-service.stable-diffusion.yaml
-
-# Step 3.2: Create a RayService
-kubectl apply -f ray-service.stable-diffusion.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.stable-diffusion.yaml
 ```
 
 This RayService configuration contains some important settings:
 
-* The `tolerations` for workers allow them to be scheduled on nodes without any taints or on nodes with specific taints. However, workers will only be scheduled on GPU nodes because we set `nvidia.com/gpu: 1` in the Pod's resource configurations.
+* In the RayService, the head Pod doesn't have any `tolerations`. Meanwhile, the worker Pods use the following `tolerations` so the scheduler won't assign the head Pod to the GPU node.
     ```yaml
     # Please add the following taints to the GPU node.
     tolerations:
@@ -35,7 +31,7 @@ This RayService configuration contains some important settings:
         value: "worker"
         effect: "NoSchedule"
     ```
-* It includes `diffusers` in `runtime_env` since this package is not included by default in the `ray-ml` image.
+* It includes `diffusers` in `runtime_env` since this package isn't included by default in the `ray-ml` image.
 
 ## Step 4: Forward the port of Serve
 
@@ -48,15 +44,26 @@ kubectl get services
 Then, port forward to the serve.
 
 ```sh
+# Wait until the RayService `Ready` condition is `True`. This means the RayService is ready to serve.
+kubectl describe rayservices.ray.io stable-diffusion
+
+# [Example output]
+#   Conditions:
+#     Last Transition Time:  2025-02-13T07:10:34Z
+#     Message:               Number of serve endpoints is greater than 0
+#     Observed Generation:   1
+#     Reason:                NonZeroServeEndpoints
+#     Status:                True
+#     Type:                  Ready
+
+# Forward the port of Serve
 kubectl port-forward svc/stable-diffusion-serve-svc 8000
 ```
-
-Note that the RayService's Kubernetes service will be created after the Serve applications are ready and running. This process may take approximately 1 minute after all Pods in the RayCluster are running.
 
 ## Step 5: Send a request to the text-to-image model
 
 ```sh
-# Step 5.1: Download `stable_diffusion_req.py` 
+# Step 5.1: Download `stable_diffusion_req.py`
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/stable_diffusion/stable_diffusion_req.py
 
 # Step 5.2: Set your `prompt` in `stable_diffusion_req.py`.

@@ -31,6 +31,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
+CLOUD = "serve_release_tests_cloud"
 
 
 @click.command()
@@ -47,7 +48,7 @@ def main(output_path: Optional[str], image_uri: Optional[str]):
         ],
     }
     compute_config = ComputeConfig(
-        cloud="serve_release_tests_cloud",
+        cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -67,9 +68,10 @@ def main(output_path: Optional[str], image_uri: Optional[str]):
         compute_config=compute_config,
         applications=[resnet_application],
         working_dir="workloads",
+        cloud=CLOUD,
     ) as service_name:
         ray.init(address="auto")
-        status = service.status(name=service_name)
+        status = service.status(name=service_name, cloud=CLOUD)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1

@@ -96,12 +96,12 @@ def get_docker_image(docker_override):
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py38"
+        return "rayproject/ray:latest-py39"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py38"
+        return "rayproject/ray:nightly-py39"
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py38"
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py39"
         else:
             print(
                 "Error: docker image is only available for "

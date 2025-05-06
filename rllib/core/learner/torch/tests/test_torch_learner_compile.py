@@ -114,7 +114,7 @@ class TestLearner(unittest.TestCase):
         # outputs are not checked
         # TODO(Artur): Attempt bringing breaks down to 1. (This may not be possible)
         # Note: This test is skipped on CI if torch dynamo is available.
-        self.assertEquals(len(break_reasons), 3)
+        self.assertEqual(len(break_reasons), 3)
 
 
 if __name__ == "__main__":

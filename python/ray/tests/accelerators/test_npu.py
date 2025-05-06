@@ -11,8 +11,8 @@ from ray._private.accelerators import NPUAcceleratorManager as Accelerator
 def test_autodetect_num_npus(mock_glob):
     with patch.dict(sys.modules):
         sys.modules["acl"] = None
-        mock_glob.return_value = [f"/dev/davinci{i}" for i in range(4)]
-        assert Accelerator.get_current_node_num_accelerators() == 4
+        mock_glob.return_value = [f"/dev/davinci{i}" for i in range(64)]
+        assert Accelerator.get_current_node_num_accelerators() == 64
 
 
 @patch("glob.glob")

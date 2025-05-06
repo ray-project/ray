@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -103,7 +103,7 @@ def test_default_parquet_metadata_provider(fs, data_path):
     pq.write_table(table, paths[1], filesystem=fs)
 
     meta_provider = ParquetMetadataProvider()
-    pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
+    pq_ds = pq.ParquetDataset(paths, filesystem=fs)
     fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
 
     meta = meta_provider(
@@ -296,7 +296,6 @@ def test_default_file_metadata_provider_many_files_partitioned(
     data_path,
     endpoint_url,
     write_partitioned_df,
-    assert_base_partitioned_ds,
 ):
     if endpoint_url is None:
         storage_options = {}

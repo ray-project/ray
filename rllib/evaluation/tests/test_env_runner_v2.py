@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -25,25 +25,31 @@ from ray.rllib.utils.test_utils import check
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
 
 
+def _get_mapper():
+    # Note(Artur): This was originally part of the unittest.TestCase.setUpClass
+    # method but caused trouble when serializing the config because we ended up
+    # serializing `self`, which is an instance of unittest.TestCase.
+
+    # When dealing with two policies in these tests, simply alternate between the 2
+    # policies to make sure we have data for inference for both policies for each
+    # step.
+    class AlternatePolicyMapper:
+        def __init__(self):
+            self.policies = ["one", "two"]
+            self.next = 0
+
+        def map(self):
+            p = self.policies[self.next]
+            self.next = 1 - self.next
+            return p
+
+    return AlternatePolicyMapper()
+
+
 class TestEnvRunnerV2(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-
-        # When dealing with two policies in these tests, simply alternate between the 2
-        # policies to make sure we have data for inference for both policies for each
-        # step.
-        class AlternatePolicyMapper:
-            def __init__(self):
-                self.policies = ["one", "two"]
-                self.next = 0
-
-            def map(self):
-                p = self.policies[self.next]
-                self.next = 1 - self.next
-                return p
-
-        cls.mapper = AlternatePolicyMapper()
 
     @classmethod
     def tearDownClass(cls):
@@ -52,6 +58,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_single_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(DebugCounterEnv)
             .framework("torch")
             .training(
@@ -61,8 +71,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -79,6 +87,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_multi_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -88,8 +100,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -148,13 +158,15 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .framework("torch")
             .environment("env_under_test")
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
                 rollout_fragment_length=100,
             )
             .multi_agent(
@@ -171,7 +183,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             # directly overridden in the policy class.
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "pol1": RLModuleSpec(module_class=RandomRLModule),
                         "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -209,8 +221,14 @@ class TestEnvRunnerV2(unittest.TestCase):
                 self.view_requirements["rewards"].used_for_compute_actions = False
                 self.view_requirements["terminateds"].used_for_compute_actions = False
 
+        mapper = _get_mapper()
+
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -220,8 +238,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -232,13 +248,13 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicyTwo,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -274,7 +290,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                 assert ac_data.input_dict, "raw input dict should be available"
                 return ac_data
 
-        class AddActionConnectorCallbacks(DefaultCallbacks):
+        class AddActionConnectorCallbacks(RLlibCallback):
             def on_create_policy(self, *, policy_id, policy) -> None:
                 policy.action_connectors.append(
                     CheckInputDictActionConnector(ConnectorContext.from_policy(policy))
@@ -282,6 +298,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -294,8 +314,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -306,8 +324,13 @@ class TestEnvRunnerV2(unittest.TestCase):
         _ = rollout_worker.sample()
 
     def test_start_episode(self):
+        mapper = _get_mapper()
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -317,8 +340,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -329,13 +350,13 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicy,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -361,9 +382,14 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertEqual(env_runner._active_episodes[0].total_agent_steps, 2)
 
     def test_env_runner_output(self):
+        mapper = _get_mapper()
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -373,8 +399,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -385,13 +409,13 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicy,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -413,16 +437,21 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertTrue(len(list(outputs[0].agent_rewards.keys())) == 2)
 
     def test_env_error(self):
-        class CheckErrorCallbacks(DefaultCallbacks):
+        class CheckErrorCallbacks(RLlibCallback):
             def on_episode_end(
                 self, *, worker, base_env, policies, episode, env_index=None, **kwargs
             ) -> None:
                 # We should see an error episode.
                 assert isinstance(episode, Exception)
 
+        mapper = _get_mapper()
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -432,8 +461,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -444,13 +471,13 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicy,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }

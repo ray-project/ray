@@ -2,7 +2,7 @@ import time
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.schedulers.pb2 import PB2
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -51,8 +51,8 @@ pb2_scheduler = PB2(
         "vf_loss_coeff": [0.01, 1.0],
         "clip_param": [0.1, 0.3],
         "kl_target": [0.01, 0.03],
-        "sgd_minibatch_size": [512, 4096],
-        "num_sgd_iter": [6, 32],
+        "minibatch_size": [512, 4096],
+        "num_epochs": [6, 32],
         "vf_share_layers": [False, True],
         "use_kl_loss": [False, True],
         "kl_coeff": [0.1, 0.4],
@@ -69,11 +69,6 @@ for env, stop_criteria in benchmark_envs.items():
     config = (
         PPOConfig()
         .environment(env=env)
-        # Enable new API stack and use EnvRunner.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .env_runners(
             rollout_fragment_length=1,
             num_env_runners=num_rollout_workers,
@@ -96,15 +91,15 @@ for env, stop_criteria in benchmark_envs.items():
             vf_loss_coeff=tune.uniform(0.01, 1.0),
             clip_param=tune.uniform(0.1, 0.3),
             kl_target=tune.uniform(0.01, 0.03),
-            sgd_minibatch_size=tune.choice([512, 1024, 2048, 4096]),
-            num_sgd_iter=tune.randint(6, 32),
+            minibatch_size=tune.choice([512, 1024, 2048, 4096]),
+            num_epochs=tune.randint(6, 32),
             vf_share_layers=tune.choice([True, False]),
             use_kl_loss=tune.choice([True, False]),
             kl_coeff=tune.uniform(0.1, 0.4),
             vf_clip_param=tune.choice([10.0, 40.0, float("inf")]),
             grad_clip=tune.choice([None, 40, 100, 200]),
             train_batch_size=tune.sample_from(
-                lambda spec: spec.config["sgd_minibatch_size"] * num_rollout_workers
+                lambda spec: spec.config["minibatch_size"] * num_rollout_workers
             ),
             model={
                 "fcnet_hiddens": [64, 64],
@@ -131,7 +126,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_ppo_mujoco_pb2_" + env,
         ),
@@ -154,7 +149,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "PPO",
         param_space=best_result.config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_ppo_mujoco_pb2_" + env + "_best",
         ),

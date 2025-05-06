@@ -36,35 +36,36 @@ Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installatio
 
 ```text
 +-----------------------------------------------------------------------------+
-| HL-SMI Version:                              hl-1.14.0-fw-48.0.1.0          |
-| Driver Version:                                     1.15.0-c43dc7b          |
+| HL-SMI Version:                              hl-1.20.0-fw-58.1.1.1          |
+| Driver Version:                                     1.19.1-6f47ddd          |
+| Nic Driver Version:                                 1.19.1-f071c23          |
 |-------------------------------+----------------------+----------------------+
-| AIP  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| AIP  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncor-Events|
 | Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | AIP-Util  Compute M. |
 |===============================+======================+======================|
-|   0  HL-225              N/A  | 0000:09:00.0     N/A |                   0  |
-| N/A   26C   N/A    87W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   0  HL-225              N/A  | 0000:9a:00.0     N/A |                   0  |
+| N/A   22C   N/A  96W /  600W  |   768MiB /  98304MiB |     0%            0% |
 |-------------------------------+----------------------+----------------------+
-|   1  HL-225              N/A  | 0000:08:00.0     N/A |                   0  |
-| N/A   28C   N/A    99W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   1  HL-225              N/A  | 0000:9b:00.0     N/A |                   0  |
+| N/A   24C   N/A  78W /  600W  |   768MiB /  98304MiB |     0%            0% |
 |-------------------------------+----------------------+----------------------+
-|   2  HL-225              N/A  | 0000:0a:00.0     N/A |                   0  |
-| N/A   24C   N/A    98W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   2  HL-225              N/A  | 0000:b3:00.0     N/A |                   0  |
+| N/A   25C   N/A  81W /  600W  |   768MiB /  98304MiB |     0%            0% |
 |-------------------------------+----------------------+----------------------+
-|   3  HL-225              N/A  | 0000:0c:00.0     N/A |                   0  |
-| N/A   27C   N/A    87W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   3  HL-225              N/A  | 0000:b4:00.0     N/A |                   0  |
+| N/A   22C   N/A  92W /  600W  | 96565MiB /  98304MiB |     0%           98% |
 |-------------------------------+----------------------+----------------------+
-|   4  HL-225              N/A  | 0000:0b:00.0     N/A |                   0  |
-| N/A   25C   N/A   112W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   4  HL-225              N/A  | 0000:33:00.0     N/A |                   0  |
+| N/A   22C   N/A  83W /  600W  |   768MiB /  98304MiB |     0%            0% |
 |-------------------------------+----------------------+----------------------+
-|   5  HL-225              N/A  | 0000:0d:00.0     N/A |                   0  |
-| N/A   26C   N/A   111W / 600W |  26835MiB / 98304MiB |     0%           N/A |
+|   5  HL-225              N/A  | 0000:4e:00.0     N/A |                   0  |
+| N/A   21C   N/A  80W /  600W  | 96564MiB /  98304MiB |     0%           98% |
 |-------------------------------+----------------------+----------------------+
-|   6  HL-225              N/A  | 0000:0f:00.0     N/A |                   0  |
-| N/A   24C   N/A    93W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   6  HL-225              N/A  | 0000:34:00.0     N/A |                   0  |
+| N/A   25C   N/A  86W /  600W  |   768MiB /  98304MiB |     0%            0% |
 |-------------------------------+----------------------+----------------------+
-|   7  HL-225              N/A  | 0000:0e:00.0     N/A |                   0  |
-| N/A   25C   N/A    86W / 600W |    768MiB / 98304MiB |     0%           N/A |
+|   7  HL-225              N/A  | 0000:4d:00.0     N/A |                   0  |
+| N/A   30C   N/A 100W /  600W  | 17538MiB /  98304MiB |     0%           17% |
 |-------------------------------+----------------------+----------------------+
 | Compute Processes:                                               AIP Memory |
 |  AIP       PID   Type   Process name                             Usage      |
@@ -76,22 +77,22 @@ Next, follow [Run Using Containers](https://docs.habana.ai/en/latest/Installatio
 |   4        N/A   N/A    N/A                                      N/A        |
 |   5        N/A   N/A    N/A                                      N/A        |
 |   6        N/A   N/A    N/A                                      N/A        |
-|   7        N/A   N/A    N/A                                      N/A        |
+|   7       107684     C   ray::_RayTrainW                         16770MiB    
 +=============================================================================+
 ```
 
 Next, start the Gaudi container:
 ```bash
-docker pull vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
-docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
+docker pull vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
+docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
 ```
 
 To follow the examples in this tutorial, mount the directory containing the examples and models into the container. Inside the container, run:
 ```bash
 pip install ray[tune,serve]
 pip install git+https://github.com/huggingface/optimum-habana.git
-# Replace 1.14.0 with the driver version of the container.
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+# Replace 1.20.0 with the driver version of the container.
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 # Only needed by the DeepSpeed example.
 export RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES=1
 ```
@@ -119,42 +120,45 @@ serve run intel_gaudi_inference_serve:entrypoint
 The terminal should print logs as the deployment starts up:
 
 ```text
-2024-02-01 05:38:34,021 INFO scripts.py:438 -- Running import path: 'ray_serve_7b:entrypoint'.
-2024-02-01 05:38:36,112 INFO worker.py:1540 -- Connecting to existing Ray cluster at address: 10.111.128.177:6379...
-2024-02-01 05:38:36,124 INFO worker.py:1715 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
-(ProxyActor pid=17179) INFO 2024-02-01 05:38:39,573 proxy 10.111.128.177 proxy.py:1141 - Proxy actor b0c697edb66f42a46f802f4603000000 starting on node 7776cd4634f69216c8354355018195b290314ad24fd9565404a2ed12.
-(ProxyActor pid=17179) INFO 2024-02-01 05:38:39,580 proxy 10.111.128.177 proxy.py:1346 - Starting HTTP server on node: 7776cd4634f69216c8354355018195b290314ad24fd9565404a2ed12 listening on port 8000
-(ProxyActor pid=17179) INFO:     Started server process [17179]
-(ServeController pid=17084) INFO 2024-02-01 05:38:39,677 controller 17084 deployment_state.py:1545 - Deploying new version of deployment LlamaModel in application 'default'. Setting initial target number of replicas to 1.
-(ServeController pid=17084) INFO 2024-02-01 05:38:39,780 controller 17084 deployment_state.py:1829 - Adding 1 replica to deployment LlamaModel in application 'default'.
-(ServeReplica:default:LlamaModel pid=17272) [WARNING|utils.py:198] 2024-02-01 05:38:48,700 >> optimum-habana v1.11.0.dev0 has been validated for SynapseAI v1.14.0 but the driver version is v1.15.0, this could lead to undefined behavior!
-(ServeReplica:default:LlamaModel pid=17272) /usr/local/lib/python3.10/dist-packages/transformers/models/auto/tokenization_auto.py:655: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
-(ServeReplica:default:LlamaModel pid=17272)   warnings.warn(
-(ServeReplica:default:LlamaModel pid=17272) /usr/local/lib/python3.10/dist-packages/transformers/models/auto/configuration_auto.py:1020: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
-(ServeReplica:default:LlamaModel pid=17272)   warnings.warn(
-(ServeReplica:default:LlamaModel pid=17272) /usr/local/lib/python3.10/dist-packages/transformers/models/auto/auto_factory.py:472: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
-(ServeReplica:default:LlamaModel pid=17272)   warnings.warn(
+2025-03-03 06:07:08,106 INFO scripts.py:494 -- Running import path: 'infer:entrypoint'.
+2025-03-03 06:07:09,295 INFO worker.py:1654 -- Connecting to existing Ray cluster at address: 100.83.111.228:6379...
+2025-03-03 06:07:09,304 INFO worker.py:1832 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
+(ProxyActor pid=147082) INFO 2025-03-03 06:07:11,096 proxy 100.83.111.228 -- Proxy starting on node b4d028b67678bfdd190b503b44780bc319c07b1df13ac5c577873861 (HTTP port: 8000).
+INFO 2025-03-03 06:07:11,202 serve 162730 -- Started Serve in namespace "serve".
+INFO 2025-03-03 06:07:11,203 serve 162730 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+(ProxyActor pid=147082) INFO 2025-03-03 06:07:11,184 proxy 100.83.111.228 -- Got updated endpoints: {}.
+(ServeController pid=147087) INFO 2025-03-03 06:07:11,278 controller 147087 -- Deploying new version of Deployment(name='LlamaModel', app='default') (initial target replicas: 1).
+(ProxyActor pid=147082) INFO 2025-03-03 06:07:11,280 proxy 100.83.111.228 -- Got updated endpoints: {Deployment(name='LlamaModel', app='default'): EndpointInfo(route='/', app_is_cross_language=False)}.
+(ProxyActor pid=147082) INFO 2025-03-03 06:07:11,286 proxy 100.83.111.228 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7f74804e90c0>.
+(ServeController pid=147087) INFO 2025-03-03 06:07:11,381 controller 147087 -- Adding 1 replica to Deployment(name='LlamaModel', app='default').
+(ServeReplica:default:LlamaModel pid=147085) [WARNING|utils.py:212] 2025-03-03 06:07:15,251 >> optimum-habana v1.15.0 has been validated for SynapseAI v1.19.0 but habana-frameworks v1.20.0.543 was found, this could lead to undefined behavior!
+(ServeReplica:default:LlamaModel pid=147085) /usr/local/lib/python3.10/dist-packages/transformers/deepspeed.py:24: FutureWarning: transformers.deepspeed module is deprecated and will be removed in a future version. Please import deepspeed modules directly from transformers.integrations
+(ServeReplica:default:LlamaModel pid=147085)   warnings.warn(
+(ServeReplica:default:LlamaModel pid=147085) /usr/local/lib/python3.10/dist-packages/transformers/models/auto/tokenization_auto.py:796: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers. Please use `token` instead.
+(ServeReplica:default:LlamaModel pid=147085)   warnings.warn(
+(ServeReplica:default:LlamaModel pid=147085) /usr/local/lib/python3.10/dist-packages/transformers/models/auto/configuration_auto.py:991: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers. Please use `token` instead.
+(ServeReplica:default:LlamaModel pid=147085)   warnings.warn(
+(ServeReplica:default:LlamaModel pid=147085) /usr/local/lib/python3.10/dist-packages/transformers/models/auto/auto_factory.py:471: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers. Please use `token` instead.
+(ServeReplica:default:LlamaModel pid=147085)   warnings.warn(
 Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]
-Loading checkpoint shards:  50%|█████     | 1/2 [00:17<00:17, 17.90s/it]
-(ServeController pid=17084) WARNING 2024-02-01 05:39:09,835 controller 17084 deployment_state.py:2171 - Deployment 'LlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading checkpoint shards: 100%|██████████| 2/2 [00:24<00:00, 12.36s/it]
-(ServeReplica:default:LlamaModel pid=17272) /usr/local/lib/python3.10/dist-packages/transformers/generation/configuration_utils.py:362: UserWarning: `do_sample` is set to `False`. However, `temperature` is set to `0.9` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `temperature`. This was detected when initializing the generation config instance, which means the corresponding file may hold incorrect parameterization and should be fixed.
-(ServeReplica:default:LlamaModel pid=17272)   warnings.warn(
-(ServeReplica:default:LlamaModel pid=17272) /usr/local/lib/python3.10/dist-packages/transformers/generation/configuration_utils.py:367: UserWarning: `do_sample` is set to `False`. However, `top_p` is set to `0.6` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `top_p`. This was detected when initializing the generation config instance, which means the corresponding file may hold incorrect parameterization and should be fixed.
-(ServeReplica:default:LlamaModel pid=17272)   warnings.warn(
-(ServeReplica:default:LlamaModel pid=17272) ============================= HABANA PT BRIDGE CONFIGURATION =========================== 
-(ServeReplica:default:LlamaModel pid=17272)  PT_HPU_LAZY_MODE = 1
-(ServeReplica:default:LlamaModel pid=17272)  PT_RECIPE_CACHE_PATH = 
-(ServeReplica:default:LlamaModel pid=17272)  PT_CACHE_FOLDER_DELETE = 0
-(ServeReplica:default:LlamaModel pid=17272)  PT_HPU_RECIPE_CACHE_CONFIG = 
-(ServeReplica:default:LlamaModel pid=17272)  PT_HPU_MAX_COMPOUND_OP_SIZE = 9223372036854775807
-(ServeReplica:default:LlamaModel pid=17272)  PT_HPU_LAZY_ACC_PAR_MODE = 1
-(ServeReplica:default:LlamaModel pid=17272)  PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES = 0
-(ServeReplica:default:LlamaModel pid=17272) ---------------------------: System Configuration :---------------------------
-(ServeReplica:default:LlamaModel pid=17272) Num CPU Cores : 156
-(ServeReplica:default:LlamaModel pid=17272) CPU RAM       : 495094196 KB
-(ServeReplica:default:LlamaModel pid=17272) ------------------------------------------------------------------------------
-2024-02-01 05:39:25,873 SUCC scripts.py:483 -- Deployed Serve app successfully.
+Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.72s/it]
+Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.45s/it]
+(ServeReplica:default:LlamaModel pid=147085) ============================= HABANA PT BRIDGE CONFIGURATION =========================== 
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_LAZY_MODE = 1
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_RECIPE_CACHE_CONFIG = ,false,1024
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_MAX_COMPOUND_OP_SIZE = 9223372036854775807
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_LAZY_ACC_PAR_MODE = 1
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES = 0
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_EAGER_PIPELINE_ENABLE = 1
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_EAGER_COLLECTIVE_PIPELINE_ENABLE = 1
+(ServeReplica:default:LlamaModel pid=147085)  PT_HPU_ENABLE_LAZY_COLLECTIVES = 0
+(ServeReplica:default:LlamaModel pid=147085) ---------------------------: System Configuration :---------------------------
+(ServeReplica:default:LlamaModel pid=147085) Num CPU Cores : 160
+(ServeReplica:default:LlamaModel pid=147085) CPU RAM       : 1056374420 KB
+(ServeReplica:default:LlamaModel pid=147085) ------------------------------------------------------------------------------
+INFO 2025-03-03 06:07:30,359 serve 162730 -- Application 'default' is ready at http://127.0.0.1:8000/.
+INFO 2025-03-03 06:07:30,359 serve 162730 -- Deployed app 'default' successfully.
+
 ```
 
 In another shell, use the following code to send requests to the deployment to perform generation tasks.
@@ -167,12 +171,18 @@ In another shell, use the following code to send requests to the deployment to p
 
 Here is an example output:
 ```text
-Once upon a time, in a far-off land, there was a magical kingdom called "Happily Ever Laughter." It was a place where laughter was the key to unlocking all the joys of life, and where everyone lived in perfect harmony.
-In this kingdom, there was a beautiful princess named Lily. She was kind, gentle, and had a heart full of laughter. Every day, she would wake up with a smile on her face, ready to face whatever adventures the day might bring.
-One day, a wicked sorcerer cast a spell on the kingdom, causing all
-in a far-off land, there was a magical kingdom called "Happily Ever Laughter." It was a place where laughter was the key to unlocking all the joys of life, and where everyone lived in perfect harmony.
-In this kingdom, there was a beautiful princess named Lily. She was kind, gentle, and had a heart full of laughter. Every day, she would wake up with a smile on her face, ready to face whatever adventures the day might bring.
-One day, a wicked sorcerer cast a spell on the kingdom, causing all
+Once upon a time, in a small village nestled in the rolling hills of Tuscany, there lived a young girl named Sophia.
+
+Sophia was a curious and adventurous child, always eager to explore the world around her. She spent her days playing in the fields and forests, chasing after butterflies and watching the clouds drift lazily across the sky.
+
+One day, as Sophia was wandering through the village, she stumbled upon a beautiful old book hidden away in a dusty corner of the local library. The book was bound in worn leather and adorned with intr
+in a small village nestled in the rolling hills of Tuscany, there lived a young girl named Luna.
+Luna was a curious and adventurous child, always eager to explore the world around her. She spent her days wandering through the village, discovering new sights and sounds at every turn.
+
+One day, as she was wandering through the village, Luna stumbled upon a hidden path she had never seen before. The path was overgrown with weeds and vines, and it seemed to disappear into the distance.
+
+Luna's curiosity was piqued,
+
 ```
 
 ## Running a sharded model on multiple HPUs
@@ -210,81 +220,67 @@ Next, define a deployment:
 
 Copy both blocks of the preceding code and save them into `intel_gaudi_inference_serve_deepspeed.py`. Run this example using `serve run intel_gaudi_inference_serve_deepspeed:entrypoint`.
 
+Notice!!! Please set the environment variable `HABANA_VISIBLE_MODULES` carefully.
+
 The terminal should print logs as the deployment starts up:
 ```text
-2024-02-01 06:08:51,170 INFO scripts.py:438 -- Running import path: 'deepspeed_demo:entrypoint'.
-2024-02-01 06:08:54,143 INFO worker.py:1540 -- Connecting to existing Ray cluster at address: 10.111.128.177:6379...
-2024-02-01 06:08:54,154 INFO worker.py:1715 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
-(ServeController pid=44317) INFO 2024-02-01 06:08:54,348 controller 44317 deployment_state.py:1545 - Deploying new version of deployment DeepSpeedLlamaModel in application 'default'. Setting initial target number of replicas to 1.
-(ServeController pid=44317) INFO 2024-02-01 06:08:54,457 controller 44317 deployment_state.py:1708 - Stopping 1 replicas of deployment 'DeepSpeedLlamaModel' in application 'default' with outdated versions.
-(ServeController pid=44317) INFO 2024-02-01 06:08:57,326 controller 44317 deployment_state.py:2187 - Replica default#DeepSpeedLlamaModel#ToJmHV is stopped.
-(ServeController pid=44317) INFO 2024-02-01 06:08:57,327 controller 44317 deployment_state.py:1829 - Adding 1 replica to deployment DeepSpeedLlamaModel in application 'default'.
-(DeepSpeedInferenceWorker pid=48021) [WARNING|utils.py:198] 2024-02-01 06:09:12,355 >> optimum-habana v1.11.0.dev0 has been validated for SynapseAI v1.14.0 but the driver version is v1.15.0, this could lead to undefined behavior!
-(DeepSpeedInferenceWorker pid=48016) /usr/local/lib/python3.10/dist-packages/habana_frameworks/torch/hpu/__init__.py:158: UserWarning: torch.hpu.setDeterministic is deprecated and will be removed in next release. Please use torch.use_deterministic_algorithms instead.
-(DeepSpeedInferenceWorker pid=48016)   warnings.warn(
-(DeepSpeedInferenceWorker pid=48019) [2024-02-01 06:09:14,005] [INFO] [real_accelerator.py:178:get_accelerator] Setting ds_accelerator to hpu (auto detect)
-(DeepSpeedInferenceWorker pid=48019) [2024-02-01 06:09:16,908] [INFO] [logging.py:96:log_dist] [Rank -1] DeepSpeed info: version=0.12.4+hpu.synapse.v1.14.0, git-hash=fad45b2, git-branch=1.14.0
-(DeepSpeedInferenceWorker pid=48019) [2024-02-01 06:09:16,910] [INFO] [logging.py:96:log_dist] [Rank -1] quantize_bits = 8 mlp_extra_grouping = False, quantize_groups = 1
-Loading 15 checkpoint shards:   0%|          | 0/15 [00:00<?, ?it/s]
-(DeepSpeedInferenceWorker pid=48019) [2024-02-01 06:09:16,955] [WARNING] [comm.py:163:init_deepspeed_backend] HCCL backend in DeepSpeed not yet implemented
-(DeepSpeedInferenceWorker pid=48019) [2024-02-01 06:09:16,955] [INFO] [comm.py:637:init_distributed] cdb=None
-(DeepSpeedInferenceWorker pid=48018) [WARNING|utils.py:198] 2024-02-01 06:09:13,528 >> optimum-habana v1.11.0.dev0 has been validated for SynapseAI v1.14.0 but the driver version is v1.15.0, this could lead to undefined behavior! [repeated 7x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/ray-logging.html#log-deduplication for more options.)
-(ServeController pid=44317) WARNING 2024-02-01 06:09:27,403 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-(DeepSpeedInferenceWorker pid=48018) /usr/local/lib/python3.10/dist-packages/habana_frameworks/torch/hpu/__init__.py:158: UserWarning: torch.hpu.setDeterministic is deprecated and will be removed in next release. Please use torch.use_deterministic_algorithms instead. [repeated 7x across cluster]
-(DeepSpeedInferenceWorker pid=48018)   warnings.warn( [repeated 7x across cluster]
-Loading 15 checkpoint shards:   0%|          | 0/15 [00:00<?, ?it/s] [repeated 7x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:09:57,475 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:   7%|▋         | 1/15 [00:52<12:15, 52.53s/it]
-(DeepSpeedInferenceWorker pid=48014) ============================= HABANA PT BRIDGE CONFIGURATION =========================== 
-(DeepSpeedInferenceWorker pid=48014)  PT_HPU_LAZY_MODE = 1
-(DeepSpeedInferenceWorker pid=48014)  PT_RECIPE_CACHE_PATH = 
-(DeepSpeedInferenceWorker pid=48014)  PT_CACHE_FOLDER_DELETE = 0
-(DeepSpeedInferenceWorker pid=48014)  PT_HPU_RECIPE_CACHE_CONFIG = 
-(DeepSpeedInferenceWorker pid=48014)  PT_HPU_MAX_COMPOUND_OP_SIZE = 9223372036854775807
-(DeepSpeedInferenceWorker pid=48014)  PT_HPU_LAZY_ACC_PAR_MODE = 0
-(DeepSpeedInferenceWorker pid=48014)  PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES = 0
-(DeepSpeedInferenceWorker pid=48014) ---------------------------: System Configuration :---------------------------
-(DeepSpeedInferenceWorker pid=48014) Num CPU Cores : 156
-(DeepSpeedInferenceWorker pid=48014) CPU RAM       : 495094196 KB
-(DeepSpeedInferenceWorker pid=48014) ------------------------------------------------------------------------------
-Loading 15 checkpoint shards:   7%|▋         | 1/15 [00:57<13:28, 57.75s/it] [repeated 2x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:10:27,504 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:   7%|▋         | 1/15 [00:58<13:42, 58.75s/it] [repeated 5x across cluster]
-Loading 15 checkpoint shards:  13%|█▎        | 2/15 [01:15<07:21, 33.98s/it]
-Loading 15 checkpoint shards:  13%|█▎        | 2/15 [01:16<07:31, 34.70s/it]
-Loading 15 checkpoint shards:  20%|██        | 3/15 [01:35<05:34, 27.88s/it] [repeated 7x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:10:57,547 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  27%|██▋       | 4/15 [01:53<04:24, 24.03s/it] [repeated 8x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:11:27,625 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  27%|██▋       | 4/15 [01:54<04:21, 23.79s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  40%|████      | 6/15 [02:30<03:06, 20.76s/it] [repeated 9x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:11:57,657 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  40%|████      | 6/15 [02:29<03:05, 20.61s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  47%|████▋     | 7/15 [02:47<02:39, 19.88s/it]
-Loading 15 checkpoint shards:  47%|████▋     | 7/15 [02:48<02:39, 19.90s/it]
-Loading 15 checkpoint shards:  53%|█████▎    | 8/15 [03:06<02:17, 19.60s/it] [repeated 7x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:12:27,721 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  60%|██████    | 9/15 [03:26<01:56, 19.46s/it] [repeated 8x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:12:57,725 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  67%|██████▋   | 10/15 [03:27<01:09, 13.80s/it] [repeated 15x across cluster]
-Loading 15 checkpoint shards:  73%|███████▎  | 11/15 [03:46<01:00, 15.14s/it]
-Loading 15 checkpoint shards:  73%|███████▎  | 11/15 [03:45<01:00, 15.15s/it]
-Loading 15 checkpoint shards:  80%|████████  | 12/15 [04:05<00:49, 16.47s/it] [repeated 7x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:13:27,770 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  87%|████████▋ | 13/15 [04:24<00:34, 17.26s/it] [repeated 8x across cluster]
-(ServeController pid=44317) WARNING 2024-02-01 06:13:57,873 controller 44317 deployment_state.py:2171 - Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize. This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  87%|████████▋ | 13/15 [04:25<00:34, 17.35s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  93%|█████████▎| 14/15 [04:44<00:17, 17.55s/it]
-Loading 15 checkpoint shards: 100%|██████████| 15/15 [05:02<00:00, 18.30s/it] [repeated 8x across cluster]
-2024-02-01 06:14:24,054 SUCC scripts.py:483 -- Deployed Serve app successfully.
+2025-03-03 06:21:57,692 INFO scripts.py:494 -- Running import path: 'infer-ds:entrypoint'.
+2025-03-03 06:22:03,064 INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+INFO 2025-03-03 06:22:07,343 serve 170212 -- Started Serve in namespace "serve".
+INFO 2025-03-03 06:22:07,343 serve 170212 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+(ServeController pid=170719) INFO 2025-03-03 06:22:07,377 controller 170719 -- Deploying new version of Deployment(name='DeepSpeedLlamaModel', app='default') (initial target replicas: 1).
+(ProxyActor pid=170723) INFO 2025-03-03 06:22:07,290 proxy 100.83.111.228 -- Proxy starting on node 47721c925467a877497e66104328bb72dc7bd7f900a63b2f1fdb48b2 (HTTP port: 8000).
+(ProxyActor pid=170723) INFO 2025-03-03 06:22:07,325 proxy 100.83.111.228 -- Got updated endpoints: {}.
+(ProxyActor pid=170723) INFO 2025-03-03 06:22:07,379 proxy 100.83.111.228 -- Got updated endpoints: {Deployment(name='DeepSpeedLlamaModel', app='default'): EndpointInfo(route='/', app_is_cross_language=False)}.
+(ServeController pid=170719) INFO 2025-03-03 06:22:07,478 controller 170719 -- Adding 1 replica to Deployment(name='DeepSpeedLlamaModel', app='default').
+(ProxyActor pid=170723) INFO 2025-03-03 06:22:07,422 proxy 100.83.111.228 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7fa557945210>.
+(DeepSpeedInferenceWorker pid=179962) [WARNING|utils.py:212] 2025-03-03 06:22:14,611 >> optimum-habana v1.15.0 has been validated for SynapseAI v1.19.0 but habana-frameworks v1.20.0.543 was found, this could lead to undefined behavior!
+(DeepSpeedInferenceWorker pid=179963) /usr/local/lib/python3.10/dist-packages/transformers/deepspeed.py:24: FutureWarning: transformers.deepspeed module is deprecated and will be removed in a future version. Please import deepspeed modules directly from transformers.integrations
+(DeepSpeedInferenceWorker pid=179963)   warnings.warn(
+(DeepSpeedInferenceWorker pid=179964) [WARNING|utils.py:212] 2025-03-03 06:22:14,613 >> optimum-habana v1.15.0 has been validated for SynapseAI v1.19.0 but habana-frameworks v1.20.0.543 was found, this could lead to undefined behavior! [repeated 3x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)
+(DeepSpeedInferenceWorker pid=179962) [2025-03-03 06:22:23,502] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to hpu (auto detect)
+Loading 2 checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]
+(DeepSpeedInferenceWorker pid=179962) [2025-03-03 06:22:24,032] [INFO] [logging.py:105:log_dist] [Rank -1] DeepSpeed info: version=0.16.1+hpu.synapse.v1.20.0, git-hash=61543a96, git-branch=1.20.0
+(DeepSpeedInferenceWorker pid=179962) [2025-03-03 06:22:24,035] [INFO] [logging.py:105:log_dist] [Rank -1] quantize_bits = 8 mlp_extra_grouping = False, quantize_groups = 1
+(DeepSpeedInferenceWorker pid=179962) [2025-03-03 06:22:24,048] [INFO] [comm.py:652:init_distributed] cdb=None
+(DeepSpeedInferenceWorker pid=179963) ============================= HABANA PT BRIDGE CONFIGURATION =========================== 
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_LAZY_MODE = 1
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_RECIPE_CACHE_CONFIG = ,false,1024
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_MAX_COMPOUND_OP_SIZE = 9223372036854775807
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_LAZY_ACC_PAR_MODE = 0
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES = 0
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_EAGER_PIPELINE_ENABLE = 1
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_EAGER_COLLECTIVE_PIPELINE_ENABLE = 1
+(DeepSpeedInferenceWorker pid=179963)  PT_HPU_ENABLE_LAZY_COLLECTIVES = 1
+(DeepSpeedInferenceWorker pid=179963) ---------------------------: System Configuration :---------------------------
+(DeepSpeedInferenceWorker pid=179963) Num CPU Cores : 160
+(DeepSpeedInferenceWorker pid=179963) CPU RAM       : 1056374420 KB
+(DeepSpeedInferenceWorker pid=179963) ------------------------------------------------------------------------------
+(DeepSpeedInferenceWorker pid=179964) /usr/local/lib/python3.10/dist-packages/transformers/deepspeed.py:24: FutureWarning: transformers.deepspeed module is deprecated and will be removed in a future version. Please import deepspeed modules directly from transformers.integrations [repeated 3x across cluster]
+(DeepSpeedInferenceWorker pid=179964)   warnings.warn( [repeated 3x across cluster]
+Loading 2 checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s] [repeated 3x across cluster]
+(ServeController pid=170719) WARNING 2025-03-03 06:22:37,562 controller 170719 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
+(ServeController pid=170719) This may be caused by a slow __init__ or reconfigure method.
+Loading 2 checkpoint shards:  50%|█████     | 1/2 [00:17<00:17, 17.51s/it]
+Loading 2 checkpoint shards: 100%|██████████| 2/2 [00:21<00:00,  9.57s/it]
+Loading 2 checkpoint shards: 100%|██████████| 2/2 [00:21<00:00, 10.88s/it]
+Loading 2 checkpoint shards:  50%|█████     | 1/2 [00:18<00:18, 18.70s/it] [repeated 3x across cluster]
+INFO 2025-03-03 06:22:48,569 serve 170212 -- Application 'default' is ready at http://127.0.0.1:8000/.
+INFO 2025-03-03 06:22:48,569 serve 170212 -- Deployed app 'default' successfully.
 ```
 
 Use the same code snippet introduced in the single HPU example to send generation requests. Here's an example output:
 ```text
-Once upon a time, there was a young woman named Sophia who lived in a small village nestled in the rolling hills of Tuscany. Sophia was a curious and adventurous soul, always eager to explore the world around her. One day, while wandering through the village, she stumbled upon a hidden path she had never seen before.
-The path was overgrown with weeds and vines, and it looked as though it hadn't been traversed in years. But Sophia was intrigued, and she decided to follow it to see where it led. She pushed aside the branches and stepped onto the path
-Once upon a time, there was a young woman named Sophia who lived in a small village nestled in the rolling hills of Tuscany. Sophia was a curious and adventurous soul, always eager to explore the world around her. One day, while wandering through the village, she stumbled upon a hidden path she had never seen before.
-The path was overgrown with weeds and vines, and it looked as though it hadn't been traversed in years. But Sophia was intrigued, and she decided to follow it to see where it led. She pushed aside the branches and stepped onto the path
+Once upon a time, in a far-off land, there was a magical kingdom called "Happily Ever Laughter." It was a place where laughter was the key to unlocking all the joys of life, and where everyone lived in perfect harmony.
+
+In this kingdom, there was a beautiful princess named Lily. She was kind, gentle, and had a heart full of laughter. Every day, she would wake up with a big smile on her face, ready to face whatever adventures the day might bring.
+
+One day, a wicked sorcerer cast a spell on the kingdom
+Once upon a time, in a far-off land, there was a magical kingdom called "Happily Ever Laughter." It was a place where laughter was the key to unlocking all the joys of life, and where everyone lived in perfect harmony.
+
+In this kingdom, there was a beautiful princess named Lily. She was kind, gentle, and had a heart full of laughter. Every day, she would wake up with a big smile on her face, ready to face whatever adventures the day might bring.
+
+One day, a wicked sorcerer cast a spell on the kingdom
 ```
 
 ## Next Steps

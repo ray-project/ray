@@ -35,6 +35,7 @@ import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { useFilter, useSorter } from "../util/hook";
+import OverflowCollapsibleCell from "./OverflowCollapsibleCell";
 import PercentageBar from "./PercentageBar";
 import { SearchSelect } from "./SearchComponent";
 import StateCounter from "./StatesCounter";
@@ -711,17 +712,16 @@ const ActorTable = ({
                       )}
                       arrow
                     >
-                      <Box sx={rowStyles.OverflowCol}>
-                        {Object.entries(requiredResources || {})
+                      <OverflowCollapsibleCell
+                        text={Object.entries(requiredResources || {})
                           .map(([key, val]) => `${key}: ${val}`)
                           .join(", ")}
-                      </Box>
+                        wordBreak="break-all"
+                      />
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip title={exitDetail} arrow>
-                      <Box sx={rowStyles.OverflowCol}>{exitDetail}</Box>
-                    </Tooltip>
+                    <OverflowCollapsibleCell text={exitDetail} />
                   </TableCell>
                 </ExpandableTableRow>
               ),

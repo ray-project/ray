@@ -14,12 +14,14 @@
 
 #include "ray/gcs/gcs_client/accessor.h"
 
+#include <utility>
+
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-using namespace ray::gcs;
-using namespace ray::rpc;
+using namespace ray::gcs;  // NOLINT
+using namespace ray::rpc;  // NOLINT
 
 TEST(NodeInfoAccessorTest, TestHandleNotification) {
   NodeInfoAccessor accessor;

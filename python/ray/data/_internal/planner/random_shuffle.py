@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
@@ -14,16 +15,22 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.stats import StatsDict
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
+from ray.util.common import INT32_MAX
 
 
 def generate_random_shuffle_fn(
+    data_context: DataContext,
     seed: Optional[int],
     num_outputs: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
+
+    # If no seed has been specified, pin timestamp based one
+    # so that task could be safely retried (w/o changing their output)
+    seed = seed if seed is not None else (time.time_ns() % INT32_MAX)
 
     def fn(
         refs: List[RefBundle],
@@ -61,7 +68,7 @@ def generate_random_shuffle_fn(
             upstream_map_fn=upstream_map_fn,
         )
 
-        if DataContext.get_current().use_push_based_shuffle:
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             if num_outputs is not None:
                 raise NotImplementedError(
                     "Push-based shuffle doesn't support setting num_blocks yet."

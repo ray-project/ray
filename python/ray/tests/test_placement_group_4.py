@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import time
 
 import ray
 import ray.cluster_utils
@@ -32,9 +33,7 @@ class MockWorkerStartupSlowlyPlugin(RuntimeEnvPlugin):
 
     @staticmethod
     def create(uri: str, runtime_env_dict: dict, ctx: RuntimeEnvContext) -> float:
-        import time
-
-        time.sleep(15)
+        time.sleep(60)
         return 0
 
 
@@ -142,14 +141,14 @@ def test_remove_placement_group_worker_startup_slowly(
 
     @ray.remote(num_cpus=2)
     class A:
-        def f(self):
-            return 3
+        def ready(self):
+            return "ok"
+
+        def hang(self):
+            time.sleep(60)
 
     @ray.remote(num_cpus=2, max_retries=0)
     def long_running_task():
-        print(os.getpid())
-        import time
-
         time.sleep(60)
 
     # Schedule a long-running task that uses
@@ -165,15 +164,13 @@ def test_remove_placement_group_worker_startup_slowly(
             placement_group=placement_group
         )
     ).remote()
-    assert ray.get(a.f.remote()) == 3
+    assert ray.get(a.ready.remote()) == "ok"
 
+    # Remove the PG, check that the actor and task are failed.
     ray.util.remove_placement_group(placement_group)
 
-    # Make sure the actor has been killed
-    # because of the removal of the pg.
-    # TODO(@clay4444): Make it throw a `ActorPlacementGroupRemoved`.
     with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
-        ray.get(a.f.remote(), timeout=3.0)
+        ray.get(a.hang.remote(), timeout=10)
 
     # The long-running task should still be in the state
     # of leasing-worker bacause of the worker startup delay.

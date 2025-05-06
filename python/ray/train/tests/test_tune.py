@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -52,7 +51,7 @@ class TestBackend(Backend):
 def torch_fashion_mnist(num_workers, use_gpu, num_samples):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=train.ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     tuner = Tuner(
         trainer,
@@ -89,7 +88,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
 
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=train.ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     tuner = Tuner(
         trainer,
@@ -125,7 +124,7 @@ def test_tune_error(ray_start_4_cpus):
     trainer = DataParallelTrainer(
         train_func,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -146,7 +145,7 @@ def test_tune_checkpoint(ray_start_4_cpus):
     trainer = DataParallelTrainer(
         train_func,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -175,7 +174,7 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     trainer = DataParallelTrainer(
         train_func,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -213,10 +212,11 @@ def test_retry_with_max_failures(ray_start_4_cpus):
     trainer = DataParallelTrainer(
         train_func,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
-        trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
+        trainer,
+        run_config=tune.RunConfig(failure_config=tune.FailureConfig(max_failures=3)),
     )
 
     result_grid = tuner.fit()
@@ -233,8 +233,10 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     trainer = DataParallelTrainer(
         train_func,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="restore_new_trainer", storage_path=str(tmpdir)),
+        scaling_config=train.ScalingConfig(num_workers=1),
+        run_config=train.RunConfig(
+            name="restore_new_trainer", storage_path=str(tmpdir)
+        ),
         datasets={"train": ray.data.from_items([{"a": i} for i in range(10)])},
     )
     results = Tuner(trainer).fit()
@@ -253,9 +255,9 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
         train_func,
         backend_config=TestConfig(),
         # ScalingConfig can be modified
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=train.ScalingConfig(num_workers=2),
         # New RunConfig will be ignored
-        run_config=RunConfig(name="ignored"),
+        run_config=train.RunConfig(name="ignored"),
         # Datasets and preprocessors can be re-specified
         datasets={"train": ray.data.from_items([{"a": i} for i in range(20)])},
     )
@@ -278,15 +280,17 @@ def test_run_config_in_trainer_and_tuner(
     propagate_logs, tmp_path, caplog, in_trainer, in_tuner
 ):
     trainer_run_config = (
-        RunConfig(name="trainer", storage_path=str(tmp_path)) if in_trainer else None
+        train.RunConfig(name="trainer", storage_path=str(tmp_path))
+        if in_trainer
+        else None
     )
     tuner_run_config = (
-        RunConfig(name="tuner", storage_path=str(tmp_path)) if in_tuner else None
+        tune.RunConfig(name="tuner", storage_path=str(tmp_path)) if in_tuner else None
     )
     trainer = DataParallelTrainer(
         lambda config: None,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
         run_config=trainer_run_config,
     )
     with caplog.at_level(logging.INFO, logger="ray.tune.impl.tuner_internal"):
@@ -313,10 +317,10 @@ def test_run_config_in_param_space():
     trainer = DataParallelTrainer(
         lambda config: None,
         backend_config=TestConfig(),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
     )
     with pytest.raises(ValueError):
-        Tuner(trainer, param_space={"run_config": RunConfig(name="ignored")})
+        Tuner(trainer, param_space={"run_config": train.RunConfig(name="ignored")})
 
 
 if __name__ == "__main__":
