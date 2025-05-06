@@ -91,16 +91,22 @@ class DefaultCollateFn(ArrowBatchCollateFn):
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
+        device: Optional[Union[str, "torch.device"]] = None,
     ):
         """Initialize the collate function.
 
         Args:
-            dtypes: Optional torch dtype(s) for the created tensors
-            device: Optional device to place tensors on
+            dtypes: The torch dtype(s) for the created tensor(s); if None, the dtype
+                will be inferred from the tensor data.
+            device: The device on which the tensor should be placed. Can be a string
+                (e.g. "cpu", "cuda:0") or a torch.device object.
         """
+        super().__init__()
         self.dtypes = dtypes
-        self.device = device
+        if isinstance(device, str):
+            self.device = torch.device(device)
+        else:
+            self.device = device
 
     def __call__(self, batch: "pyarrow.Table") -> Dict[str, List["torch.Tensor"]]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -120,7 +126,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         # Tensors and transfer the corresponding list of Tensors to GPU directly.
         # However, for CPU transfer, we need to combine the chunked arrays first
         # before converting to numpy format and then to Tensors.
-        combine_chunks = self.device == "cpu"
+        combine_chunks = self.device.type == "cpu"
         return arrow_batch_to_tensors(
             batch, dtypes=self.dtypes, combine_chunks=combine_chunks
         )

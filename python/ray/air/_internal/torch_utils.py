@@ -132,7 +132,7 @@ def convert_pandas_to_torch_tensor(
 def convert_ndarray_to_torch_tensor(
     ndarray: np.ndarray,
     dtype: Optional[torch.dtype] = None,
-    device: Optional[str] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
 ) -> torch.Tensor:
     """Convert a NumPy ndarray to a Torch Tensor.
 
@@ -170,7 +170,7 @@ def convert_ndarray_to_torch_tensor(
 def convert_ndarray_batch_to_torch_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[str] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Convert a NumPy ndarray batch to a Torch Tensor batch.
 
@@ -298,7 +298,7 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
 def convert_ndarray_list_to_torch_tensor_list(
     ndarrays: Dict[str, List[np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[str] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert a dict mapping column names to lists of ndarrays to Torch Tensors.
 
@@ -368,7 +368,7 @@ def arrow_batch_to_tensors(
 def numpy_batch_to_torch_tensors(
     batch: Dict[str, np.ndarray],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[str] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert a dictionary of numpy arrays to PyTorch tensors.
 
@@ -395,7 +395,7 @@ def numpy_batch_to_torch_tensors(
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
-    device: str,
+    device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
@@ -403,8 +403,8 @@ def concat_tensors_to_device(
     Args:
         tensor_sequence: Sequence of tensors to stack
         device: The device to move tensors to
-        non_blocking: If True, and the source and destination devices are on the same
-            accelerator, the copy will be non-blocking.
+        non_blocking: If True, perform device transfer without forcing a
+            synchronization.
 
     Returns:
         A contiguous tensor on the target device
@@ -439,7 +439,7 @@ def concat_tensors_to_device(
     return result
 
 
-BatchType = Union[
+TensorBatchType = Union[
     torch.Tensor,
     Sequence[torch.Tensor],
     Sequence[Sequence[torch.Tensor]],
@@ -450,10 +450,10 @@ BatchType = Union[
 
 @torch.no_grad()
 def move_tensors_to_device(
-    batch: BatchType,
-    device: Optional[str] = None,
+    batch: TensorBatchType,
+    device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
-) -> Union[torch.Tensor, Dict[str, torch.Tensor],]:
+) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Move tensors to the specified device.
 
     Args:
@@ -464,8 +464,8 @@ def move_tensors_to_device(
             - A dict mapping keys to tensors
             - A dict mapping keys to lists of tensors
         device: The device to move tensors to. If None, tensors are not moved.
-        non_blocking: If True, and the source and destination devices are on the same
-            accelerator, the copy will be non-blocking.
+        non_blocking: If True, perform device transfer without forcing a
+            synchronization.
 
     Returns:
         The input tensors moved to the specified device, maintaining the same structure.
