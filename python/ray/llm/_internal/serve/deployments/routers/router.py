@@ -14,7 +14,6 @@ from typing import (
     Union,
 )
 
-
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from ray import serve
@@ -126,8 +125,34 @@ def _apply_openai_json_format(
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
     if isinstance(response, list):
-        return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
-    return "".join(f"data: {response.model_dump_json()}\n\n")
+            return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+    if hasattr(response, "model_dump_json"):
+        return f"data: {response.model_dump_json()}\n\n"
+    raise ValueError(f"Unexpected response type: {type(response)}")
+    # # Check if the response is already JSON serialized from the batcher
+    # try:
+    #     data = json.loads(response)
+    #     if isinstance(data, dict) and data.get("__json_serialized__") == True:
+    #         # Data is already in JSON format, no need to deserialize and reserialize
+    #         return "".join(f"data: {r}\n\n" for r in data["data"])
+    # except (json.JSONDecodeError, TypeError):
+    #     pass
+    
+    # # Fall back to the original implementation for backward compatibility
+    # # or for responses not coming from our optimized batcher
+    # try:
+    #     import pickle
+    #     response = pickle.loads(response)
+    #     if isinstance(response, list):
+    #         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+    #     return "".join(f"data: {response.model_dump_json()}\n\n")
+    # except:
+    #     # Last resort: try to handle the response as is
+    #     if isinstance(response, list):
+    #         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+    #     if hasattr(response, "model_dump_json"):
+    #         return f"data: {response.model_dump_json()}\n\n"
+    #     return ""
 
 
 async def _openai_json_wrapper(
@@ -174,6 +199,107 @@ async def _peek_at_openai_json_generator(
 
     return first_response, _openai_json_wrapper(generator, first_response)
 
+
+async def convert_chat_stream_to_chat_completion(
+    chat_stream: AsyncGenerator[ChatCompletionStreamResponse, None]
+) -> AsyncGenerator[ChatCompletionResponse, None]:
+    """Converts a ChatCompletionStreamResponse to a CompletionStreamResponse."""
+    
+    from ray.llm._internal.serve.configs.openai_api_models import (
+        ChatCompletionResponse,
+        ChatCompletionResponseChoice,
+        ChatMessage,
+        UsageInfo,
+    )
+    
+    text = ""
+    
+    completion_id = None
+    model = None
+    
+    last_chunk = None
+    async for batched_chunk in chat_stream:
+        for chunk in batched_chunk:
+            text += chunk.choices[0].delta.content
+            
+            # print(f"[debug] {chunk=}")
+            
+            if completion_id is None:
+                completion_id = chunk.id
+            if model is None:
+                model = chunk.model
+            last_chunk = chunk
+    
+    # print(f"[debug] {completion_id=} {model=} {text=}")
+    # print(f"[debug] {last_chunk=}")
+    yield ChatCompletionResponse(
+        id=completion_id,
+        model=model,
+        choices=[
+            ChatCompletionResponseChoice(
+                message=ChatMessage(
+                    role="assistant",
+                    content=text,
+                ),
+                index=0,
+                finish_reason="stop",
+                # logprobs=logprobs,
+            )
+        ],
+        usage=UsageInfo(
+            prompt_tokens=last_chunk.usage.prompt_tokens or 0,
+            completion_tokens=last_chunk.usage.completion_tokens or 0,
+            total_tokens=(last_chunk.usage.prompt_tokens or 0)
+            + (last_chunk.usage.completion_tokens or 0),
+        ),
+    )
+
+# write a similar function for completion stream to completion response
+async def convert_completion_stream_to_completion(
+    completion_stream: AsyncGenerator[CompletionStreamResponse, None]
+) -> AsyncGenerator[CompletionResponse, None]:
+    """Converts a CompletionStreamResponse to a CompletionResponse."""
+    from ray.llm._internal.serve.configs.openai_api_models import (
+        CompletionResponse,
+        CompletionResponseChoice,
+        UsageInfo,
+    )
+    
+    text = ""
+    
+    completion_id = None
+    model = None
+    
+    last_chunk = None
+
+    async for batched_chunk in completion_stream:
+        for chunk in batched_chunk:
+            text += chunk.choices[0].text
+            
+            if completion_id is None:
+                completion_id = chunk.id
+            if model is None:
+                model = chunk.model
+            last_chunk = chunk
+            
+    yield CompletionResponse(
+        id=completion_id,
+        model=model,
+        choices=[
+            CompletionResponseChoice(
+                text=text,
+                index=0,
+                logprobs={},
+                finish_reason="stop",
+            )
+        ],
+        usage=UsageInfo(
+            prompt_tokens=last_chunk.usage.prompt_tokens or 0,
+            completion_tokens=last_chunk.usage.completion_tokens or 0,
+            total_tokens=(last_chunk.usage.prompt_tokens or 0)
+            + (last_chunk.usage.completion_tokens or 0),
+        ),
+    )
 
 class LLMRouter:
     def __init__(
@@ -351,6 +477,75 @@ class LLMRouter:
                 type="InvalidModel",
             )
         return model_data
+    
+    
+    async def _process_llm_request(self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool):
+        NoneStreamingResponseType = ChatCompletionResponse if is_chat else CompletionResponse
+        call_method = "chat" if is_chat else "completions"
+        
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+            
+            # Do streaming from llm_server perspective
+            # body.stream = True
+            gen = self._get_response(body=body, call_method=call_method)
+            
+            # async def print_results(_results, tag):
+            #     async for result in _results:
+            #         # print(f"in router [{tag}], {result=}")
+            #         yield result
+            
+            # gen = print_results(gen, tag="llm_server results")
+            
+            
+            # # TO REMOVE   
+            # aggregator = convert_chat_stream_to_chat_completion if is_chat else convert_completion_stream_to_completion
+            # gen = aggregator(gen)
+            
+            first_response = await gen.__anext__()
+            
+            # print(f"in router, {first_response=}")
+            
+            if isinstance(first_response, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=first_response.message,
+                    status_code=first_response.code,
+                    type=first_response.type,
+                )
+            
+            if isinstance(first_response, NoneStreamingResponseType):
+                # Not streaming
+                return JSONResponse(content=first_response.model_dump())
+            
+
+            openai_stream_generator = _openai_json_wrapper(gen, first_response)
+            
+            # openai_stream_generator = print_results(openai_stream_generator, tag="router wrapper")
+            
+            return StreamingResponse(openai_stream_generator, media_type="text/event-stream")
+            
+            # if body.stream:
+            #     first_response, wrapper = await _peek_at_openai_json_generator(results)
+            #     if isinstance(first_response, ErrorResponse):
+            #         raise OpenAIHTTPException(
+            #             message=first_response.message,
+            #             status_code=first_response.code,
+            #             type=first_response.type,
+            #         )
+                    
+                    
+            #     wrapper = print_results(wrapper, tag="router wrapper")
+            #     return StreamingResponse(wrapper, media_type="text/event-stream")
+
+            # result = await results.__anext__()
+            # if isinstance(result, ErrorResponse):
+            #     raise OpenAIHTTPException(
+            #         message=result.message,
+            #         status_code=result.code,
+            #         type=result.type,
+            #     )
+
+            # if isinstance(result, NoneStreamingResponseType):
+            #     return JSONResponse(content=result.model_dump())
 
     @fastapi_router_app.post("/v1/completions")
     async def completions(self, body: CompletionRequest) -> Response:
@@ -360,28 +555,43 @@ class LLMRouter:
         Returns:
             A response object with completions.
         """
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="completions")
-            if body.stream:
-                first_response, wrapper = await _peek_at_openai_json_generator(results)
-                if isinstance(first_response, ErrorResponse):
-                    raise OpenAIHTTPException(
-                        message=first_response.message,
-                        status_code=first_response.code,
-                        type=first_response.type,
-                    )
-                return StreamingResponse(wrapper, media_type="text/event-stream")
+        return await self._process_llm_request(body, is_chat=False)
+        # async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+            
+        #     # Do streaming from llm_server perspective
+        #     body.stream = True
+        #     results = self._get_response(body=body, call_method="completions")
+            
+        #     async def print_results(_results, tag):
+        #         async for result in _results:
+        #             print(f"in router [{tag}], {result=}")
+        #             yield result
+            
+        #     results = print_results(results, tag="llm_server results")
+            
+        #     if body.stream:
+        #         first_response, wrapper = await _peek_at_openai_json_generator(results)
+        #         if isinstance(first_response, ErrorResponse):
+        #             raise OpenAIHTTPException(
+        #                 message=first_response.message,
+        #                 status_code=first_response.code,
+        #                 type=first_response.type,
+        #             )
+                    
+                    
+        #         wrapper = print_results(wrapper, tag="router wrapper")
+        #         return StreamingResponse(wrapper, media_type="text/event-stream")
 
-            result = await results.__anext__()
-            if isinstance(result, ErrorResponse):
-                raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
-                )
+        #     result = await results.__anext__()
+        #     if isinstance(result, ErrorResponse):
+        #         raise OpenAIHTTPException(
+        #             message=result.message,
+        #             status_code=result.code,
+        #             type=result.type,
+        #         )
 
-            if isinstance(result, CompletionResponse):
-                return JSONResponse(content=result.model_dump())
+        #     if isinstance(result, CompletionResponse):
+        #         return JSONResponse(content=result.model_dump())
 
     @fastapi_router_app.post("/v1/chat/completions")
     async def chat(self, body: ChatCompletionRequest) -> Response:
@@ -392,28 +602,29 @@ class LLMRouter:
             A response object with completions.
         """
 
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="chat")
-            if body.stream:
-                first_response, wrapper = await _peek_at_openai_json_generator(results)
-                if isinstance(first_response, ErrorResponse):
-                    raise OpenAIHTTPException(
-                        message=first_response.message,
-                        status_code=first_response.code,
-                        type=first_response.type,
-                    )
-                return StreamingResponse(wrapper, media_type="text/event-stream")
+        return await self._process_llm_request(body, is_chat=True)
+        # async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        #     results = self._get_response(body=body, call_method="chat")
+        #     if body.stream:
+        #         first_response, wrapper = await _peek_at_openai_json_generator(results)
+        #         if isinstance(first_response, ErrorResponse):
+        #             raise OpenAIHTTPException(
+        #                 message=first_response.message,
+        #                 status_code=first_response.code,
+        #                 type=first_response.type,
+        #             )
+        #         return StreamingResponse(wrapper, media_type="text/event-stream")
 
-            result = await results.__anext__()
-            if isinstance(result, ErrorResponse):
-                raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
-                )
+        #     result = await results.__anext__()
+        #     if isinstance(result, ErrorResponse):
+        #         raise OpenAIHTTPException(
+        #             message=result.message,
+        #             status_code=result.code,
+        #             type=result.type,
+        #         )
 
-            if isinstance(result, ChatCompletionResponse):
-                return JSONResponse(content=result.model_dump())
+        #     if isinstance(result, ChatCompletionResponse):
+        #         return JSONResponse(content=result.model_dump())
 
     @classmethod
     def as_deployment(
