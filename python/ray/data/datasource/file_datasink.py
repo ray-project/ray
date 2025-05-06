@@ -1,5 +1,6 @@
 import logging
 import posixpath
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
@@ -24,11 +25,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
+
 # TODO(jhsu): move this to another file once modes
 # are more unbiquitous
-from enum import Enum
-
-
 class SaveMode(Enum):
     APPEND = 0
     OVERWRITE = 1
@@ -110,7 +109,9 @@ class _FileDatasink(Datasink[None]):
     def on_write_start(self) -> None:
         from pyarrow.fs import FileType
 
-        file_does_exist = self._get_file_info(self.path).type is not FileType.NotFound
+        file_does_exist = (
+            self.self.filesystem.get_file_info(self.path).type is not FileType.NotFound
+        )
         if file_does_exist:
             if self.mode == SaveMode.ERROR:
                 raise ValueError(
@@ -119,7 +120,7 @@ class _FileDatasink(Datasink[None]):
             elif self.mode == SaveMode.IGNORE:
                 return
             elif self.mode == SaveMode.OVERWRITE:
-                self._delete_dir_contents(self.path)
+                self.filesystem.delete_dir_contents(self.path)
         self.has_created_dir = self._create_dir(self.path)
 
     def _create_dir(self, dest) -> bool:
@@ -145,7 +146,7 @@ class _FileDatasink(Datasink[None]):
         skip_create_dir_for_s3 = is_s3_uri and not self._data_context.s3_try_create_dir
 
         if self.try_create_dir and not skip_create_dir_for_s3:
-            if self._get_file_info(dest).type is FileType.NotFound:
+            if self.filesystem.get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
                 tmp = add_creatable_buckets_param_if_s3_uri(dest)
@@ -153,14 +154,6 @@ class _FileDatasink(Datasink[None]):
                 return True
 
         return False
-
-    def _delete_dir_contents(self, dest) -> None:
-        """Delete the contents of directory (used in `SaveMode.OVERWRITE`)"""
-        self.filesystem.delete_dir_contents(dest)
-
-    def _get_file_info(self, dest) -> "pyarrow.fs.Filetype":
-        """Get the file info for dest."""
-        return self.filesystem.get_file_info(dest)
 
     def write(
         self,
