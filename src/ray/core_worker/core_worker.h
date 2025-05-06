@@ -1155,9 +1155,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleDirectActorCallArgWaitComplete(
-      rpc::DirectActorCallArgWaitCompleteRequest request,
-      rpc::DirectActorCallArgWaitCompleteReply *reply,
+  void HandleActorCallArgWaitComplete(
+      rpc::ActorCallArgWaitCompleteRequest request,
+      rpc::ActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1410,7 +1410,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
-      const std::unordered_map<std::string, std::string> &labels = {});
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const std::unordered_map<std::string, std::string> &label_selector = {});
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

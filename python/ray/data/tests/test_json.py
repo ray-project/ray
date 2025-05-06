@@ -1,7 +1,6 @@
 import gzip
 import json
 import os
-import requests
 import shutil
 from functools import partial
 
@@ -9,6 +8,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.json as pajson
 import pytest
+import requests
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
