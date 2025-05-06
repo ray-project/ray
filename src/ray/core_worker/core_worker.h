@@ -1270,7 +1270,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
-  /// the actor is (1) direct actor and (2) using asyncio mode.
+  /// the actor is (1) direct actor and (2) using async mode.
   ///
 
   /// Block current fiber until event is triggered.
@@ -1680,7 +1680,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // If the task *is* present in the local receiver, we attempt to cancel it.
   // The task may already be running, in which case we cancel it during execution.
   //
-  // NOTE: only asyncio actor tasks can be cancelled during execution. For non-asyncio
+  // NOTE: only async actor tasks can be cancelled during execution. For non-async
   // actor tasks that are already executing, we will return success=true to prevent the
   // client from retrying infinitely.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
@@ -1845,7 +1845,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
-  /// Set of currently-running tasks. For single-threaded, non-asyncio actors this will
+  /// Set of currently-running tasks. For single-threaded, non-async actors this will
   /// contain at most one task ID.
   ///
   /// We have to track this separately because we cannot access the thread-local worker

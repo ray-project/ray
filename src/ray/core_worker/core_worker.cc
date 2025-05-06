@@ -4469,7 +4469,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       }
 
       // Attempt to cancel the task if it's running.
-      // We can't currently interrupt running tasks for non-asyncio actors.
+      // We can't currently interrupt running tasks for non-async actors.
       if (is_running && is_async_actor) {
         success = options_.cancel_async_actor_task(task_id);
       } else {
@@ -5057,7 +5057,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
   absl::MutexLock lock(&mutex_);
   auto running_task_it = running_tasks_.find(task_id);
   RAY_CHECK(running_task_it != running_tasks_.end())
-      << "We should have set the running task spec before executing the task.";
+      << "We should have set the running task spec before running the task.";
   RAY_LOG(DEBUG).WithField(running_task_it->second.TaskId())
       << "Task is paused by debugger set to " << is_debugger_paused;
   RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(

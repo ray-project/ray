@@ -251,7 +251,7 @@ GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
-# The currently executing task, if any. These are used to synchronize task
+# The currently running task, if any. These are used to synchronize task
 # interruption for ray.cancel.
 current_task_id = None
 current_task_id_lock = threading.Lock()
@@ -1106,7 +1106,7 @@ cdef store_task_errors(
 
 
 cdef class StreamingGeneratorExecutionContext:
-    """The context to execute streaming generator function.
+    """The context to run a streaming generator function.
 
     Make sure you always call `initialize` API before
     accessing any fields.
