@@ -16,7 +16,7 @@ parent component, it "reduces" the logged results and sends them upstream.
 
 The RLlib team recommends this API for all your custom code, like in
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`-based :ref:`callbacks <rllib-callback-docs>`,
-in `custom loss functions <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_loss_function.py>`__, or in custom `training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__
+in `custom loss functions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__, or in custom `training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__
 implementations.
 
 .. figure:: images/metrics_logger_overview.svg
@@ -348,7 +348,8 @@ to access the throughput value. For example:
 Example 1: How to use MetricsLogger in EnvRunner callbacks
 ----------------------------------------------------------
 
-To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`, take a look at this end-to-end example here, which
+To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`,
+take a look at this end-to-end example here, which
 makes use of the :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` API to inject custom code into the RL environment loop.
 
 The example computes the average "first-joint angle" of the
@@ -366,15 +367,21 @@ only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspec
     from ray.rllib.callbacks.callbacks import RLlibCallback
 
     # Define a custom RLlibCallback.
+
     class LogAcrobotAngle(RLlibCallback):
+
+        def on_episode_created(self, *, episode, **kwargs):
+            # Initialize an empty list in the `custom_data` property of `episode`.
+            episode.custom_data["theta1"] = []
+
         def on_episode_step(self, *, episode, env, **kwargs):
             # Compute the angle at every episode step and store it temporarily in episode:
             state = env.envs[0].unwrapped.state
             deg_theta1 = math.degrees(math.atan2(state[1], state[0]))
-            episode.add_temporary_timestep_data("theta1", deg_theta1)
+            episode.custom_data["theta1"].append(deg_theta1)
 
         def on_episode_end(self, *, episode, metrics_logger, **kwargs):
-            theta1s = episode.get_temporary_timestep_data("theta1")
+            theta1s = episode.custom_data["theta1"]
             avg_theta1 = np.mean(theta1s)
 
             # Log the resulting average angle - per episode - to the MetricsLogger.
@@ -434,7 +441,7 @@ You can log metrics inside your custom loss functions. Use the Learner's ``self.
 
 
 Take a look at this running
-`end-to-end example for logging custom values inside a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_loss_function.py>`__ here.
+`end-to-end example for logging custom values inside a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__ here.
 
 
 Example 3: How to use MetricsLogger in a custom Algorithm

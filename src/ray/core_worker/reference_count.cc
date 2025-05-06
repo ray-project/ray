@@ -14,10 +14,15 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
-
-namespace {}  // namespace
 
 namespace ray {
 namespace core {
@@ -188,7 +193,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const int64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
-                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
+                                      const std::optional<NodeID> &pinned_at_raylet_id) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -226,14 +231,14 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/false,
-                                    absl::optional<NodeID>()));
+                                    std::optional<NodeID>()));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
 void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
                                                         const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
-  // NOTE: The upper layer (the layer that manges the object ref stream)
+  // NOTE: The upper layer (the layer that manages the object ref stream)
   // should make sure the generator ref is not GC'ed until the
   // stream is deleted.
   auto outer_it = object_id_refs_.find(generator_id);
@@ -261,7 +266,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/true,
-                                    absl::optional<NodeID>()));
+                                    std::optional<NodeID>()));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -310,7 +315,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const int64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
-    const absl::optional<NodeID> &pinned_at_raylet_id) {
+    const std::optional<NodeID> &pinned_at_raylet_id) {
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
@@ -1384,7 +1389,7 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
   }
 }
 
-absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
+std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -1435,7 +1440,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   return true;
 }
 
-absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
+std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
@@ -1471,7 +1476,7 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   }
 
   // We should only reach here if we have valid locality data to return.
-  absl::optional<LocalityData> locality_data(
+  std::optional<LocalityData> locality_data(
       {static_cast<uint64_t>(object_size), std::move(node_ids)});
   return locality_data;
 }

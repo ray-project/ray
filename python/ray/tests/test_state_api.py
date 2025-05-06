@@ -18,7 +18,6 @@ from ray._private.state_api_test_utils import (
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
@@ -27,11 +26,11 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID, JobID, TaskID
+from ray._raylet import GcsClient, ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
     find_free_port,
     SignalActor,
 )
@@ -148,10 +147,8 @@ def state_source_client(gcs_address):
     gcs_channel = ray._private.utils.init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(
-        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
-    )
+    gcs_client = GcsClient(address=gcs_address)
+    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
     return client
 
 
@@ -563,7 +560,7 @@ del b
         assert result.num_after_truncation == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test actor id filtering on source
@@ -575,7 +572,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test state filtering on source
@@ -586,7 +583,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test job filtering on source
@@ -598,7 +595,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         with pytest.raises(ValueError):
@@ -608,7 +605,7 @@ del b
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.asyncio
@@ -970,7 +967,7 @@ async def test_api_manager_list_tasks(state_api_manager):
 
 @pytest.mark.asyncio
 @patch.object(
-    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_aio_client: None
+    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
 )
 async def test_state_data_source_client_get_all_task_info_no_early_return():
     #  Setup
@@ -1810,7 +1807,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             assert len(c.object_refs) == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
     for ref in refs:
         ray.cancel(ref, force=True, recursive=True)
     del refs
@@ -2177,7 +2174,7 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
@@ -2351,7 +2348,7 @@ def test_list_cluster_events(shutdown_only):
         print(events)
         assert len(events) == 1
         assert (
-            "Error: No available node types can fulfill " "resource request"
+            "Error: No available node types can fulfill resource request"
         ) in events[0]["message"]
         return True
 
@@ -3649,7 +3646,7 @@ def test_core_state_api_usage_tags(shutdown_only):
     from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()

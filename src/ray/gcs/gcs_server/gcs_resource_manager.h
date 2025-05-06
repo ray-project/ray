@@ -15,6 +15,10 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -181,7 +185,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
   /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+  std::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
 

@@ -212,7 +212,8 @@ Content-Type: application/json
     },
     "grpc_options": {
         "port": 9000,
-        "grpc_servicer_functions": []
+        "grpc_servicer_functions": [],
+        "request_timeout_s": null
     },
     "proxies": {
         "cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec": {
@@ -382,6 +383,8 @@ Content-Type: application/json
    schema.DeploymentDetails
    schema.ReplicaDetails
    schema.ProxyStatus
+   schema.TargetGroup
+   schema.Target
 ```
 
 ## Observability
@@ -414,7 +417,7 @@ Content-Type: application/json
    :nosignatures:
    :toctree: doc/
 
-   serve.llm.build_vllm_deployment
+   serve.llm.build_llm_deployment
    serve.llm.build_openai_app
 ```
 
@@ -443,7 +446,7 @@ Content-Type: application/json
    :nosignatures:
    :toctree: doc/
 
-   serve.llm.VLLMServer
+   serve.llm.LLMServer
    serve.llm.LLMRouter
 ```
 

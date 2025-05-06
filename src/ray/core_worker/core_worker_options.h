@@ -14,7 +14,12 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -103,7 +108,8 @@ struct CoreWorkerOptions {
         worker_launched_time_ms(-1),
         assigned_worker_port(std::nullopt),
         assigned_raylet_id(std::nullopt),
-        debug_source("") {
+        debug_source(""),
+        enable_resource_isolation(false) {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -222,6 +228,10 @@ struct CoreWorkerOptions {
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
+
+  // If true, core worker enables resource isolation through cgroupv2 by reserving
+  // resources for ray system processes.
+  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray

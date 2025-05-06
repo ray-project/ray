@@ -22,8 +22,6 @@ namespace ray {
 
 namespace stats {
 
-absl::Mutex Metric::registration_mutex_;
-
 namespace internal {
 
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
@@ -114,24 +112,20 @@ void Metric::Record(double value, const TagsType &tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
-  // NOTE(lingxuan.zlx): Double check for recording performance while
-  // processing in multithread and avoid race since metrics may invoke
-  // record in different threads or code pathes.
-  if (measure_ == nullptr) {
-    absl::MutexLock lock(&registration_mutex_);
-    if (measure_ == nullptr) {
-      // Measure could be registered before, so we try to get it first.
-      MeasureDouble registered_measure =
-          opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
 
-      if (registered_measure.IsValid()) {
-        measure_.reset(new MeasureDouble(registered_measure));
-      } else {
-        measure_.reset(
-            new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
-      }
-      RegisterView();
+  absl::MutexLock lock(&registration_mutex_);
+  if (measure_ == nullptr) {
+    // Measure could be registered before, so we try to get it first.
+    MeasureDouble registered_measure =
+        opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
+
+    if (registered_measure.IsValid()) {
+      measure_.reset(new MeasureDouble(registered_measure));
+    } else {
+      measure_.reset(
+          new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
     }
+    RegisterView();
   }
 
   // Do record.

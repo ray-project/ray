@@ -141,14 +141,12 @@ class TorchLearner(Learner):
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
 
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
         #  - However, in impala.py::training_step(), a tensor does arrive after learner
-        #    group.update_from_episodes(), so somehow, there is still a race condition
+        #    group.update(), so somehow, there is still a race condition
         #    possible (learner, which performs the reduce() and learner thread, which
         #    performs the logging of tensors into metrics logger).
         self._compute_off_policyness(batch)
@@ -166,9 +164,7 @@ class TorchLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-        # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
-        # results.
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, {}
 
     @override(Learner)
     def compute_gradients(
@@ -327,7 +323,7 @@ class TorchLearner(Learner):
                         module_id,
                         f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}",
                     ),
-                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    value=self._get_optimizer_lr(optimizer),
                     window=1,
                 )
 
@@ -366,8 +362,19 @@ class TorchLearner(Learner):
         return list(module.parameters())
 
     @override(Learner)
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
-        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+    def _convert_batch_type(
+        self,
+        batch: MultiAgentBatch,
+        to_device: bool = True,
+        pin_memory: bool = False,
+        use_stream: bool = False,
+    ) -> MultiAgentBatch:
+        batch = convert_to_torch_tensor(
+            batch.policy_batches,
+            device=self._device if to_device else None,
+            pin_memory=pin_memory,
+            use_stream=use_stream,
+        )
         # TODO (sven): This computation of `env_steps` is not accurate!
         length = max(len(b) for b in batch.values())
         batch = MultiAgentBatch(batch, env_steps=length)

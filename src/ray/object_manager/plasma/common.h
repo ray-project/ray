@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
@@ -115,7 +116,7 @@ struct Allocation {
 /// the eviction policy.
 class LocalObject {
  public:
-  LocalObject(Allocation allocation);
+  explicit LocalObject(Allocation allocation);
 
   RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
 

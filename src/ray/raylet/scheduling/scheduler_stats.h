@@ -65,7 +65,7 @@ class SchedulerStats {
   /// Number of workers that couldn't be started because the worker registration timed
   /// out.
   int64_t num_worker_not_started_by_registration_timeout_ = 0;
-  /// Number of workers that couldn't be started becasue it hits the worker startup rate
+  /// Number of workers that couldn't be started because it hits the worker startup rate
   /// limit.
   int64_t num_worker_not_started_by_process_rate_limit_ = 0;
   /// Number of tasks that are waiting for worker processes to start.

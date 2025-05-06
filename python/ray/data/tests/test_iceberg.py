@@ -4,15 +4,17 @@ import random
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
-from pyiceberg import catalog as pyi_catalog
-from pyiceberg import expressions as pyi_expr
-from pyiceberg import schema as pyi_schema
-from pyiceberg import types as pyi_types
+from pyiceberg import (
+    catalog as pyi_catalog,
+    expressions as pyi_expr,
+    schema as pyi_schema,
+    types as pyi_types,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.transforms import IdentityTransform
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 
@@ -105,7 +107,7 @@ def pyiceberg_table():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_get_catalog():
@@ -119,7 +121,7 @@ def test_get_catalog():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_plan_files():
@@ -133,7 +135,7 @@ def test_plan_files():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_chunk_plan_files():
@@ -154,7 +156,7 @@ def test_chunk_plan_files():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_get_read_tasks():
@@ -169,7 +171,7 @@ def test_get_read_tasks():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_filtered_read():
@@ -189,7 +191,7 @@ def test_filtered_read():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_read_basic():
@@ -226,7 +228,7 @@ def test_read_basic():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_write_basic():

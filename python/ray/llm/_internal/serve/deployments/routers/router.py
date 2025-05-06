@@ -18,7 +18,7 @@ from typing import (
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from ray import serve
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -422,6 +422,7 @@ class LLMRouter:
         min_replicas = RAYLLM_ROUTER_MIN_REPLICAS
         initial_replicas = RAYLLM_ROUTER_INITIAL_REPLICAS
         max_replicas = RAYLLM_ROUTER_MAX_REPLICAS
+        num_router_replicas = 0
 
         # Note (genesu): Based on our internal benchmark, we are currently bottleneck
         # by the router replicas during high concurrency situation. We are setting the
@@ -431,6 +432,11 @@ class LLMRouter:
             model_initial_replicas = 0
             model_max_replicas = 0
             for llm_config in llm_configs:
+                num_router_replicas = max(
+                    num_router_replicas,
+                    llm_config.experimental_configs.get("num_router_replicas", 0),
+                )
+
                 if "autoscaling_config" in llm_config.deployment_config:
                     autoscaling_config = llm_config.deployment_config[
                         "autoscaling_config"
@@ -448,11 +454,15 @@ class LLMRouter:
                     or autoscaling_config.min_replicas
                 )
                 model_max_replicas += autoscaling_config.max_replicas
-            min_replicas = int(model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
-            initial_replicas = int(
+            min_replicas = num_router_replicas or int(
+                model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+            )
+            initial_replicas = num_router_replicas or int(
                 model_initial_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
             )
-            max_replicas = int(model_max_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
+            max_replicas = num_router_replicas or int(
+                model_max_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+            )
 
         ingress_cls = serve.ingress(fastapi_router_app)(cls)
         deployment_decorator = serve.deployment(

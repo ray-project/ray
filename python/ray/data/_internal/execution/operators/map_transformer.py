@@ -90,9 +90,7 @@ class MapTransformFn:
         return self._output_block_size_option
 
     def set_target_max_block_size(self, target_max_block_size: int):
-        assert (
-            self._output_block_size_option is None and target_max_block_size is not None
-        )
+        assert target_max_block_size is not None
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )
@@ -105,10 +103,7 @@ class MapTransformFn:
             return self._output_block_size_option.target_max_block_size
 
     def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
-        assert (
-            self._output_block_size_option is None
-            and target_num_rows_per_block is not None
-        )
+        assert target_num_rows_per_block is not None
         self._output_block_size_option = OutputBlockSizeOption(
             target_num_rows_per_block=target_num_rows_per_block
         )
@@ -305,7 +300,11 @@ class RowMapTransformFn(MapTransformFn):
         return f"RowMapTransformFn({self._row_fn})"
 
     def __eq__(self, other):
-        return isinstance(other, RowMapTransformFn) and self._row_fn == other._row_fn
+        return (
+            isinstance(other, RowMapTransformFn)
+            and self._row_fn == other._row_fn
+            and self._is_udf == other._is_udf
+        )
 
 
 class BatchMapTransformFn(MapTransformFn):
@@ -332,7 +331,34 @@ class BatchMapTransformFn(MapTransformFn):
 
     def __eq__(self, other):
         return (
-            isinstance(other, BatchMapTransformFn) and self._batch_fn == other._batch_fn
+            isinstance(other, BatchMapTransformFn)
+            and self._batch_fn == other._batch_fn
+            and self._is_udf == other._is_udf
+        )
+
+
+class RowToBlockMapTransformFn(MapTransformFn):
+    """A Row-to-Batch MapTransformFn."""
+
+    def __init__(
+        self, transform_fn: MapTransformCallable[Row, Block], is_udf: bool = False
+    ):
+        self._transform_fn = transform_fn
+        super().__init__(
+            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.DataProcess,
+            is_udf=is_udf,
+        )
+
+    def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Block]:
+        yield from self._transform_fn(input, ctx)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, RowToBlockMapTransformFn)
+            and self._transform_fn == other._transform_fn
+            and self._is_udf == other._is_udf
         )
 
 

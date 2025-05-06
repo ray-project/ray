@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <vector>
+
 #include "ray/util/process.h"
 
 // clang-format off
@@ -27,9 +30,9 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 // clang-format on
-using namespace ::testing;
-using namespace ray::gcs;
-using namespace ray;
+using namespace ::testing;  // NOLINT
+using namespace ray::gcs;   // NOLINT
+using namespace ray;        // NOLINT
 
 class GcsWorkerManagerTest : public Test {
  public:
@@ -44,8 +47,8 @@ class GcsWorkerManagerTest : public Test {
     // Alternatively, we can manually run io service. In this test, we chose to
     // start a new thread as other GCS tests do.
     thread_io_service_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       io_service_.run();
     });
     worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(

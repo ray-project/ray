@@ -44,7 +44,6 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/thread_utils.h"
@@ -230,7 +229,7 @@ std::string json_escape_string(const std::string &s) noexcept {
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
 /// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecycle.
 class DefaultStdErrLogger final {
  public:
   std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
@@ -382,7 +381,6 @@ void RayLog::InitLogFormat() {
   log_rotation_file_num_ = log_rotation_file_num;
 
   // All the logging sinks to add.
-  // One for file/stdout, another for stderr.
   std::array<spdlog::sink_ptr, 2> sinks;  // Intentionally no initialization.
 
   auto level = GetMappedSeverity(severity_threshold_);
@@ -397,7 +395,7 @@ void RayLog::InitLogFormat() {
     }
   }
 
-  // Set sink for stdout.
+  // Set sink for logs above the user defined level.
   if (!log_filepath.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
@@ -424,7 +422,7 @@ void RayLog::InitLogFormat() {
     sinks[0] = std::move(console_sink);
   }
 
-  // Set sink for stderr.
+  // Set sink for error logs.
   if (!err_log_filepath.empty()) {
     spdlog::sink_ptr err_sink;
     if (log_rotation_max_size_ == 0) {

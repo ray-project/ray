@@ -14,7 +14,11 @@
 
 #include "ray/object_manager/object_buffer_pool.h"
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "ray/util/logging.h"

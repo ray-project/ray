@@ -193,7 +193,7 @@ Specifying by Tune-Registered Lambda
 A third option for providing environment information to your config is to register an
 environment creator function (or lambda) with Ray Tune. The creator function must take a
 single ``config`` parameter and return a single non-vectorized
-`gymnasium.Env <https://github.com/Farama-Fundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
+`gymnasium.Env <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
 
 For example:
 

@@ -28,8 +28,12 @@ from pydantic import (
     model_validator,
 )
 
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudMirrorConfig,
+    is_remote_path,
+)
 from ray.llm._internal.utils import try_import
-
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -40,6 +44,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
@@ -49,7 +54,6 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
-from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 transformers = try_import("transformers")
 
@@ -59,47 +63,6 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 logger = get_logger(__name__)
-
-
-class ExtraFiles(BaseModelExtended):
-    bucket_uri: str
-    destination_path: str
-
-
-class CloudMirrorConfig(BaseModelExtended):
-    """Unified mirror config for cloud storage (S3 or GCS).
-
-    Args:
-        bucket_uri: URI of the bucket (s3:// or gs://)
-        extra_files: Additional files to download
-    """
-
-    bucket_uri: Optional[str] = None
-    extra_files: List[ExtraFiles] = Field(default_factory=list)
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def check_uri_format(cls, value):
-        if value is None:
-            return value
-
-        if not (value.startswith("s3://") or value.startswith("gs://")):
-            raise ValueError(
-                f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
-            )
-        return value
-
-    @property
-    def storage_type(self) -> str:
-        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
-        if self.bucket_uri is None:
-            return None
-        elif self.bucket_uri.startswith("s3://"):
-            return "s3"
-        elif self.bucket_uri.startswith("gs://"):
-            return "gcs"
-        return None
 
 
 class ServeMultiplexConfig(BaseModelExtended):
@@ -163,7 +126,7 @@ class LoraConfig(BaseModelExtended):
         if value is None:
             return value
 
-        assert value.startswith("s3://") or value.startswith("gs://"), (
+        assert is_remote_path(value), (
             "Only AWS S3 and Google Cloud Storage are supported. The "
             'dynamic_lora_loading_path must start with "s3://" or "gs://". '
             f'Got "{value}" instead.'
@@ -179,8 +142,8 @@ class ModelLoadingConfig(BaseModelExtended):
         default=None,
         description=(
             "Where to obtain the model weights from. "
-            "Should be a HuggingFace model ID, S3 mirror config, or GCS "
-            "mirror config. When omitted, defaults to the model_id as a "
+            "Should be a HuggingFace model ID, S3 mirror config, GCS mirror config, "
+            "or a local path. When omitted, defaults to the model_id as a "
             "HuggingFace model ID."
         ),
     )
@@ -192,6 +155,9 @@ class ModelLoadingConfig(BaseModelExtended):
             "supported for now."
         ),
     )
+
+
+EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 
 
 class LLMConfig(BaseModelExtended):
@@ -228,6 +194,13 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
+    )
+
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
@@ -251,10 +224,25 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
+    experimental_configs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Experimental configurations for Ray Serve LLM. This is a "
+        "dictionary of key-value pairs. Current supported keys are:\n"
+        "- `stream_batching_interval_ms`: Ray Serve LLM batches streaming "
+        "requests together. This config decides how long to wait for the "
+        "batch before processing the requests. Defaults to "
+        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
+        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "Serve will take the max amount all the replicas. Default would be 2 "
+        "router replicas per model replica.\n",
+    )
+
     _supports_vision: bool = PrivateAttr(False)
+    _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
         default_factory=HuggingFacePromptFormat
     )
+    _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -265,11 +253,29 @@ class LLMConfig(BaseModelExtended):
         hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
+    def _set_model_architecture(
+        self,
+        model_id_or_path: Optional[str] = None,
+        model_architecture: Optional[str] = None,
+    ) -> None:
+        """Called in llm node initializer together with other transformers calls. It
+        loads the model config from huggingface and sets the model_architecture
+        attribute based on whether the config has `architectures`.
+        """
+        if model_id_or_path:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            if hasattr(hf_config, "architectures"):
+                self._model_architecture = hf_config.architectures[0]
+
+        if model_architecture:
+            self._model_architecture = model_architecture
+
     def apply_checkpoint_info(
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
+        self._set_model_architecture(model_id_or_path)
         self._prompt_format.set_processor(
             model_id_or_path,
             trust_remote_code=trust_remote_code,
@@ -278,6 +284,10 @@ class LLMConfig(BaseModelExtended):
     @property
     def supports_vision(self) -> bool:
         return self._supports_vision
+
+    @property
+    def model_architecture(self) -> str:
+        return self._model_architecture
 
     @property
     def prompt_format(self) -> HuggingFacePromptFormat:
@@ -342,21 +352,32 @@ class LLMConfig(BaseModelExtended):
             )
         return multiplex_config
 
-    def get_engine_config(self):
+    def get_engine_config(self) -> EngineConfigType:
         """Returns the engine config for the given LLM config.
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
+        # Note (genesu): This is important that we cache the engine config as the
+        # `hf_model_id` attribute on the engine config will be set based on whether
+        #  the model is downloaded from a remote storage and will be set to the
+        #  local path of the model. This is important for vLLM not going to Hugging
+        #  Face to download the model again after it's already downloaded during node
+        #  initialization step.
+        if self._engine_config:
+            return self._engine_config
+
         if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
 
-            return VLLMEngineConfig.from_llm_config(self)
+            self._engine_config = VLLMEngineConfig.from_llm_config(self)
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
             raise ValueError(f"Unsupported engine: {self.llm_engine}")
+
+        return self._engine_config
 
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config
@@ -423,7 +444,7 @@ class LLMConfig(BaseModelExtended):
                 :skipif: True
 
                 from ray import serve
-                from ray.serve.llm import LLMConfig, VLLMServer
+                from ray.serve.llm import LLMConfig, LLMServer
 
                 llm_config = LLMConfig(
                     model_loading_config=dict(model_id="test_model"),
@@ -431,8 +452,8 @@ class LLMConfig(BaseModelExtended):
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                vllm_app = VLLMServer.options(**serve_options).bind(llm_config)
-                serve.run(vllm_app)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve.run(llm_app)
 
         Keyword Args:
             name_prefix: The prefix to use for the deployment name.
@@ -609,37 +630,6 @@ class FinishReason(str, Enum):
         if finish_reason == "abort":
             return cls.CANCELLED
         return cls.STOP
-
-
-class LoraMirrorConfig(BaseModelExtended):
-    lora_model_id: str
-    bucket_uri: str
-    max_total_tokens: Optional[int]
-    sync_args: Optional[List[str]] = None
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def validate_bucket_uri(cls, value: str):
-        # TODO(tchordia): remove this. this is a short term fix.
-        # We should fix this on the LLM-forge side
-        if not value.startswith("s3://") and not value.startswith("gs://"):
-            value = "s3://" + value
-        return value
-
-    @property
-    def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
-            if self.bucket_uri.startswith(prefix):
-                return self.bucket_uri[len(prefix) :]
-        return self.bucket_uri
-
-    @property
-    def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
-
-    @property
-    def bucket_path(self) -> str:
-        return "/".join(self._bucket_name_and_path.split("/")[1:])
 
 
 class DiskMultiplexConfig(BaseModelExtended):
@@ -969,3 +959,4 @@ class GenerationRequest(BaseModelExtended):
     prompt: Union[str, List[int], List[str]]
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
+    stream: bool = False
