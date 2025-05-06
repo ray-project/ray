@@ -313,17 +313,32 @@ class PhysicalOperator(Operator):
         return self._execution_finished
 
     def completed(self) -> bool:
-        """Return True when this operator is completed.
+        """Returns whether this operator has been fully completed.
 
-        An operator is completed when all these conditions hold true:
-        * The operator has finished execution (i.e., `execution_finished()` is True).
-        * All outputs have been taken (i.e., `has_next()` is False).
+        An operator is completed iff:
+            * The operator has finished execution (i.e., `execution_finished()` is True).
+            * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        internal_queue_size = (
+            self.internal_queue_size()
+            if isinstance(self, InternalQueueOperatorMixin)
+            else 0
+        )
+
         if not self._execution_finished:
-            if self._inputs_complete and self.num_active_tasks() == 0:
-                # If all inputs are complete and there are no active tasks,
-                # then the operator has completed execution.
+            if (
+                self._inputs_complete and
+                internal_queue_size == 0 and
+                self.num_active_tasks() == 0
+            ):
+                # NOTE: Operator is considered completed iff
+                #   - All input blocks have been ingested
+                #   - Internal queue is empty
+                #   - There are no active or pending tasks
                 self._execution_finished = True
+
         return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
