@@ -38,7 +38,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    OneToOneOperator,
+    OneToOneOperator, InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
@@ -61,7 +61,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-class MapOperator(OneToOneOperator, ABC):
+class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task

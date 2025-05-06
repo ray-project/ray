@@ -4,6 +4,8 @@ from typing import List, Optional, Tuple
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.operators.base_physical_operator import \
+    InternalQueueOperatorMixin
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
@@ -18,7 +20,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 
-class ZipOperator(PhysicalOperator):
+class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that zips its inputs together.
 
     NOTE: the implementation is bulk for now, which materializes all its inputs in
@@ -68,6 +70,9 @@ class ZipOperator(PhysicalOperator):
             return left_num_rows
         else:
             return right_num_rows
+
+    def internal_queue_size(self) -> int:
+        return len(self._left_buffer) + len(self._right_buffer)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
