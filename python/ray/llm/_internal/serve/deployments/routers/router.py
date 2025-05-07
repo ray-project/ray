@@ -75,12 +75,13 @@ else:
 
 logger = get_logger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 StreamResponseType = Union[
-    ChatCompletionStreamResponse, 
+    ChatCompletionStreamResponse,
     CompletionStreamResponse,
 ]
 BatchedStreamResponseType = List[StreamResponseType]
+
 
 def init() -> FastAPI:
     _fastapi_router_app = FastAPI(lifespan=metrics_lifespan)
@@ -138,21 +139,25 @@ def _apply_openai_json_format(
     raise ValueError(f"Unexpected response type: {type(response)}")
 
 
-async def _peek_at_generator(gen: AsyncGenerator[T, None]) -> Tuple[T, AsyncGenerator[T, None]]:
+async def _peek_at_generator(
+    gen: AsyncGenerator[T, None]
+) -> Tuple[T, AsyncGenerator[T, None]]:
     # Peek at the first element
     first_item = await gen.__anext__()
-    
+
     # Create a new generator that yields the peeked item first
     async def new_generator() -> AsyncGenerator[T, None]:
-        yield first_item 
+        yield first_item
         async for item in gen:
             yield item
-            
+
     return first_item, new_generator()
 
 
 async def _openai_json_wrapper(
-    generator: AsyncGenerator[Union[StreamResponseType, BatchedStreamResponseType], None],
+    generator: AsyncGenerator[
+        Union[StreamResponseType, BatchedStreamResponseType], None
+    ],
 ) -> AsyncGenerator[str, None]:
     """Wrapper that converts stream responses into OpenAI JSON strings.
 
@@ -370,7 +375,6 @@ class LLMRouter:
             else:
                 first_chunk = first_chunk_or_chunks
 
-
             if isinstance(first_chunk, ErrorResponse):
                 raise OpenAIHTTPException(
                     message=first_chunk.message,
@@ -379,16 +383,16 @@ class LLMRouter:
                 )
 
             if isinstance(first_chunk, NoneStreamingResponseType):
-                # Not streaming, first_chunk should include all the chunks 
-                if len(first_chunk_or_chunks) > 1:
-                    raise OpenAIHTTPException(
-                        message=(
-                            f"Expected stream=False, and len(chunks) = 1, "
-                            f"got stream={body.stream}, len(chunks)={len(first_chunk_or_chunks)}"
-                        ),
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        type="InternalServerError",
-                    )
+                # Not streaming, first_chunk should include all the chunks
+                # if len(first_chunk_or_chunks) > 1:
+                #     raise OpenAIHTTPException(
+                #         message=(
+                #             f"Expected stream=False, and len(chunks) = 1, "
+                #             f"got stream={body.stream}, len(chunks)={len(first_chunk_or_chunks)}"
+                #         ),
+                #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                #         type="InternalServerError",
+                #     )
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them
