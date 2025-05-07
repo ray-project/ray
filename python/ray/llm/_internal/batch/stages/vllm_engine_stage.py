@@ -25,10 +25,7 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
     NodeModelDownloadable,
 )
-from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-vllm = try_import("vllm")
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +98,8 @@ class vLLMOutputData(BaseModel):
             num_input_tokens=len(prompt_token_ids),
         )
 
+        import vllm
+
         if isinstance(output, vllm.outputs.RequestOutput):
             metrics = {}
             if output.metrics is not None:
@@ -157,11 +156,13 @@ class vLLMEngineWrapper:
         # Convert the task type back to a string to pass to the engine.
         kwargs["task"] = self.task_type.value
 
-        if vllm is None:
+        try:
+            import vllm
+        except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
-            )
+            ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
         if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
@@ -173,6 +174,8 @@ class vLLMEngineWrapper:
         engine_args = vllm.AsyncEngineArgs(
             **kwargs,
         )
+        # create_engine_config will set default values including `max_num_seqs`.
+        self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
         # Determine the generate function based on vLLM v0 or v1.
@@ -206,6 +209,8 @@ class vLLMEngineWrapper:
             or None if there is no LoRA. We use Any in type hint to
             pass doc build in the environment without vLLM.
         """
+        import vllm
+
         lora_request = None
         if "model" in row and row["model"] != self.model:
             if self.vllm_use_v1:
@@ -265,6 +270,8 @@ class vLLMEngineWrapper:
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
+        import vllm
+
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
@@ -328,6 +335,8 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
+        import vllm
+
         if request.images:
             # FIXME: The latest vLLM does not support multi-modal inputs
             # with tokenized prompt.
@@ -378,6 +387,8 @@ class vLLMEngineWrapper:
         # in a separate process, the benefit of decoupling them in the Processor
         # may be limited.
         assert request.prompt
+        import vllm
+
         multi_modal_data = {"image": request.images} if request.images else None
         llm_prompt = vllm.inputs.data.TextPrompt(
             prompt=request.prompt, multi_modal_data=multi_modal_data
@@ -411,12 +422,17 @@ class vLLMEngineWrapper:
             logger.info("Shutting down vLLM engine")
             self.engine.shutdown()
 
+    def get_scheduler_config(self):
+        return self._vllm_config.scheduler_config
+
 
 class vLLMEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
         expected_input_keys: List[str],
+        batch_size: int,
+        max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
@@ -471,6 +487,16 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
         )
+
+        max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
+        if batch_size * max_concurrent_batches < max_num_seqs:
+            logger.warning(
+                f"The product of batch_size ({batch_size}) and "
+                f"max_concurrent_batches ({max_concurrent_batches}) is too small "
+                "to saturate vLLM engine. This may lead to suboptimal "
+                "throughput. Please increase max_concurrent_batches to at least "
+                f"{math.ceil(max_num_seqs / batch_size)}."
+            )
 
     def normalize_engine_kwargs(
         self,

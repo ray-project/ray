@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import Dict
+from typing import Dict, Optional
 
 from PIL import Image
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
@@ -18,6 +18,7 @@ from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
+    Prompt,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStats,
@@ -30,9 +31,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 
 
-class MockVLLMEngine:
+class MockVLLMEngine(LLMEngine):
     def __init__(self, llm_config: LLMConfig):
         """Create a vLLM Engine class
 
@@ -72,7 +74,26 @@ class MockVLLMEngine:
             yield i
             await asyncio.sleep(0.0)
 
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
+    async def prepare_request(
+        self, request_id: str, prompt: Prompt, stream: bool, **kwargs
+    ) -> VLLMGenerationRequest:
+
+        if isinstance(prompt.prompt, list):
+            # Simplification: Assume prompt is a list of messages with one user message
+            assert len(prompt.prompt) == 1
+            assert hasattr(prompt.prompt[0], "content")
+            prompt_text = prompt.prompt[0].content
+        else:
+            prompt_text = prompt.prompt
+
+        return VLLMGenerationRequest(
+            request_id=request_id,
+            prompt=prompt_text,
+            stream=stream,
+            sampling_params=VLLMSamplingParams.from_prompt(prompt),
+        )
+
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
         sampling_params = self._parse_sampling_params(
             vllm_engine_request.sampling_params
         )
@@ -228,7 +249,7 @@ class MockEchoVLLMEngine(MockVLLMEngine):
         res.update({"has_image": has_image})
         return json.dumps(res)
 
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
         yield LLMRawResponse(
             generated_text=self._convert_to_json(vllm_engine_request),
             num_input_tokens=0,
@@ -241,7 +262,7 @@ class MockEchoVLLMEngine(MockVLLMEngine):
         )
 
 
-class MockMultiplexEngine:
+class MockMultiplexEngine(LLMEngine):
     def __init__(self, *args, **kwargs):
         self.started = False
 
@@ -253,10 +274,35 @@ class MockMultiplexEngine:
             extra_init_kwargs={},
         )
 
+    async def prepare_request(
+        self,
+        request_id: str,
+        prompt: Prompt,
+        stream: bool,
+        disk_lora_model: Optional[DiskMultiplexConfig] = None,
+    ) -> VLLMGenerationRequest:
+
+        if isinstance(prompt.prompt, list):
+            # Simplification: Assume prompt is a list of messages with one user message
+            assert len(prompt.prompt) == 1
+            assert hasattr(prompt.prompt[0], "content")
+            prompt_text = prompt.prompt[0].content
+        else:
+            prompt_text = prompt.prompt
+
+        output = VLLMGenerationRequest(
+            request_id=request_id,
+            prompt=prompt_text,
+            stream=stream,
+            sampling_params=VLLMSamplingParams.from_prompt(prompt),
+            disk_multiplex_config=disk_lora_model,
+        )
+        return output
+
     async def start(self):
         self.started = True
 
-    async def generate(self, arg, stream):
+    async def generate(self, arg):
         assert self.started, "Engine was not started"
         # First yield the arg
         yield arg
@@ -328,7 +374,7 @@ class MockJSONModeVLLMEngine(MockVLLMEngine):
             yield llm_response
             await asyncio.sleep(generation_time)
 
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
         sampling_params = self._parse_sampling_params(
             vllm_engine_request.sampling_params
         )
