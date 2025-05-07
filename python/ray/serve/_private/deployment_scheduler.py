@@ -17,8 +17,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
 from ray.util.scheduling_strategies import (
