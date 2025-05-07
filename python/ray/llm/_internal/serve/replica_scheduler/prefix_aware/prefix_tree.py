@@ -41,37 +41,34 @@ class Node:
             {}
         )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in milliseconds)
 
-class TenantHeapNode:
+class TimestampedNode:
     """
-    Wrapper class for storing nodes in a min-heap, ordered by tenant access time.
-    Used for efficient LRU eviction of tenant nodes.
+    Wrapper class for storing nodes in a min-heap, ordered by timestamp.
+    Used for efficient LRU eviction of nodes.
     """
 
-    def __init__(self, node: Node, tenant_ordering_key: str) -> None:
+    def __init__(self, node: Node, time_sec: float) -> None:
         """
-        Initialize a heap node for efficient LRU tenant management.
+        Initialize a heap node for efficient LRU eviction of nodes.
 
         Args:
             node: The prefix tree node this heap node refers to
-            tenant_ordering_key: The tenant this heap uses to order nodes
+            time_sec: The timestamp this heap uses to order nodes
         """
         self.node = node
-        self.tenant_ordering_key = tenant_ordering_key
+        self.time_sec = time_sec
 
-    def __lt__(self, other: TenantHeapNode) -> bool:
+    def __lt__(self, other: TimestampedNode) -> bool:
         """
-        Compare heap nodes based on tenant's last access time.
+        Compare heap nodes based on timestamp.
 
         Args:
-            other: Another TenantHeapNode to compare with
+            other: Another TimestampedNode to compare with
 
         Returns:
-            True if this node's tenant access time is earlier than the other's
+            True if this node's timestamp is earlier than the other's
         """
-        return (
-            self.node.tenant_to_last_access_time[self.tenant_ordering_key]
-            < other.node.tenant_to_last_access_time[other.tenant_ordering_key]
-        )
+        return self.time_sec < other.time_sec
 
 
 class PrefixTree:
@@ -176,11 +173,6 @@ class PrefixTree:
         Args:
             tenant: Tenant to remove
             node: Node to remove tenant from
-
-        Does:
-            Decrements self.tenant_to_char_count[tenant] by the length of the node's text.
-            Removes the tenant from node.tenant_to_last_access_time.
-            Removes the node from self.tenant_to_nodes[tenant].
 
         Returns:
             Number of characters removed (0 if preconditions not met)
@@ -328,6 +320,9 @@ class PrefixTree:
 
         Returns:
             Tuple of (matched_text, matched_tenants)
+            - If the list of available tenants doesn't match any tenants in the tree: returns ("", None)
+            - When no prefix match is found (does not traverse further than the root node): returns ("", list of available tenants)
+            - When a prefix match is found: returns (matched_prefix, list of tenants that own the matched node)
         """
         if available_tenants:
             # Filter available_tenants to only include those in the tree
@@ -390,7 +385,7 @@ class PrefixTree:
             tenant: Tenant to remove
 
         Returns:
-            Number of characters removed
+            Number of characters removed (0 if tenant doesn't exist)
         """
         with self.lock:
             if tenant not in self.tenant_to_nodes:
@@ -415,7 +410,7 @@ class PrefixTree:
             min_remove_size: Minimum number of characters to remove
 
         Returns:
-            Actual number of characters removed
+            Actual number of characters removed (0 if tenant doesn't exist)
         
         Note:
             - All nodes with the same oldest access time are removed together to maintain tree integrity, even if only removing a subset of them satisfies the min_remove_size.
@@ -442,11 +437,11 @@ class PrefixTree:
             total_chars_removed: int = 0
 
             # Create a min-heap of nodes ordered by access time
-            # Each entry is a tuple of (access_time, node) so heapq sorts by access_time first
+            # Each entry is a TimestampedNode(node, access_time) object, which has a __lt__ method that is used by heapq.
             nodes_by_access_time = []
             for node in self.tenant_to_nodes[tenant]:
                 access_time = node.tenant_to_last_access_time[tenant]
-                nodes_by_access_time.append((access_time, node))
+                nodes_by_access_time.append(TimestampedNode(node, access_time))
             heapq.heapify(nodes_by_access_time)
             
             # Remove nodes until we've freed enough characters
@@ -455,15 +450,15 @@ class PrefixTree:
                 and nodes_by_access_time
             ):
                 # Get the oldest (minimum) access time from the top of the heap
-                oldest_access_time = nodes_by_access_time[0][0]
+                oldest_access_time = nodes_by_access_time[0].time_sec
 
                 # Remove ALL nodes with this same access time to maintain tree consistency
                 # (partial removals could break prefix relationships)
                 while (
                     nodes_by_access_time
-                    and nodes_by_access_time[0][0] == oldest_access_time
+                    and nodes_by_access_time[0].time_sec == oldest_access_time
                 ):
-                    _, node_to_remove = heapq.heappop(nodes_by_access_time)
+                    node_to_remove = heapq.heappop(nodes_by_access_time).node
                     total_chars_removed += self._remove_tenant_single_node(
                         tenant, node_to_remove
                     )
