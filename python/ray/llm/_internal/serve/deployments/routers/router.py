@@ -383,16 +383,7 @@ class LLMRouter:
                 )
 
             if isinstance(first_chunk, NoneStreamingResponseType):
-                # Not streaming, first_chunk should include all the chunks
-                # if len(first_chunk_or_chunks) > 1:
-                #     raise OpenAIHTTPException(
-                #         message=(
-                #             f"Expected stream=False, and len(chunks) = 1, "
-                #             f"got stream={body.stream}, len(chunks)={len(first_chunk_or_chunks)}"
-                #         ),
-                #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                #         type="InternalServerError",
-                #     )
+                # Not streaming, first chunk should be a single response
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them

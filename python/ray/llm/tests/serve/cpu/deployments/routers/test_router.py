@@ -16,6 +16,7 @@ from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray import serve
 import openai
 
+
 @pytest.fixture(name="llm_config")
 def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
 
@@ -35,6 +36,7 @@ def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
             ),
         )
 
+
 @pytest.fixture(name="client")
 def create_router(llm_config: LLMConfig):
     ServerDeployment = LLMServer.as_deployment()
@@ -48,14 +50,14 @@ def create_router(llm_config: LLMConfig):
 
     serve.shutdown()
 
-class TestRouter:
 
+class TestRouter:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
     @pytest.mark.parametrize("stream", [True, False])
     async def test_chat(self, stream_batching_interval_ms, client, stream):
         """Tests chat streaming with different stream_batching_interval_ms values.
-        
+
         0ms super fast batching (no batching)
         10000ms basically should be equivalent to non-streaming
         None is default, which is some fixed non-zero value.
@@ -95,7 +97,6 @@ class TestRouter:
         # Generate tokens
         n_tokens = 1000
 
-
         response = client.completions.create(
             model="llm_model_id",
             prompt="Hello",
@@ -113,7 +114,6 @@ class TestRouter:
         # The mock engine produces "test_0 test_1 test_2 ..." pattern
         expected_text = "".join([f"test_{i} " for i in range(n_tokens)])
         assert text == expected_text
-
 
     def test_router_with_num_router_replicas_config(self):
         """Test the router with num_router_replicas config."""
