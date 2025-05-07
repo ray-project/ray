@@ -225,7 +225,7 @@ class DeploymentStatusInfo:
             transition.
             message: The message to set in status info.
 
-        Returns: 
+        Returns:
             New instance of DeploymentStatusInfo representing the
             next state to transition to.
         """
