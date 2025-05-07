@@ -737,7 +737,7 @@ The `ray.data.llm` module integrates with key large language model (LLM) inferen
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_data_solution.png" width=800>
 
-[RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has even more functionality on top of Ray Data:
+[RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has more features on top of Ray Data:
 - **accelerated metadata fetching** to improve reading first time from large datasets 
 - **optimized autoscaling** where Jobs can kick off before waiting for the entire cluster to start
 - **high reliability** where entire failed jobs, like head node, cluster, uncaptured exceptions, etc., can resume from checkpoints. OSS Ray can only recover from worker node failures.
@@ -932,7 +932,7 @@ Ray Serve LLM is designed with the following features:
 - Deep integration with inference engines, vLLM to start
 - Composable multi-model LLM pipelines
 
-[RayTurbo Serve](https://docs.anyscale.com/rayturbo/rayturbo-serve) on Anyscale has even more functionality on top of Ray Serve:
+[RayTurbo Serve](https://docs.anyscale.com/rayturbo/rayturbo-serve) on Anyscale has more features on top of Ray Serve:
 - **fast autoscaling and model loading** to get services up and running even faster:[5x improvements](https://www.anyscale.com/blog/autoscale-large-ai-models-faster) even for LLMs
 - 54% **higher QPS** and up-to 3x **streaming tokens per second** for high traffic serving use-cases
 - **replica compaction** into fewer nodes where possible to reduce resource fragmentation and improve hardware utilization
