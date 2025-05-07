@@ -25,10 +25,7 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
     NodeModelDownloadable,
 )
-from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-vllm = try_import("vllm")
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +98,8 @@ class vLLMOutputData(BaseModel):
             num_input_tokens=len(prompt_token_ids),
         )
 
+        import vllm
+
         if isinstance(output, vllm.outputs.RequestOutput):
             metrics = {}
             if output.metrics is not None:
@@ -157,11 +156,13 @@ class vLLMEngineWrapper:
         # Convert the task type back to a string to pass to the engine.
         kwargs["task"] = self.task_type.value
 
-        if vllm is None:
+        try:
+            import vllm
+        except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
-            )
+            ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
         if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
@@ -208,6 +209,8 @@ class vLLMEngineWrapper:
             or None if there is no LoRA. We use Any in type hint to
             pass doc build in the environment without vLLM.
         """
+        import vllm
+
         lora_request = None
         if "model" in row and row["model"] != self.model:
             if self.vllm_use_v1:
@@ -267,6 +270,8 @@ class vLLMEngineWrapper:
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
+        import vllm
+
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
@@ -330,6 +335,8 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
+        import vllm
+
         if request.images:
             # FIXME: The latest vLLM does not support multi-modal inputs
             # with tokenized prompt.
@@ -380,6 +387,8 @@ class vLLMEngineWrapper:
         # in a separate process, the benefit of decoupling them in the Processor
         # may be limited.
         assert request.prompt
+        import vllm
+
         multi_modal_data = {"image": request.images} if request.images else None
         llm_prompt = vllm.inputs.data.TextPrompt(
             prompt=request.prompt, multi_modal_data=multi_modal_data
