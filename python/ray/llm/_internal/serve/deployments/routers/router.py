@@ -368,12 +368,12 @@ class LLMRouter:
             gen = self._get_response(body=body, call_method=call_method)
 
             # In streaming with batching enabled, this first response can be a list of chunks.
-            first_chunk_or_chunks, gen = await _peek_at_generator(gen)
+            initial_response, gen = await _peek_at_generator(gen)
 
-            if isinstance(first_chunk_or_chunks, list):
-                first_chunk = first_chunk_or_chunks[0]
+            if isinstance(initial_response, list):
+                first_chunk = initial_response[0]
             else:
-                first_chunk = first_chunk_or_chunks
+                first_chunk = initial_response
 
             if isinstance(first_chunk, ErrorResponse):
                 raise OpenAIHTTPException(
