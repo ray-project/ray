@@ -26,7 +26,7 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Raw images
 
-        To load raw images like JPEG files, call :func:`~ray.data.read_images`.
+        To load raw images like JPEG files, call :func:`~ray.data.read_images`.  In the schema, the column name defaults to "image". 
 
         .. note::
 

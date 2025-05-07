@@ -27,7 +27,6 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.config import RunConfig
-
 from ray.train.v2.tests.util import DummyObjectRefWrapper
 
 

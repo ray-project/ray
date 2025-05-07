@@ -188,6 +188,16 @@ DEFINE_stats(grpc_server_req_finished,
              ("Method"),
              (),
              ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_succeeded,
+             "Succeeded request count in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_failed,
+             "Failed request count in grpc server",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
 
 /// GRPC Client Failures
 DEFINE_stats(grpc_client_req_failures,

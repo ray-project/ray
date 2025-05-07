@@ -9,9 +9,9 @@ from ray.train import (
     BackendConfig,
     Checkpoint,
     DataConfig,
-    ScalingConfig,
-    RunConfig,
     Result,
+    RunConfig,
+    ScalingConfig,
 )
 from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
@@ -43,7 +43,7 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
-from ray.train.v2._internal.util import construct_train_func, ObjectRefWrapper
+from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

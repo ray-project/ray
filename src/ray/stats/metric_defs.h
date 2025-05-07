@@ -70,6 +70,8 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+DECLARE_stats(grpc_server_req_succeeded);
+DECLARE_stats(grpc_server_req_failed);
 
 /// GRPC Client Failures
 DECLARE_stats(grpc_client_req_failures);
