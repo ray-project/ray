@@ -616,7 +616,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   RAY_LOG(INFO).WithField(task_id).WithField(actor_id)
       << "Pushing task to actor, actor counter " << actor_counter << " seq no "
       << request->sequence_number() << " num queued " << num_queued << " "
-      << addr.DebugString();
+      << addr.DebugString() << " attempt number " << task_spec.AttemptNumber();
   if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
     warn_excess_queueing_(actor_id, num_queued);
@@ -628,9 +628,13 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
+  const auto attempt_number = task_spec.AttemptNumber();
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
+      [this, task_id, attempt_number, actor_id](const Status &status,
+                                                rpc::PushTaskReply &&reply) {
+        RAY_LOG(INFO) << "PushTaskReply " << task_id << " attempt number "
+                      << attempt_number << " status=" << status.ToString();
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);

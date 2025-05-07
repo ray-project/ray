@@ -115,7 +115,7 @@ void OutOfOrderActorSchedulingQueue::Add(
         } else {
           RAY_LOG(INFO) << "jjyao case 2 " << task_id << " " << request.AttemptNumber()
                         << " " << queued_actor_tasks_[task_id].AttemptNumber();
-          request_to_cancel = queued_actor_tasks_[task_id];
+          request_to_cancel = std::move(queued_actor_tasks_[task_id]);
           queued_actor_tasks_[task_id] = request;
         }
       } else {
