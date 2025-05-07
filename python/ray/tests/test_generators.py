@@ -344,23 +344,26 @@ def test_dynamic_generator_gc_each_yield(ray_start_regular_shared):
         for i in range(num_returns):
             yield np.ones((1000, 1000), dtype=np.uint8)
 
-    dynamic_ref = ray.get(generator.remote())
-
-    for i, ref in enumerate(dynamic_ref):
+    def check_ref_counts(expected):
         ref_counts = (
             ray._private.worker.global_worker.core_worker.get_all_reference_counts()
         )
-        # assert references are released after each yield
-        assert len(ref_counts) == (num_returns - i)
-        ray.get(ref)
-        gc.collect()
+        return len(ref_counts) == expected
 
-    # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
-    ray.shutdown()
+    dynamic_ref = ray.get(generator.remote())
+
+    for i, ref in enumerate(dynamic_ref):
+        gc.collect()
+        # assert references are released after each yield
+        wait_for_condition(lambda: check_ref_counts(num_returns - i))
+        ray.get(ref)
 
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
+    # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
+    ray.shutdown()
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0)
