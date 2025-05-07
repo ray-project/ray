@@ -108,8 +108,8 @@ from ray.data.block import (
     _apply_batch_format,
 )
 from ray.data.context import DataContext
-from ray.data.datasource import Connection, Datasink, FilenameProvider
-from ray.data.datasource.file_datasink import SaveMode, _FileDatasink
+from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
