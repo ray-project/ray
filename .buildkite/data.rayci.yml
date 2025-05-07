@@ -288,6 +288,7 @@ steps:
   - label: ":database: data: gpu tests"
     key: data_gpu_tests
     tags:
+      - python
       - data
       - gpu
     instance_type: gpu-large
@@ -297,4 +298,5 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name datalgpubuild
         --only-tags gpu,gpu_only
+        --except-tags doctest
     depends_on: [ "datalgpubuild", "forge" ]
