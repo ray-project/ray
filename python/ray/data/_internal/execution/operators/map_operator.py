@@ -603,6 +603,7 @@ class _BlockRefBundler:
             the output bundle. The second element is the output bundle.
         """
         assert self.has_bundle()
+
         if self._min_rows_per_bundle is None:
             # Short-circuit if no bundle row target was defined.
             assert len(self._bundle_buffer) == 1
@@ -610,33 +611,31 @@ class _BlockRefBundler:
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
             return [bundle], bundle
-        leftover = []
+
+        remainder = []
         output_buffer = []
         output_buffer_size = 0
-        buffer_filled = False
-        for bundle in self._bundle_buffer:
+
+        for idx, bundle in enumerate(self._bundle_buffer):
             bundle_size = self._get_bundle_size(bundle)
-            if buffer_filled:
-                # Buffer has been filled, save it in the leftovers.
-                leftover.append(bundle)
-            elif (
-                output_buffer_size + bundle_size <= self._min_rows_per_bundle
+
+            # Add bundle to the output buffer so long as either
+            #   - Output buffer size is still 0
+            #   - Output buffer doesn't exceeds the `_min_rows_per_bundle` threshold
+            if (
+                output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
             ):
-                # Bundle fits in buffer, or bundle doesn't fit but the buffer still
-                # needs a non-empty bundle.
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
             else:
-                # Bundle doesn't fit in a buffer that already has at least one non-empty
-                # bundle, so we add it to the leftovers.
-                leftover.append(bundle)
-                # Add all remaining bundles to the leftovers.
-                buffer_filled = True
-        self._bundle_buffer = leftover
+                remainder = self._bundle_buffer[idx:]
+
+        self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
-            self._get_bundle_size(bundle) for bundle in leftover
+            self._get_bundle_size(bundle) for bundle in remainder
         )
+
         return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self):
