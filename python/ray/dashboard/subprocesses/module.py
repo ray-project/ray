@@ -8,11 +8,12 @@ import os
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
+import multiprocessing.connection
 
 import ray
 from ray import ray_constants
 from ray._raylet import GcsClient
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsChannel
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     get_socket_path,
@@ -68,7 +69,6 @@ class SubprocessModule(abc.ABC):
         self._parent_process = multiprocessing.parent_process()
         # Lazy init
         self._gcs_client = None
-        self._gcs_aio_client = None
         self._aiogrpc_gcs_channel = None
         self._parent_process_death_detection_task = None
         self._http_session = None
@@ -131,7 +131,9 @@ class SubprocessModule(abc.ABC):
 
         module_name = self.__class__.__name__
         if sys.platform == "win32":
-            named_pipe_path = get_named_pipe_path(module_name)
+            named_pipe_path = get_named_pipe_path(
+                module_name, self._config.session_name
+            )
             site = aiohttp.web.NamedPipeSite(runner, named_pipe_path)
             logger.info(f"Started aiohttp server over {named_pipe_path}.")
         else:
@@ -139,15 +141,6 @@ class SubprocessModule(abc.ABC):
             site = aiohttp.web.UnixSite(runner, socket_path)
             logger.info(f"Started aiohttp server over {socket_path}.")
         await site.start()
-
-    @property
-    def gcs_aio_client(self):
-        if self._gcs_aio_client is None:
-            self._gcs_aio_client = GcsAioClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
-        return self._gcs_aio_client
 
     @property
     def gcs_client(self):
@@ -209,7 +202,7 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    ready_event: multiprocessing.Event,
+    child_conn: multiprocessing.connection.Connection,
 ):
 
     module_name = cls.__name__
@@ -227,7 +220,8 @@ async def run_module_inner(
             lambda _: sys.exit()
         )
         await module.run()
-        ready_event.set()
+        child_conn.send(None)
+        child_conn.close()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
@@ -238,7 +232,7 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    ready_event: multiprocessing.Event,
+    child_conn: multiprocessing.connection.Connection,
 ):
     """
     Entrypoint for a subprocess module.
@@ -278,7 +272,7 @@ def run_module(
             cls,
             config,
             incarnation,
-            ready_event,
+            child_conn,
         )
     )
     # TODO: do graceful shutdown.

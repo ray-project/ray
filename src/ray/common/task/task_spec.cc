@@ -128,6 +128,10 @@ void TaskSpecification::ComputeResources() {
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
+
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 }
 
 // Task specification getter methods.
@@ -306,6 +310,10 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+const LabelSelector &TaskSpecification::GetLabelSelector() const {
+  return *label_selector_;
+}
+
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
   return message_->scheduling_strategy();
 }
@@ -415,6 +423,10 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+absl::flat_hash_map<std::string, std::string> TaskSpecification::GetLabels() const {
+  return MapFromProtobuf(message_->labels());
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
@@ -429,6 +441,10 @@ bool TaskSpecification::ShouldRetryExceptions() const {
 
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
+}
+
+NodeID TaskSpecification::CallerNodeId() const {
+  return NodeID::FromBinary(message_->caller_address().raylet_id());
 }
 
 // === Below are getter methods specific to actor tasks.

@@ -125,7 +125,10 @@ def get_response_for_error(
 
 def get_serve_request_id() -> str:
     """Get request id from serve request context."""
-    return serve.context._serve_request_context.get().request_id
+    context = serve.context._serve_request_context.get()
+    if context is not None:
+        return context.request_id
+    return ""
 
 
 def get_model_request_id(model: str):

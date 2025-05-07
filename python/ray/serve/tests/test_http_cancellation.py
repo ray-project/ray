@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition, Collector
+from ray._private.test_utils import Collector, SignalActor, wait_for_condition
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.exceptions import RequestCancelledError
 

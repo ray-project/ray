@@ -23,6 +23,7 @@ from packaging import version
 
 import ray
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
@@ -86,9 +87,10 @@ Space = gym.Space
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.connectors.connector_v2 import ConnectorV2
     from ray.rllib.core.learner import Learner
+    from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
     from ray.rllib.core.rl_module.rl_module import RLModule
     from ray.rllib.utils.typing import EpisodeType
 
@@ -358,6 +360,7 @@ class AlgorithmConfig(_Config):
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
         self.sampler_perf_stats_ema_coef = None
+        self._is_online = True
 
         # `self.learners()`
         self.num_learners = 0
@@ -416,6 +419,7 @@ class AlgorithmConfig(_Config):
         self.callbacks_class = RLlibCallback
         self.callbacks_on_algorithm_init = None
         self.callbacks_on_env_runners_recreated = None
+        self.callbacks_on_offline_eval_runners_recreated = None
         self.callbacks_on_checkpoint_loaded = None
         self.callbacks_on_environment_created = None
         self.callbacks_on_episode_created = None
@@ -424,6 +428,8 @@ class AlgorithmConfig(_Config):
         self.callbacks_on_episode_end = None
         self.callbacks_on_evaluate_start = None
         self.callbacks_on_evaluate_end = None
+        self.callbacks_on_evaluate_offline_start = None
+        self.callbacks_on_evaluate_offline_end = None
         self.callbacks_on_sample_end = None
         self.callbacks_on_train_result = None
 
@@ -525,6 +531,31 @@ class AlgorithmConfig(_Config):
         #  way). Replace by logic within `training_step` to merge and broadcast the
         #  EnvRunner (connector) states.
         self.sync_filters_on_rollout_workers_timeout_s = 10.0
+        # Offline evaluation.
+        self.offline_evaluation_interval = None
+        self.num_offline_eval_runners = 0
+        # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
+        # decide, if we use `offline_evaluation_duration` or
+        # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?
+        # The latter will be much faster, but runs per runner call all evaluation.
+        self.offline_loss_for_module_fn = None
+        self.offline_evaluation_duration = 1
+        self.offline_evaluation_parallel_to_training = False
+        self.offline_evaluation_timeout_s = 120.0
+        self.num_cpus_per_offline_eval_runner = 1
+        self.num_gpus_per_offline_eval_runner = 0
+        self.custom_resources_per_offline_eval_runner = {}
+        self.restart_failed_offline_eval_runners = True
+        self.ignore_offline_eval_runner_failures = False
+        self.max_num_offline_eval_runner_restarts = 1000
+        self.offline_eval_runner_restore_timeout_s = 1800.0
+        self.max_requests_in_flight_per_offline_eval_runner = 1
+        self.validate_offline_eval_runners_after_construction = True
+        self.offline_eval_runner_health_probe_timeout_s = 30.0
+        self.offline_eval_rl_module_inference_only = False
+        self.broadcast_offline_eval_runner_states = False
+        self.offline_eval_batch_size_per_runner = 256
+        self.dataset_num_iters_per_eval_runner = 1
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -971,7 +1002,12 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env=None, spaces=None, device=None):
+    def build_env_to_module_connector(
+        self,
+        env=None,
+        spaces=None,
+        device=None,
+    ) -> ConnectorV2:
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -987,8 +1023,6 @@ class AlgorithmConfig(_Config):
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
             val_ = self._env_to_module_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1060,7 +1094,7 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_module_to_env_connector(self, env=None, spaces=None):
+    def build_module_to_env_connector(self, env=None, spaces=None) -> ConnectorV2:
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
@@ -1077,8 +1111,6 @@ class AlgorithmConfig(_Config):
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
             val_ = self._module_to_env_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1164,7 +1196,7 @@ class AlgorithmConfig(_Config):
         input_observation_space,
         input_action_space,
         device=None,
-    ):
+    ) -> ConnectorV2:
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1185,8 +1217,6 @@ class AlgorithmConfig(_Config):
                 input_action_space,
                 # device,  # TODO (sven): Also pass device into custom builder.
             )
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -2476,7 +2506,16 @@ class AlgorithmConfig(_Config):
         on_train_result: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_evaluate_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_evaluate_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_offline_start: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_evaluate_offline_end: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
         on_env_runners_recreated: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_offline_eval_runners_recreated: Optional[
             Union[Callable, List[Callable]]
         ] = NotProvided,
         on_checkpoint_loaded: Optional[Union[Callable, List[Callable]]] = NotProvided,
@@ -2581,8 +2620,16 @@ class AlgorithmConfig(_Config):
             self.callbacks_on_evaluate_start = on_evaluate_start
         if on_evaluate_end is not NotProvided:
             self.callbacks_on_evaluate_end = on_evaluate_end
+        if on_evaluate_offline_start is not NotProvided:
+            self.callbacks_on_evaluate_offline_start = on_evaluate_offline_start
+        if on_evaluate_offline_end is not NotProvided:
+            self.callbacks_on_evaluate_offline_end = on_evaluate_offline_end
         if on_env_runners_recreated is not NotProvided:
             self.callbacks_on_env_runners_recreated = on_env_runners_recreated
+        if on_offline_eval_runners_recreated is not NotProvided:
+            self.callbacks_on_offline_eval_runners_recreated = (
+                on_offline_eval_runners_recreated
+            )
         if on_checkpoint_loaded is not NotProvided:
             self.callbacks_on_checkpoint_loaded = on_checkpoint_loaded
         if on_environment_created is not NotProvided:
@@ -2618,6 +2665,27 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
+        # Offline evaluation.
+        offline_evaluation_interval: Optional[int] = NotProvided,
+        num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_loss_for_module_fn: Optional[Callable] = NotProvided,
+        offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
+        dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
+        offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
+        num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        custom_resources_per_offline_eval_runner: Optional[
+            Dict[str, Any]
+        ] = NotProvided,
+        offline_evaluation_timeout_s: Optional[float] = NotProvided,
+        max_requests_in_flight_per_offline_eval_runner: Optional[int] = NotProvided,
+        broadcast_offline_eval_runner_states: Optional[bool] = NotProvided,
+        validate_offline_eval_runners_after_construction: Optional[bool] = NotProvided,
+        restart_failed_offline_eval_runners: Optional[bool] = NotProvided,
+        ignore_offline_eval_runner_failures: Optional[bool] = NotProvided,
+        max_num_offline_eval_runner_restarts: Optional[int] = NotProvided,
+        offline_eval_runner_health_probe_timeout_s: Optional[float] = NotProvided,
+        offline_eval_runner_restore_timeout_s: Optional[float] = NotProvided,
         # Deprecated args.
         always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
@@ -2716,6 +2784,88 @@ class AlgorithmConfig(_Config):
                 iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
+            offline_evaluation_interval: Evaluate offline with every
+                `offline_evaluation_interval` training iterations. The offline evaluation
+                stats are reported under the "evaluation/offline_evaluation" metric key. Set
+                to None (or 0) for no offline evaluation.
+            num_offline_eval_runners: Number of OfflineEvaluationRunner actors to create
+                for parallel evaluation. Setting this to 0 forces sampling to be done in the
+                local OfflineEvaluationRunner (main process or the Algorithm's actor when
+                using Tune).
+            offline_loss_for_module_fn: A callable to compute the loss per `RLModule` in
+                offline evaluation. If not provided the training loss function (
+                `Learner.compute_loss_for_module`) is used. The signature must be (
+                runner: OfflineEvaluationRunner, module_id: ModuleID, config: AlgorithmConfig,
+                batch: Dict[str, Any], fwd_out: Dict[str, TensorType]).
+            offline_eval_batch_size_per_runner: Evaluation batch size per individual
+                OfflineEvaluationRunner worker. This setting only applies to the new API
+                stack. The number of OfflineEvaluationRunner workers can be set via
+                `config.evaluation(num_offline_eval_runners=...)`. The total effective batch
+                size is then `num_offline_eval_runners` x
+                `offline_eval_batch_size_per_runner`.
+            dataset_num_iters_per_offline_eval_runner: Number of batches to evaluate in each
+                OfflineEvaluationRunner during a single evaluation. If None, each learner runs a
+                complete epoch over its data block (the dataset is partitioned into
+                at least as many blocks as there are runners). The default is `1`.
+            offline_eval_rl_module_inference_only: If `True`, the module spec is used in an
+                inference-only setting (no-loss) and the RLModule can thus be built in
+                its light version (if available). For example, the `inference_only`
+                version of an RLModule might only contain the networks required for
+                computing actions, but misses additional target- or critic networks.
+                Also, if `True`, the module does NOT contain those (sub) RLModules that have
+                their `learner_only` flag set to True.
+            num_cpus_per_offline_eval_runner: Number of CPUs to allocate per
+                OfflineEvaluationRunner.
+            num_gpus_per_offline_eval_runner: Number of GPUs to allocate per
+                OfflineEvaluationRunner. This can be fractional. This is usually needed only if
+                your (custom) loss function itself requires a GPU (i.e., it contains GPU-
+                intensive computations), or model inference is unusually expensive.
+            custom_resources_per_eval_runner: Any custom Ray resources to allocate per
+                OfflineEvaluationRunner.
+            offline_evaluation_timeout_s: The timeout in seconds for calling `run()` on remote
+                OfflineEvaluationRunner workers. Results (episode list) from workers that take
+                longer than this time are discarded.
+            max_requests_in_flight_per_offline_eval_runner: Max number of in-flight requests
+                to each OfflineEvaluationRunner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
+                Tuning these values is important when running experiments with
+                large evaluation batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slowly as well. You can inspect the object store during your experiment
+                through a call to `ray memory` on your head node, and by using the Ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight or enable compression
+                or increase the object store memory through, for example:
+                `ray.init(object_store_memory=10 * 1024 * 1024 * 1024)  # =10 GB`.
+            broadcast_offline_eval_runner_states: True, if merged OfflineEvaluationRunner
+                states (from the central connector pipelines) should be broadcast back to
+                all remote OfflineEvaluationRunner actors.
+            validate_offline_eval_runners_after_construction: Whether to validate that each
+                created remote OfflineEvaluationRunner is healthy after its construction process.
+            restart_failed_offline_eval_runners: Whether - upon an OfflineEvaluationRunner
+                failure - RLlib tries to restart the lost OfflineEvaluationRunner(s) as an
+                identical copy of the failed one(s). You should set this to True when training
+                on SPOT instances that may preempt any time and/or if you need to evaluate always a
+                complete dataset b/c OfflineEvaluationRunner(s) evaluate through streaming split
+                iterators on disjoint batches. The new, recreated OfflineEvaluationRunner(s) only
+                differ from the failed one in their `self.recreated_worker=True` property value
+                and have the same `worker_index` as the original(s). If this setting is True, the
+                value of the `ignore_offline_eval_runner_failures` setting is ignored.
+            ignore_offline_eval_runner_failures: Whether to ignore any OfflineEvalautionRunner
+                failures and continue running with the remaining OfflineEvaluationRunners. This
+                setting is ignored, if `restart_failed_offline_eval_runners=True`.
+            max_num_offline_eval_runner_restarts: The maximum number of times any
+                OfflineEvaluationRunner is allowed to be restarted (if
+                `restart_failed_offline_eval_runners` is True).
+            offline_eval_runner_health_probe_timeout_s: Max amount of time in seconds, we should
+                spend waiting for OfflineEvaluationRunner health probe calls
+                (`OfflineEvaluationRunner.ping.remote()`) to respond. Health pings are very cheap,
+                however, we perform the health check via a blocking `ray.get()`, so the
+                default value should not be too large.
+            offline_eval_runner_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered OfflineEvaluationRunner actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2783,6 +2933,65 @@ class AlgorithmConfig(_Config):
             self.custom_evaluation_function = custom_evaluation_function
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
+        # Offline evaluation.
+        if offline_evaluation_interval is not NotProvided:
+            self.offline_evaluation_interval = offline_evaluation_interval
+        if num_offline_eval_runners is not NotProvided:
+            self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_loss_for_module_fn is not NotProvided:
+            self.offline_loss_for_module_fn = offline_loss_for_module_fn
+        if offline_eval_batch_size_per_runner is not NotProvided:
+            self.offline_eval_batch_size_per_runner = offline_eval_batch_size_per_runner
+        if dataset_num_iters_per_offline_eval_runner is not NotProvided:
+            self.dataset_num_iters_per_eval_runner = (
+                dataset_num_iters_per_offline_eval_runner
+            )
+        if offline_eval_rl_module_inference_only is not NotProvided:
+            self.offline_eval_rl_module_inference_only = (
+                offline_eval_rl_module_inference_only
+            )
+        if num_cpus_per_offline_eval_runner is not NotProvided:
+            self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if num_gpus_per_offline_eval_runner is not NotProvided:
+            self.num_gpus_per_offline_eval_runner = num_gpus_per_offline_eval_runner
+        if custom_resources_per_offline_eval_runner is not NotProvided:
+            self.custom_resources_per_offline_eval_runner = (
+                custom_resources_per_offline_eval_runner
+            )
+        if offline_evaluation_timeout_s is not NotProvided:
+            self.offline_evaluation_timeout_s = offline_evaluation_timeout_s
+        if max_requests_in_flight_per_offline_eval_runner is not NotProvided:
+            self.max_requests_in_flight_per_offline_eval_runner = (
+                max_requests_in_flight_per_offline_eval_runner
+            )
+        if broadcast_offline_eval_runner_states is not NotProvided:
+            self.broadcast_offline_eval_runner_states = (
+                broadcast_offline_eval_runner_states
+            )
+        if validate_offline_eval_runners_after_construction is not NotProvided:
+            self.validate_offline_eval_runners_after_construction = (
+                validate_offline_eval_runners_after_construction
+            )
+        if restart_failed_offline_eval_runners is not NotProvided:
+            self.restart_failed_offline_eval_runners = (
+                restart_failed_offline_eval_runners
+            )
+        if ignore_offline_eval_runner_failures is not NotProvided:
+            self.ignore_offline_eval_runner_failures = (
+                ignore_offline_eval_runner_failures
+            )
+        if max_num_offline_eval_runner_restarts is not NotProvided:
+            self.max_num_offline_eval_runner_restarts = (
+                max_num_offline_eval_runner_restarts
+            )
+        if offline_eval_runner_health_probe_timeout_s is not NotProvided:
+            self.offline_eval_runner_health_probe_timeout_s = (
+                offline_eval_runner_health_probe_timeout_s
+            )
+        if offline_eval_runner_restore_timeout_s is not NotProvided:
+            self.offline_eval_runner_restore_timeout_s = (
+                offline_eval_runner_restore_timeout_s
+            )
 
         return self
 
@@ -4563,6 +4772,7 @@ class AlgorithmConfig(_Config):
                 or self.callbacks_on_episode_end is not None
                 or self.callbacks_on_checkpoint_loaded is not None
                 or self.callbacks_on_env_runners_recreated is not None
+                or self.callbacks_on_offline_eval_runners_recreated is not None
             ):
                 self._value_error(
                     "Config settings `config.callbacks(on_....=lambda ..)` aren't "
@@ -4666,6 +4876,7 @@ class AlgorithmConfig(_Config):
         # evaluation, and set `evaluation_parallel_to_training` to False.
         if (
             self.evaluation_num_env_runners == 0
+            and self.num_offline_eval_runners == 0
             and self.evaluation_parallel_to_training
         ):
             self._value_error(
@@ -4955,9 +5166,13 @@ class AlgorithmConfig(_Config):
         # action and observation spaces. Note, we require here the spaces,
         # i.e. a user cannot provide an environment instead because we do
         # not want to create the environment to receive spaces.
-        if self.is_offline and (
-            not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
-            and (self.action_space is None or self.observation_space is None)
+        if (
+            self.is_offline
+            and not self.is_online
+            and (
+                not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
+                and (self.action_space is None or self.observation_space is None)
+            )
         ):
             self._value_error(
                 "If no evaluation should be run, `action_space` and "
@@ -5025,6 +5240,14 @@ class AlgorithmConfig(_Config):
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
             )
+
+    @property
+    def is_online(self) -> bool:
+        """Defines if this config is for online RL.
+
+        Note, a config can be for on- and offline training at the same time.
+        """
+        return self._is_online
 
     @property
     def is_offline(self) -> bool:
@@ -5843,6 +6066,7 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
         self,
         *,
         differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
+        **kwargs,
     ) -> "DifferentiableAlgorithmConfig":
         """Sets the configurations for differentiable learners.
 
@@ -5851,6 +6075,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 defining the `DifferentiableLearner` classes used for the nested updates in
                 `Algorithm`'s learner.
         """
+        super().learners(**kwargs)
+
         if differentiable_learner_configs is not NotProvided:
             self.differentiable_learner_configs = differentiable_learner_configs
 
@@ -5890,8 +6116,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 "one instance is not a `DifferentiableLearnerConfig`."
             )
 
-    def get_default_learner_class(self):
-        """Returns the Learner class to use for this algorithm.
+    def get_default_learner_class(self) -> Union[Type["TorchMetaLearner"], str]:
+        """Returns the `MetaLearner` class to use for this algorithm.
 
         Override this method in the sub-class to return the `MetaLearner`.
 
@@ -5899,9 +6125,31 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             The `MetaLearner` class to use for this algorithm either as a class
             type or as a string. (e.g. "ray.rllib.core.learner.torch.torch_meta_learner.TorchMetaLearner")
         """
-        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+        return NotImplemented
 
-        return TorchMetaLearner
+    def get_differentiable_learner_classes(
+        self,
+    ) -> List[Union[Type["DifferentiableLearner"], str]]:
+        """Returns the `DifferentiableLearner` classes to use for this algorithm.
+
+        Override this method in the sub-class to return the `DifferentiableLearner`.
+
+        Returns:
+            The `DifferentiableLearner` class to use for this algorithm either as a class
+            type or as a string. (e.g.
+            "ray.rllib.core.learner.torch.torch_meta_learner.TorchDifferentiableLearner").
+        """
+        return NotImplemented
+
+    def get_differentiable_learner_configs(self) -> List[DifferentiableLearnerConfig]:
+        """Returns the `DifferentiableLearnerConfigs` for all `DifferentiableLearner`s.
+
+        Override this method in the sub-class to return the `DifferentiableLearnerConfig`s.
+
+        Returns:
+            The `DifferentiableLearnerConfig` instances to use for this algorithm.
+        """
+        return self.differentiable_learner_configs
 
 
 class TorchCompileWhatToCompile(str, Enum):
