@@ -16,9 +16,9 @@ class Node:
     Node in a prefix tree that represents a segment of text and can belong to multiple tenants.
     Each node also tracks the last access time for each tenant.
     Simple example of root node connected to two children Nodes:
-        root = Node(text="", parent=None, children={"f": fooNode, "b": barNode}, tenant_last_access_time={"tenant_1": 2})
-        fooNode = Node(text="foo", parent=root, children={}, tenant_last_access_time={"tenant_1": 1})
-        barNode = Node(text="bar", parent=root, children={}, tenant_last_access_time={"tenant_1": 2})
+        root = Node(text="", parent=None, edge_label_to_child={"f": fooNode, "b": barNode}, tenant_to_last_access_time={"tenant_1": 2})
+        fooNode = Node(text="foo", parent=root, edge_label_to_child={}, tenant_to_last_access_time={"tenant_1": 1})
+        barNode = Node(text="bar", parent=root, edge_label_to_child={}, tenant_to_last_access_time={"tenant_1": 2})
 
         In the above example, "foo" was inserted at time 1, and "bar" was inserted at time 2.
         It follows that root was last accessed at time 2.
@@ -34,16 +34,12 @@ class Node:
         """
         self.text: str = text
         self.parent: Optional[Node] = parent  # The parent node of this node
-        self.children: Dict[str, Node] = {}  # Maps first character to child node
-        self.tenant_last_access_time: Dict[
+        self.edge_label_to_child: Dict[str, Node] = {}  # Maps first character to child node
+        self.tenant_to_last_access_time: Dict[
             str, int
         ] = (
             {}
         )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in milliseconds)
-
-    def __repr__(self) -> str:
-        return f"Node(text='{self.text}', children={list(self.children.keys())}, tenants={list(self.tenant_last_access_time.keys())})"
-
 
 class TenantHeapNode:
     """
@@ -57,7 +53,7 @@ class TenantHeapNode:
 
         Args:
             node: The prefix tree node this heap node refers to
-            tenant: The tenant ID this heap node is associated with
+            tenant_ordering_key: The tenant this heap uses to order nodes
         """
         self.node = node
         self.tenant_ordering_key = tenant_ordering_key
@@ -73,12 +69,9 @@ class TenantHeapNode:
             True if this node's tenant access time is earlier than the other's
         """
         return (
-            self.node.tenant_last_access_time[self.tenant_ordering_key]
-            < other.node.tenant_last_access_time[other.tenant_ordering_key]
+            self.node.tenant_to_last_access_time[self.tenant_ordering_key]
+            < other.node.tenant_to_last_access_time[other.tenant_ordering_key]
         )
-
-    def __repr__(self) -> str:
-        return f"TenantHeapNode(node={self.node}, tenant_ordering_key={self.tenant_ordering_key})"
 
 
 class PrefixTree:
@@ -107,35 +100,24 @@ class PrefixTree:
 
             Legend for each node:
             - [text] = Node.text
-            - {tenant, timestamp} = Node.tenant_last_access_time
+            - {tenant, timestamp} = Node.tenant_to_last_access_time
             - (x) = edge label (first character used as key for parent's children)
 
         PrefixTree instance variables:
-            self.tenants = {"tenant_1", "tenant_2"}
-            self.tenant_char_count = {"tenant_1": 10, "tenant_2": 14}
-            self.tenant_nodes = {"tenant_1": {root, Node("hello"), Node("world")}, "tenant_2": {root, Node("hello"), Node("th"), Node("ere"), Node("omas")}}
-            self.tenant_nodes_sorted = {"tenant_1": [root, Node("hello"), Node("world")], "tenant_2": [Node("ere"), root, Node("hello"), Node("th"), Node("omas")]}
-            # Note: self.tenant_nodes_sorted is maintained as a min-heap, so the first element is guaranteed to be the least recently used node for that tenant, but the rest of the heap is not guaranteed to be sorted.
+            self.tenant_to_char_count = {"tenant_1": 10, "tenant_2": 14}
+            self.tenant_to_nodes = {"tenant_1": {root, Node("hello"), Node("world")}, "tenant_2": {root, Node("hello"), Node("th"), Node("ere"), Node("omas")}}
     """
 
     def __init__(self) -> None:
         """Initialize an empty prefix tree."""
         self.lock: RLock = RLock()
         self.root: Node = Node()
-        self.tenants: Set[str] = set()  # Set of tenant IDs in the tree
-        self.tenant_char_count: Dict[
+        self.tenant_to_char_count: Dict[
             str, int
-        ] = {}  # Tracks total character count per tenant
-        self.tenant_nodes: Dict[
+        ] = {}  # Tracks total character count per tenant. Used by the client to determine which tenant to evict, and by how much.
+        self.tenant_to_nodes: Dict[
             str, Set[Node]
-        ] = (
-            {}
-        )  # Maps tenant ID to set of nodes belonging to that tenant. Used for O(1) lookup of whether a node belongs to a tenant.
-        self.tenant_nodes_sorted: Dict[
-            str, List[TenantHeapNode]
-        ] = (
-            {}
-        )  # Maps tenant ID to heap of nodes for LRU eviction. Used for O(log n) insertion and eviction of LRU node.
+        ] = {}  # Maps tenant to set of nodes. Used for O(1) testing if a node belongs to a tenant. The keys are the active tenants in the tree.
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -159,10 +141,8 @@ class PrefixTree:
         """
         with self.lock:
             self.root = Node()
-            self.tenants = set()
-            self.tenant_char_count = {}
-            self.tenant_nodes = {}
-            self.tenant_nodes_sorted = {}
+            self.tenant_to_char_count = {}
+            self.tenant_to_nodes = {}
 
     def _add_tenant(self, tenant: str) -> None:
         """
@@ -171,55 +151,62 @@ class PrefixTree:
         If the tenant already exists, this is a no-op with a warning log.
 
         Args:
-            tenant: Tenant ID to add
+            tenant: Tenant to add
         """
         with self.lock:
-            if tenant in self.tenants:
+            if tenant in self.tenant_to_nodes:
                 logger.warning(f"Tenant '{tenant}' already exists. No action taken.")
                 return
 
-            self.tenants.add(tenant)
-            self.tenant_char_count[tenant] = 0
-            self.tenant_nodes[tenant] = set()
-            self.tenant_nodes_sorted[tenant] = []
+            self.tenant_to_char_count[tenant] = 0
+            self.tenant_to_nodes[tenant] = set()
 
     def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
         """
         Remove a tenant from a single node.
 
+        This function expects valid input where:
+        - tenant exists in self.tenant_to_nodes
+        - tenant exists in node.tenant_to_last_access_time
+        - node exists in self.tenant_to_nodes[tenant]
+        
+        These preconditions are guaranteed to be satisfied if the user is using the public methods of this class.
+        They may be violated if the user manipulates the internal state of the tree directly.
+
         Args:
-            tenant: Tenant ID to remove
+            tenant: Tenant to remove
             node: Node to remove tenant from
 
+        Does:
+            Decrements self.tenant_to_char_count[tenant] by the length of the node's text.
+            Removes the tenant from node.tenant_to_last_access_time.
+            Removes the node from self.tenant_to_nodes[tenant].
+
         Returns:
-            Number of characters removed
+            Number of characters removed (0 if preconditions not met)
         """
         with self.lock:
-            if tenant not in self.tenants:
+            if tenant not in self.tenant_to_nodes:
                 logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
-
-            if (
-                node not in self.tenant_nodes[tenant]
-                or tenant not in node.tenant_last_access_time
-            ):
-                logger.warning(
-                    f"Cannot remove node '{node.text}' from tenant '{tenant}': "
-                    f"tenant does not have this node. No action taken."
-                )
+            if tenant not in node.tenant_to_last_access_time:
+                logger.warning(f"Tenant '{tenant}' does not have node '{node.text}'. No action taken.")
+                return 0
+            if node not in self.tenant_to_nodes[tenant]:
+                logger.warning(f"Node '{node.text}' does not belong to tenant '{tenant}'. No action taken.")
                 return 0
 
             removed_chars_len: int = len(node.text)
-            self.tenant_char_count[tenant] -= removed_chars_len
-            self.tenant_nodes[tenant].remove(node)
-            node.tenant_last_access_time.pop(tenant, None)
+            self.tenant_to_char_count[tenant] -= removed_chars_len
+            self.tenant_to_nodes[tenant].remove(node)
+            node.tenant_to_last_access_time.pop(tenant, None)
 
             # Clean up empty nodes
-            if not node.tenant_last_access_time and node.parent:
+            if not node.tenant_to_last_access_time and node.parent:
                 if (
-                    node.text and node.text[0] in node.parent.children
+                    node.text and node.text[0] in node.parent.edge_label_to_child
                 ):  # Defensive check
-                    node.parent.children.pop(node.text[0], None)
+                    node.parent.edge_label_to_child.pop(node.text[0], None)
 
             return removed_chars_len
 
@@ -231,17 +218,16 @@ class PrefixTree:
 
         Args:
             text: Text to insert
-            tenant: Tenant ID
+            tenant: Tenant
             time_sec: Current timestamp in seconds
 
         Returns:
             The node that was inserted or updated
 
-        Note:
-            Loop structure:
+        Loop structure:
             1. At the start of each iteration, curr_node is a node we potentially update.
-                e.g. node.tenant_last_access_time[tenant], self.tenant_char_count,
-                self.tenant_nodes, self.tenant_nodes_sorted
+                e.g. Update node.tenant_to_last_access_time[tenant], self.tenant_to_char_count,
+                self.tenant_to_nodes
             2. Each iteration then either:
                 a. Breaks (if we've processed the entire string).
                 b. Processes the next segment of text by:
@@ -249,44 +235,37 @@ class PrefixTree:
                     2. Then, match the current text with the child's text:
                         a. If they share a prefix (partial match), split the node and traverse into the new parent.
                         b. If they fully match, traverse into the child node.
-            3. The self.tenant_nodes_sorted heap is reheapified at each node visit to maintain LRU order.
-
-            This structure allows us to efficiently insert text while maintaining shared prefixes
-            and tracking tenant access times for the LRU eviction mechanism.
         """
         with self.lock:
-            if tenant not in self.tenants:
+            if tenant not in self.tenant_to_nodes:
                 self._add_tenant(tenant)
 
             curr_node: Node = self.root
             i: int = 0
 
             while i <= len(text):
-                # Invariant: assume curr_node has not been visited by tenant yet
-                # Update tenant info for current node
-                if tenant not in curr_node.tenant_last_access_time:
-                    self.tenant_char_count[tenant] += len(curr_node.text)
-                    self.tenant_nodes[tenant].add(curr_node)
-                    self.tenant_nodes_sorted[tenant].append(
-                        TenantHeapNode(curr_node, tenant)
-                    )
+                # Invariant at beginning of each iteration: assume curr_node has not been visited by tenant yet.
+                # Update tenant info for current node.
+                if tenant not in curr_node.tenant_to_last_access_time:
+                    self.tenant_to_char_count[tenant] += len(curr_node.text)
+                    self.tenant_to_nodes[tenant].add(curr_node)
 
-                curr_node.tenant_last_access_time[tenant] = time_sec
-                heapq.heapify(self.tenant_nodes_sorted[tenant])
+                curr_node.tenant_to_last_access_time[tenant] = time_sec
+
                 if i == len(text):
                     break
 
                 first_char: str = text[i]
                 curr_text: str = text[i:]
 
-                if first_char not in curr_node.children:
+                if first_char not in curr_node.edge_label_to_child:
                     # No match, create new node. Don't update new node as "visited" by tenant yet; it will be done in the code below.
-                    # e.g. curr_node.children = {}, curr_text = "hello" -> curr_node.children = {"h": Node("hello")}
+                    # e.g. curr_node.edge_label_to_child = {}, curr_text = "hello" -> curr_node.edge_label_to_child = {"h": Node("hello")}
                     new_node: Node = Node(text=curr_text, parent=curr_node)
-                    curr_node.children[first_char] = new_node
+                    curr_node.edge_label_to_child[first_char] = new_node
 
                 # Match found, check if we need to split
-                matched_node: Node = curr_node.children[first_char]
+                matched_node: Node = curr_node.edge_label_to_child[first_char]
                 shared_count: int = self._shared_prefix_count(
                     matched_node.text, curr_text
                 )
@@ -295,16 +274,16 @@ class PrefixTree:
                     # Partial match, split node at matched point
                     # Example:
                     ## Before update:
-                    ### curr_node.children = {"h": Node("helloworld")}, curr_text = "hellothere" -> shared_count = 5
+                    ### curr_node.edge_label_to_child = {"h": Node("helloworld")}, curr_text = "hellothere" -> shared_count = 5
                     ### matched_node = Node("helloworld")
 
                     ## During update:
-                    ### Increment tenant_char_count[tenant] by shared_count if matched_node has not seen this tenant before
+                    ### Increment tenant_to_char_count[tenant] by shared_count if matched_node has not seen this tenant before
 
                     ## After update:
-                    ### curr_node.children = {"h": Node("hello", children = {"w": Node("world")})}
+                    ### curr_node.edge_label_to_child = {"h": Node("hello", edge_label_to_child = {"w": Node("world")})}
                     ### parent_node = Node("hello"), matched_node = Node("world")
-                    ### Update tenant_last_access_time for parent_node, NOT matched_node
+                    ### Update tenant_to_last_access_time for parent_node, NOT matched_node
                     ### (new) curr_text = "there", (new) curr_node = parent_node
                     ### Continue adding "there" to tree in next iteration
 
@@ -313,22 +292,19 @@ class PrefixTree:
 
                     # Create new intermediate node
                     new_parent: Node = Node(text=matched_text, parent=curr_node)
-                    new_parent.tenant_last_access_time = (
-                        matched_node.tenant_last_access_time.copy()
+                    new_parent.tenant_to_last_access_time = (
+                        matched_node.tenant_to_last_access_time.copy()
                     )
-                    for existing_tenant in new_parent.tenant_last_access_time:
-                        self.tenant_nodes[existing_tenant].add(new_parent)
-                        self.tenant_nodes_sorted[existing_tenant].append(
-                            TenantHeapNode(new_parent, existing_tenant)
-                        )
+                    for existing_tenant in new_parent.tenant_to_last_access_time:
+                        self.tenant_to_nodes[existing_tenant].add(new_parent)
 
                     # Update existing matched node
                     matched_node.text = remaining_text
                     matched_node.parent = new_parent
 
                     # Connect nodes
-                    new_parent.children[remaining_text[0]] = matched_node
-                    curr_node.children[first_char] = new_parent
+                    new_parent.edge_label_to_child[remaining_text[0]] = matched_node
+                    curr_node.edge_label_to_child[first_char] = new_parent
 
                     # Continue traversal
                     curr_node = new_parent
@@ -351,17 +327,17 @@ class PrefixTree:
             available_tenants: List of tenants to match against (or None for all)
 
         Returns:
-            Tuple of (matched_text, matched_tenant_ids)
+            Tuple of (matched_text, matched_tenants)
         """
         if available_tenants:
             # Filter available_tenants to only include those in the tree
             available_tenants = [
-                tenant for tenant in available_tenants if tenant in self.tenants
+                tenant for tenant in available_tenants if tenant in self.tenant_to_nodes
             ]
             if not available_tenants:
                 return "", None
         else:
-            available_tenants = list(self.tenants)
+            available_tenants = list(self.tenant_to_nodes.keys())
 
         with self.lock:
             curr_node: Node = self.root
@@ -372,12 +348,12 @@ class PrefixTree:
                 first_char: str = text[i]
                 curr_text: str = text[i:]
 
-                if first_char in curr_node.children:
-                    matched_node: Node = curr_node.children[first_char]
+                if first_char in curr_node.edge_label_to_child:
+                    matched_node: Node = curr_node.edge_label_to_child[first_char]
 
                     # Check if any available tenants match this node
                     if not any(
-                        tenant in matched_node.tenant_last_access_time
+                        tenant in matched_node.tenant_to_last_access_time
                         for tenant in available_tenants
                     ):
                         break
@@ -396,39 +372,37 @@ class PrefixTree:
                     break
 
             # Find tenants in current node that match available tenants
-            matching_tenants = [
+            matched_tenants = [
                 tenant
                 for tenant in available_tenants
-                if tenant in curr_node.tenant_last_access_time
+                if tenant in curr_node.tenant_to_last_access_time
             ] or None
 
             matched_text: str = text[:i]
 
-            return matched_text, matching_tenants
+            return matched_text, matched_tenants
 
     def remove_tenant(self, tenant: str) -> int:
         """
         Remove a tenant and all its nodes from the tree.
 
         Args:
-            tenant: Tenant ID to remove
+            tenant: Tenant to remove
 
         Returns:
             Number of characters removed
         """
         with self.lock:
-            if tenant not in self.tenants:
+            if tenant not in self.tenant_to_nodes:
                 logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
 
             total_chars_removed: int = 0
-            for node in self.tenant_nodes[tenant].copy():
+            for node in self.tenant_to_nodes[tenant].copy():
                 total_chars_removed += self._remove_tenant_single_node(tenant, node)
 
-            self.tenants.remove(tenant)
-            self.tenant_nodes.pop(tenant, None)
-            self.tenant_char_count.pop(tenant, None)
-            self.tenant_nodes_sorted.pop(tenant, None)
+            self.tenant_to_nodes.pop(tenant, None)
+            self.tenant_to_char_count.pop(tenant, None)
 
             return total_chars_removed
 
@@ -442,46 +416,56 @@ class PrefixTree:
 
         Returns:
             Actual number of characters removed
+        
+        Note:
+            - All nodes with the same oldest access time are removed together to maintain tree integrity, even if only removing a subset of them satisfies the min_remove_size.
+            - This behavior is expected in the case when an input was split into multiple nodes by a different tenant (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 2)).
+              because there is no reason to only remove "world" from tenant 1. So we remove the "chain" of "hello" and "world" from tenant 1.
+            - However, if two inputs happen to be inserted at the same time (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 1)),
+              then both "chains" will be removed by our method. This may not reflect the actual KV cache eviction policy.
+            - For more predictable eviction, use unique timestamps for each insertion.
         """
         with self.lock:
-            if tenant not in self.tenant_nodes or not self.tenant_nodes[tenant]:
+            if tenant not in self.tenant_to_nodes or not self.tenant_to_nodes[tenant]:
                 logger.warning(
                     f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes. No action taken."
                 )
                 return 0
 
-            if self.tenant_char_count[tenant] < min_remove_size:
+            if self.tenant_to_char_count[tenant] < min_remove_size:
                 logger.warning(
                     f"Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
-                    f"{self.tenant_char_count[tenant]} characters. Will remove all available characters."
+                    f"{self.tenant_to_char_count[tenant]} characters. Will remove all available characters."
                 )
-                min_remove_size = self.tenant_char_count[tenant]
+                min_remove_size = self.tenant_to_char_count[tenant]
 
             total_chars_removed: int = 0
 
-            # Directly use the tenant's priority queue
+            # Create a min-heap of nodes ordered by access time
+            # Each entry is a tuple of (access_time, node) so heapq sorts by access_time first
+            nodes_by_access_time = []
+            for node in self.tenant_to_nodes[tenant]:
+                access_time = node.tenant_to_last_access_time[tenant]
+                nodes_by_access_time.append((access_time, node))
+            heapq.heapify(nodes_by_access_time)
+            
+            # Remove nodes until we've freed enough characters
             while (
                 total_chars_removed < min_remove_size
-                and self.tenant_nodes_sorted[tenant]
+                and nodes_by_access_time
             ):
-                # Get the minimum access time from the top of the heap
-                oldest_access_time = self.tenant_nodes_sorted[tenant][
-                    0
-                ].node.tenant_last_access_time[tenant]
+                # Get the oldest (minimum) access time from the top of the heap
+                oldest_access_time = nodes_by_access_time[0][0]
 
-                # Remove all nodes with this same access time
+                # Remove ALL nodes with this same access time to maintain tree consistency
+                # (partial removals could break prefix relationships)
                 while (
-                    self.tenant_nodes_sorted[tenant]
-                    and self.tenant_nodes_sorted[tenant][
-                        0
-                    ].node.tenant_last_access_time[tenant]
-                    == oldest_access_time
+                    nodes_by_access_time
+                    and nodes_by_access_time[0][0] == oldest_access_time
                 ):
-                    heap_node: TenantHeapNode = heapq.heappop(
-                        self.tenant_nodes_sorted[tenant]
-                    )
+                    _, node_to_remove = heapq.heappop(nodes_by_access_time)
                     total_chars_removed += self._remove_tenant_single_node(
-                        tenant, heap_node.node
+                        tenant, node_to_remove
                     )
 
             return total_chars_removed
@@ -491,13 +475,13 @@ class PrefixTree:
         Get the tenant with the smallest total character count.
 
         Returns:
-            Tenant ID with smallest character count, or None if no tenants
+            Tenant with smallest character count, or None if no tenants
         """
         with self.lock:
-            if not self.tenant_char_count:
+            if not self.tenant_to_char_count:
                 return None
 
-        return min(self.tenant_char_count, key=self.tenant_char_count.get, default=None)
+            return min(self.tenant_to_char_count, key=self.tenant_to_char_count.get, default=None)
 
 
 @serve.deployment(name="TreeDeployment")
@@ -513,8 +497,6 @@ class PrefixTreeDeployment(PrefixTree):
         """
         return {
             "root": self.root,
-            "tenants": self.tenants,
-            "tenant_char_count": self.tenant_char_count,
-            "tenant_nodes": self.tenant_nodes,
-            "tenant_nodes_sorted": self.tenant_nodes_sorted,
+            "tenant_to_char_count": self.tenant_to_char_count,
+            "tenant_to_nodes": self.tenant_to_nodes,
         }
