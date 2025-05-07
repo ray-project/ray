@@ -38,10 +38,10 @@ class Node:
             str, Node
         ] = {}  # Maps first character to child node
         self.tenant_to_last_access_time: Dict[
-            str, int
+            str, float
         ] = (
             {}
-        )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in milliseconds)
+        )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in seconds)
 
 
 class TimestampedNode:
@@ -116,7 +116,7 @@ class PrefixTree:
             str, int
         ] = (
             {}
-        )  # Tracks total character count per tenant. Used by the client to determine which tenant to evict, and by how much.
+        )  # Tracks total character count per tenant. Used by the replica scheduler to determine which tenant to evict, and by how much.
         self.tenant_to_nodes: Dict[
             str, Set[Node]
         ] = (
@@ -168,14 +168,6 @@ class PrefixTree:
     def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
         """
         Remove a tenant from a single node.
-
-        This function expects valid input where:
-        - tenant exists in self.tenant_to_nodes
-        - tenant exists in node.tenant_to_last_access_time
-        - node exists in self.tenant_to_nodes[tenant]
-
-        These preconditions are guaranteed to be satisfied if the user is using the public methods of this class.
-        They may be violated if the user manipulates the internal state of the tree directly.
 
         Args:
             tenant: Tenant to remove
@@ -291,6 +283,7 @@ class PrefixTree:
                     remaining_text: str = matched_node.text[shared_count:]
 
                     # Create new intermediate node
+                    # Note that we don't update new_parent.tenant_to_last_access_time yet; it will be done at the beginning of the next iteration.
                     new_parent: Node = Node(text=matched_text, parent=curr_node)
                     new_parent.tenant_to_last_access_time = (
                         matched_node.tenant_to_last_access_time.copy()
@@ -327,10 +320,14 @@ class PrefixTree:
             available_tenants: List of tenants to match against (or None for all)
 
         Returns:
-            Tuple of (matched_text, matched_tenants)
-            - If the list of available tenants doesn't match any tenants in the tree: returns ("", None)
-            - When no prefix match is found (does not traverse further than the root node): returns ("", list of available tenants)
-            - When a prefix match is found: returns (matched_prefix, list of tenants that own the matched node)
+            Tuple of (matched_text, matched_tenants):
+                If the list of available tenants doesn't match any tenants in the tree: returns ("", None)
+                When no prefix match is found (does not traverse further than the root node): returns ("", list of available tenants)
+                When a prefix match is found: returns (matched_prefix, list of tenants that own the matched node)
+
+        Note:
+            A tenant is unable to be returned by prefix_match until it has inserted text into the tree, even if _add_tenant is called.
+            The replica scheduler is responsible for inserting text into new replicas; it should not only rely on prefix_match to select replicas.
         """
         if available_tenants:
             # Filter available_tenants to only include those in the tree
@@ -388,6 +385,7 @@ class PrefixTree:
     def remove_tenant(self, tenant: str) -> int:
         """
         Remove a tenant and all its nodes from the tree.
+        Time complexity: O(n) where n is the number of nodes owned by the tenant.
 
         Args:
             tenant: Tenant to remove
@@ -412,6 +410,7 @@ class PrefixTree:
     def evict_tenant_by_lru(self, tenant: str, min_remove_size: int) -> int:
         """
         Evict least recently used nodes for a tenant until minimum size is freed.
+        Time complexity: O(n + m log n) where n is the number of nodes owned by the tenant, and m is the number of nodes removed.
 
         Args:
             tenant: The tenant to evict nodes from
@@ -423,7 +422,7 @@ class PrefixTree:
         Note:
             - All nodes with the same oldest access time are removed together to maintain tree integrity, even if only removing a subset of them satisfies the min_remove_size.
             - This behavior is expected in the case when an input was split into multiple nodes by a different tenant (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 2)).
-              because there is no reason to only remove "world" from tenant 1. So we remove the "chain" of "hello" and "world" from tenant 1.
+              because "hello" and "world" were inserted as a package, and so should be removed as a package.
             - However, if two inputs happen to be inserted at the same time (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 1)),
               then both "chains" will be removed by our method. This may not reflect the actual KV cache eviction policy.
             - For more predictable eviction, use unique timestamps for each insertion.
@@ -450,7 +449,7 @@ class PrefixTree:
             for node in self.tenant_to_nodes[tenant]:
                 access_time = node.tenant_to_last_access_time[tenant]
                 nodes_by_access_time.append(TimestampedNode(node, access_time))
-            heapq.heapify(nodes_by_access_time)
+            heapq.heapify(nodes_by_access_time)  # O(n)
 
             # Remove nodes until we've freed enough characters
             while total_chars_removed < min_remove_size and nodes_by_access_time:
@@ -463,7 +462,9 @@ class PrefixTree:
                     nodes_by_access_time
                     and nodes_by_access_time[0].time_sec == oldest_access_time
                 ):
-                    node_to_remove = heapq.heappop(nodes_by_access_time).node
+                    node_to_remove = heapq.heappop(
+                        nodes_by_access_time
+                    ).node  # O(log n)
                     total_chars_removed += self._remove_tenant_single_node(
                         tenant, node_to_remove
                     )
