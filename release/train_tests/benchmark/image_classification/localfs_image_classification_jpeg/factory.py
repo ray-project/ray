@@ -20,6 +20,7 @@ from image_classification.imagenet import get_transform
 from logger_utils import ContextLoggerAdapter
 from image_classification.image_classification_jpeg.imagenet import (
     get_preprocess_map_fn,
+    get_preprocess_map_batch_fn,
 )
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
@@ -50,27 +51,27 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         train_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
             mode="RGB",
-            include_paths=False,
+            include_paths=True,
             partitioning=Partitioning(
                 "dir",
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
                 field_names=["class"],
             ),
             override_num_blocks=override_num_blocks,
-        ).map(get_preprocess_map_fn(random_transforms=True))
+        ).map_batches(get_preprocess_map_batch_fn(random_transforms=True), batch_size=4)
 
         # Create validation dataset
         val_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
             mode="RGB",
-            include_paths=False,
+            include_paths=True,
             partitioning=Partitioning(
                 "dir",
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
                 field_names=["class"],
             ),
             override_num_blocks=override_num_blocks,
-        ).map(get_preprocess_map_fn(random_transforms=False))
+        ).map_batches(get_preprocess_map_batch_fn(random_transforms=False), batch_size=4)
 
         return {
             DatasetKey.TRAIN: train_ds,
