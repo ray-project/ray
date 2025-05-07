@@ -7,7 +7,8 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
-from ray.data.datasource.file_datasink import _FileDatasink, SaveMode
+from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datasource import SaveMode
 from ray.data.datasource.filename_provider import FilenameProvider
 
 if TYPE_CHECKING:

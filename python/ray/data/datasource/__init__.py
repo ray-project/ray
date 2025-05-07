@@ -1,3 +1,13 @@
+from enum import Enum
+
+
+class SaveMode(str, Enum):
+    APPEND = "append"
+    OVERWRITE = "overwrite"
+    IGNORE = "ignore"
+    ERROR = "error"
+
+
 from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data.datasource.datasink import (
     Datasink,
@@ -64,4 +74,5 @@ __all__ = [
     "_S3FileSystemWrapper",
     "WriteResult",
     "WriteReturnType",
+    "SaveMode",
 ]

@@ -1,6 +1,5 @@
 import logging
 import posixpath
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
@@ -20,32 +19,11 @@ from ray.data.datasource.filename_provider import (
     _DefaultFilenameProvider,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource import SaveMode
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
-
-
-# TODO(jhsu): move this to another file once modes
-# are more unbiquitous
-class SaveMode(Enum):
-    APPEND = 0
-    OVERWRITE = 1
-    IGNORE = 2
-    ERROR = 3
-    ERRORIFEXISTS = 3
-
-    @classmethod
-    def from_string(cls, name: str):
-        normalized_name = name.strip().upper().replace("_", "")
-        try:
-            return cls[normalized_name]
-        except KeyError as e:
-            valid_modes = SaveMode.__members__.keys()
-            raise ValueError(
-                f"{name} is not invalid. Valid save modes are {valid_modes}"
-            ) from e
-
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +95,9 @@ class _FileDatasink(Datasink[None]):
                 raise ValueError(
                     f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files"
                 )
-            elif self.mode == SaveMode.IGNORE:
+            if self.mode == SaveMode.IGNORE:
                 return
-            elif self.mode == SaveMode.OVERWRITE:
+            if self.mode == SaveMode.OVERWRITE:
                 self.filesystem.delete_dir_contents(self.path)
         self.has_created_dir = self._create_dir(self.path)
 

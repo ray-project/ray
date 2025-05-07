@@ -3317,7 +3317,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
-        mode: str = "append",
+        mode: SaveMode = SaveMode.APPEND,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -3396,7 +3396,7 @@ class Dataset:
                         pyarrow.parquet.ParquetWriter.html>`_, which is used to write
                 out each block to a file. See `arrow_parquet_args_fn` for more detail.
             mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
-                "errorifexists", "ignore", "append". Defaults to "append".
+                "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`
         """  # noqa: E501
@@ -3424,7 +3424,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
-            mode=SaveMode.from_string(mode),
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4536,7 +4536,7 @@ class Dataset:
         try:
             datasink.on_write_start()
             if isinstance(datasink, _FileDatasink):
-                if not datasink.has_created_dir and datasink.mode is SaveMode.IGNORE:
+                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )

@@ -30,7 +30,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.dataset import SaveMode
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -939,6 +938,9 @@ def test_parquet_write_ignore_save_mode(
     # directory was created, should ignore
     path1 = os.path.join(path, "data1_000000_000000.parquet")
     path2 = os.path.join(path, "data1_000001_000000.parquet")
+    import pdb
+
+    pdb.set_trace()
     assert not os.path.exists(path1)
     assert not os.path.exists(path2)
 
@@ -1002,7 +1004,7 @@ def test_parquet_write_error_save_mode(
         fs.delete_dir(_unwrap_protocol(path))
 
     # now remove dir
-    ds1.write_parquet(path, filesystem=fs, mode="errorifexists")
+    ds1.write_parquet(path, filesystem=fs, mode="error")
     dfds = pd.concat(
         [
             pd.read_parquet(path1, storage_options=storage_options),
@@ -1121,6 +1123,7 @@ def test_parquet_write_mix_save_modes(
     else:
         fs.delete_dir(_unwrap_protocol(path))
 
+
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -1158,7 +1161,6 @@ def test_parquet_write_mix_save_modes(
     assert df.equals(dfds)
 
     # test save modes
-    assert SaveMode.ERRORIFEXISTS == SaveMode.ERROR
     df3 = pd.DataFrame({"two": [4, 5, 6], "three": ["h", "i", "j"]})
     ds2 = ray.data.from_blocks([df3])
     with pytest.raises(ValueError):
