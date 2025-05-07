@@ -141,7 +141,8 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         # Create the actor workers and add them to the pool.
-        self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
+        map_worker_cls = type(self._cls.name, (_MapWorker,), {})
+        self._cls = ray.remote(**self._ray_remote_args)(map_worker_cls)
         self._actor_pool.scale_up(self._actor_pool.min_size())
         refs = self._actor_pool.get_pending_actor_refs()
 
