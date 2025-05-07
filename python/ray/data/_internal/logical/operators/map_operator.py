@@ -321,8 +321,8 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
-        target_num_rows_per_block: The targetr number of rows per block granularity for
-        streaming repartition.
+        target_num_rows_per_block: The target number of rows per block granularity for
+                                   streaming repartition.
     """
 
     def __init__(
