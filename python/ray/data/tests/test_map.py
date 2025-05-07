@@ -3,6 +3,7 @@ import itertools
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from typing import Iterator
@@ -13,9 +14,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Dataset
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -795,6 +798,40 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
     with pytest.raises(UserCodeException):
         fake_column_ds.to_pandas()
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("13.0.0"),
+    reason="pyarrow < 13.0.0 does not support splitting columns while perserving the nested schema",
+)
+def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
+    """Test filtering with dictionary column."""
+
+    file_path = tmp_path / "dictionary_test.parquet"
+
+    # Create the Parquet file with a dictionary column
+    dict_type = pa.dictionary(index_type=pa.int32(), value_type=pa.string())
+    string_array = pa.array(["x", "y", "z"], type=pa.string())
+
+    table = pa.Table.from_arrays(
+        [dict_array, string_arrayy],
+        names=["dict_col", "str_col"],
+    )
+    pq.write_table(table, file_path)
+
+    # Read the dataset with Ray
+    ds = ray.data.read_parquet(str(file_path))
+
+    # Get schema and validate column types
+    original_schema = ds.schema().types
+
+    ds_filtered = ds.filter(lambda row: True)
+    filtered_schema = ds_filtered.schema().types
+
+    assert (
+        original_schema == filtered_schema
+    ), f"Schema changed after filtering, original_schema: \
+        {original_schema}, filtered_schema:{filtered_schema} "
 
 
 def test_drop_columns(ray_start_regular_shared, tmp_path):
