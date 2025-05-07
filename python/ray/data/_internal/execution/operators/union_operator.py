@@ -7,8 +7,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    NAryOperator,
     InternalQueueOperatorMixin,
+    NAryOperator,
 )
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext

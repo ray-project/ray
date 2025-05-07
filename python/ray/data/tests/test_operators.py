@@ -767,12 +767,11 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             print(f">>> {raw_block=}")
 
             block = pd.DataFrame({"id": raw_block})
-            blocks.append((ray.put(block), BlockAccessor.for_block(block).get_metadata()))
+            blocks.append(
+                (ray.put(block), BlockAccessor.for_block(block).get_metadata())
+            )
 
-        rb = RefBundle(
-            blocks=blocks,
-            owns_blocks=True
-        )
+        rb = RefBundle(blocks=blocks, owns_blocks=True)
 
         rbs.append(rb)
 
@@ -787,11 +786,17 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             1,
             [
                 # Input bundles
-                [[1]], [[2]], [[3, 4]], [[5]],
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
             ],
             [
                 # Output bundles
-                [[1]], [[2]], [[3, 4]], [[5]]
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
             ],
         ),
         (
@@ -799,11 +804,17 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             None,
             [
                 # Input bundles
-                [[1]], [[2]], [[3, 4]], [[5]]
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
             ],
             [
                 # Output bundles
-                [[1]], [[2]], [[3, 4]], [[5]]
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
             ],
         ),
         (
@@ -811,11 +822,17 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             2,
             [
                 # Input bundles
-                [[1]], [[]], [[]], [[2, 3]], [[]], [[]]
+                [[1]],
+                [[]],
+                [[]],
+                [[2, 3]],
+                [[]],
+                [[]],
             ],
             [
                 # Output bundles
-                [[1], [], [], [2, 3]], [[], []]
+                [[1], [], [], [2, 3]],
+                [[], []],
             ],
         ),
         (
@@ -823,22 +840,29 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             2,
             [
                 # Input bundles
-                [[1], [2]], [[3, 4, 5]], [[6], [7]], [[8]], [[9, 10], [11]]
+                [[1], [2]],
+                [[3, 4, 5]],
+                [[6], [7]],
+                [[8]],
+                [[9, 10], [11]],
             ],
-            [
-                [[1], [2]], [[3, 4, 5]], [[6], [7]], [[8], [9, 10], [11]]
-            ],
+            [[[1], [2]], [[3, 4, 5]], [[6], [7]], [[8], [9, 10], [11]]],
         ),
         (
             # Test bundling, finalizing, passing, leftovers, etc.
             3,
             [
                 # Input bundles
-                [[1]], [[2, 3]], [[4, 5, 6, 7]], [[8, 9], [10, 11]]
+                [[1]],
+                [[2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
             ],
             [
                 # Output bundles
-                [[1], [2, 3]], [[4, 5, 6, 7]], [[8, 9], [10, 11]]
+                [[1], [2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
             ],
         ),
     ],
