@@ -565,3 +565,16 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 )
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
+
+# Comma separated string containing ray prometheus metrics to be aggregated at the node
+# level. Current only support metrics with LastValueAggregationData type (tasks, actors,
+# etc.)
+#
+# By default, most of ray metrics are aggregated at the worker level. This causes high
+# cardinality and high memory usage in the prometheus server for large clusters. To
+# alleviate this, we allow users to specify a list of metrics to be aggregated at the
+# node level instead.
+#
+RAY_PROMETHEUS_METRIC_TO_AGGREGATE = os.environ.get(
+    "RAY_prometheus_metric_to_aggregate", ""
+)

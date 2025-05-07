@@ -5,7 +5,7 @@ import re
 import threading
 import time
 import traceback
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from typing import List, Tuple, Any, Dict, Set
 
 from prometheus_client.core import (
@@ -39,6 +39,7 @@ from ray.core.generated.metrics_pb2 import Metric
 from ray._private.ray_constants import env_bool
 
 from ray.util.metrics import _is_invalid_metric_name
+from ray._private.ray_constants import RAY_PROMETHEUS_METRIC_TO_AGGREGATE
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ logger = logging.getLogger(__name__)
 RAY_WORKER_TIMEOUT_S = "RAY_WORKER_TIMEOUT_S"
 GLOBAL_COMPONENT_KEY = "CORE"
 RE_NON_ALPHANUMS = re.compile(r"[^a-zA-Z0-9]")
+# Keep in sync with src/ray/stats/tag_defs.cc:36
+WORKER_ID_TAG_KEY = "WorkerId"
 
 
 class Gauge(View):
@@ -461,6 +464,56 @@ class OpenCensusProxyCollector:
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
 
+    def _collect_per_node_metrics(
+        self,
+        per_worker_metrics: List[OpencensusProxyMetric],
+        metrics_map: Dict[str, List[PrometheusMetric]],
+    ) -> None:
+        """Collect per-worker metrics, aggregate them into per-node metrics and convert
+        them to Prometheus format.
+
+        Args:
+            per_worker_metrics: A list of per-worker metrics for the same metric name.
+            metrics_map: the map to store the converted prometheus metrics.
+        """
+        if not per_worker_metrics:
+            return
+
+        metric = per_worker_metrics[0]
+        if WORKER_ID_TAG_KEY not in metric.label_keys:
+            # not a worker level metric
+            return
+
+        worker_id_label_index = metric.label_keys.index(WORKER_ID_TAG_KEY)
+        # map from the tuple of label values without worker_id to the list of per worker
+        # task metrics
+        per_node_metrics: Dict[Tuple, List[LastValueAggregationData]] = defaultdict(
+            list
+        )
+        for metric in per_worker_metrics:
+            for label_values, data in metric.data.items():
+                isinstance(data, LastValueAggregationData)
+                # remove the worker_id from the label values
+                per_node_metrics[
+                    label_values[:worker_id_label_index]
+                    + label_values[worker_id_label_index + 1 :]
+                ].append(data)
+
+        for label_values, datas in per_node_metrics.items():
+            self.to_metrics(
+                metric.name,
+                metric.desc,
+                # remove the worker_id from the label keys
+                metric.label_keys[:worker_id_label_index]
+                + metric.label_keys[worker_id_label_index + 1 :],
+                metric.unit,
+                label_values,
+                LastValueAggregationData(
+                    ValueDouble, sum([data.value for data in datas])
+                ),
+                metrics_map,
+            )
+
     def collect(self):  # pragma: NO COVER
         """Collect fetches the statistics from OpenCensus
         and delivers them as Prometheus Metrics.
@@ -471,18 +524,33 @@ class OpenCensusProxyCollector:
         """
         with self._components_lock:
             metrics_map = {}
+            # Certain metrics are too expensive to collect at the worker level. For
+            # those metrics, we aggregate them at the node level and emit them as a
+            # single metric.
+            node_level_metric_names = RAY_PROMETHEUS_METRIC_TO_AGGREGATE.split(",")
+            node_level_metrics: Dict[str, List[OpencensusProxyMetric]] = defaultdict(
+                list
+            )
             for component in self._components.values():
                 for metric in component.metrics.values():
-                    for label_values, data in metric.data.items():
-                        self.to_metrics(
-                            metric.name,
-                            metric.desc,
-                            metric.label_keys,
-                            metric.unit,
-                            label_values,
-                            data,
-                            metrics_map,
-                        )
+                    if metric.name in node_level_metric_names:
+                        node_level_metrics[metric.name].append(metric)
+                    else:
+                        # Convert the OpenCensus metrics to Prometheus format for worker
+                        # level metrics
+                        for label_values, data in metric.data.items():
+                            self.to_metrics(
+                                metric.name,
+                                metric.desc,
+                                metric.label_keys,
+                                metric.unit,
+                                label_values,
+                                data,
+                                metrics_map,
+                            )
+            # Convert the OpenCensus metrics to Prometheus format for node level metrics
+            for per_worker_metrics in node_level_metrics.values():
+                self._collect_per_node_metrics(per_worker_metrics, metrics_map)
 
         for metrics in metrics_map.values():
             for metric in metrics:
