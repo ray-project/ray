@@ -4294,3 +4294,8 @@
 
   variations:
     - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
