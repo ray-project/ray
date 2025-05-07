@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Type, TypeVar
 
-from ray.util.metrics import Gauge
-
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 
 T = TypeVar("T")
@@ -46,14 +44,6 @@ class Metric:
                 f"Tag keys for metric '{self.name}' don't match expected keys. "
                 f"Expected: {self.tag_keys}, got: {list(tags.keys())}"
             )
-
-    def start(self):
-        """Initialize the gauge for this metric."""
-        self._gauge = Gauge(
-            self.name,
-            description=self.description,
-            tag_keys=self.tag_keys,
-        )
 
     def record(self, tags: Dict[str, str], value: T):
         """Update the metric value with the given tags.
