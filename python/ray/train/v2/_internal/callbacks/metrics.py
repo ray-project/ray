@@ -8,19 +8,13 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext, get_train_context
-from ray.train.v2._internal.execution.controller.state import TrainControllerState
+from ray.train.v2._internal.execution.controller.state import (
+    TrainControllerState,
+    TrainControllerStateType,
+)
 from ray.train.v2._internal.metrics.base import RUN_NAME_TAG_KEY, MetricsTracker
-from ray.train.v2._internal.metrics.controller import (
-    CONTROLLER_METRICS,
-    TRAIN_CONTROLLER_STATE,
-    TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S,
-    TRAIN_WORKER_GROUP_START_TOTAL_TIME_S,
-)
-from ray.train.v2._internal.metrics.worker import (
-    TRAIN_REPORT_TOTAL_BLOCKED_TIME_S,
-    WORKER_METRICS,
-    WORKER_WORLD_RANK_TAG_KEY,
-)
+from ray.train.v2._internal.metrics.controller import ControllerMetrics
+from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2._internal.util import time_monotonic
 
 
@@ -42,12 +36,18 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         controller_tag = {
             RUN_NAME_TAG_KEY: self._run_name,
         }
-        self._metrics_tracker = MetricsTracker(CONTROLLER_METRICS, controller_tag)
+
+        metrics = ControllerMetrics.get_controller_metrics()
+        self._metrics_tracker = MetricsTracker(metrics, controller_tag)
         self._metrics_tracker.start()
 
         # Initialize with the INITIALIZING state
-        self._metrics_tracker.update(
-            TRAIN_CONTROLLER_STATE, {"ray_train_controller_state": "INITIALIZING"}, 1
+        self._metrics_tracker.record(
+            ControllerMetrics.CONTROLLER_STATE,
+            1,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.INITIALIZING.name
+            },
         )
 
     def before_controller_shutdown(self):
@@ -67,17 +67,21 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
             current_state_name = current_state._state_type.name
 
             # Decrement the previous state counter
-            self._metrics_tracker.update(
-                TRAIN_CONTROLLER_STATE,
-                {"ray_train_controller_state": previous_state_name},
+            self._metrics_tracker.record(
+                ControllerMetrics.CONTROLLER_STATE,
                 -1,
+                additional_tags={
+                    ControllerMetrics.CONTROLLER_STATE_TAG_KEY: previous_state_name
+                },
             )
 
             # Increment the counter for the new state
-            self._metrics_tracker.update(
-                TRAIN_CONTROLLER_STATE,
-                {"ray_train_controller_state": current_state_name},
+            self._metrics_tracker.record(
+                ControllerMetrics.CONTROLLER_STATE,
                 1,
+                additional_tags={
+                    ControllerMetrics.CONTROLLER_STATE_TAG_KEY: current_state_name
+                },
             )
 
     @contextmanager
@@ -88,8 +92,8 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         start_time_s = time_monotonic()
         yield
         elapsed_time_s = time_monotonic() - start_time_s
-        self._metrics_tracker.update(
-            TRAIN_WORKER_GROUP_START_TOTAL_TIME_S, {}, elapsed_time_s
+        self._metrics_tracker.record(
+            ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S, elapsed_time_s
         )
 
     @contextmanager
@@ -100,15 +104,12 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         start_time_s = time_monotonic()
         yield
         elapsed_time_s = time_monotonic() - start_time_s
-        self._metrics_tracker.update(
-            TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, {}, elapsed_time_s
+        self._metrics_tracker.record(
+            ControllerMetrics.TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, elapsed_time_s
         )
 
 
 class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
-    # Interval for pushing metrics to Prometheus.
-    LOCAL_METRICS_PUSH_INTERVAL_S: float = 5.0
-
     def __init__(self, train_run_context: TrainRunContext):
         """
         This callback is initialized on the driver process and then passed to the
@@ -133,9 +134,13 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
         """
         worker_tag = {
             RUN_NAME_TAG_KEY: self._run_name,
-            WORKER_WORLD_RANK_TAG_KEY: str(get_train_context().get_world_rank()),
+            WorkerMetrics.WORKER_WORLD_RANK_TAG_KEY: str(
+                get_train_context().get_world_rank()
+            ),
         }
-        self._metrics_tracker = MetricsTracker(WORKER_METRICS, worker_tag)
+
+        metrics = WorkerMetrics.get_worker_metrics()
+        self._metrics_tracker = MetricsTracker(metrics, worker_tag)
         self._metrics_tracker.start()
 
     def before_worker_shutdown(self):
@@ -152,6 +157,6 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
         start_time_s = time_monotonic()
         yield
         elapsed_time_s = time_monotonic() - start_time_s
-        self._metrics_tracker.update(
-            TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, {}, elapsed_time_s
+        self._metrics_tracker.record(
+            WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, elapsed_time_s
         )

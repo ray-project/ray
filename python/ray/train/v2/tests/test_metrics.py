@@ -1,5 +1,3 @@
-import threading
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,22 +12,13 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerStateType,
 )
 from ray.train.v2._internal.metrics.base import Metric, MetricsTracker
-from ray.train.v2._internal.metrics.controller import (
-    TRAIN_CONTROLLER_STATE,
-    TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S,
-    TRAIN_WORKER_GROUP_START_TOTAL_TIME_S,
-)
-from ray.train.v2._internal.metrics.worker import TRAIN_REPORT_TOTAL_BLOCKED_TIME_S
+from ray.train.v2._internal.metrics.controller import ControllerMetrics
+from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2.api.config import RunConfig
 
 
 class MockGauge:
-    """
-    An Naive Mock class for `ray.util.metrics.Gauge`.
-
-    This mock class initializes the value of the gauge to 0.0 and sets the value.
-    The tags keys are not used in this mock class, just for API consistency.
-    """
+    """Mock class for ray.util.metrics.Gauge."""
 
     def __init__(self, name: str, description: str, tag_keys: tuple = ()):
         self._values: dict[set[str], float] = {}
@@ -43,22 +32,23 @@ class MockGauge:
 
 def mock_on_report(self, value: float):
     """Mock function to set the value of the train_report_total_blocked_time"""
-    self._metrics_tracker.update(TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, {}, value)
+    self._metrics_tracker.record(WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, value)
 
 
 def mock_on_worker_group_event(self, value: float, event: str):
     """Mock function to set the value of the worker group event"""
     if event == "start":
-        self._metrics_tracker.update(TRAIN_WORKER_GROUP_START_TOTAL_TIME_S, {}, value)
+        self._metrics_tracker.record(
+            ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S, value
+        )
     elif event == "shutdown":
-        self._metrics_tracker.update(
-            TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, {}, value
+        self._metrics_tracker.record(
+            ControllerMetrics.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, value
         )
 
 
 def test_metrics_tracker(monkeypatch):
     """Test the core functionality of MetricsTracker."""
-    monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     base_tags = {"base_tag": "base_value"}
@@ -76,39 +66,50 @@ def test_metrics_tracker(monkeypatch):
         type=float,
         default=0.0,
         description="Test metric with tags",
-        tag_keys=["base_tag", "tag1", "tag2"],
+        tag_keys=["base_tag", "tag1"],
     )
 
     # Initialize tracker with base tags
-    tracker = MetricsTracker([test_metric, test_metric_with_tags], base_tags)
+    metrics_dict = {m.name: m for m in [test_metric, test_metric_with_tags]}
+    tracker = MetricsTracker(metrics_dict, base_tags)
     tracker.start()
 
     # Test initial state
-    assert tracker.get_value(test_metric, {}) is None
-    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) is None
+    assert tracker.get_value(test_metric.name) == 0.0
+    assert (
+        tracker.get_value(
+            test_metric_with_tags.name, additional_tags={"tag1": "value1"}
+        )
+        == 0.0
+    )
 
     # Test updating metric with additional tags
-    tracker.update(test_metric_with_tags, {"tag1": "value1"}, 1.0)
-    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) == 1.0
+    tracker.record(test_metric_with_tags.name, 1.0, additional_tags={"tag1": "value1"})
+    assert (
+        tracker.get_value(
+            test_metric_with_tags.name, additional_tags={"tag1": "value1"}
+        )
+        == 1.0
+    )
 
     # Test updating same metric-tag combination
-    tracker.update(test_metric_with_tags, {"tag1": "value1"}, 2.0)
-    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) == 3.0
-
-    # Test updating with different tags
-    tracker.update(test_metric_with_tags, {"tag2": "value2"}, 4.0)
-    assert tracker.get_value(test_metric_with_tags, {"tag2": "value2"}) == 4.0
-    assert tracker.get_value(test_metric_with_tags, {"tag1": "value1"}) == 3.0
+    tracker.record(test_metric_with_tags.name, 2.0, additional_tags={"tag1": "value1"})
+    assert (
+        tracker.get_value(
+            test_metric_with_tags.name, additional_tags={"tag1": "value1"}
+        )
+        == 3.00
+    )
 
     # Test shutdown
     tracker.shutdown()
-    assert tracker._thread is None
-    assert tracker._thread_stop_event is None
+    for metric in tracker._metrics.values():
+        assert metric._values == {}
 
 
 def test_metrics_tracker_unknown_metric():
     """Test that updating an unknown metric raises an error."""
-    tracker = MetricsTracker([], {})
+    tracker = MetricsTracker({}, {})
     unknown_metric = Metric(
         name="unknown_metric",
         type=float,
@@ -118,12 +119,11 @@ def test_metrics_tracker_unknown_metric():
     )
 
     with pytest.raises(ValueError, match="Unknown metric: unknown_metric"):
-        tracker.update(unknown_metric, {}, 1.0)
+        tracker.record(unknown_metric.name, 1.0)
 
 
 def test_metrics_tracker_reset(monkeypatch):
     """Test that all metric-tag combinations are properly reset."""
-    monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     # Create test metrics
@@ -144,80 +144,31 @@ def test_metrics_tracker_reset(monkeypatch):
 
     # Initialize tracker with base tags
     base_tags = {"base_tag": "base_value"}
-    tracker = MetricsTracker([test_metric1, test_metric2], base_tags)
+    metrics_dict = {m.name: m for m in [test_metric1, test_metric2]}
+    tracker = MetricsTracker(metrics_dict, base_tags)
     tracker.start()
 
-    # Update metrics with different tag combinations
-    tag1_value1 = {"tag1": "value1"}
-    tag1_value2 = {"tag1": "value2"}
-
-    tracker.update(test_metric1, {}, 1.0)
-    tracker.update(test_metric2, tag1_value1, 2)
-    tracker.update(test_metric2, tag1_value2, 3)
-    time.sleep(0.1)
+    tracker.record(test_metric1.name, 1.0)
+    tracker.record(test_metric2.name, 2, additional_tags={"tag1": "value1"})
+    tracker.record(test_metric2.name, 3, additional_tags={"tag1": "value2"})
 
     # Verify all values are set
-    assert tracker._metrics_gauges[test_metric1.name].get(base_tags) == 1.0
-    assert (
-        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value1})
-        == 2
-    )
-    assert (
-        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value2})
-        == 3
-    )
+    assert tracker.get_value(test_metric1.name) == 1.0
+    assert tracker.get_value(test_metric2.name, additional_tags={"tag1": "value1"}) == 2
+    assert tracker.get_value(test_metric2.name, additional_tags={"tag1": "value2"}) == 3
 
     # Reset gauges
-    tracker._stop_metrics_thread()
-    tracker._reset_gauges()
+    tracker.reset()
 
     # Verify all values are reset to default
-    assert tracker._metrics_gauges[test_metric1.name].get(base_tags) == 0.0
-    assert (
-        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value1})
-        == 0
-    )
-    assert (
-        tracker._metrics_gauges[test_metric2.name].get({**base_tags, **tag1_value2})
-        == 0
-    )
-
-    tracker.shutdown()
-
-
-def test_metrics_tracker_thread_safety():
-    """Test that MetricsTracker is thread-safe."""
-    test_metric = Metric(
-        name="test_metric",
-        type=int,
-        default=0,
-        description="Test metric",
-        tag_keys=[],
-    )
-
-    tracker = MetricsTracker([test_metric], {})
-    tracker.start()
-
-    def update_metric():
-        for _ in range(100):
-            tracker.update(test_metric, {}, 1)
-
-    # Create multiple threads updating the same metric
-    threads = [threading.Thread(target=update_metric) for _ in range(10)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-    time.sleep(0.1)
-    # Should be exactly 1000 (100 updates * 10 threads)
-    assert tracker.get_value(test_metric, {}) == 1000
+    assert tracker.get_value(test_metric1.name) == 0.0
+    assert tracker.get_value(test_metric2.name, additional_tags={"tag1": "value1"}) == 0
+    assert tracker.get_value(test_metric2.name, additional_tags={"tag1": "value2"}) == 0
 
     tracker.shutdown()
 
 
 def test_worker_metrics_callback(monkeypatch):
-    monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(WorkerMetricsCallback, "on_report", mock_on_report)
     mock_train_context = MagicMock()
     mock_train_context.get_world_rank.return_value = 1
@@ -236,23 +187,24 @@ def test_worker_metrics_callback(monkeypatch):
 
     # Check if the gauges is updated with the correct metrics
     callback.on_report(1.0)
-    time.sleep(0.1)
     assert (
-        callback._metrics_tracker.get_value(TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, {})
+        callback._metrics_tracker.get_value(
+            WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S
+        )
         == 1.0
     )
 
     # Check if the gauges is updated with the correct metrics
-    callback.on_report(1.0)
-    time.sleep(0.1)
+    callback.on_report(2.0)
     assert (
-        callback._metrics_tracker.get_value(TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, {})
-        == 2.0
+        callback._metrics_tracker.get_value(
+            WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S
+        )
+        == 3.0
     )
 
 
 def test_controller_metrics_callback(monkeypatch):
-    monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(
         ControllerMetricsCallback, "on_worker_group_start", mock_on_worker_group_event
     )
@@ -278,28 +230,30 @@ def test_controller_metrics_callback(monkeypatch):
 
     # Check if the gauges is updated with the correct metrics
     callback.on_worker_group_start(2.0, "start")
-    time.sleep(0.1)
     assert (
-        callback._metrics_tracker.get_value(TRAIN_WORKER_GROUP_START_TOTAL_TIME_S, {})
+        callback._metrics_tracker.get_value(
+            ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S
+        )
         == 2.0
     )
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, {}
+            ControllerMetrics.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S
         )
-        is None
+        == 0.0
     )
 
     # Check if the gauges is updated with the correct metrics
     callback.on_worker_group_shutdown(1.0, "shutdown")
-    time.sleep(0.1)
     assert (
-        callback._metrics_tracker.get_value(TRAIN_WORKER_GROUP_START_TOTAL_TIME_S, {})
+        callback._metrics_tracker.get_value(
+            ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S
+        )
         == 2.0
     )
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, {}
+            ControllerMetrics.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S
         )
         == 1.0
     )
@@ -307,7 +261,6 @@ def test_controller_metrics_callback(monkeypatch):
 
 def test_controller_state_metrics(monkeypatch):
     """Test controller state transition metrics."""
-    monkeypatch.setattr(MetricsTracker, "DEFAULT_METRICS_PUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     mock_train_context = MagicMock()
@@ -324,11 +277,12 @@ def test_controller_state_metrics(monkeypatch):
     callback.after_controller_start()
 
     # Test initial state
-    time.sleep(0.1)
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_CONTROLLER_STATE,
-            {"ray_train_controller_state": "INITIALIZING"},
+            ControllerMetrics.CONTROLLER_STATE,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.INITIALIZING.name
+            },
         )
         == 1
     )
@@ -341,20 +295,23 @@ def test_controller_state_metrics(monkeypatch):
     previous_state = MockState(TrainControllerStateType.INITIALIZING)
     current_state = MockState(TrainControllerStateType.RUNNING)
     callback.after_controller_state_update(previous_state, current_state)
-    time.sleep(0.1)
 
     # Verify state counts
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_CONTROLLER_STATE,
-            {"ray_train_controller_state": "INITIALIZING"},
+            ControllerMetrics.CONTROLLER_STATE,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.INITIALIZING.name
+            },
         )
         == 0
     )
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_CONTROLLER_STATE,
-            {"ray_train_controller_state": "RUNNING"},
+            ControllerMetrics.CONTROLLER_STATE,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.RUNNING.name
+            },
         )
         == 1
     )
@@ -363,27 +320,32 @@ def test_controller_state_metrics(monkeypatch):
     previous_state = MockState(TrainControllerStateType.RUNNING)
     current_state = MockState(TrainControllerStateType.FINISHED)
     callback.after_controller_state_update(previous_state, current_state)
-    time.sleep(0.1)
 
     # Verify updated state counts
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_CONTROLLER_STATE,
-            {"ray_train_controller_state": "INITIALIZING"},
+            ControllerMetrics.CONTROLLER_STATE,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.INITIALIZING.name
+            },
         )
         == 0
     )
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_CONTROLLER_STATE,
-            {"ray_train_controller_state": "RUNNING"},
+            ControllerMetrics.CONTROLLER_STATE,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.RUNNING.name
+            },
         )
         == 0
     )
     assert (
         callback._metrics_tracker.get_value(
-            TRAIN_CONTROLLER_STATE,
-            {"ray_train_controller_state": "FINISHED"},
+            ControllerMetrics.CONTROLLER_STATE,
+            {
+                ControllerMetrics.CONTROLLER_STATE_TAG_KEY: TrainControllerStateType.FINISHED.name
+            },
         )
         == 1
     )

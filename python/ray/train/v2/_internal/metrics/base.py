@@ -1,7 +1,5 @@
-import threading
-import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Type, TypeVar
 
 from ray.util.metrics import Gauge
 
@@ -18,152 +16,136 @@ class Metric:
     description: str
     tag_keys: List[str]
 
+    def __init__(
+        self,
+        name: str,
+        type: Type[T],
+        default: T,
+        description: str,
+        tag_keys: List[str],
+    ):
+        self.name = name
+        self.type = type
+        self.default = default
+        self.description = description
+        self.tag_keys = tag_keys
+        self._gauge = None
+        self._values = {}
+
+    def _validate_tags(self, tags: Dict[str, str]):
+        """Validate that the provided tags match the expected tag keys.
+
+        Args:
+            tags: Dictionary of tag key-value pairs to validate
+
+        Raises:
+            ValueError: If the tag keys don't match the expected keys
+        """
+        if set(tags.keys()) != set(self.tag_keys):
+            raise ValueError(
+                f"Tag keys for metric '{self.name}' don't match expected keys. "
+                f"Expected: {self.tag_keys}, got: {list(tags.keys())}"
+            )
+
+    def start(self):
+        """Initialize the gauge for this metric."""
+        self._gauge = Gauge(
+            self.name,
+            description=self.description,
+            tag_keys=self.tag_keys,
+        )
+
+    def record(self, tags: Dict[str, str], value: T):
+        """Update the metric value with the given tags.
+
+        For numerical values (int, float), the value will be added to the current value.
+        For non-numerical values, the current value will be replaced.
+
+        Args:
+            value: The value to update the metric with.
+            tags: Dictionary of tag key-value pairs.
+        """
+        self._validate_tags(tags)
+
+        key = frozenset(tags.items())
+
+        # Initialize with default value for new tag combination
+        if key not in self._values:
+            self._values[key] = self.default
+
+        # For numeric types, add the value; otherwise replace it
+        if isinstance(self._values[key], (int, float)):
+            self._values[key] += value
+        else:
+            self._values[key] = value
+
+        # Update the gauge if it exists
+        if self._gauge is not None:
+            self._gauge.set(self._values[key], tags)
+
+    def get_value(self, tags: Dict[str, str]) -> Any:
+        """Get the value of the metric for the given tags."""
+        self._validate_tags(tags)
+
+        key = frozenset(tags.items())
+        return self._values.get(key, self.default)
+
+    def reset(self):
+        """Reset all values to default for all tag combinations."""
+        for key, _ in self._values.items():
+            tags = dict(key)
+            self._values[key] = self.default
+            if self._gauge is not None:
+                self._gauge.set(self.default, tags)
+
+    def shutdown(self):
+        """Reset values and clean up resources."""
+        self.reset()
+        self._values = {}
+
 
 class MetricsTracker:
     """Tracks metric values for a set of defined metrics."""
 
-    # Interval for pushing metrics to Prometheus.
-    DEFAULT_METRICS_PUSH_INTERVAL_S: float = 5.0
-
-    def __init__(self, metrics: List[Metric], base_tags: Dict[str, str]):
-        self._metrics_definitions = {metric.name: metric for metric in metrics}
+    def __init__(self, metrics: Dict[str, Metric], base_tags: Dict[str, str]):
+        self._metrics = metrics
         self._base_tags = base_tags
-        # Use a tuple of (metric_name, frozenset(tags.items())) as the key
-        self._values = {}
-        self._metrics_lock = threading.RLock()
-        self._metrics_gauges = {}
-        self._thread: Optional[threading.Thread] = None
-        self._thread_stop_event: Optional[threading.Event] = None
 
     def start(self):
-        """Create gauges and start the metrics thread."""
-        self._create_gauges()
-        self._start_metrics_thread()
+        """Start all metrics."""
+        for metric in self._metrics.values():
+            metric.start()
 
     def shutdown(self):
-        """Stop the metrics thread and reset gauges."""
-        self._stop_metrics_thread()
-        self._reset_gauges()
-        self._values = {}
+        """Shutdown all metrics."""
+        for metric in self._metrics.values():
+            metric.shutdown()
 
-    def update(self, metric: Metric, additional_tags: Dict[str, str], value: Any):
-        """Update a metric value with associated tags.
+    def reset(self):
+        """Reset all metrics."""
+        for metric in self._metrics.values():
+            metric.reset()
 
-        Args:
-            metric: A Metric instance
-            additional_tags: Dictionary of tag key-value pairs to be merged with the base tags
-            value: The value to update the metric with. The value will be added to the existing value
-                for the metric-tags combination, or set if the metric-tags combination does not exist.
-        """
-        if metric.name not in self._metrics_definitions:
-            raise ValueError(f"Unknown metric: {metric.name}")
+    def record(
+        self, metric_name: str, value: Any, additional_tags: Dict[str, str] = None
+    ):
+        """Record a value for a specific metric."""
+        if additional_tags is None:
+            additional_tags = {}
+        metric = self._get_metric(metric_name)
+        tags = self._base_tags | additional_tags
+        metric.record(tags, value)
 
-        with self._metrics_lock:
-            # Combine base tags with metric-specific tags
-            combined_tags = {**self._base_tags, **additional_tags}
-            key = self._get_key(metric.name, combined_tags)
-            if key not in self._values:
-                # Initialize with default value for new metric-tag combination
-                self._values[key] = metric.default
+    def get_value(self, metric_name: str, additional_tags: Dict[str, str] = None):
+        """Get the value of a specific metric."""
+        if additional_tags is None:
+            additional_tags = {}
+        metric = self._get_metric(metric_name)
+        tags = self._base_tags | additional_tags
+        return metric.get_value(tags)
 
-            # For numeric types, add the value; otherwise replace it
-            if isinstance(self._values[key], (int, float)):
-                self._values[key] += value
-            else:
-                self._values[key] = value
-
-    def get_value(self, metric: Metric, additional_tags: Dict[str, str]) -> Any:
-        """Get the value of a metric for a given metric name and tags."""
-        with self._metrics_lock:
-            combined_tags = {**self._base_tags, **additional_tags}
-            key = self._get_key(metric.name, combined_tags)
-            return self._values.get(key, None)
-
-    def _get_key(self, metric_name, tags):
-        """Get the composite key for a metric and its tags."""
-        return (metric_name, frozenset(tags.items()))
-
-    def _create_gauges(self):
-        """Create Prometheus gauges for all metrics."""
-        with self._metrics_lock:
-            self._metrics_gauges = {}
-            for metric_name, metric_definition in self._metrics_definitions.items():
-                self._metrics_gauges[metric_name] = Gauge(
-                    metric_name,
-                    description=metric_definition.description,
-                    tag_keys=metric_definition.tag_keys,
-                )
-
-    def _get_all(self):
-        """Get all metric values and their associated tags.
-
-        Returns:
-            Dict mapping metric names to tuples of (tags, value).
-
-            Example:
-            {
-                "metric_name": [
-                    ({"tag1": "value1", "tag2": "value2"}, 1.0),
-                    ({"tag1": "value1", "tag3": "value3"}, 2.0),
-                ],
-                "another_metric": [
-                    ({"tag1": "value1"}, 5),
-                    ({"tag2": "value2", "run": "experiment1"}, 10),
-                ]
-            }
-        """
-        with self._metrics_lock:
-            result = {}
-            for (metric_name, tag_items), value in self._values.items():
-                tags = dict(tag_items)
-                if metric_name not in result:
-                    result[metric_name] = []
-                result[metric_name].append((tags, value))
-            return result
-
-    def _push_metrics(self):
-        """Push all metrics to their gauges."""
-        with self._metrics_lock:
-            metrics_dict = self._get_all()
-            for metric_name, metric_values in metrics_dict.items():
-                if metric_name in self._metrics_gauges:
-                    for tags, value in metric_values:
-                        self._metrics_gauges[metric_name].set(value, tags)
-
-    def _reset_gauges(self):
-        """Reset all gauges to their default values for all tag combinations."""
-        with self._metrics_lock:
-            metrics_dict = self._get_all()
-            for metric_name, metric_values in metrics_dict.items():
-                if metric_name in self._metrics_gauges:
-                    for tags, value in metric_values:
-                        self._metrics_gauges[metric_name].set(
-                            self._metrics_definitions[metric_name].default, tags
-                        )
-
-    def _start_metrics_thread(self):
-        """Start a thread to periodically push metrics to Prometheus."""
-        if self._thread is not None:
-            return  # Thread already running
-
-        self._thread_stop_event = threading.Event()
-
-        def push_metrics_loop():
-            while not self._thread_stop_event.is_set():
-                self._push_metrics()
-                time.sleep(self.DEFAULT_METRICS_PUSH_INTERVAL_S)
-
-        self._thread = threading.Thread(target=push_metrics_loop, daemon=True)
-        self._thread.start()
-
-    def _stop_metrics_thread(self):
-        """Stop the metrics push thread."""
-        if self._thread is None or self._thread_stop_event is None:
-            return  # No thread running
-
-        self._thread_stop_event.set()
-        # Push metrics one final time before shutting down
-        self._push_metrics()
-        self._thread.join(timeout=1.0)  # Wait for thread to finish with timeout
-        self._thread = None
-        self._thread_stop_event = None
+    def _get_metric(self, metric_name: str) -> Metric:
+        """Get a specific metric."""
+        if metric_name not in self._metrics:
+            raise ValueError(f"Unknown metric: {metric_name}")
+        return self._metrics[metric_name]
