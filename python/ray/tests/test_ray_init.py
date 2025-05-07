@@ -19,7 +19,7 @@ from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import wait_for_condition, enable_external_redis
+from ray._private.test_utils import wait_for_condition, external_redis_test_enabled
 from ray._private import ray_constants
 from ray.runtime_env.runtime_env import RuntimeEnv
 
@@ -247,7 +247,7 @@ def test_new_ray_instance_new_session_dir(shutdown_only):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     ray.shutdown()
     ray.init()
-    if enable_external_redis():
+    if external_redis_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -262,7 +262,7 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
     cluster.add_node()
     ray.init(address=cluster.address)
-    if enable_external_redis():
+    if external_redis_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir

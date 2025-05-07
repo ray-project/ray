@@ -278,13 +278,16 @@ void TaskReceiver::RunNormalTasksFromQueue() {
 
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
                                          const TaskID &task_id) {
+  bool task_found = false;
   auto it = actor_scheduling_queues_.find(caller_worker_id);
   if (it != actor_scheduling_queues_.end()) {
-    return it->second->CancelTaskIfFound(task_id);
-  } else {
-    // Queue doesn't exist. It can happen if a task hasn't been received yet.
-    return false;
+    task_found = it->second->CancelTaskIfFound(task_id);
   }
+
+  // Return false if either:
+  //   (1) there is no scheduling queue for the caller
+  //   (2) the specified task_id was not found in the scheduling queue
+  return task_found;
 }
 
 bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {

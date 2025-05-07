@@ -521,22 +521,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
 
-  if (execute_out_of_order) {
-    // Upon re-connect, task 2 (failed) should be both retried.
-    // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
-    ASSERT_TRUE(CheckSubmitTask(task2));
+  // Upon re-connect, task 2 (failed) should be retried.
+  // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
+  ASSERT_TRUE(CheckSubmitTask(task2));
 
-    // Only task2 should be submitted.
-    ASSERT_EQ(worker_client_->callbacks.size(), 1);
-  } else {
-    // Upon re-connect, task 2 (failed) and 3 (completed) should be both retried.
-    // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
-    // Retry task 3 should happen via event loop
-    ASSERT_TRUE(CheckSubmitTask(task2));
-
-    // Both task2 and task3 should be submitted.
-    ASSERT_EQ(worker_client_->callbacks.size(), 2);
-  }
+  // Only task2 should be submitted. task 3 (completed) should not be retried.
+  ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Finishes all task
   while (!worker_client_->callbacks.empty()) {
