@@ -109,7 +109,7 @@ def plan_read_op(
     transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
         BlockMapTransformFn(do_read),
-        BuildOutputBlocksMapTransformFn.for_blocks()
+        BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
 
     return MapOperator.create(
