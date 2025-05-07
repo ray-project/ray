@@ -151,6 +151,7 @@ def create_scheduler(
 ):
     # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
     node_id, availability_zone = _get_node_id_and_az()
+    # print(f"in create_scheduler {replica_scheduler_class=}")
 
     replica_scheduler = replica_scheduler_class(
         deployment_id=deployment_id,
@@ -186,12 +187,14 @@ def create_router(
     )
     is_inside_ray_client_context = inside_ray_client_context()
 
+    replica_scheduler_class = deployment_config.get_replica_scheduler_class()
+    # print(f"create_router: {replica_scheduler_class=} {deployment_config=}")
     replica_scheduler = create_scheduler(
         actor_id,
         deployment_id,
         handle_options,
         is_inside_ray_client_context,
-        deployment_config.get_replica_scheduler_class(),
+        replica_scheduler_class,
     )
 
     return SingletonThreadRouter(
