@@ -40,7 +40,6 @@ class MetricsTracker:
         self._start_metrics_thread()
 
     def shutdown(self):
-        """Stop the metrics thread and reset gauges."""
         self._stop_metrics_thread()
         self._reset_gauges()
         self._values = {}
