@@ -359,14 +359,6 @@ def snake_to_camel_case(snake_str: str) -> str:
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
 
 
-def str_to_list(s: str) -> List[str]:
-    """Return a list from a comma-separated string.
-
-    Trims whitespace and skips empty entries.
-    """
-    return [r.strip() for r in s.split(",") if r.strip()]
-
-
 def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     """Check if ray object reference is ready without waiting for it."""
     finished, _ = ray.wait([obj_ref], timeout=0)

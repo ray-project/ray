@@ -1,6 +1,5 @@
 import os
 from typing import List
-from ray.serve._private.utils import str_to_list
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
@@ -377,6 +376,15 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
+
+
+def str_to_list(s: str) -> List[str]:
+    """Return a list from a comma-separated string.
+
+    Trims whitespace and skips empty entries.
+    """
+    return [r.strip() for r in s.split(",") if r.strip()]
+
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
