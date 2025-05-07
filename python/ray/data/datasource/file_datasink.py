@@ -96,6 +96,7 @@ class _FileDatasink(Datasink[None]):
                     f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files"
                 )
             if self.mode == SaveMode.IGNORE:
+                logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
                 return
             if self.mode == SaveMode.OVERWRITE:
                 self.filesystem.delete_dir_contents(self.path)
