@@ -938,9 +938,7 @@ def test_parquet_write_ignore_save_mode(
     # directory was created, should ignore
     path1 = os.path.join(path, "data1_000000_000000.parquet")
     path2 = os.path.join(path, "data1_000001_000000.parquet")
-    import pdb
 
-    pdb.set_trace()
     assert not os.path.exists(path1)
     assert not os.path.exists(path2)
 
@@ -1081,7 +1079,7 @@ def test_parquet_write_append_save_mode(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_parquet_write_mix_save_modes(
+def test_parquet_write_overwrite_save_modes(
     ray_start_regular_shared, fs, data_path, endpoint_url
 ):
     if endpoint_url is None:

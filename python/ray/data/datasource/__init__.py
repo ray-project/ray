@@ -1,13 +1,3 @@
-from enum import Enum
-
-
-class SaveMode(str, Enum):
-    APPEND = "append"
-    OVERWRITE = "overwrite"
-    IGNORE = "ignore"
-    ERROR = "error"
-
-
 from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data.datasource.datasink import (
     Datasink,
@@ -44,6 +34,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.savemode import SaveMode
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
