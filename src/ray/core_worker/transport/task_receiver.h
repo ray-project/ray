@@ -32,7 +32,6 @@
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
@@ -63,14 +62,12 @@ class TaskReceiver {
 
   using OnActorCreationTaskDone = std::function<Status()>;
 
-  TaskReceiver(WorkerContext &worker_context,
-               instrumented_io_context &task_execution_service,
+  TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
                std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done)
-      : worker_context_(worker_context),
-        task_handler_(std::move(task_handler)),
+      : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
@@ -99,10 +96,12 @@ class TaskReceiver {
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
-  /// Cancel an actor task queued in the actor scheduling queue for caller_worker_id.
-  /// Return true if a task is queued or executing. False otherwise.
-  /// If task is not executed yet, this will guarantee the task won't be executed.
-  /// This API is idempotent.
+  /// Cancel an actor task that is queued for execution, but hasn't started executing yet.
+  ///
+  /// Returns true if the task is present in the executor at all. If false, it means the
+  /// task either hasn't been received yet or has already finished executing.
+  ///
+  /// This method is idempotent.
   bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
 
   void Stop();
@@ -124,8 +123,6 @@ class TaskReceiver {
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
-  // Worker context.
-  WorkerContext &worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The event loop for running tasks on.

@@ -2,10 +2,10 @@ import json
 import os
 import sys
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from unittest.mock import MagicMock
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
