@@ -96,7 +96,7 @@ def hash_partition(
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
-    partitions_array = np.array(partitions)
+    partitions_array = np.asarray(partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
