@@ -50,12 +50,12 @@ def _read_subset(subset: "torch.utils.data.Subset"):
     batch = []
 
     # Get items from dataset based on its type
-    if hasattr(subset, "__getitem__"):
-        # Map-style dataset: Respect __len__
-        items = (subset[i] for i in range(len(subset)))
-    elif hasattr(subset, "__iter__"):
+    if hasattr(subset, "__iter__"):
         # IterableDataset: Use the iterator directly
         items = subset
+    else:
+        # Map-style dataset: Respect __len__
+        items = (subset[i] for i in range(len(subset)))
 
     # Process items in batches
     for item in items:
