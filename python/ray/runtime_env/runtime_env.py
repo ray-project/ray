@@ -12,7 +12,10 @@ from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.uv import get_uri as get_uv_uri
-from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
+from ray._private.runtime_env.validation import (
+    OPTION_TO_VALIDATION_FN,
+    OPTION_TO_NO_PATH_VALIDATION_FN,
+)
 from ray._private.thirdparty.dacite import from_dict
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
@@ -228,10 +231,10 @@ class RuntimeEnv(dict):
             image_uri="rayproject/ray:2.39.0-py312-cu123")
 
     Args:
-        py_modules: List of URIs (either in the GCS or external
+        py_modules: List of local paths or remote URIs (either in the GCS or external
             storage), each of which is a zip file that Ray unpacks and
             inserts into the PYTHONPATH of the workers.
-        working_dir: URI (either in the GCS or external storage) of a zip
+        working_dir: Local path or remote URI (either in the GCS or external storage) of a zip
             file that Ray unpacks in the directory of each task/actor.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
@@ -357,8 +360,6 @@ class RuntimeEnv(dict):
             runtime_env["mpi"] = mpi
         if image_uri is not None:
             runtime_env["image_uri"] = image_uri
-        if runtime_env.get("java_jars"):
-            runtime_env["java_jars"] = runtime_env.get("java_jars")
 
         self.update(runtime_env)
 
@@ -617,6 +618,18 @@ class RuntimeEnv(dict):
             if key not in self.known_fields:
                 result.append((key, value))
         return result
+
+
+def _validate_no_local_paths(runtime_env: RuntimeEnv):
+    """Checks that options such as working_dir and py_modules only contain URIs."""
+    if not isinstance(runtime_env, RuntimeEnv):
+        raise TypeError(
+            f"Expected type to be RuntimeEnv but received {type(runtime_env)} instead."
+        )
+    for option, validate_fn in OPTION_TO_NO_PATH_VALIDATION_FN.items():
+        option_val = runtime_env.get(option)
+        if option_val:
+            validate_fn(option_val)
 
 
 def _merge_runtime_env(

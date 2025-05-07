@@ -175,8 +175,7 @@ class RuntimeEnvAgent:
         self,
         runtime_env_dir,
         logging_params,
-        gcs_address: str,
-        cluster_id_hex: str,
+        gcs_client: GcsClient,
         temp_dir,
         address,
         runtime_env_agent_port,
@@ -204,7 +203,7 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
+        self._gcs_client = gcs_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._uv_plugin = UvPlugin(self._runtime_env_dir)

@@ -6,7 +6,6 @@ import pytest
 
 import ray
 from ray._private.utils import get_ray_doc_version
-import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
@@ -548,7 +547,7 @@ def test_placement_group_equal_hash(ray_start_regular):
 
 
 @pytest.mark.filterwarnings("default:placement_group parameter is deprecated")
-def test_placement_group_scheduling_warning(ray_start_regular_shared):
+def test_placement_group_scheduling_warning(ray_start_regular):
     @ray.remote
     class Foo:
         def foo():
@@ -599,7 +598,7 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
 @pytest.mark.filterwarnings(
     "default:Setting 'object_store_memory' for bundles is deprecated"
 )
-def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
+def test_object_store_memory_deprecation_warning(ray_start_regular):
     with warnings.catch_warnings(record=True) as w:
 
         @ray.remote(object_store_memory=1)
@@ -619,7 +618,6 @@ def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
         in str(warning.message)
         for warning in w
     )
-    ray.shutdown()
 
 
 def test_get_assigned_resources_in_pg(ray_start_cluster):

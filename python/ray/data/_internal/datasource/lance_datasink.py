@@ -1,22 +1,22 @@
+import pickle
 from itertools import chain
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
+    Iterable,
+    List,
     Literal,
     Optional,
-    TYPE_CHECKING,
-    List,
     Tuple,
-    Iterable,
     Union,
 )
-import pickle
 
-from ray.data._internal.util import _check_import
-from ray.data.datasource.datasink import Datasink
-from ray.data.block import BlockAccessor
 import pyarrow as pa
 
+from ray.data._internal.util import _check_import
+from ray.data.block import BlockAccessor
+from ray.data.datasource.datasink import Datasink
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -35,7 +35,7 @@ def _write_fragment(
     storage_options: Optional[Dict[str, Any]] = None,
 ) -> List[Tuple["FragmentMetadata", "pa.Schema"]]:
     import pandas as pd
-    from lance.fragment import write_fragments, DEFAULT_MAX_BYTES_PER_FILE
+    from lance.fragment import DEFAULT_MAX_BYTES_PER_FILE, write_fragments
 
     if schema is None:
         first = next(stream)
@@ -113,6 +113,7 @@ class _BaseLanceDatasink(Datasink):
         write_results: List[List[Tuple[str, str]]],
     ):
         import warnings
+
         import lance
 
         if not write_results:

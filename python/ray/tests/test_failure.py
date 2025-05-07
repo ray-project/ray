@@ -70,13 +70,12 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    gcs_publisher = ray._raylet.GcsPublisher(address=address_info["gcs_address"])
 
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,
         error_message,
-        gcs_publisher=gcs_publisher,
+        gcs_client=ray._raylet.GcsClient(address=address_info["gcs_address"]),
     )
     errors = get_error_message(
         error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR

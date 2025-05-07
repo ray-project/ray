@@ -1,12 +1,12 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Callable, List, Optional, Any
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
 
 from ray.data._internal.util import is_null
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Schema

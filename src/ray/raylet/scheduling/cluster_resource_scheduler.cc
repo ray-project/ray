@@ -221,6 +221,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
+    const LabelSelector &label_selector,
     const rpc::SchedulingStrategy &scheduling_strategy,
     bool requires_object_store_memory,
     bool actor_creation,
@@ -230,6 +231,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool *is_infeasible) {
   ResourceRequest resource_request =
       ResourceMapToResourceRequest(task_resources, requires_object_store_memory);
+  resource_request.SetLabelSelector(label_selector);
   return GetBestSchedulableNode(resource_request,
                                 scheduling_strategy,
                                 actor_creation,
@@ -272,9 +274,12 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 bool ClusterResourceScheduler::IsSchedulableOnNode(
     scheduling::NodeID node_id,
     const absl::flat_hash_map<std::string, double> &shape,
+    const LabelSelector &label_selector,
     bool requires_object_store_memory) {
   auto resource_request =
       ResourceMapToResourceRequest(shape, requires_object_store_memory);
+  resource_request.SetLabelSelector(label_selector);
+
   return IsSchedulable(resource_request, node_id);
 }
 
@@ -289,6 +294,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
                           task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                          task_spec.GetLabelSelector(),
                           requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
@@ -298,6 +304,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   int64_t _unused;
   scheduling::NodeID best_node =
       GetBestSchedulableNode(task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                             task_spec.GetLabelSelector(),
                              task_spec.GetMessage().scheduling_strategy(),
                              requires_object_store_memory,
                              task_spec.IsActorCreationTask(),
@@ -310,17 +317,21 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   if (!best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
                            task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                           task_spec.GetLabelSelector(),
                            requires_object_store_memory)) {
     // Prefer waiting on the local node if possible
     // since the local node is chosen for a reason (e.g. spread).
-    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_) &&
-        cluster_resource_manager_->HasFeasibleResources(
-            local_node_id_,
-            ResourceMapToResourceRequest(
-                task_spec.GetRequiredPlacementResources().GetResourceMap(),
-                requires_object_store_memory))) {
-      *is_infeasible = false;
-      return local_node_id_;
+    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
+      auto resource_request = ResourceMapToResourceRequest(
+          task_spec.GetRequiredPlacementResources().GetResourceMap(),
+          requires_object_store_memory);
+      const auto &selector = task_spec.GetLabelSelector();
+      resource_request.SetLabelSelector(selector);
+      if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
+                                                          resource_request)) {
+        *is_infeasible = false;
+        return local_node_id_;
+      }
     }
     // If the task is being scheduled by gcs, return nil to make it stay in the
     // `cluster_task_manager`'s queue.

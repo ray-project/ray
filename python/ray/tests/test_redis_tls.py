@@ -1,7 +1,7 @@
 import pytest
 import sys
 import ray
-from ray._private.test_utils import enable_external_redis
+from ray._private.test_utils import external_redis_test_enabled
 
 
 @pytest.fixture
@@ -22,7 +22,9 @@ def setup_replicas(request, monkeypatch):
     yield
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only work for redis mode")
+@pytest.mark.skipif(
+    not external_redis_test_enabled(), reason="Only work for redis mode"
+)
 @pytest.mark.skipif(sys.platform != "linux", reason="Only work in linux")
 @pytest.mark.parametrize("setup_replicas", [1, 3], indirect=True)
 def test_redis_tls(setup_tls, setup_replicas, ray_start_cluster_head):

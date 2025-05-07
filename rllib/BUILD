@@ -569,6 +569,8 @@ py_test(
     args = [
         "--as-test",
         "--enable-new-api-stack",
+        "--offline-evaluation-interval=1",
+        "--num-offline-eval-runners=2",
     ],
     # Include the offline data files.
     data = [
@@ -580,6 +582,34 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation_gpu",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-gpus-per-learner=1",
+        "--offline-evaluation-interval=1",
+        "--num-offline-eval-runners=2",
+        "--num-gpus-per-offline-eval-runner=0.5",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "multi_gpu",
         "team:rllib",
         "torch_only",
     ],
@@ -3357,6 +3387,29 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/algorithms/maml_lr_supervised_learning",
+    size = "large",
+    srcs = ["examples/algorithms/maml_lr_supervised_learning.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--as-test",
+        "--stop-iters=70000",
+        "--meta-lr=0.001",
+        "--meta-train-batch-size=5",
+        "--fine-tune-iters=10",
+        "--fine-tune-batch-size=5",
+        "--fine-tune-lr=0.01",
+        "--noise-std=0.0",
+        "--no-plot",
+    ],
+    main = "examples/algorithms/maml_lr_supervised_learning.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: catalogs/
 # ....................................
 py_test(
@@ -3784,25 +3837,22 @@ py_test(
         "team:rllib",
     ],
 )
-# IMPALA
-# TODO (sven): Make IMPALA learn Pendulum OR make this script flexible to accept
-#  (lopsided obs) CartPole as well.
-# py_test(
-#    name = "examples/connectors/mean_std_filtering_impala",
-#    main = "examples/connectors/mean_std_filtering.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/connectors/mean_std_filtering.py"],
-#    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=2"]
-# )
-# py_test(
-#    name = "examples/connectors/mean_std_filtering_multi_agent_impala",
-#    main = "examples/connectors/mean_std_filtering.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/connectors/mean_std_filtering.py"],
-#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
-# )
+
+py_test(
+    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    size = "medium",
+    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--num-agents=2",
+    ],
+    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
 
 # subdirectory: curiosity/
 # ....................................

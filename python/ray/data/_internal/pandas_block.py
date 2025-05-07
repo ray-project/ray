@@ -14,8 +14,8 @@ from typing import (
 )
 
 import numpy as np
+from pandas.api.types import is_object_dtype, is_string_dtype
 
-from pandas.api.types import is_string_dtype, is_object_dtype
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy

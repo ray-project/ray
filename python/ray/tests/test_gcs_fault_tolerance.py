@@ -19,7 +19,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
 from ray._private.test_utils import (
     convert_actor_state,
-    enable_external_redis,
+    external_redis_test_enabled,
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -614,15 +614,15 @@ def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis)
     subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
     print("sending error message 1")
-    publisher.publish_error(b"aaa_id", "", "test error message 1")
+    gcs_client.publish_error(b"aaa_id", "", "test error message 1")
 
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
     print("sending error message 2")
-    publisher.publish_error(b"bbb_id", "", "test error message 2")
+    gcs_client.publish_error(b"bbb_id", "", "test error message 2")
     print("done")
 
     (key_id, err) = subscriber.poll()
@@ -904,7 +904,7 @@ def test_raylet_fate_sharing(ray_start_regular):
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
-    if not enable_external_redis():
+    if not external_redis_test_enabled():
         # Waiting for raylet to become unhealthy
         wait_for_condition(lambda: not check_raylet_healthy())
     else:
@@ -937,7 +937,7 @@ def test_session_name(ray_start_cluster):
     head_node = cluster.head_node
     new_session_dir = head_node.get_session_dir_path()
 
-    if not enable_external_redis():
+    if not external_redis_test_enabled():
         assert session_dir != new_session_dir
     else:
         assert session_dir == new_session_dir
@@ -1104,7 +1104,7 @@ def raises_exception(exc_type, f):
         {"kill_job": False, "kill_actor": True, "expect_alive": "regular"},
     ],
 )
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 def test_gcs_server_restart_destroys_out_of_scope_actors(
     external_redis, ray_start_cluster, case
 ):

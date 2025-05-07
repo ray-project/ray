@@ -86,6 +86,8 @@ message ExportTaskEventData {
     // If the task/actor is created within a placement group,
     // this value is configured.
     optional bytes placement_group_id = 9;
+    // The key-value labels for task and actor.
+    map<string, string> labels = 10;
   }
 
   message ProfileEventEntry {

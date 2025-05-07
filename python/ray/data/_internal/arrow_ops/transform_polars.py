@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, List
+
 from packaging.version import parse as parse_version
 
 try:

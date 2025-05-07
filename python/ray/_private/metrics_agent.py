@@ -550,7 +550,12 @@ class MetricsAgent:
                 gauge = record.gauge
                 value = record.value
                 tags = record.tags
-                self._record_gauge(gauge, value, {**tags, **global_tags})
+                try:
+                    self._record_gauge(gauge, value, {**tags, **global_tags})
+                except Exception as e:
+                    logger.error(
+                        f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
+                    )
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
         if gauge.name not in self._registered_views:
@@ -559,8 +564,20 @@ class MetricsAgent:
         measurement_map = self.stats_recorder.new_measurement_map()
         tag_map = tag_map_module.TagMap()
         for key, tag_val in tags.items():
-            tag_key = tag_key_module.TagKey(key)
-            tag_value = tag_value_module.TagValue(tag_val)
+            try:
+                tag_key = tag_key_module.TagKey(key)
+            except ValueError as e:
+                logger.error(
+                    f"Failed to create tag key {key} for metric {gauge.name} due to: {e!r}"
+                )
+                raise e
+            try:
+                tag_value = tag_value_module.TagValue(tag_val)
+            except ValueError as e:
+                logger.error(
+                    f"Failed to create tag value {tag_val} for key {key} for metric {gauge.name} due to: {e!r}"
+                )
+                raise e
             tag_map.insert(tag_key, tag_value)
         measurement_map.measure_float_put(gauge.measure, value)
         # NOTE: When we record this metric, timestamp will be renewed.

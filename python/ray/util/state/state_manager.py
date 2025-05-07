@@ -95,7 +95,7 @@ def handle_grpc_network_errors(func):
                 raise DataSourceUnavailable(
                     "Failed to query the data source. "
                     "It is either there's a network issue, or the source is down."
-                )
+                ) from e
             else:
                 logger.exception(e)
                 raise e

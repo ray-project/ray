@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from typing import Iterator, List, Optional, Tuple
 
 import ray
-from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+from .common import NodeIdStr
 
 
 @dataclass

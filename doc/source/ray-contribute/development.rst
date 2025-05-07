@@ -354,7 +354,9 @@ you commit new code changes with git. To temporarily skip pre-commit checks, use
    git commit -n
 
 If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
-does, please report an issue on the Ray github page.
+does, please `report an issue here`_.
+
+.. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
 
 Fast, Debug, and Optimized Builds
 ---------------------------------

@@ -1,6 +1,5 @@
 import argparse
 import logging
-import logging.handlers
 import os
 import platform
 import signal
@@ -8,8 +7,8 @@ import sys
 import traceback
 from typing import Optional, Set
 
+import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
@@ -306,9 +305,8 @@ if __name__ == "__main__":
             raise e
 
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
         publish_error_to_driver(
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
-            gcs_publisher=gcs_publisher,
+            gcs_client=ray._raylet.GcsClient(address=args.gcs_address),
         )

@@ -136,6 +136,14 @@ class ActorPoolMapOperator(MapOperator):
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
 
+    def completed(self) -> bool:
+        # TODO separate marking as completed from the check
+        return (
+            self._inputs_complete
+            and self._bundle_queue.is_empty()
+            and super().completed()
+        )
+
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
@@ -143,22 +151,28 @@ class ActorPoolMapOperator(MapOperator):
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         self._actor_pool.scale_up(self._actor_pool.min_size())
-        refs = self._actor_pool.get_pending_actor_refs()
 
-        # We synchronously wait for the initial number of actors to start. This avoids
-        # situations where the scheduler is unable to schedule downstream operators
-        # due to lack of available actors, causing an initial "pileup" of objects on
-        # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
-        try:
-            timeout = self.data_context.wait_for_min_actors_s
-            ray.get(refs, timeout=timeout)
-        except ray.exceptions.GetTimeoutError:
-            raise ray.exceptions.GetTimeoutError(
-                "Timed out while starting actors. "
-                "This may mean that the cluster does not have "
-                "enough resources for the requested actor pool."
+        # If `wait_for_min_actors_s` is specified and is positive, then
+        # Actor Pool will block until min number of actors is provisioned.
+        #
+        # Otherwise, all actors will be provisioned asynchronously.
+        if self.data_context.wait_for_min_actors_s > 0:
+            refs = self._actor_pool.get_pending_actor_refs()
+
+            logger.debug(
+                f"{self._name}: Waiting for {len(refs)} pool actors to start "
+                f"(for {self.data_context.wait_for_min_actors_s}s)..."
             )
+
+            try:
+                timeout = self.data_context.wait_for_min_actors_s
+                ray.get(refs, timeout=timeout)
+            except ray.exceptions.GetTimeoutError:
+                raise ray.exceptions.GetTimeoutError(
+                    "Timed out while starting actors. "
+                    "This may mean that the cluster does not have "
+                    "enough resources for the requested actor pool."
+                )
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0

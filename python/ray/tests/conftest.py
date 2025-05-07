@@ -32,7 +32,7 @@ from ray._private.test_utils import (
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    enable_external_redis,
+    external_redis_test_enabled,
     redis_replicas,
     get_redis_cli,
     start_redis_instance,
@@ -454,8 +454,8 @@ def _setup_redis(request, with_sentinel=False):
 
 
 @pytest.fixture
-def maybe_external_redis(request):
-    if enable_external_redis():
+def maybe_setup_external_redis(request):
+    if external_redis_test_enabled():
         with _setup_redis(request):
             yield
     else:
@@ -494,7 +494,7 @@ def local_autoscaling_cluster(request, enable_v2):
 
 
 @pytest.fixture
-def shutdown_only(maybe_external_redis):
+def shutdown_only(maybe_setup_external_redis):
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -538,7 +538,7 @@ def _ray_start(**kwargs):
 
 
 @pytest.fixture
-def ray_start_with_dashboard(request, maybe_external_redis):
+def ray_start_with_dashboard(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     if param.get("num_cpus") is None:
         param["num_cpus"] = 1
@@ -569,7 +569,7 @@ def make_sure_dashboard_http_port_unused():
 
 # The following fixture will start ray with 0 cpu.
 @pytest.fixture
-def ray_start_no_cpu(request, maybe_external_redis):
+def ray_start_no_cpu(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=0, **param) as res:
         yield res
@@ -577,7 +577,7 @@ def ray_start_no_cpu(request, maybe_external_redis):
 
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
-def ray_start_regular(request, maybe_external_redis):
+def ray_start_regular(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -615,14 +615,14 @@ def ray_start_shared_local_modes(request):
 
 
 @pytest.fixture
-def ray_start_2_cpus(request, maybe_external_redis):
+def ray_start_2_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_10_cpus(request, maybe_external_redis):
+def ray_start_10_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=10, **param) as res:
         yield res
@@ -665,14 +665,14 @@ def _ray_start_cluster(**kwargs):
 
 # This fixture will start a cluster with empty nodes.
 @pytest.fixture
-def ray_start_cluster(request, maybe_external_redis):
+def ray_start_cluster(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(**param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_enabled(request, maybe_external_redis):
+def ray_start_cluster_enabled(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
@@ -680,14 +680,14 @@ def ray_start_cluster_enabled(request, maybe_external_redis):
 
 
 @pytest.fixture
-def ray_start_cluster_init(request, maybe_external_redis):
+def ray_start_cluster_init(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_head(request, maybe_external_redis):
+def ray_start_cluster_head(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -713,7 +713,9 @@ def ray_start_cluster_head_with_external_redis_sentinel(
 
 
 @pytest.fixture
-def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+def ray_start_cluster_head_with_env_vars(
+    request, maybe_setup_external_redis, monkeypatch
+):
     param = getattr(request, "param", {})
     env_vars = param.pop("env_vars", {})
     for k, v in env_vars.items():
@@ -723,14 +725,14 @@ def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypa
 
 
 @pytest.fixture
-def ray_start_cluster_2_nodes(request, maybe_external_redis):
+def ray_start_cluster_2_nodes(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_object_store_memory(request, maybe_external_redis):
+def ray_start_object_store_memory(request, maybe_setup_external_redis):
     # Start the Ray processes.
     store_size = request.param
     system_config = get_default_fixure_system_config()
