@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
@@ -546,16 +547,19 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown()
+    op.shutdown(timer=Timer())
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
 
 
-def test_actor_pool_map_operator_init(ray_start_regular_shared):
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
     from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
@@ -711,8 +715,8 @@ def test_limit_operator(ray_start_regular_shared):
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
         input_op = InputDataBuffer(DataContext.get_current(), refs)
         limit_op = LimitOperator(limit, input_op, DataContext.get_current())
-        limit_op.mark_execution_completed = MagicMock(
-            wraps=limit_op.mark_execution_completed
+        limit_op.mark_execution_finished = MagicMock(
+            wraps=limit_op.mark_execution_finished
         )
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
@@ -723,7 +727,7 @@ def test_limit_operator(ray_start_regular_shared):
         while input_op.has_next() and not limit_op._limit_reached():
             loop_count += 1
             assert not limit_op.completed(), limit
-            assert not limit_op._execution_completed, limit
+            assert not limit_op._execution_finished, limit
             limit_op.add_input(input_op.get_next(), 0)
             while limit_op.has_next():
                 # Drain the outputs. So the limit operator
@@ -731,16 +735,16 @@ def test_limit_operator(ray_start_regular_shared):
                 limit_op.get_next()
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
-                assert limit_op.mark_execution_completed.call_count == 1, limit
+                assert limit_op.mark_execution_finished.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
-                assert limit_op._execution_completed, limit
+                assert limit_op._execution_finished, limit
             else:
-                assert limit_op.mark_execution_completed.call_count == 0, limit
+                assert limit_op.mark_execution_finished.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
-                assert not limit_op._execution_completed, limit
-        limit_op.mark_execution_completed()
+                assert not limit_op._execution_finished, limit
+        limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit

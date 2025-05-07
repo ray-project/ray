@@ -1,17 +1,18 @@
 from typing import Optional
+
 from ray.core.generated.export_train_state_pb2 import (
-    ExportTrainRunEventData as ProtoTrainRun,
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+    ExportTrainRunEventData as ProtoTrainRun,
 )
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
+    RunStatusEnum,
     TrainRunInfo,
     TrainWorkerInfo,
-    RunStatusEnum,
-    ActorStatusEnum,
 )
 
-
 TRAIN_SCHEMA_VERSION = 1
+RAY_TRAIN_VERSION = 1
 
 # Status mapping dictionaries
 _ACTOR_STATUS_MAP = {
@@ -61,7 +62,6 @@ def _to_proto_worker(worker: TrainWorkerInfo) -> ProtoTrainRunAttempt.TrainWorke
         gpu_ids=worker.gpu_ids,
         status=_ACTOR_STATUS_MAP[worker.status],
         resources=_to_proto_resources(worker.resources),
-        log_file_path=worker.worker_log_file_path,
     )
 
     return proto_worker
@@ -72,6 +72,7 @@ def train_run_info_to_proto_run(run_info: TrainRunInfo) -> ProtoTrainRun:
     """Convert TrainRunInfo to TrainRun protobuf format."""
     proto_run = ProtoTrainRun(
         schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
         id=run_info.id,
         name=run_info.name,
         job_id=bytes.fromhex(run_info.job_id),
@@ -80,7 +81,6 @@ def train_run_info_to_proto_run(run_info: TrainRunInfo) -> ProtoTrainRun:
         status_detail=run_info.status_detail,
         start_time_ns=_ms_to_ns(run_info.start_time_ms),
         end_time_ns=_ms_to_ns(run_info.end_time_ms),
-        controller_log_file_path=run_info.controller_log_file_path,
     )
 
     return proto_run
@@ -91,6 +91,7 @@ def train_run_info_to_proto_attempt(run_info: TrainRunInfo) -> ProtoTrainRunAtte
 
     proto_attempt = ProtoTrainRunAttempt(
         schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
         run_id=run_info.id,
         attempt_id=run_info.id,  # Same as run_id
         status=_RUN_ATTEMPT_STATUS_MAP[run_info.run_status],

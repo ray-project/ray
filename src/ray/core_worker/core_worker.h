@@ -14,9 +14,10 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <deque>
 #include <memory>
-#include <mutex>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -24,12 +25,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
-#include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
@@ -40,7 +39,6 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
-#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
@@ -53,7 +51,6 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
@@ -147,9 +144,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-
-  /// Updates the actor seqno if true.
-  bool update_seqno{};
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -305,7 +299,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This function is called periodically on the io_service_.
   void TryDelPendingObjectRefStreams();
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+  PlacementGroupID GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
@@ -1009,7 +1003,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  const ActorID &GetActorId() const { return actor_id_; }
+  ActorID GetActorId() const {
+    absl::MutexLock lock(&mutex_);
+    return actor_id_;
+  }
 
   std::string GetActorName() const;
 
@@ -1158,9 +1155,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleDirectActorCallArgWaitComplete(
-      rpc::DirectActorCallArgWaitCompleteRequest request,
-      rpc::DirectActorCallArgWaitCompleteReply *reply,
+  void HandleActorCallArgWaitComplete(
+      rpc::ActorCallArgWaitCompleteRequest request,
+      rpc::ActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1273,7 +1270,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
-  /// the actor is (1) direct actor and (2) using asyncio mode.
+  /// the actor is (1) direct actor and (2) using async mode.
   ///
 
   /// Block current fiber until event is triggered.
@@ -1413,7 +1410,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
-      const std::unordered_map<std::string, std::string> &labels = {});
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const std::unordered_map<std::string, std::string> &label_selector = {});
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1663,11 +1661,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                             bool recursive,
                             const OnCanceledCallback &on_canceled);
 
-  /// Cancel an actor task queued or running in the current worker.
-  ///
-  /// See params in CancelTaskOnExecutor.
-  /// For the actor task cancel protocol, see the docstring of
-  /// actor_task_submitter.h::CancelTask.
+  // Attempt to cancel the actor task.
+  //
+  // The callback will be called with `success` to indicate if the cancellation succeeded.
+  // If not, the caller must retry the cancellation request until either it succeeds or
+  // the task finishes executing.
+  //
+  // A task can be in one of three states locally:
+  //
+  // 1) Not present in the local task receiver.
+  //    This means it wasn't received yet or it already finished executing.
+  // 2) Queued in the local task receiver, but not executing yet.
+  // 3) Executing.
+  //
+  // We first check if the task is present in the local receiver. If not, we
+  // do nothing and return success=false.
+  //
+  // If the task *is* present in the local receiver, we attempt to cancel it.
+  // The task may already be running, in which case we cancel it during execution.
+  //
+  // NOTE: only async actor tasks can be cancelled during execution. For non-async
+  // actor tasks that are already executing, we will return success=true to prevent the
+  // client from retrying infinitely.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,
@@ -1732,7 +1747,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1830,9 +1845,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
-  /// The currently executing task spec. We have to track this separately since
-  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
-  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ ABSL_GUARDED_BY(mutex_);
+  /// Set of currently-running tasks. For single-threaded, non-async actors this will
+  /// contain at most one task ID.
+  ///
+  /// We have to track this separately because we cannot access the thread-local worker
+  /// contexts from GetCoreWorkerStats().
+  absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
@@ -1870,7 +1888,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
@@ -1891,16 +1910,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
-  std::atomic<bool> is_shutdown_ = false;
+  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
+  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
+  /// See https://github.com/ray-project/ray/issues/51642.
 
-  /// Whether the `Exit` function has been called, to avoid executing the exit
-  /// process multiple times.
-  ///
-  /// TODO(kevin85421): Currently, there are two public functions, `Exit` and `Shutdown`,
-  /// to terminate the core worker gracefully. We should unify them into `Exit()` so we
-  /// don't need `is_shutdown_` in the future. See
-  /// https://github.com/ray-project/ray/issues/51642 for more details.
-  std::atomic<bool> is_exit_ = false;
+  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
+  std::atomic<bool> is_exited_ = false;
+  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
+  std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
 

@@ -1,8 +1,7 @@
 import os
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 from pydantic import ConfigDict, Field
-from ray import serve
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
@@ -150,6 +149,34 @@ class VLLMEngineConfig(BaseModelExtended):
 
         return bundles
 
+    @property
+    def use_gpu(self) -> bool:
+        """
+        Returns True if vLLM is configured to use GPU resources.
+        """
+        if self.resources_per_bundle and self.resources_per_bundle.get("GPU", 0) > 0:
+            return True
+        if not self.accelerator_type:
+            # By default, GPU resources are used
+            return True
+
+        return self.accelerator_type in (
+            GPUType.NVIDIA_TESLA_V100.value,
+            GPUType.NVIDIA_TESLA_P100.value,
+            GPUType.NVIDIA_TESLA_T4.value,
+            GPUType.NVIDIA_TESLA_P4.value,
+            GPUType.NVIDIA_TESLA_K80.value,
+            GPUType.NVIDIA_TESLA_A10G.value,
+            GPUType.NVIDIA_L4.value,
+            GPUType.NVIDIA_L40S.value,
+            GPUType.NVIDIA_A100.value,
+            GPUType.NVIDIA_H100.value,
+            GPUType.NVIDIA_H200.value,
+            GPUType.NVIDIA_H20.value,
+            GPUType.NVIDIA_A100_40G.value,
+            GPUType.NVIDIA_A100_80G.value,
+        )
+
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
 
@@ -194,9 +221,10 @@ class VLLMSamplingParams(SamplingParams):
 class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    sampling_params: VLLMSamplingParams
+    sampling_params: Optional[
+        Union[VLLMSamplingParams, List[VLLMSamplingParams]]
+    ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
-    serve_request_context: Optional[serve.context._RequestContext] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 
     @property

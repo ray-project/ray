@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <google/protobuf/repeated_field.h>
-
 #include <functional>
 #include <memory>
 #include <queue>
@@ -30,7 +28,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
@@ -38,7 +35,7 @@ namespace ray {
 namespace raylet {
 
 /// The default number of retries when spilled object deletion failed.
-const int64_t kDefaultSpilledObjectDeleteRetries = 3;
+inline constexpr int64_t kDefaultSpilledObjectDeleteRetries = 3;
 
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
@@ -54,7 +51,6 @@ class LocalObjectManager {
       IOWorkerPoolInterface &io_worker_pool,
       rpc::CoreWorkerClientPool &owner_client_pool,
       int max_io_workers,
-      int64_t min_spilling_size,
       bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
@@ -71,7 +67,7 @@ class LocalObjectManager {
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
-        min_spilling_size_(min_spilling_size),
+        min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
@@ -106,6 +102,8 @@ class LocalObjectManager {
   /// \return True if spilling is in progress.
   void SpillObjectUptoMaxThroughput();
 
+  /// TODO(dayshah): This function is only used for testing, we should remove and just
+  /// keep SpillObjectsInternal.
   /// Spill objects to external storage.
   ///
   /// \param objects_ids_to_spill The objects to be spilled.
@@ -186,28 +184,26 @@ class LocalObjectManager {
           object_size(object_size) {}
     rpc::Address owner_address;
     bool is_freed = false;
-    const std::optional<ObjectID> generator_id;
+    std::optional<ObjectID> generator_id;
     size_t object_size;
   };
 
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
+  FRIEND_TEST(LocalObjectManagerTest, TestTryToSpillObjectsZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
-              TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
+              TestTryToSpillObjectsNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
   FRIEND_TEST(LocalObjectManagerTest, TestRetryDeleteSpilledObjects);
 
   /// Asynchronously spill objects when space is needed. The callback tries to
-  /// spill at least num_bytes_to_spill and returns true if we found objects to
-  /// spill.
-  /// If num_bytes_to_spill many objects cannot be found and there are other
-  /// objects already being spilled, this will return false to give the
+  /// spill at least min_spilling_size_ or max_fused_object_count_ and returns true if we
+  /// found objects to spill. If neither are satisifed and there
+  /// are other objects already being spilled, this will return false to give the
   /// currently spilling objects time to finish.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
-  /// \param num_bytes_to_spill The total number of bytes to spill.
-  /// \return True if it can spill num_bytes_to_spill. False otherwise.
-  bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
+  /// \return True if it decides to spill more objects. False otherwise.
+  bool TryToSpillObjects();
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
@@ -317,12 +313,8 @@ class LocalObjectManager {
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
 
-  /// This class is accessed by both the raylet and plasma store threads. The
-  /// mutex protects private members that relate to object spilling.
-  mutable absl::Mutex mutex_;
-
   /// The current number of active spill workers.
-  int64_t num_active_workers_ ABSL_GUARDED_BY(mutex_);
+  std::atomic<int64_t> num_active_workers_;
 
   /// The max number of active spill workers.
   const int64_t max_active_workers_;
@@ -392,8 +384,6 @@ class LocalObjectManager {
   std::atomic<int64_t> num_failed_deletion_requests_ = 0;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
-  friend class LocalObjectManagerTest;
-  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet

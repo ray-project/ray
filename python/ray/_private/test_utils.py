@@ -83,21 +83,15 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def enable_external_redis():
-    import os
-
+def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def redis_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
 def redis_sentinel_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
 
 
@@ -773,6 +767,18 @@ def generate_system_config_map(**kwargs):
         "_system_config": kwargs,
     }
     return ray_kwargs
+
+
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self):
+        return self.items
 
 
 @ray.remote(num_cpus=0)
@@ -1688,7 +1694,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster, whitelist=None):
+def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1699,9 +1705,8 @@ def check_local_files_gced(cluster, whitelist=None):
             # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
             items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-            if whitelist and set(items).issubset(whitelist):
-                continue
             if len(items) > 0:
+                print(f"runtime_env files not GC'd from subdir '{subdir}': {items}")
                 return False
     return True
 
@@ -1981,7 +1986,7 @@ def external_ray_cluster_activity_hook1():
 
     class TestRayActivityResponse(BaseModel, extra=Extra.allow):
         """
-        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        Redefinition of dashboard.modules.api.api_head.RayActivityResponse
         used in test_component_activities_hook to mimic typical
         usage of redefining or extending response type.
         """

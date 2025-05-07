@@ -20,8 +20,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor_state import OpState
-    from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
 logger = logging.getLogger(__name__)
@@ -419,14 +418,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # See `test_no_deadlock_on_small_cluster_resources` as an example.
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
-        self._cached_global_limits = ExecutionResources.zero()
-        self._cached_num_eligible_ops = 0
-
         self._idle_detector = self.IdleDetector()
 
     def _is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
-        return not op.throttling_disabled() and not op.completed()
+        return (
+            not op.throttling_disabled()
+            # As long as the op has finished execution, even if there are still
+            # non-taken outputs, we don't need to allocate resources for it.
+            and not op.execution_finished()
+        )
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         return [
@@ -437,18 +438,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         global_limits = self._resource_manager.get_global_limits()
         eligible_ops = self._get_eligible_ops()
 
-        if (
-            global_limits == self._cached_global_limits
-            and len(eligible_ops) == self._cached_num_eligible_ops
-        ):
-            return
-        self._cached_global_limits = global_limits
-        self._cached_num_eligible_ops = len(eligible_ops)
-
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        self._total_shared = global_limits.copy()
+        remaining = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
@@ -458,56 +451,55 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         default_reserved = global_limits.scale(
             self._reservation_ratio / (len(eligible_ops))
         )
-        for op in eligible_ops:
+        for index, op in enumerate(eligible_ops):
             # Reserve at least half of the default reserved resources for the outputs.
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
-            self._reserved_for_op_outputs[op] = max(
-                default_reserved.object_store_memory / 2, 1.0
+            reserved_for_outputs = ExecutionResources(
+                0, 0, max(default_reserved.object_store_memory / 2, 1)
             )
-            # Calculate the minimum amount of resources to reserve.
-            # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = op.incremental_resource_usage().copy()
-            # 2. To ensure that all GPUs are utilized, reserve enough resource budget
-            # to launch one task for each worker.
-            if op.base_resource_usage().gpu > 0:
-                min_workers = sum(
-                    pool.min_size() for pool in op.get_autoscaling_actor_pools()
-                )
-                min_reserved.object_store_memory *= min_workers
-            # Also include `reserved_for_op_outputs`.
-            min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
-            # Total resources we want to reserve for this operator.
-            op_total_reserved = default_reserved.max(min_reserved)
-            if op_total_reserved.satisfies_limit(self._total_shared):
-                # If the remaining resources are enough to reserve `op_total_reserved`,
-                # subtract it from `self._total_shared` and reserve it for this op.
+
+            min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
+            reserved_for_tasks = default_reserved.subtract(reserved_for_outputs)
+            reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
+            reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
+
+            # Check if the remaining resources are enough for both reserved_for_tasks
+            # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
+            # object_store_memory, because object_store_memory can be oversubscribed,
+            # but CPU/GPU cannot.
+            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
+                remaining, ignore_object_store_memory=True
+            ):
                 self._reserved_min_resources[op] = True
-                self._total_shared = self._total_shared.subtract(op_total_reserved)
-                self._op_reserved[op] = op_total_reserved
-                self._op_reserved[
-                    op
-                ].object_store_memory -= self._reserved_for_op_outputs[op]
             else:
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
                 # store memory, but not the CPU and GPU resources.
                 # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
-                # Note, we reserve minimum resources first for the upstream
-                # ops. Downstream ops need to wait for upstream ops to finish
-                # and release resources.
+                # NOTE: we prioritize upstream operators for minimum resource reservation.
+                # ops. It's fine that downstream ops don't get the minimum reservation,
+                # because they can wait for upstream ops to finish and release resources.
                 self._reserved_min_resources[op] = False
-                self._op_reserved[op] = ExecutionResources(
-                    0,
-                    0,
-                    min_reserved.object_store_memory
-                    - self._reserved_for_op_outputs[op],
+                reserved_for_tasks = ExecutionResources(
+                    0, 0, min_resource_usage.object_store_memory
                 )
-                self._total_shared = self._total_shared.subtract(
-                    ExecutionResources(0, 0, min_reserved.object_store_memory)
-                )
+                if index == 0:
+                    # Log a warning if even the first operator cannot reserve
+                    # the minimum resources.
+                    logger.warning(
+                        f"Cluster resource are not engough to run any task from {op}."
+                        " The job may hang forever unless the cluster scales up."
+                    )
 
-            self._total_shared = self._total_shared.max(ExecutionResources.zero())
+            self._op_reserved[op] = reserved_for_tasks
+            self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
+
+            op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
+            remaining = remaining.subtract(op_total_reserved)
+            remaining = remaining.max(ExecutionResources.zero())
+
+        self._total_shared = remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         if op not in self._op_budgets:

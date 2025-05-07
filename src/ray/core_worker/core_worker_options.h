@@ -95,7 +95,7 @@ struct CoreWorkerOptions {
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
-        cancel_async_task(nullptr),
+        cancel_async_actor_task(nullptr),
         is_local_mode(false),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
@@ -108,7 +108,8 @@ struct CoreWorkerOptions {
         worker_launched_time_ms(-1),
         assigned_worker_port(std::nullopt),
         assigned_raylet_id(std::nullopt),
-        debug_source("") {
+        debug_source(""),
+        enable_resource_isolation(false) {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -176,10 +177,10 @@ struct CoreWorkerOptions {
   // Function that tries to interrupt the currently running Python thread if its
   // task ID matches the one given.
   std::function<bool(const TaskID &task_id)> kill_main;
-  std::function<void(const TaskID &task_id,
-                     const RayFunction &ray_function,
-                     const std::string name_of_concurrency_group_to_execute)>
-      cancel_async_task;
+  // Function to cancel a running asyncio actor task.
+  // Should return a boolean indicating if the task was successfully cancelled or not.
+  // If not, the client will retry.
+  std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
@@ -227,6 +228,10 @@ struct CoreWorkerOptions {
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
+
+  // If true, core worker enables resource isolation through cgroupv2 by reserving
+  // resources for ray system processes.
+  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray

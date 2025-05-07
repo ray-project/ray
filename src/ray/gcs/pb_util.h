@@ -277,6 +277,8 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
+  task_info->mutable_labels()->insert(task_spec.GetLabels().begin(),
+                                      task_spec.GetLabels().end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(
@@ -431,7 +433,7 @@ inline std::string FormatPlacementGroupDetails(
 /// \param strategy The placement strategy of placement group.
 /// \return The placement constraint for placement group if it's not a strict
 ///   strategy, else absl::nullopt.
-inline absl::optional<rpc::autoscaler::PlacementConstraint>
+inline std::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
   rpc::autoscaler::PlacementConstraint pg_constraint;
