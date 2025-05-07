@@ -35,7 +35,7 @@ def assert_no_leak():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="This test requires Linux.",
 )
-def test_generator_oom(ray_start_regular):
+def test_generator_oom(ray_start_regular_shared):
     num_returns = 100
 
     @ray.remote(max_retries=0)
@@ -68,7 +68,7 @@ def test_generator_oom(ray_start_regular):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
+def test_generator_returns(ray_start_regular_shared, use_actors, store_in_plasma):
     remote_generator_fn = None
     if use_actors:
 
@@ -143,7 +143,7 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_generator_errors(
-    ray_start_regular, use_actors, store_in_plasma, num_returns_type
+    ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
 ):
     remote_generator_fn = None
     if use_actors:
@@ -197,7 +197,7 @@ def test_generator_errors(
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_retry_exception(
-    ray_start_regular, store_in_plasma, num_returns_type
+    ray_start_regular_shared, store_in_plasma, num_returns_type
 ):
     class CustomException(Exception):
         pass
@@ -250,7 +250,7 @@ def test_dynamic_generator_retry_exception(
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator(
-    ray_start_regular, use_actors, store_in_plasma, num_returns_type
+    ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
 ):
     if not use_actors:
 
@@ -334,6 +334,29 @@ def test_dynamic_generator(
             gen = ray.get(static.remote(3))
             for ref in gen:
                 ray.get(ref)
+
+
+def test_dynamic_generator_gc_each_yield(ray_start_regular_shared):
+    num_returns = 5
+
+    @ray.remote(num_returns="dynamic")
+    def generator():
+        for i in range(num_returns):
+            yield np.ones((1000, 1000), dtype=np.uint8)
+
+    dynamic_ref = ray.get(generator.remote())
+
+    for i, ref in enumerate(dynamic_ref):
+        ref_counts = (
+            ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+        )
+        # assert references are released after each yield
+        assert len(ref_counts) == (num_returns - i)
+        ray.get(ref)
+        gc.collect()
+
+    # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
+    ray.shutdown()
 
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
