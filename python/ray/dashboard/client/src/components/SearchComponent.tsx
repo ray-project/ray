@@ -122,11 +122,11 @@ export const SearchTimezone = ({
   });
 
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const browserTz = timezones.find((t) => t.value === browserTimezone);
-  if (browserTz) {
+  const browserUtc = timezones.find((t) => t.value === browserTimezone)?.utc;
+  if (browserUtc) {
     options.unshift({
       value: browserTimezone,
-      utc: browserTz.utc,
+      utc: browserUtc,
       group: "System",
       country: "Browser Time",
     });

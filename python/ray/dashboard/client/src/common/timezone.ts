@@ -1,29 +1,14 @@
 const getCurrentUTCOffset = (timeZone: string) => {
   try {
     const date = new Date();
-    // Ideally this would be longOffset, but it's not supported in used version of node
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone,
       timeZoneName: "shortOffset",
     });
-    // Extract the GMT offset part from the formatted string and ensure it has minutes
+    // Extract the GMT offset part from the formatted string
     const formatted = formatter.format(date);
-    const match = formatted.match(/GMT[+-]\d{1,2}(?::\d{2})?/);
-    if (match) {
-      // Ensure the offset has minutes and hours are padded (e.g., convert GMT+5 to GMT+05:00)
-      const offset = match[0];
-      if (!offset.includes(":")) {
-        return offset.replace(
-          /([+-])(\d{1,2})$/,
-          (_, sign, hours) => `${sign}${hours.padStart(2, "0")}:00`,
-        );
-      }
-      return offset.replace(
-        /([+-])(\d{1,2}):/,
-        (_, sign, hours) => `${sign}${hours.padStart(2, "0")}:`,
-      );
-    }
-    return "";
+    const match = formatted.match(/GMT([+-]\d{1,2}(?::\d{2})?)?/);
+    return match ? match[0] : "";
   } catch (e) {
     console.warn(`Error getting UTC offset for ${timeZone}:`, e);
     return "";
