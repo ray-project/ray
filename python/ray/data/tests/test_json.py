@@ -13,7 +13,6 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
-from ray.data._internal.util import GiB
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
