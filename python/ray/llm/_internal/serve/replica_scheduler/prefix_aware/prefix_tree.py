@@ -4,11 +4,10 @@ import heapq
 import logging
 import os
 from threading import RLock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Any
 
 from ray import serve
 
-# Logger for this module
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +79,6 @@ class TenantHeapNode:
         return f"TenantHeapNode(node={self.node}, tenant_ordering_key={self.tenant_ordering_key})"
 
 
-@serve.deployment(name="TreeDeployment")
 class PrefixTree:
     """
     Thread-safe multi-tenant prefix tree (approximate radix tree).
@@ -133,33 +131,6 @@ class PrefixTree:
             {}
         )  # Maps tenant ID to heap of nodes for LRU eviction. Used for O(log n) insertion and eviction of LRU node.
 
-    def reset(self) -> None:
-        """Reset the tree to an empty state."""
-        with self.lock:
-            self.root = Node()
-            self.tenants = set()
-            self.tenant_char_count = {}
-            self.tenant_nodes = {}
-            self.tenant_nodes_sorted = {}
-
-    def to_dict(self) -> Dict:
-        """
-        Convert tree to dictionary for serialization.
-
-        Returns:
-            Dictionary representation of the tree
-        """
-        return {
-            "root": self.root,
-            "tenants": self.tenants,
-            "tenant_char_count": self.tenant_char_count,
-            "tenant_nodes": self.tenant_nodes,
-            "tenant_nodes_sorted": self.tenant_nodes_sorted,
-        }
-
-    def to_string(self) -> str:
-        """String representation of the tree."""
-        return f"PrefixTree(tenants={self.tenants}, tenant_char_count={self.tenant_char_count}, tenant_nodes={self.tenant_nodes}, tenant_nodes_sorted={self.tenant_nodes_sorted})"
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -175,7 +146,83 @@ class PrefixTree:
         """
         return len(os.path.commonprefix([a, b]))
 
-    def insert(self, text: str, tenant: str, timestamp_ms: int) -> Node:
+
+    def _reset(self) -> None:
+        """
+        Reset the tree to an empty state.
+        
+        Note: This method is intended to be used only in tests.
+        """
+        with self.lock:
+            self.root = Node()
+            self.tenants = set()
+            self.tenant_char_count = {}
+            self.tenant_nodes = {}
+            self.tenant_nodes_sorted = {}
+
+
+    def _add_tenant(self, tenant: str) -> None:
+        """
+        Add a new tenant to the tree.
+
+        If the tenant already exists, this is a no-op with a warning log.
+
+        Args:
+            tenant: Tenant ID to add
+        """
+        with self.lock:
+            if tenant in self.tenants:
+                logger.warning(f"Tenant '{tenant}' already exists. No action taken.")
+                return
+
+            self.tenants.add(tenant)
+            self.tenant_char_count[tenant] = 0
+            self.tenant_nodes[tenant] = set()
+            self.tenant_nodes_sorted[tenant] = []
+
+
+    def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
+        """
+        Remove a tenant from a single node.
+
+        Args:
+            tenant: Tenant ID to remove
+            node: Node to remove tenant from
+
+        Returns:
+            Number of characters removed
+        """
+        with self.lock:
+            if tenant not in self.tenants:
+                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                return 0
+
+            if (
+                node not in self.tenant_nodes[tenant]
+                or tenant not in node.tenant_last_access_time
+            ):
+                logger.warning(
+                    f"Cannot remove node '{node.text}' from tenant '{tenant}': "
+                    f"tenant does not have this node. No action taken."
+                )
+                return 0
+
+            removed_chars_len: int = len(node.text)
+            self.tenant_char_count[tenant] -= removed_chars_len
+            self.tenant_nodes[tenant].remove(node)
+            node.tenant_last_access_time.pop(tenant, None)
+
+            # Clean up empty nodes
+            if not node.tenant_last_access_time and node.parent:
+                if (
+                    node.text and node.text[0] in node.parent.children
+                ):  # Defensive check
+                    node.parent.children.pop(node.text[0], None)
+
+            return removed_chars_len
+
+
+    def insert(self, text: str, tenant: str, time_sec: float) -> Node:
         """
         Insert text into tree for a specific tenant.
 
@@ -184,7 +231,7 @@ class PrefixTree:
         Args:
             text: Text to insert
             tenant: Tenant ID
-            timestamp_ms: Current timestamp in milliseconds
+            time_sec: Current timestamp in seconds
 
         Returns:
             The node that was inserted or updated
@@ -223,7 +270,7 @@ class PrefixTree:
                         TenantHeapNode(curr_node, tenant)
                     )
 
-                curr_node.tenant_last_access_time[tenant] = timestamp_ms
+                curr_node.tenant_last_access_time[tenant] = time_sec
                 heapq.heapify(self.tenant_nodes_sorted[tenant])
                 if i == len(text):
                     break
@@ -292,6 +339,7 @@ class PrefixTree:
 
             return curr_node
 
+
     def prefix_match(
         self, text: str, available_tenants: Optional[List[str]] = None
     ) -> Tuple[str, Optional[List[str]]]:
@@ -352,14 +400,12 @@ class PrefixTree:
                 tenant
                 for tenant in available_tenants
                 if tenant in curr_node.tenant_last_access_time
-            ]
+            ] or None
 
-            selected_tenants: Optional[List[str]] = (
-                matching_tenants if matching_tenants else None
-            )
             matched_text: str = text[:i]
 
-            return matched_text, selected_tenants
+            return matched_text, matching_tenants
+
 
     def remove_tenant(self, tenant: str) -> int:
         """
@@ -370,15 +416,11 @@ class PrefixTree:
 
         Returns:
             Number of characters removed
-
-        Raises:
-            ValueError: If tenant does not exist
         """
         with self.lock:
             if tenant not in self.tenants:
-                raise ValueError(
-                    f"Cannot remove tenant '{tenant}': tenant does not exist"
-                )
+                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                return 0
 
             total_chars_removed: int = 0
             for node in self.tenant_nodes[tenant].copy():
@@ -391,48 +433,6 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
-        """
-        Remove a tenant from a single node.
-
-        Args:
-            tenant: Tenant ID to remove
-            node: Node to remove tenant from
-
-        Returns:
-            Number of characters removed
-
-        Raises:
-            ValueError: If tenant does not exist or node doesn't belong to tenant
-        """
-        with self.lock:
-            if tenant not in self.tenants:
-                raise ValueError(
-                    f"Cannot remove tenant '{tenant}': tenant does not exist"
-                )
-
-            if (
-                node not in self.tenant_nodes[tenant]
-                or tenant not in node.tenant_last_access_time
-            ):
-                raise ValueError(
-                    f"Cannot remove node '{node.text}' from tenant '{tenant}': "
-                    f"tenant does not have this node"
-                )
-
-            removed_chars_len: int = len(node.text)
-            self.tenant_char_count[tenant] -= removed_chars_len
-            self.tenant_nodes[tenant].remove(node)
-            node.tenant_last_access_time.pop(tenant, None)
-
-            # Clean up empty nodes
-            if not node.tenant_last_access_time and node.parent:
-                if (
-                    node.text and node.text[0] in node.parent.children
-                ):  # Defensive check
-                    node.parent.children.pop(node.text[0], None)
-
-            return removed_chars_len
 
     def evict_tenant_by_lru(self, tenant: str, min_remove_size: int) -> int:
         """
@@ -444,22 +444,20 @@ class PrefixTree:
 
         Returns:
             Actual number of characters removed
-
-        Raises:
-            ValueError: If tenant doesn't exist or has insufficient nodes
         """
         with self.lock:
             if tenant not in self.tenant_nodes or not self.tenant_nodes[tenant]:
-                raise ValueError(
-                    f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes"
+                logger.warning(
+                    f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes. No action taken."
                 )
+                return 0
 
             if self.tenant_char_count[tenant] < min_remove_size:
-                raise ValueError(
-                    f"Cannot evict tenant '{tenant}': total character count "
-                    f"({self.tenant_char_count[tenant]}) is less than min_remove_size "
-                    f"({min_remove_size})"
+                logger.warning(
+                    f"Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
+                    f"{self.tenant_char_count[tenant]} characters. Will remove all available characters."
                 )
+                min_remove_size = self.tenant_char_count[tenant]
 
             total_chars_removed: int = 0
 
@@ -468,14 +466,19 @@ class PrefixTree:
                 total_chars_removed < min_remove_size
                 and self.tenant_nodes_sorted[tenant]
             ):
-                heap_node: TenantHeapNode = heapq.heappop(
-                    self.tenant_nodes_sorted[tenant]
-                )
-                total_chars_removed += self._remove_tenant_single_node(
-                    tenant, heap_node.node
-                )
+                # Get the minimum access time from the top of the heap
+                oldest_access_time = self.tenant_nodes_sorted[tenant][0].node.tenant_last_access_time[tenant]
+                
+                # Remove all nodes with this same access time
+                while (self.tenant_nodes_sorted[tenant] and 
+                       self.tenant_nodes_sorted[tenant][0].node.tenant_last_access_time[tenant] == oldest_access_time):
+                    heap_node: TenantHeapNode = heapq.heappop(self.tenant_nodes_sorted[tenant])
+                    total_chars_removed += self._remove_tenant_single_node(
+                        tenant, heap_node.node
+                    )
 
             return total_chars_removed
+
 
     def get_smallest_tenant(self) -> Optional[str]:
         """
@@ -490,21 +493,22 @@ class PrefixTree:
 
         return min(self.tenant_char_count, key=self.tenant_char_count.get, default=None)
 
-    def _add_tenant(self, tenant: str) -> None:
+
+@serve.deployment(name="TreeDeployment")
+class PrefixTreeDeployment(PrefixTree):
+    def _to_dict(self) -> Dict[str, Any]:
         """
-        Add a new tenant to the tree.
+        Convert tree to dictionary for serialization.
 
-        If the tenant already exists, this is a no-op with a warning log.
+        Returns:
+            Dictionary representation of the tree
 
-        Args:
-            tenant: Tenant ID to add
+        Note: This method is intended to be used only in tests.
         """
-        with self.lock:
-            if tenant in self.tenants:
-                logger.warning(f"Tenant '{tenant}' already exists. No action taken.")
-                return
-
-            self.tenants.add(tenant)
-            self.tenant_char_count[tenant] = 0
-            self.tenant_nodes[tenant] = set()
-            self.tenant_nodes_sorted[tenant] = []
+        return {
+            "root": self.root,
+            "tenants": self.tenants,
+            "tenant_char_count": self.tenant_char_count,
+            "tenant_nodes": self.tenant_nodes,
+            "tenant_nodes_sorted": self.tenant_nodes_sorted,
+        }
