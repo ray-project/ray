@@ -36,7 +36,6 @@ class MetricsTracker:
         self._thread_stop_event: Optional[threading.Event] = None
 
     def start(self):
-        """Create gauges and start the metrics thread."""
         self._create_gauges()
         self._start_metrics_thread()
 
