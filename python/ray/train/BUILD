@@ -494,7 +494,7 @@ py_test(
 )
 
 py_test(
-    name = "test_gpu_2",
+    name = "test_iter_torch_batches_gpu",
     size = "medium",
     srcs = ["tests/test_iter_torch_batches_gpu.py"],
     tags = [
