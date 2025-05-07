@@ -9,6 +9,7 @@ import ray
 from ray._private.ray_constants import env_float
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
+from ray.runtime_env import RuntimeEnv
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_REPORT_BARRIER_TIMEOUT_S,
@@ -783,12 +784,18 @@ class WorkerGroup:
         return sorted_workers
 
     @staticmethod
-    def _get_worker_runtime_env(custom_runtime_env: Dict) -> Dict:
+    def _get_worker_runtime_env(
+        custom_runtime_env: Union[Dict, RuntimeEnv],
+    ) -> Union[Dict, RuntimeEnv]:
         """Update custom runtime env with internal Ray Train env vars
         that should be propagated from the driver to worker processes.
 
         Args:
             The custom runtime env dict passed in by the user.
+
+        Returns:
+            A copy of the custom runtime env dict updated with internal
+            Ray Train environment variables to propagate to worker processes.
         """
         merged_env_vars = get_env_vars_to_propagate()
         merged_env_vars.update(custom_runtime_env.get("env_vars", {}))
