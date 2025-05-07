@@ -5,14 +5,14 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
-from python.ray.train.v2._internal.execution.controller.state import (
-    TrainControllerStateType,
-)
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.controller.state import (
+    TrainControllerStateType,
+)
 from ray.train.v2._internal.metrics.base import Metric, MetricsTracker
 from ray.train.v2._internal.metrics.controller import (
     TRAIN_CONTROLLER_STATE,
