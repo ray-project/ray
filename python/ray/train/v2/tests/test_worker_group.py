@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.exceptions import RayActorError
+from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -78,10 +79,14 @@ def test_worker_group_create():
         worker_group.get_workers()
 
 
-def test_worker_group_create_with_runtime_env(monkeypatch):
+@pytest.mark.parametrize(
+    "runtime_env",
+    [{"env_vars": {"DUMMY_VAR": "abcd"}}, RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"})],
+)
+def test_worker_group_create_with_runtime_env(runtime_env):
     """Test WorkerGroup.create() factory method with a custom runtime environment."""
     train_run_context = TrainRunContext(
-        run_config=RunConfig(worker_runtime_env={"env_vars": {"DUMMY_VAR": "abcd"}})
+        run_config=RunConfig(worker_runtime_env=runtime_env)
     )
 
     worker_group_context = _default_worker_group_context()
