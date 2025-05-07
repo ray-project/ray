@@ -1,11 +1,13 @@
 """The vLLM engine processor."""
-from typing import Any, Dict, Optional
 
+from typing import Any, Dict, Optional
 from pydantic import Field, root_validator
 
-from ray.data.block import UserDefinedFunction
-
 import ray
+from ray.data.block import UserDefinedFunction
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
+)
 from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorConfig,
@@ -65,12 +67,12 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
         "will use the default value from the vLLM engine.",
     )
     max_concurrent_batches: int = Field(
-        default=4,
+        default=8,
         description="The maximum number of concurrent batches in the engine. "
         "This is to overlap the batch processing to avoid the tail latency of "
         "each batch. The default value may not be optimal when the batch size "
         "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 64.",
+        "enough for batch size >= 32.",
     )
 
     # Processor stage configurations.
@@ -133,13 +135,22 @@ def build_vllm_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
+    if isinstance(config.concurrency, int):
+        processor_concurrency = (1, config.concurrency)  # copied from previous logic
+    elif isinstance(config.concurrency, tuple):
+        processor_concurrency = config.concurrency
+    else:
+        raise ValueError(
+            "``concurrency`` is expected to be set as an integer or a "
+            f"tuple of integers, but got: {config.concurrency}."
+        )
 
     if config.has_image:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                 ),
             )
@@ -153,7 +164,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -168,7 +179,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -180,6 +191,8 @@ def build_vllm_engine_processor(
     stages.append(
         vLLMEngineStage(
             fn_constructor_kwargs=dict(
+                batch_size=config.batch_size,
+                max_concurrent_batches=config.max_concurrent_batches,
                 model=config.model_source,
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,
@@ -188,10 +201,17 @@ def build_vllm_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas. Note that we use a single
-                # integer to let Ray Data prepare all replicas before kicking
-                # off the processing for now.
-                concurrency=config.concurrency,
+                # The number of running replicas. This is a deprecated field, but
+                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+                # which initiates enough many overlapping UDF calls per actor, to
+                # saturate `max_concurrency`.
+                compute=ray.data.ActorPoolStrategy(
+                    min_size=config.concurrency,
+                    max_size=config.concurrency,
+                    max_tasks_in_flight_per_actor=max(
+                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                    ),
+                ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
@@ -211,7 +231,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),

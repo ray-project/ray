@@ -5,9 +5,9 @@ from unittest.mock import Mock
 import grpc
 from grpc.aio._server import Server
 
+from ray.serve._private.constants import DEFAULT_GRPC_SERVER_OPTIONS
 from ray.serve.config import gRPCOptions
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
-from ray.serve._private.constants import DEFAULT_GRPC_SERVER_OPTIONS
 
 
 class gRPCGenericServer(Server):

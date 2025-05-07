@@ -15,7 +15,6 @@
 #include "ray/object_manager/object_manager.h"
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -23,9 +22,9 @@
 #include <vector>
 
 #include "ray/common/common_protocol.h"
-#include "ray/object_manager/plasma/store.h"
+#include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
 
 namespace asio = boost::asio;
 

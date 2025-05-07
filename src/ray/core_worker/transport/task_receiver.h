@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/asio/thread_pool.hpp>
-#include <boost/thread.hpp>
 #include <list>
 #include <memory>
 #include <queue>
@@ -66,14 +64,14 @@ class TaskReceiver {
   using OnActorCreationTaskDone = std::function<Status()>;
 
   TaskReceiver(WorkerContext &worker_context,
-               instrumented_io_context &main_io_service,
+               instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
                std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done)
       : worker_context_(worker_context),
         task_handler_(std::move(task_handler)),
-        task_main_io_service_(main_io_service),
+        task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(actor_creation_task_done),
@@ -92,7 +90,7 @@ class TaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(const rpc::PushTaskRequest &request,
+  void HandleTask(rpc::PushTaskRequest request,
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
@@ -130,8 +128,8 @@ class TaskReceiver {
   WorkerContext &worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
-  /// The IO event loop for running tasks on.
-  instrumented_io_context &task_main_io_service_;
+  /// The event loop for running tasks on.
+  instrumented_io_context &task_execution_service_;
   worker::TaskEventBuffer &task_event_buffer_;
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
@@ -165,7 +163,7 @@ class TaskReceiver {
   bool execute_out_of_order_ = false;
   /// The repr name of the actor instance for an anonymous actor.
   /// This is only available after the actor creation task.
-  std::string actor_repr_name_ = "";
+  std::string actor_repr_name_;
 };
 
 }  // namespace core

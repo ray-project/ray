@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Optional, List, Type, Callable, Dict
+from typing import Optional, List, Type, Callable, Dict, Union, Tuple
 
 from pydantic import Field
 
@@ -23,12 +23,12 @@ class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
     batch_size: int = Field(
-        default=64,
+        default=32,
         description="Large batch sizes are likely to saturate the compute resources "
         "and could achieve higher throughput. On the other hand, small batch sizes "
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
-        "based on your use case. Defaults to 64.",
+        "based on your use case. Defaults to 32.",
     )
     resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
@@ -41,9 +41,11 @@ class ProcessorConfig(BaseModelExtended):
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: int = Field(
+    concurrency: Optional[Union[int, Tuple[int, int]]] = Field(
         default=1,
-        description="The number of workers for data parallelism. Default to 1.",
+        description="The number of workers for data parallelism. Default to 1."
+        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use an autoscaling actor pool from"
+        " ``m`` to ``n`` workers.",
     )
 
     class Config:

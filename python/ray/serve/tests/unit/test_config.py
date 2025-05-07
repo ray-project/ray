@@ -1,8 +1,8 @@
 import pytest
 
 from ray import cloudpickle
-from ray._private.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
+from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
@@ -590,20 +590,24 @@ def test_grpc_options():
     assert default_grpc_options.port == DEFAULT_GRPC_PORT
     assert default_grpc_options.grpc_servicer_functions == []
     assert default_grpc_options.grpc_servicer_func_callable == []
+    assert default_grpc_options.request_timeout_s is None
 
     port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     ]
+    request_timeout_s = 1
     grpc_options = gRPCOptions(
         port=port,
         grpc_servicer_functions=grpc_servicer_functions,
+        request_timeout_s=request_timeout_s,
     )
     assert grpc_options.port == port
     assert grpc_options.grpc_servicer_functions == grpc_servicer_functions
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+    assert grpc_options.request_timeout_s == request_timeout_s
 
     # Import not found should raise ModuleNotFoundError.
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
