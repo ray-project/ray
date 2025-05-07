@@ -1,19 +1,23 @@
 import pytest
-import time
 import ray
 from ray import serve
 import heapq
-from typing import Set, List, Dict, Optional, Generator, Any
+from typing import Set, List, Dict, Optional, Generator
 
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
-    PrefixTree, PrefixTreeDeployment, Node, TenantHeapNode
+    PrefixTree,
+    PrefixTreeDeployment,
+    Node,
+    TenantHeapNode,
 )
+
 
 # Fixtures
 @pytest.fixture
 def tree() -> PrefixTree:
     """Create a fresh PrefixTree instance for each test."""
     return PrefixTree()
+
 
 @pytest.fixture(scope="module", autouse=True)
 def serve_instance() -> Generator[None, None, None]:
@@ -24,11 +28,13 @@ def serve_instance() -> Generator[None, None, None]:
     serve.shutdown()
     ray.shutdown()
 
+
 @pytest.fixture(scope="module")
 def tree_deployment():
     """Create a fresh PrefixTreeDeployment instance for each test."""
     tree = serve.run(PrefixTreeDeployment.bind())
     return tree
+
 
 # PrefixTreeDeployment tests
 @pytest.mark.asyncio
@@ -36,72 +42,86 @@ async def test_tree_deployment(tree_deployment) -> None:
     """Test the PrefixTreeDeployment."""
     # 6. Test tree structure and LRU heap ordering
     await tree_deployment._reset.remote()
-    
+
     # Insert strings in specified order
-    await tree_deployment.insert.remote("helloworld", "tenant_1", 1)  # time 1 for tenant_1
-    await tree_deployment.insert.remote("hellothere", "tenant_2", 2)  # time 2 for tenant_2
-    await tree_deployment.insert.remote("hellothomas", "tenant_2", 3)  # time 3 for tenant_2
-    
+    await tree_deployment.insert.remote(
+        "helloworld", "tenant_1", 1
+    )  # time 1 for tenant_1
+    await tree_deployment.insert.remote(
+        "hellothere", "tenant_2", 2
+    )  # time 2 for tenant_2
+    await tree_deployment.insert.remote(
+        "hellothomas", "tenant_2", 3
+    )  # time 3 for tenant_2
+
     # Access tree directly
     tree_rep: Dict = await tree_deployment._to_dict.remote()
     root: Node = tree_rep["root"]
-    
+
     # Test tree structure - validate each node
     # Root node
     assert root.text == ""
     assert root.tenant_last_access_time == {"tenant_1": 1, "tenant_2": 3}
     assert "h" in root.children
-    
+
     # Hello node
     hello_node: Node = root.children["h"]
     assert hello_node.text == "hello"
     assert hello_node.tenant_last_access_time == {"tenant_1": 1, "tenant_2": 3}
     assert "w" in hello_node.children
     assert "t" in hello_node.children
-    
+
     # World node
     world_node: Node = hello_node.children["w"]
     assert world_node.text == "world"
     assert world_node.tenant_last_access_time == {"tenant_1": 1}
     assert len(world_node.children) == 0
-    
+
     # Th node
     th_node: Node = hello_node.children["t"]
     assert th_node.text == "th"
     assert th_node.tenant_last_access_time == {"tenant_2": 3}
     assert "e" in th_node.children
     assert "o" in th_node.children
-    
+
     # Ere node
     ere_node: Node = th_node.children["e"]
     assert ere_node.text == "ere"
     assert ere_node.tenant_last_access_time == {"tenant_2": 2}
     assert len(ere_node.children) == 0
-    
+
     # Omas node
     omas_node: Node = th_node.children["o"]
     assert omas_node.text == "omas"
     assert omas_node.tenant_last_access_time == {"tenant_2": 3}
     assert len(omas_node.children) == 0
-    
+
     # Test PrefixTree instance variables
     assert tree_rep["tenants"] == {"tenant_1", "tenant_2"}
-    
+
     # Test tenant_char_count
-    assert tree_rep["tenant_char_count"]["tenant_1"] == 10  # root(0) + hello(5) + world(5) = 10
-    assert tree_rep["tenant_char_count"]["tenant_2"] == 14  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
-    
+    assert (
+        tree_rep["tenant_char_count"]["tenant_1"] == 10
+    )  # root(0) + hello(5) + world(5) = 10
+    assert (
+        tree_rep["tenant_char_count"]["tenant_2"] == 14
+    )  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
+
     # Test tenant_nodes (check by text)
-    tenant1_nodes_texts: Set[str] = {node.text for node in tree_rep["tenant_nodes"]["tenant_1"]}
+    tenant1_nodes_texts: Set[str] = {
+        node.text for node in tree_rep["tenant_nodes"]["tenant_1"]
+    }
     assert tenant1_nodes_texts == {"", "hello", "world"}
-    
-    tenant2_nodes_texts: Set[str] = {node.text for node in tree_rep["tenant_nodes"]["tenant_2"]}
+
+    tenant2_nodes_texts: Set[str] = {
+        node.text for node in tree_rep["tenant_nodes"]["tenant_2"]
+    }
     assert tenant2_nodes_texts == {"", "hello", "th", "ere", "omas"}
-    
+
     # Test tenant_nodes_sorted - validate heap ordering
     tenant1_heap: List[TenantHeapNode] = tree_rep["tenant_nodes_sorted"]["tenant_1"]
     tenant2_heap: List[TenantHeapNode] = tree_rep["tenant_nodes_sorted"]["tenant_2"]
-    
+
     assert heapq.heappop(tenant1_heap).node.tenant_last_access_time["tenant_1"] == 1
     assert heapq.heappop(tenant1_heap).node.tenant_last_access_time["tenant_1"] == 1
     assert heapq.heappop(tenant2_heap).node.tenant_last_access_time["tenant_2"] == 2
@@ -160,37 +180,37 @@ def test_insert(tree: PrefixTree) -> None:
     assert h_node.text == "hello"
     assert h_node.children.get("w").text == "world"
     assert h_node.children.get("t").text == "there"
-    
+
     # 4. Test that inserting a longer prompt with shared prefix doesn't create empty text nodes
     tree._reset()
     tree.insert("hello", "tenant_1", 1)
     tree.insert("helloworld", "tenant_2", 2)
-    
+
     root = tree.root
-    
+
     # Check that only the root has empty text by directly traversing the tree
     # Starting from root, collect all nodes with empty text
     empty_text_nodes: List[Node] = []
     nodes_to_check: List[Node] = [root]
-    
+
     while nodes_to_check:
         node: Node = nodes_to_check.pop()
         if node.text == "":
             empty_text_nodes.append(node)
         # Add all children to check
         nodes_to_check.extend(node.children.values())
-    
+
     # There should be exactly one empty text node (the root)
     assert len(empty_text_nodes) == 1
     assert root in empty_text_nodes
-    
+
     # Verify tree structure
     h_node = root.children.get("h")
     assert h_node is not None
     assert h_node.text == "hello"
     assert "tenant_1" in h_node.tenant_last_access_time
     assert "tenant_2" in h_node.tenant_last_access_time
-    
+
     # Verify "world" node belongs only to tenant 2
     world_node: Optional[Node] = h_node.children.get("w")
     assert world_node is not None
@@ -366,7 +386,7 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
     tree.insert("a", "tenant_1", 1)
     tree.insert("bb", "tenant_1", 2)
     tree.insert("ccc", "tenant_1", 3)
-    
+
     # Before eviction
     char_count_before: int = tree.tenant_char_count["tenant_1"]
     assert len(tree.tenant_nodes["tenant_1"]) == 4
@@ -388,7 +408,7 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
     tree.insert("a", "tenant_1", 1)
     tree.insert("bb", "tenant_1", 2)
     tree.insert("ccc", "tenant_1", 3)
-    
+
     # Before eviction
     char_count_before = tree.tenant_char_count["tenant_1"]
     assert len(tree.tenant_nodes["tenant_1"]) == 4
@@ -432,71 +452,79 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
 
     # 6. Test tree structure and LRU heap ordering
     tree._reset()
-    
+
     # Insert strings in specified order
     tree.insert("helloworld", "tenant_1", 1)  # time 1 for tenant_1
     tree.insert("hellothere", "tenant_2", 2)  # time 2 for tenant_2
     tree.insert("hellothomas", "tenant_2", 3)  # time 3 for tenant_2
-    
+
     # Access tree directly
     root: Node = tree.root
-    
+
     # Test tree structure - validate each node
     # Root node
     assert root.text == ""
     assert root.tenant_last_access_time == {"tenant_1": 1, "tenant_2": 3}
     assert "h" in root.children
-    
+
     # Hello node
     hello_node: Node = root.children["h"]
     assert hello_node.text == "hello"
     assert hello_node.tenant_last_access_time == {"tenant_1": 1, "tenant_2": 3}
     assert "w" in hello_node.children
     assert "t" in hello_node.children
-    
+
     # World node
     world_node: Node = hello_node.children["w"]
     assert world_node.text == "world"
     assert world_node.tenant_last_access_time == {"tenant_1": 1}
     assert len(world_node.children) == 0
-    
+
     # Th node
     th_node: Node = hello_node.children["t"]
     assert th_node.text == "th"
     assert th_node.tenant_last_access_time == {"tenant_2": 3}
     assert "e" in th_node.children
     assert "o" in th_node.children
-    
+
     # Ere node
     ere_node: Node = th_node.children["e"]
     assert ere_node.text == "ere"
     assert ere_node.tenant_last_access_time == {"tenant_2": 2}
     assert len(ere_node.children) == 0
-    
+
     # Omas node
     omas_node: Node = th_node.children["o"]
     assert omas_node.text == "omas"
     assert omas_node.tenant_last_access_time == {"tenant_2": 3}
     assert len(omas_node.children) == 0
-    
+
     # Test PrefixTree instance variables
     assert tree.tenants == {"tenant_1", "tenant_2"}
-    
+
     # Test tenant_char_count
-    assert tree.tenant_char_count["tenant_1"] == 10  # root(0) + hello(5) + world(5) = 10
-    assert tree.tenant_char_count["tenant_2"] == 14  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
-    
+    assert (
+        tree.tenant_char_count["tenant_1"] == 10
+    )  # root(0) + hello(5) + world(5) = 10
+    assert (
+        tree.tenant_char_count["tenant_2"] == 14
+    )  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
+
     # Test tenant_nodes (check by text)
-    tenant1_nodes_texts: Set[str] = {node.text for node in tree.tenant_nodes["tenant_1"]}
+    tenant1_nodes_texts: Set[str] = {
+        node.text for node in tree.tenant_nodes["tenant_1"]
+    }
     assert tenant1_nodes_texts == {"", "hello", "world"}
-    
-    tenant2_nodes_texts: Set[str] = {node.text for node in tree.tenant_nodes["tenant_2"]}
+
+    tenant2_nodes_texts: Set[str] = {
+        node.text for node in tree.tenant_nodes["tenant_2"]
+    }
     assert tenant2_nodes_texts == {"", "hello", "th", "ere", "omas"}
-    
+
     # Test tenant_nodes_sorted - validate heap ordering
     tenant1_heap: List[TenantHeapNode] = tree.tenant_nodes_sorted["tenant_1"]
     tenant2_heap: List[TenantHeapNode] = tree.tenant_nodes_sorted["tenant_2"]
-    
+
     assert heapq.heappop(tenant1_heap).node.tenant_last_access_time["tenant_1"] == 1
     assert heapq.heappop(tenant1_heap).node.tenant_last_access_time["tenant_1"] == 1
     assert heapq.heappop(tenant2_heap).node.tenant_last_access_time["tenant_2"] == 2
