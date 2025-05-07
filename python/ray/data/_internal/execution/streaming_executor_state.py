@@ -553,8 +553,12 @@ def get_eligible_operators(
 
     """
 
-    # Filter to ops that are eligible for execution.
+    dispatchable_ops: List[PhysicalOperator] = []
+    # Filter to ops that are eligible for execution, ie ones that are
+    #   - Dispatchable
+    #   - Not throttled
     eligible_ops: List[PhysicalOperator] = []
+
     for op, state in topology.items():
         assert resource_manager.op_resource_allocator_enabled(), topology
 
@@ -581,10 +585,12 @@ def get_eligible_operators(
             not op.completed()
             and op.should_add_input()
             and state.total_input_enqueued() > 0
-            and not in_backpressure
         ):
-            op_runnable = True
-            eligible_ops.append(op)
+            if not in_backpressure:
+                op_runnable = True
+                eligible_ops.append(op)
+            else:
+                dispatchable_ops.append(op)
 
         # Update scheduling status
         state._scheduling_status = OpSchedulingStatus(
@@ -602,12 +608,7 @@ def get_eligible_operators(
         and ensure_liveness
         and all(op.num_active_tasks() == 0 for op in topology)
     ):
-        eligible_ops = [
-            op
-            for op, state in topology.items()
-            # Pick only operators that have a non-empty input queue
-            if state.total_input_enqueued() > 0 and not op.completed()
-        ]
+        return dispatchable_ops
 
     return eligible_ops
 
