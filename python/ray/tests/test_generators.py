@@ -336,7 +336,10 @@ def test_dynamic_generator(
                 ray.get(ref)
 
 
-def test_dynamic_generator_gc_each_yield(ray_start_regular_shared):
+def test_dynamic_generator_gc_each_yield(ray_start_cluster):
+    # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
+    ray.shutdown()
+
     num_returns = 5
 
     @ray.remote(num_returns="dynamic")
@@ -361,9 +364,6 @@ def test_dynamic_generator_gc_each_yield(ray_start_regular_shared):
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
-    # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
-    ray.shutdown()
-
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0)
