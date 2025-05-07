@@ -3837,7 +3837,6 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
 
   // Set actor info in the worker context.
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK) {
-    RAY_LOG(INFO) << "Received actor creation task " << request.task_spec().DebugString();
     auto actor_id =
         ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 

@@ -336,9 +336,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   }
 
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  RAY_LOG(INFO) << "Fail inflight begin";
   FailInflightTasks(inflight_task_callbacks);
-  RAY_LOG(INFO) << "Fail inflight end";
 }
 
 void ActorTaskSubmitter::RestartActor(const ActorID &actor_id) {
@@ -453,7 +451,6 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
           error_info.actor_died_error().oom_context().fail_immediately();
-      RAY_LOG(INFO) << "Fail task " << task_id << " " << fail_immediatedly;
       GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
                                                         error_type,
                                                         &status,
@@ -462,8 +459,8 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                                         fail_immediatedly);
     }
     if (!wait_for_death_info_tasks.empty()) {
-      RAY_LOG(INFO).WithField(actor_id) << "Failing tasks waiting for death info, size="
-                                        << wait_for_death_info_tasks.size();
+      RAY_LOG(DEBUG).WithField(actor_id) << "Failing tasks waiting for death info, size="
+                                         << wait_for_death_info_tasks.size();
       for (auto &task : wait_for_death_info_tasks) {
         GetTaskFinisherWithoutMu().FailPendingTask(
             task->task_spec.TaskId(), error_type, &task->status, &error_info);
@@ -471,9 +468,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     }
   }
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  RAY_LOG(INFO) << "Fail inflight begin";
   FailInflightTasks(inflight_task_callbacks);
-  RAY_LOG(INFO) << "Fail inflight end";
 }
 
 void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo &task) {
@@ -495,8 +490,6 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
     error_info.set_error_message("Actor died by preemption.");
   }
-  RAY_LOG(INFO) << "Fail task " << task.task_spec.TaskId() << " "
-                << error_info.DebugString();
   GetTaskFinisherWithoutMu().FailPendingTask(
       task.task_spec.TaskId(), error_info.error_type(), &task.status, &error_info);
 }
@@ -612,29 +605,24 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto num_queued = queue.inflight_task_callbacks.size();
-  rpc::Address addr(queue.rpc_client->Addr());
-  RAY_LOG(INFO).WithField(task_id).WithField(actor_id)
+  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
       << "Pushing task to actor, actor counter " << actor_counter << " seq no "
-      << request->sequence_number() << " num queued " << num_queued << " "
-      << addr.DebugString() << " attempt number " << task_spec.AttemptNumber();
+      << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
     warn_excess_queueing_(actor_id, num_queued);
     next_queueing_warn_threshold_ *= 2;
   }
 
+  rpc::Address addr(queue.rpc_client->Addr());
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
         HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
-  const auto attempt_number = task_spec.AttemptNumber();
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, attempt_number, actor_id](const Status &status,
-                                                rpc::PushTaskReply &&reply) {
-        RAY_LOG(INFO) << "PushTaskReply " << task_id << " attempt number "
-                      << attempt_number << " status=" << status.ToString();
+      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
@@ -664,8 +652,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const rpc::PushTaskReply &reply,
                                              const rpc::Address &addr,
                                              const TaskSpecification &task_spec) {
-  RAY_LOG(INFO) << "HandlePushTaskReply " << task_spec.DebugString()
-                << " status=" << status.ToString() << " " << addr.DebugString();
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
@@ -687,9 +673,9 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   } else if (status.IsSchedulingCancelled()) {
     std::ostringstream stream;
     stream << "The task " << task_id << " is canceled from an actor " << actor_id
-           << " before it executes. " << task_spec.DebugString();
+           << " before it executes.";
     const auto &msg = stream.str();
-    RAY_LOG(INFO) << "jjyao " << msg << " " << status.ToString();
+    RAY_LOG(DEBUG) << msg;
     rpc::RayErrorInfo error_info;
     error_info.set_error_message(msg);
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
