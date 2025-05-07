@@ -351,6 +351,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 break
 
             topology[op].dispatch_next_task()
+
             self._resource_manager.update_usages()
 
             i += 1

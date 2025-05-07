@@ -17,7 +17,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import ShuffleStrategy
+from ray.data.context import ShuffleStrategy, DataContext
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -28,6 +28,23 @@ from ray.tests.conftest import (
     wait_for_condition,
 )
 from ray.util.debug import reset_log_once
+
+
+@pytest.fixture(scope="module")
+def data_context_override(request):
+    overrides = getattr(request, "param", {})
+
+    ctx = DataContext.get_current()
+    copy = ctx.copy()
+
+    for k, v in overrides.items():
+        assert hasattr(ctx, k), f"Key '{k}' not found in DataContext"
+
+        setattr(ctx, k, v)
+
+    yield ctx
+
+    DataContext._set_current(copy)
 
 
 @pytest.fixture(scope="module")
