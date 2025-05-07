@@ -1,7 +1,6 @@
 import copy
 import logging
 import sys
-import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -21,7 +20,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     SERVE_LOGGER_NAME,
-    parse_custom_resource_priority,
 )
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
@@ -42,7 +40,7 @@ class SpreadDeploymentSchedulingPolicy:
 @total_ordering
 class Resources(dict):
     # Custom resource priority from environment variable
-    CUSTOM_PRIORITY: List[str] = parse_custom_resource_priority()
+    CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
 
     def get(self, key: str):
         val = super().get(key)

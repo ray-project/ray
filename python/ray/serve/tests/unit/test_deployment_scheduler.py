@@ -1,8 +1,8 @@
 import random
 import sys
-import os
 from collections import defaultdict
 from typing import List
+from unittest import mock
 from unittest.mock import Mock
 
 import pytest
@@ -13,7 +13,6 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
-    RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
 )
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
@@ -438,9 +437,12 @@ def test_best_fit_node():
     )
 
     # Custom resource prioritization: customx is more important than customy
-    with mock.patch('ray.serve._private.deployment_scheduler.RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES', 'customx,customy'):
+    with mock.patch(
+        "ray.serve._private.deployment_scheduler.RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES",
+        "customx,customy",
+    ):
         original = Resources.CUSTOM_PRIORITY
-        Resources.CUSTOM_PRIORITY = ['customx', 'customy']
+        Resources.CUSTOM_PRIORITY = ["customx", "customy"]
 
         assert "node2" == scheduler._best_fit_node(
             required_resources=Resources(customx=1, customy=1),
