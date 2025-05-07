@@ -49,3 +49,7 @@ Nsight
 deserialize
 teardown
 deserialization
+VPC[s]
+preemptible
+CRD[s]
+VM[s]
