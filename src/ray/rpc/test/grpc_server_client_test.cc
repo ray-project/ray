@@ -217,6 +217,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   false,
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
@@ -251,6 +252,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   false,
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
@@ -282,7 +284,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   }
   // Reinit client with infinite timeout.
   client_call_manager_.reset(
-      new ClientCallManager(client_io_service_, ClusterID::FromRandom()));
+      new ClientCallManager(client_io_service_, false, ClusterID::FromRandom()));
   grpc_client_.reset(new GrpcClient<TestService>(
       "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   // Send again, this request should be replied. If any leaking happened, this call won't
