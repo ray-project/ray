@@ -622,7 +622,7 @@ void NormalTaskSubmitter::PushNormalTask(
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
-                         /*error=*/was_error,
+                         /*was_error=*/was_error,
                          /*error_detail*/ status.message(),
                          /*worker_exiting=*/is_worker_exiting,
                          assigned_resources);
