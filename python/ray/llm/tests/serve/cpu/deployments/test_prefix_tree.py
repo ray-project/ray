@@ -1,11 +1,10 @@
 import pytest
 import ray
-from ray import serve
-from typing import Set, List, Dict, Optional, Generator
+from typing import Set, List, Dict, Optional
 
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
     PrefixTree,
-    PrefixTreeDeployment,
+    PrefixTreeActor,
     Node,
 )
 
@@ -17,43 +16,27 @@ def tree() -> PrefixTree:
     return PrefixTree()
 
 
-@pytest.fixture(scope="module", autouse=True)
-def serve_instance() -> Generator[None, None, None]:
-    # Start Ray and Serve once per test module
-    ray.init(ignore_reinit_error=True)
-    serve.start(detached=True)
-    yield
-    serve.shutdown()
-    ray.shutdown()
-
-
 @pytest.fixture(scope="module")
-def tree_deployment():
-    """Create a fresh PrefixTreeDeployment instance for each test."""
-    tree = serve.run(PrefixTreeDeployment.bind())
-    return tree
+def tree_actor():
+    """Create a fresh PrefixTreeActor instance for each test."""
+    tree_actor = PrefixTreeActor.remote()
+    return tree_actor
 
 
-# PrefixTreeDeployment tests
+# PrefixTreeActor tests
 @pytest.mark.asyncio
-async def test_tree_deployment(tree_deployment) -> None:
-    """Test the PrefixTreeDeployment."""
-    # 6. Test tree structure and LRU heap ordering
-    await tree_deployment._reset.remote()
+async def test_tree_actor(tree_actor) -> None:
+    """Test the PrefixTreeActor."""
+    # 1. Test tree structure and LRU heap ordering
+    tree_actor._reset.remote()
 
     # Insert strings in specified order
-    await tree_deployment.insert.remote(
-        "helloworld", "tenant_1", 1
-    )  # time 1 for tenant_1
-    await tree_deployment.insert.remote(
-        "hellothere", "tenant_2", 2
-    )  # time 2 for tenant_2
-    await tree_deployment.insert.remote(
-        "hellothomas", "tenant_2", 3
-    )  # time 3 for tenant_2
+    tree_actor.insert.remote("helloworld", "tenant_1", 1)  # time 1 for tenant_1
+    tree_actor.insert.remote("hellothere", "tenant_2", 2)  # time 2 for tenant_2
+    tree_actor.insert.remote("hellothomas", "tenant_2", 3)  # time 3 for tenant_2
 
     # Access tree directly
-    tree_rep: Dict = await tree_deployment._to_dict.remote()
+    tree_rep: Dict = ray.get(tree_actor._to_dict.remote())
     root: Node = tree_rep["root"]
 
     # Test tree structure - validate each node
@@ -111,31 +94,36 @@ async def test_tree_deployment(tree_deployment) -> None:
 
     # Test tenant_to_char_count
     # Before evictions
-    assert tree_rep["tenant_to_char_count"]["tenant_1"] == 10  # root(0) + hello(5) + world(5) = 10
-    assert tree_rep["tenant_to_char_count"]["tenant_2"] == 14  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
+    assert (
+        tree_rep["tenant_to_char_count"]["tenant_1"] == 10
+    )  # root(0) + hello(5) + world(5) = 10
+    assert (
+        tree_rep["tenant_to_char_count"]["tenant_2"] == 14
+    )  # root(0) + hello(5) + th(2) + ere(3) + omas(4) = 14
 
     # After evicting tenant_1 with min_remove_size=1
     # Should remove both "hello" and "world" nodes (10 chars) since they have the same timestamp
-    evicted_count = await tree_deployment.evict_tenant_by_lru.remote("tenant_1", 1)
+    evicted_count = ray.get(tree_actor.evict_tenant_by_lru.remote("tenant_1", 1))
     assert evicted_count == 10  # All 10 chars removed, not just 1
-    tree_rep = await tree_deployment._to_dict.remote()
+    tree_rep = ray.get(tree_actor._to_dict.remote())
     assert tree_rep["tenant_to_char_count"]["tenant_1"] == 0
-    
+
     # After evicting tenant_2 with min_remove_size=1
     # Should remove "ere" node (3 chars) since it has the oldest timestamp (2)
-    evicted_count = await tree_deployment.evict_tenant_by_lru.remote("tenant_2", 1)
+    evicted_count = ray.get(tree_actor.evict_tenant_by_lru.remote("tenant_2", 1))
     assert evicted_count == 3  # All 3 chars from "ere" removed
-    
-    tree_rep = await tree_deployment._to_dict.remote()
+
+    tree_rep = ray.get(tree_actor._to_dict.remote())
     assert tree_rep["tenant_to_char_count"]["tenant_2"] == 11  # 14 - 3 = 11
-    
+
     # After evicting tenant_2 again with min_remove_size=1
     # Should remove "hello", "th", and "omas" nodes (11 chars) since they all have timestamp 3
-    evicted_count = await tree_deployment.evict_tenant_by_lru.remote("tenant_2", 1)
+    evicted_count = ray.get(tree_actor.evict_tenant_by_lru.remote("tenant_2", 1))
     assert evicted_count == 11  # All 11 remaining chars removed
-    
-    tree_rep = await tree_deployment._to_dict.remote()
+
+    tree_rep = ray.get(tree_actor._to_dict.remote())
     assert tree_rep["tenant_to_char_count"]["tenant_2"] == 0
+
 
 # PrefixTree tests
 def test__add_tenant(tree: PrefixTree) -> None:
@@ -172,7 +160,10 @@ def test_insert(tree: PrefixTree) -> None:
     tree.insert("foo", "tenant_1", 1)
     tree.insert("foo", "tenant_1", 1)  # duplicate
     tree.insert("bar", "tenant_2", 2)
-    assert tree.tenant_to_char_count["tenant_1"] == 3 and tree.tenant_to_char_count["tenant_2"] == 3
+    assert (
+        tree.tenant_to_char_count["tenant_1"] == 3
+        and tree.tenant_to_char_count["tenant_2"] == 3
+    )
 
     # 3. Test node splitting on partial match
     tree._reset()
@@ -210,12 +201,18 @@ def test_insert(tree: PrefixTree) -> None:
     # Verify tree structure
     h_node = root.edge_label_to_child.get("h")
     assert h_node is not None and h_node.text == "hello"
-    assert "tenant_1" in h_node.tenant_to_last_access_time and "tenant_2" in h_node.tenant_to_last_access_time
+    assert (
+        "tenant_1" in h_node.tenant_to_last_access_time
+        and "tenant_2" in h_node.tenant_to_last_access_time
+    )
 
     # Verify "world" node belongs only to tenant 2
     world_node: Optional[Node] = h_node.edge_label_to_child.get("w")
     assert world_node is not None and world_node.text == "world"
-    assert "tenant_2" in world_node.tenant_to_last_access_time and "tenant_1" not in world_node.tenant_to_last_access_time
+    assert (
+        "tenant_2" in world_node.tenant_to_last_access_time
+        and "tenant_1" not in world_node.tenant_to_last_access_time
+    )
 
     # Verify the only child of h_node is "w"
     assert len(h_node.edge_label_to_child) == 1
@@ -284,7 +281,10 @@ def test__remove_tenant_single_node(tree: PrefixTree) -> None:
     removed: int = tree._remove_tenant_single_node("tenant_1", h_node)
     assert removed == 5
     assert tree.tenant_to_char_count["tenant_1"] == 0
-    assert len(tree.tenant_to_nodes["tenant_1"]) == 1 and tree.root in tree.tenant_to_nodes["tenant_1"]
+    assert (
+        len(tree.tenant_to_nodes["tenant_1"]) == 1
+        and tree.root in tree.tenant_to_nodes["tenant_1"]
+    )
 
     # 2. Test removing node for non-existent tenant is idempotent
     tree._reset()
@@ -316,7 +316,10 @@ def test_remove_tenant(tree: PrefixTree) -> None:
     tree.insert("hello", "tenant_1", 1)
     removed: int = tree.remove_tenant("tenant_1")
     assert removed == 5
-    assert "tenant_1" not in tree.tenant_to_nodes and "tenant_1" not in tree.tenant_to_char_count
+    assert (
+        "tenant_1" not in tree.tenant_to_nodes
+        and "tenant_1" not in tree.tenant_to_char_count
+    )
 
     # 2. Test removing tenant with multiple nodes
     tree._reset()
@@ -369,7 +372,10 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
 
     # Before eviction
     char_count_before: int = tree.tenant_to_char_count["tenant_1"]
-    assert len(tree.tenant_to_nodes["tenant_1"]) == 4 and tree.tenant_to_char_count["tenant_1"] == 6
+    assert (
+        len(tree.tenant_to_nodes["tenant_1"]) == 4
+        and tree.tenant_to_char_count["tenant_1"] == 6
+    )
 
     # During eviction
     min_remove_size: int = 1
@@ -379,7 +385,10 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
     char_count_after: int = tree.tenant_to_char_count["tenant_1"]
     assert evicted_count == min_remove_size
     assert char_count_before - char_count_after == evicted_count
-    assert len(tree.tenant_to_nodes["tenant_1"]) == 3 and tree.tenant_to_char_count["tenant_1"] == 5
+    assert (
+        len(tree.tenant_to_nodes["tenant_1"]) == 3
+        and tree.tenant_to_char_count["tenant_1"] == 5
+    )
 
     # 2. Remove more than min_remove_size characters
     tree._reset()
@@ -389,7 +398,10 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
 
     # Before eviction
     char_count_before = tree.tenant_to_char_count["tenant_1"]
-    assert len(tree.tenant_to_nodes["tenant_1"]) == 4 and tree.tenant_to_char_count["tenant_1"] == 6
+    assert (
+        len(tree.tenant_to_nodes["tenant_1"]) == 4
+        and tree.tenant_to_char_count["tenant_1"] == 6
+    )
 
     # During eviction
     min_remove_size = 2
@@ -399,7 +411,10 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
     char_count_after = tree.tenant_to_char_count["tenant_1"]
     assert evicted_count != min_remove_size and evicted_count == 3
     assert char_count_before - char_count_after == evicted_count
-    assert len(tree.tenant_to_nodes["tenant_1"]) == 2 and tree.tenant_to_char_count["tenant_1"] == 3
+    assert (
+        len(tree.tenant_to_nodes["tenant_1"]) == 2
+        and tree.tenant_to_char_count["tenant_1"] == 3
+    )
 
     # 3. Test eviction of non-existent tenant is idempotent
     tree._reset()
@@ -437,58 +452,83 @@ def test_evict_tenant_by_lru(tree: PrefixTree) -> None:
 
     # Test tree structure - validate each node
     # Root node
-    assert root.text == "" and root.tenant_to_last_access_time == {"tenant_1": 1, "tenant_2": 3}
+    assert root.text == "" and root.tenant_to_last_access_time == {
+        "tenant_1": 1,
+        "tenant_2": 3,
+    }
     assert "h" in root.edge_label_to_child
 
     # Hello node
     hello_node: Node = root.edge_label_to_child["h"]
-    assert hello_node.text == "hello" and hello_node.tenant_to_last_access_time == {"tenant_1": 1, "tenant_2": 3}
-    assert "w" in hello_node.edge_label_to_child and "t" in hello_node.edge_label_to_child
+    assert hello_node.text == "hello" and hello_node.tenant_to_last_access_time == {
+        "tenant_1": 1,
+        "tenant_2": 3,
+    }
+    assert (
+        "w" in hello_node.edge_label_to_child and "t" in hello_node.edge_label_to_child
+    )
 
     # World node
     world_node: Node = hello_node.edge_label_to_child["w"]
-    assert world_node.text == "world" and world_node.tenant_to_last_access_time == {"tenant_1": 1}
+    assert world_node.text == "world" and world_node.tenant_to_last_access_time == {
+        "tenant_1": 1
+    }
     assert len(world_node.edge_label_to_child) == 0
 
     # Th node
     th_node: Node = hello_node.edge_label_to_child["t"]
-    assert th_node.text == "th" and th_node.tenant_to_last_access_time == {"tenant_2": 3}
+    assert th_node.text == "th" and th_node.tenant_to_last_access_time == {
+        "tenant_2": 3
+    }
     assert "e" in th_node.edge_label_to_child and "o" in th_node.edge_label_to_child
 
     # Ere node
     ere_node: Node = th_node.edge_label_to_child["e"]
-    assert ere_node.text == "ere" and ere_node.tenant_to_last_access_time == {"tenant_2": 2}
+    assert ere_node.text == "ere" and ere_node.tenant_to_last_access_time == {
+        "tenant_2": 2
+    }
     assert len(ere_node.edge_label_to_child) == 0
 
     # Omas node
     omas_node: Node = th_node.edge_label_to_child["o"]
-    assert omas_node.text == "omas" and omas_node.tenant_to_last_access_time == {"tenant_2": 3}
+    assert omas_node.text == "omas" and omas_node.tenant_to_last_access_time == {
+        "tenant_2": 3
+    }
     assert len(omas_node.edge_label_to_child) == 0
 
     # Test PrefixTree instance variables
     assert set(tree.tenant_to_nodes.keys()) == {"tenant_1", "tenant_2"}
-    
+
     # Test tenant_to_nodes (check by text)
-    tenant1_nodes_texts: Set[str] = {node.text for node in tree.tenant_to_nodes["tenant_1"]}
+    tenant1_nodes_texts: Set[str] = {
+        node.text for node in tree.tenant_to_nodes["tenant_1"]
+    }
     assert tenant1_nodes_texts == {"", "hello", "world"}
 
-    tenant2_nodes_texts: Set[str] = {node.text for node in tree.tenant_to_nodes["tenant_2"]}
+    tenant2_nodes_texts: Set[str] = {
+        node.text for node in tree.tenant_to_nodes["tenant_2"]
+    }
     assert tenant2_nodes_texts == {"", "hello", "th", "ere", "omas"}
 
     # Test tenant_to_char_count
     # Before evictions
-    assert tree.tenant_to_char_count["tenant_1"] == 10 and tree.tenant_to_char_count["tenant_2"] == 14
-    
+    assert (
+        tree.tenant_to_char_count["tenant_1"] == 10
+        and tree.tenant_to_char_count["tenant_2"] == 14
+    )
+
     # After evicting tenant_1 with min_remove_size=1
     # Should remove both "hello" and "world" nodes (10 chars) since they have the same timestamp
     evicted_count = tree.evict_tenant_by_lru("tenant_1", 1)
     assert evicted_count == 10 and tree.tenant_to_char_count["tenant_1"] == 0
-    
+
     # After evicting tenant_2 with min_remove_size=1
     # Should remove "ere" node (3 chars) since it has the oldest timestamp (2)
     evicted_count = tree.evict_tenant_by_lru("tenant_2", 1)
-    assert evicted_count == 3 and tree.tenant_to_char_count["tenant_2"] == 11  # 14 - 3 = 11
-    
+    assert (
+        evicted_count == 3 and tree.tenant_to_char_count["tenant_2"] == 11
+    )  # 14 - 3 = 11
+
     # After evicting tenant_2 again with min_remove_size=1
     # Should remove "hello", "th", and "omas" nodes (11 chars) since they all have timestamp 3
     evicted_count = tree.evict_tenant_by_lru("tenant_2", 1)

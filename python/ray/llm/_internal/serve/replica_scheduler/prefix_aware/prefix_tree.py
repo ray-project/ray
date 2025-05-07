@@ -6,7 +6,7 @@ import os
 from threading import RLock
 from typing import Dict, List, Optional, Set, Tuple, Any
 
-from ray import serve
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +34,15 @@ class Node:
         """
         self.text: str = text
         self.parent: Optional[Node] = parent  # The parent node of this node
-        self.edge_label_to_child: Dict[str, Node] = {}  # Maps first character to child node
+        self.edge_label_to_child: Dict[
+            str, Node
+        ] = {}  # Maps first character to child node
         self.tenant_to_last_access_time: Dict[
             str, int
         ] = (
             {}
         )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in milliseconds)
+
 
 class TimestampedNode:
     """
@@ -111,10 +114,14 @@ class PrefixTree:
         self.root: Node = Node()
         self.tenant_to_char_count: Dict[
             str, int
-        ] = {}  # Tracks total character count per tenant. Used by the client to determine which tenant to evict, and by how much.
+        ] = (
+            {}
+        )  # Tracks total character count per tenant. Used by the client to determine which tenant to evict, and by how much.
         self.tenant_to_nodes: Dict[
             str, Set[Node]
-        ] = {}  # Maps tenant to set of nodes. Used for O(1) testing if a node belongs to a tenant. The keys are the active tenants in the tree.
+        ] = (
+            {}
+        )  # Maps tenant to set of nodes. Used for O(1) testing if a node belongs to a tenant. The keys are the active tenants in the tree.
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -166,7 +173,7 @@ class PrefixTree:
         - tenant exists in self.tenant_to_nodes
         - tenant exists in node.tenant_to_last_access_time
         - node exists in self.tenant_to_nodes[tenant]
-        
+
         These preconditions are guaranteed to be satisfied if the user is using the public methods of this class.
         They may be violated if the user manipulates the internal state of the tree directly.
 
@@ -182,10 +189,14 @@ class PrefixTree:
                 logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
             if tenant not in node.tenant_to_last_access_time:
-                logger.warning(f"Tenant '{tenant}' does not have node '{node.text}'. No action taken.")
+                logger.warning(
+                    f"Tenant '{tenant}' does not have node '{node.text}'. No action taken."
+                )
                 return 0
             if node not in self.tenant_to_nodes[tenant]:
-                logger.warning(f"Node '{node.text}' does not belong to tenant '{tenant}'. No action taken.")
+                logger.warning(
+                    f"Node '{node.text}' does not belong to tenant '{tenant}'. No action taken."
+                )
                 return 0
 
             removed_chars_len: int = len(node.text)
@@ -251,7 +262,7 @@ class PrefixTree:
                 curr_text: str = text[i:]
 
                 if first_char not in curr_node.edge_label_to_child:
-                    # No match, create new node. Don't update new node as "visited" by tenant yet; it will be done in the code below.
+                    # No match, create new node. Don't update new node as "visited" by tenant yet; it will be done at the beginning of the next iteration.
                     # e.g. curr_node.edge_label_to_child = {}, curr_text = "hello" -> curr_node.edge_label_to_child = {"h": Node("hello")}
                     new_node: Node = Node(text=curr_text, parent=curr_node)
                     curr_node.edge_label_to_child[first_char] = new_node
@@ -269,13 +280,10 @@ class PrefixTree:
                     ### curr_node.edge_label_to_child = {"h": Node("helloworld")}, curr_text = "hellothere" -> shared_count = 5
                     ### matched_node = Node("helloworld")
 
-                    ## During update:
-                    ### Increment tenant_to_char_count[tenant] by shared_count if matched_node has not seen this tenant before
-
                     ## After update:
                     ### curr_node.edge_label_to_child = {"h": Node("hello", edge_label_to_child = {"w": Node("world")})}
                     ### parent_node = Node("hello"), matched_node = Node("world")
-                    ### Update tenant_to_last_access_time for parent_node, NOT matched_node
+                    ### Copy matched_node.tenant_to_last_access_time to parent_node.tenant_to_last_access_time
                     ### (new) curr_text = "there", (new) curr_node = parent_node
                     ### Continue adding "there" to tree in next iteration
 
@@ -411,7 +419,7 @@ class PrefixTree:
 
         Returns:
             Actual number of characters removed (0 if tenant doesn't exist)
-        
+
         Note:
             - All nodes with the same oldest access time are removed together to maintain tree integrity, even if only removing a subset of them satisfies the min_remove_size.
             - This behavior is expected in the case when an input was split into multiple nodes by a different tenant (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 2)).
@@ -443,12 +451,9 @@ class PrefixTree:
                 access_time = node.tenant_to_last_access_time[tenant]
                 nodes_by_access_time.append(TimestampedNode(node, access_time))
             heapq.heapify(nodes_by_access_time)
-            
+
             # Remove nodes until we've freed enough characters
-            while (
-                total_chars_removed < min_remove_size
-                and nodes_by_access_time
-            ):
+            while total_chars_removed < min_remove_size and nodes_by_access_time:
                 # Get the oldest (minimum) access time from the top of the heap
                 oldest_access_time = nodes_by_access_time[0].time_sec
 
@@ -476,11 +481,15 @@ class PrefixTree:
             if not self.tenant_to_char_count:
                 return None
 
-            return min(self.tenant_to_char_count, key=self.tenant_to_char_count.get, default=None)
+            return min(
+                self.tenant_to_char_count,
+                key=self.tenant_to_char_count.get,
+                default=None,
+            )
 
 
-@serve.deployment(name="TreeDeployment")
-class PrefixTreeDeployment(PrefixTree):
+@ray.remote
+class PrefixTreeActor(PrefixTree):
     def _to_dict(self) -> Dict[str, Any]:
         """
         Convert tree to dictionary for serialization.
