@@ -36,9 +36,7 @@ from typing import (
 )
 
 import contextvars
-import concurrent
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import Future as ConcurrentFuture
+import concurrent.futures
 
 from libc.stdint cimport (
     int32_t,
@@ -253,7 +251,7 @@ GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
-# The currently executing task, if any. These are used to synchronize task
+# The currently running task, if any. These are used to synchronize task
 # interruption for ray.cancel.
 current_task_id = None
 current_task_id_lock = threading.Lock()
@@ -752,6 +750,23 @@ cdef int prepare_labels(
 
     return 0
 
+cdef int prepare_label_selector(
+        dict label_selector_dict,
+        unordered_map[c_string, c_string] *label_selector) except -1:
+
+    if label_selector_dict is None:
+        return 0
+
+    for key, value in label_selector_dict.items():
+        if not isinstance(key, str):
+            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+        if not isinstance(value, str):
+            raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+
+    return 0
+
+
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
@@ -1091,7 +1106,7 @@ cdef store_task_errors(
 
 
 cdef class StreamingGeneratorExecutionContext:
-    """The context to execute streaming generator function.
+    """The context to run a streaming generator function.
 
     Make sure you always call `initialize` API before
     accessing any fields.
@@ -2533,26 +2548,25 @@ cdef void delete_spilled_objects_handler(
                 job_id=None)
 
 
-cdef void cancel_async_task(
-        const CTaskID &c_task_id,
-        const CRayFunction &ray_function,
-        const c_string c_name_of_concurrency_group_to_execute) nogil:
-    with gil:
-        function_descriptor = CFunctionDescriptorToPython(
-            ray_function.GetFunctionDescriptor())
-        name_of_concurrency_group_to_execute = \
-            c_name_of_concurrency_group_to_execute.decode("ascii")
-        task_id = TaskID(c_task_id.Binary())
+cdef c_bool cancel_async_actor_task(const CTaskID &c_task_id) nogil:
+    """Attempt to cancel a task running in this asyncio actor.
 
+    Returns True if the task was currently running and was cancelled, else False.
+
+    Note that the underlying asyncio task may not actually have been cancelled: it
+    could already have completed or else might not gracefully handle cancellation.
+    The return value only indicates that the task was found and cancelled.
+    """
+    with gil:
+        task_id = TaskID(c_task_id.Binary())
         worker = ray._private.worker.global_worker
-        eventloop, _ = worker.core_worker.get_event_loop(
-            function_descriptor, name_of_concurrency_group_to_execute)
-        future = worker.core_worker.get_queued_future(task_id)
-        if future is not None:
-            future.cancel()
-        # else, the task is already finished. If the task
-        # wasn't finished (task is queued on a client or server side),
-        # this method shouldn't have been called.
+        fut = worker.core_worker.get_future_for_running_task(task_id)
+        if fut is None:
+            # Either the task hasn't started executing yet or already finished.
+            return False
+
+        fut.cancel()
+        return True
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -2953,7 +2967,7 @@ cdef class CoreWorker:
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
-        options.cancel_async_task = cancel_async_task
+        options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
@@ -3657,10 +3671,12 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
+                    label_selector,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3686,6 +3702,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
+            prepare_label_selector(label_selector, &c_label_selector)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3699,6 +3716,7 @@ cdef class CoreWorker:
                 serialized_runtime_env_info,
                 enable_task_events,
                 c_labels,
+                c_label_selector,
                 )
 
             current_c_task_id = current_task.native()
@@ -3747,6 +3765,7 @@ cdef class CoreWorker:
                      scheduling_strategy,
                      c_bool enable_task_events,
                      labels,
+                     label_selector,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3760,6 +3779,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3773,6 +3793,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
+            prepare_label_selector(label_selector, &c_label_selector)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3802,7 +3823,8 @@ cdef class CoreWorker:
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        c_label_selector),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3916,6 +3938,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
@@ -3949,7 +3972,8 @@ cdef class CoreWorker:
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        c_label_selector),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4434,15 +4458,15 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_event_loop_executor(self) -> ThreadPoolExecutor:
+    def get_event_loop_executor(self) -> concurrent.futures.ThreadPoolExecutor:
         if self.event_loop_executor is None:
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
-            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
+            self.event_loop_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         return self.event_loop_executor
 
-    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
+    def reset_event_loop_executor(self, executor: concurrent.futures.ThreadPoolExecutor):
         self.event_loop_executor = executor
 
     def get_event_loop(self, function_descriptor, specified_cgname):
@@ -4595,8 +4619,11 @@ cdef class CoreWorker:
         return ActorID(CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                        .GetRootDetachedActorID().Binary())
 
-    def get_queued_future(self, task_id: Optional[TaskID]) -> ConcurrentFuture:
-        """Get a asyncio.Future that's queued in the event loop."""
+    def get_future_for_running_task(self, task_id: Optional[TaskID]) -> Optional[concurrent.futures.Future]:
+        """Get the future corresponding to a running task (or None).
+
+        The underyling asyncio task might be queued, running, or completed.
+        """
         with self._task_id_to_future_lock:
             return self._task_id_to_future.get(task_id)
 
