@@ -579,3 +579,11 @@ RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT"
 # and call ray._private.runtime_env.uv_runtime_env_hook.hook manually in your hook or
 # manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
+
+# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+#
+# Legacy: report all metrics to prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
+# Recommended: report only the node level metrics to prometheus. This means that the
+#   WorkerId will be removed from all metrics.
+RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")

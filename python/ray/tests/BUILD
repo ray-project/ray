@@ -44,6 +44,7 @@ py_test_module_list(
         "test_advanced_7.py",
         "test_advanced_8.py",
         "test_advanced_9.py",
+        "test_aggregated_prometheus_metrics.py",
         "test_async.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
