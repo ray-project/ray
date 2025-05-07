@@ -339,7 +339,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
     /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
     /// without replies.
-    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -414,7 +414,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
