@@ -24,7 +24,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_finisher.h"
@@ -49,8 +48,8 @@ class TaskResubmissionInterface {
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback = std::function<void(
-    TaskSpecification &spec, bool object_recovery, bool update_seqno, uint32_t delay_ms)>;
+using RetryTaskCallback =
+    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
@@ -505,7 +504,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   bool MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
+  std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
   std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
@@ -698,6 +697,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                  std::vector<ObjectID> *ids_to_release)
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// A wrapper of `retry_task_callback_` that sets the task status
+  /// and calls `retry_task_callback_`. This function should be the only
+  /// caller of `retry_task_callback_`.
+  ///
+  /// \param[in] task_entry The task entry to retry.
+  /// \param[in] object_recovery Whether to retry the task for object recovery.
+  /// \param[in] delay_ms The delay in milliseconds before retrying the task.
+  void RetryTask(TaskEntry *task_entry, bool object_recovery, uint32_t delay_ms);
+
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
@@ -735,11 +743,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status new status.
-  /// \param error_info Optional error info for task execution.
+  /// \param state_update The state update for the task status change event.
+  /// \param include_task_info Whether to include task info in the task status change
+  /// event.
+  /// \param attempt_number The attempt number to record the task status change
+  /// event. If not specified, the attempt number will be the current attempt number of
+  /// the task.
   void SetTaskStatus(
       TaskEntry &task_entry,
       rpc::TaskStatus status,
-      const absl::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
+      std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt,
+      bool include_task_info = false,
+      std::optional<int32_t> attempt_number = std::nullopt);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///

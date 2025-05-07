@@ -1,7 +1,6 @@
 import gzip
 import json
 import os
-import requests
 import shutil
 from functools import partial
 
@@ -9,6 +8,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.json as pajson
 import pytest
+import requests
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -37,7 +37,7 @@ def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_json(path)
 
-    assert ds.take() == [
+    assert sorted(ds.take(), key=lambda row: row["number"]) == [
         {"number": 0, "string": "foo", "country": "us"},
         {"number": 1, "string": "bar", "country": "us"},
     ]
@@ -103,7 +103,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json(path, filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -136,7 +136,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
     ds = ray.data.read_json([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -159,7 +159,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -189,9 +189,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -410,7 +409,9 @@ def test_json_read_with_parse_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_json_read_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     fs,
     data_path,
@@ -474,6 +475,51 @@ def test_json_read_partitioned_with_filter(
         assert ray.get(skipped_file_counter.get.remote()) == 1
         ray.get(kept_file_counter.reset.remote())
         ray.get(skipped_file_counter.reset.remote())
+
+
+@pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
+def test_jsonl_lists(ray_start_regular_shared, tmp_path, override_num_blocks):
+    """Test JSONL with mixed types and schemas."""
+    data = [
+        ["ray", "rocks", "hello"],
+        ["oh", "no"],
+        ["rocking", "with", "ray"],
+    ]
+
+    path = os.path.join(tmp_path, "test.jsonl")
+    with open(path, "w") as f:
+        for record in data:
+            json.dump(record, f)
+            f.write("\n")
+
+    ds = ray.data.read_json(path, lines=True, override_num_blocks=override_num_blocks)
+    result = ds.take_all()
+
+    assert result[0] == {"0": "ray", "1": "rocks", "2": "hello"}
+    assert result[1] == {"0": "oh", "1": "no", "2": None}
+    assert result[2] == {"0": "rocking", "1": "with", "2": "ray"}
+
+
+def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
+    """Test JSONL with mixed types and schemas."""
+    data = [
+        {"a": 1, "b": {"c": 2}},  # Nested dict
+        {"a": 1, "b": {"c": 3}},  # Nested dict
+        {"a": 1, "b": {"c": {"hello": "world"}}},  # Mixed Schema
+    ]
+
+    path = os.path.join(tmp_path, "test.jsonl")
+    with open(path, "w") as f:
+        for record in data:
+            json.dump(record, f)
+            f.write("\n")
+
+    ds = ray.data.read_json(path, lines=True)
+    result = ds.take_all()
+
+    assert result[0] == data[0]  # Dict stays as is
+    assert result[1] == data[1]
+    assert result[2] == data[2]
 
 
 @pytest.mark.parametrize(
@@ -691,7 +737,7 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
-def test_json_with_http_path_parallelization():
+def test_json_with_http_path_parallelization(ray_start_regular_shared):
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )

@@ -55,7 +55,7 @@ inline constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 /// The base size in bytes per request.
 inline constexpr int64_t kBaseRequestSize = 1024;
 
-// Shared between direct actor and task submitters.
+// Shared between actor and task submitters.
 /* class CoreWorkerClientInterface; */
 
 inline bool operator==(const rpc::Address &lhs, const rpc::Address &rhs) {
@@ -99,14 +99,14 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                const ClientCallback<NumPendingTasksReply> &callback,
                                int64_t timeout_ms = -1) {}
 
-  /// Notify a wait has completed for direct actor call arguments.
+  /// Notify a wait has completed for actor call arguments.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual void DirectActorCallArgWaitComplete(
-      const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {}
+  virtual void ActorCallArgWaitComplete(
+      const ActorCallArgWaitCompleteRequest &request,
+      const ClientCallback<ActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
   virtual void GetObjectStatus(const GetObjectStatusRequest &request,
@@ -189,9 +189,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
-  /// Returns the max acked sequence number, useful for checking on progress.
-  virtual int64_t ClientProcessedUpToSeqno() { return -1; }
-
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -215,7 +212,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         DirectActorCallArgWaitComplete,
+                         ActorCallArgWaitComplete,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
@@ -365,12 +362,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// See direct_actor.proto for a description of the ordering protocol.
   void SendRequests();
 
-  /// Returns the max acked sequence number, useful for checking on progress.
-  int64_t ClientProcessedUpToSeqno() override {
-    absl::MutexLock lock(&mutex_);
-    return max_finished_seq_no_;
-  }
-
  private:
   /// Protects against unsafe concurrent access from the callback thread.
   absl::Mutex mutex_;
@@ -391,7 +382,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
+  std::optional<int64_t> max_finished_seq_no_ ABSL_GUARDED_BY(mutex_);
 };
 
 using CoreWorkerClientFactoryFn =

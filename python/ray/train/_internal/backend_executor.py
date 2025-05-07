@@ -7,9 +7,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.amd_gpu import HIP_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
-from ray._private.accelerators.amd_gpu import HIP_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
 from ray.data import Dataset
@@ -29,9 +29,9 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
-    ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -784,7 +784,7 @@ class BackendExecutor:
             self._last_failure = None
             if self._max_failures > 0:
                 exc = RuntimeError(
-                    "Training has failed after " f"{self._num_failures} " "attempts."
+                    f"Training has failed after {self._num_failures} attempts."
                 )
                 raise exc.with_traceback(None) from failure
             else:

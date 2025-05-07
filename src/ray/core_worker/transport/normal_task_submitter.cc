@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -552,9 +551,9 @@ void NormalTaskSubmitter::PushNormalTask(
     const SchedulingKey &scheduling_key,
     TaskSpecification task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  RAY_LOG(INFO) << "Pushing task " << task_spec.TaskId() << " to worker "
-                << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
-                << NodeID::FromBinary(addr.raylet_id());
+  RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
+                 << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
+                 << NodeID::FromBinary(addr.raylet_id());
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
   bool is_actor = task_spec.IsActorTask();

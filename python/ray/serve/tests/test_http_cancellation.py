@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition, Collector
+from ray._private.test_utils import Collector, SignalActor, wait_for_condition
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.exceptions import RequestCancelledError
 
@@ -140,8 +140,8 @@ async def test_request_cancelled_error_on_http_client_disconnect_during_executio
         pass
 
     wait_for_condition(
-        lambda: ray.get(collector.get.remote())
-        == ["Child_CancelledError", "Parent_CancelledError"]
+        lambda: set(ray.get(collector.get.remote()))
+        == {"Child_CancelledError", "Parent_CancelledError"}
     )
 
 

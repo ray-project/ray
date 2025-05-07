@@ -8,19 +8,19 @@ import os
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
+import multiprocessing.connection
 
 import ray
 from ray import ray_constants
 from ray._raylet import GcsClient
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
-from ray._private.ray_logging import configure_log_file
-from ray._private.utils import open_log
+from ray._private.gcs_utils import GcsChannel
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     get_socket_path,
     get_named_pipe_path,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private import logging_utils
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class SubprocessModuleConfig:
     log_dir: str
     # Name of the "base" log file. Its stem is appended with the Module.__name__.
     # e.g. when logging_filename = "dashboard.log", and Module is JobHead,
-    # we will set up logger with name "dashboard-JobHead.log". This name will again be
+    # we will set up logger with name "dashboard_JobHead.log". This name will again be
     # appended with .1 and .2 for rotation.
     logging_filename: str
     logging_rotate_bytes: int
@@ -69,7 +69,6 @@ class SubprocessModule(abc.ABC):
         self._parent_process = multiprocessing.parent_process()
         # Lazy init
         self._gcs_client = None
-        self._gcs_aio_client = None
         self._aiogrpc_gcs_channel = None
         self._parent_process_death_detection_task = None
         self._http_session = None
@@ -132,7 +131,9 @@ class SubprocessModule(abc.ABC):
 
         module_name = self.__class__.__name__
         if sys.platform == "win32":
-            named_pipe_path = get_named_pipe_path(module_name)
+            named_pipe_path = get_named_pipe_path(
+                module_name, self._config.session_name
+            )
             site = aiohttp.web.NamedPipeSite(runner, named_pipe_path)
             logger.info(f"Started aiohttp server over {named_pipe_path}.")
         else:
@@ -140,15 +141,6 @@ class SubprocessModule(abc.ABC):
             site = aiohttp.web.UnixSite(runner, socket_path)
             logger.info(f"Started aiohttp server over {socket_path}.")
         await site.start()
-
-    @property
-    def gcs_aio_client(self):
-        if self._gcs_aio_client is None:
-            self._gcs_aio_client = GcsAioClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
-        return self._gcs_aio_client
 
     @property
     def gcs_client(self):
@@ -210,7 +202,7 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    ready_event: multiprocessing.Event,
+    child_conn: multiprocessing.connection.Connection,
 ):
 
     module_name = cls.__name__
@@ -228,7 +220,8 @@ async def run_module_inner(
             lambda _: sys.exit()
         )
         await module.run()
-        ready_event.set()
+        child_conn.send(None)
+        child_conn.close()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
@@ -239,7 +232,7 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    ready_event: multiprocessing.Event,
+    child_conn: multiprocessing.connection.Connection,
 ):
     """
     Entrypoint for a subprocess module.
@@ -259,11 +252,19 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
-    stderr_filename = module_logging_filename(
-        module_name, config.logging_filename, is_stderr=True
-    )
-    err_file = open_log(os.path.join(config.log_dir, stderr_filename), unbuffered=True)
-    configure_log_file(err_file, err_file)
+    if config.logging_filename:
+        stdout_filename = module_logging_filename(
+            module_name, config.logging_filename, extension=".out"
+        )
+        stderr_filename = module_logging_filename(
+            module_name, config.logging_filename, extension=".err"
+        )
+        logging_utils.redirect_stdout_stderr_if_needed(
+            os.path.join(config.log_dir, stdout_filename),
+            os.path.join(config.log_dir, stderr_filename),
+            config.logging_rotate_bytes,
+            config.logging_rotate_backup_count,
+        )
 
     loop = asyncio.new_event_loop()
     task = loop.create_task(
@@ -271,7 +272,7 @@ def run_module(
             cls,
             config,
             incarnation,
-            ready_event,
+            child_conn,
         )
     )
     # TODO: do graceful shutdown.

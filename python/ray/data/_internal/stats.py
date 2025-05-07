@@ -20,6 +20,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NodeMetrics,
     OpRuntimeMetrics,
 )
+from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
 from ray.data.context import DataContext
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+UNKNOWN = "unknown"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -58,7 +60,7 @@ class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
-        self._value: float = 0
+        self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
@@ -72,7 +74,7 @@ class Timer:
             self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
-        self._value += value
+        self._total += value
         if value < self._min:
             self._min = value
         if value > self._max:
@@ -80,7 +82,7 @@ class Timer:
         self._total_count += 1
 
     def get(self) -> float:
-        return self._value
+        return self._total
 
     def min(self) -> float:
         return self._min
@@ -89,7 +91,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count if self._total_count else float("inf")
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -164,6 +166,9 @@ class _StatsActor:
 
         # Cache of calls to ray.nodes() to prevent unnecessary network calls
         self._ray_nodes_cache: Dict[str, str] = {}
+
+        # Initialize the metadata exporter
+        self._metadata_exporter = get_dataset_metadata_exporter()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -313,6 +318,11 @@ class _StatsActor:
             description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
+            tag_keys=operator_tags,
+        )
         self.data_operator_state = Gauge(
             "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
@@ -407,7 +417,7 @@ class _StatsActor:
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
 
@@ -473,24 +483,42 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(
+        self,
+        job_id: str,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
             "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
-            "start_time": time.time(),
+            "start_time": start_time,
             "end_time": None,
             "operators": {
                 operator: {
                     "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
         }
+        if self._metadata_exporter is not None:
+            from ray.data._internal.metadata_exporter import DatasetMetadata
+
+            dataset_metadata = DatasetMetadata(
+                job_id=job_id,
+                topology=topology,
+                dataset_id=dataset_tag,
+                start_time=start_time,
+            )
+            self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -526,6 +554,9 @@ class _StatsActor:
             )
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
+            )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
             )
 
             # Get state code directly from enum
@@ -756,11 +787,24 @@ class _StatsManager:
 
     # Other methods
 
-    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+    def register_dataset_to_stats_actor(
+        self,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        """Register a dataset with the stats actor.
+
+        Args:
+            dataset_tag: Tag for the dataset
+            operator_tags: List of operator tags
+            topology: Optional Topology representing the DAG structure to export
+        """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
+            topology,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:
@@ -1614,7 +1658,7 @@ class IterStatsSummary:
                 )
             if self.next_time.get():
                 batch_creation_str = (
-                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch creation: {} min, {} max, {} avg, {} total\n"
                 )
                 out += batch_creation_str.format(
                     fmt(self.next_time.min()),
@@ -1624,7 +1668,7 @@ class IterStatsSummary:
                 )
             if self.format_time.get():
                 format_str = (
-                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch formatting: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.format_time.min()),
