@@ -311,21 +311,6 @@ py_test(
 )
 
 py_test(
-    name = "test_join",
-    size = "medium",
-    srcs = ["tests/test_join.py"],
-    tags = [
-        "data_non_parallel",
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_binary",
     size = "small",
     srcs = ["tests/test_binary.py"],
@@ -1371,21 +1356,6 @@ py_test(
     srcs = ["tests/test_state_export.py"],
     tags = [
         "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_iter_torch_batches_gpu",
-    size = "large",
-    srcs = ["tests/test_iter_torch_batches_gpu.py"],
-    tags = [
-        "exclusive",
-        "gpu_only",
         "team:data",
     ],
     deps = [

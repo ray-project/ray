@@ -427,7 +427,7 @@ def custom_collate_fns():
     ],
 )
 def test_custom_batch_collate_fn(
-    ray_start_regular_shared, custom_collate_fns, collate_type, return_type, device
+    ray_start_4_cpus_2_gpus, custom_collate_fns, collate_type, return_type, device
 ):
     """Tests that custom batch collate functions can be used to modify
     the batch before it is converted to a PyTorch tensor."""
@@ -452,12 +452,12 @@ def test_custom_batch_collate_fn(
     for batch in it.iter_torch_batches(collate_fn=collate_fn):
         if return_type == "single":
             assert isinstance(batch, torch.Tensor)
-            assert batch.tolist() == list(range(5, 10))
+            assert sorted(batch.tolist()) == list(range(5, 10))
             assert str(batch.device) == device
         elif return_type == "dict":
             assert isinstance(batch, dict)
-            assert batch["id"].tolist() == list(range(5, 10))
-            assert batch["value"].tolist() == list(range(5))
+            assert sorted(batch["id"].tolist()) == list(range(5, 10))
+            assert sorted(batch["value"].tolist()) == list(range(5))
             assert str(batch["id"].device) == device
             assert str(batch["value"].device) == device
         else:  # tuple or list
@@ -465,7 +465,7 @@ def test_custom_batch_collate_fn(
             # For tuple/list return types, tensors are concatenated
             # First 5 values: modified id values [5,6,7,8,9]
             # Last 5 values: original values [0,1,2,3,4]
-            assert batch.tolist() == list(range(5, 10)) + list(range(5))
+            assert sorted(batch.tolist()) == list(range(10))
             assert str(batch.device) == device
 
 

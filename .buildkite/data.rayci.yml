@@ -6,35 +6,9 @@ steps:
   # builds
   - name: data9build
     wanda: ci/docker/data9.build.wanda.yaml
-    depends_on: oss-ci-base_ml
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
-      IMAGE_TO: data9build
-      RAYCI_IS_GPU_BUILD: "false"
-
-  - name: data9gpubuild
-    wanda: ci/docker/data9.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
-      IMAGE_TO: data9gpubuild
-      RAYCI_IS_GPU_BUILD: "true"
 
   - name: datalbuild
     wanda: ci/docker/datal.build.wanda.yaml
-    depends_on: oss-ci-base_ml
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
-      IMAGE_TO: datalbuild
-      RAYCI_IS_GPU_BUILD: "false"
-
-  - name: datalgpubuild
-    wanda: ci/docker/datal.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
-      IMAGE_TO: datalgpubuild
-      RAYCI_IS_GPU_BUILD: "true"
 
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
@@ -46,19 +20,6 @@ steps:
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
-    depends_on: oss-ci-base_ml
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
-      IMAGE_TO: datanbuild
-      RAYCI_IS_GPU_BUILD: "false"
-
-  - name: datangpubuild
-    wanda: ci/docker/datan.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
-      IMAGE_TO: datangpubuild
-      RAYCI_IS_GPU_BUILD: "true"
 
   - name: datamongobuild
     wanda: ci/docker/datamongo.build.wanda.yaml
@@ -284,19 +245,3 @@ steps:
         --build-name docgpubuild
         --only-tags gpu,gpu_only
     depends_on: docgpubuild
-
-  - label: ":database: data: gpu tests"
-    key: data_gpu_tests
-    tags:
-      - python
-      - data
-      - gpu
-    instance_type: gpu-large
-    parallelism: 2
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker  -- //... data
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
-        --build-name datalgpubuild
-        --only-tags gpu_only
-        --except-tags doctest,examples
-    depends_on: [ "datalgpubuild", "forge" ]
