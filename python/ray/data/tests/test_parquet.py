@@ -887,6 +887,258 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds._set_uuid("data")
+    ds.write_parquet(path, filesystem=fs)
+    path1 = os.path.join(path, "data_000000_000000.parquet")
+    path2 = os.path.join(path, "data_000001_000000.parquet")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_parquet_write_ignore_save_mode(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds1 = ray.data.from_blocks([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds1._set_uuid("data1")
+    ds1.write_parquet(path, filesystem=fs, mode="ignore")
+    # directory was created, should ignore
+    path1 = os.path.join(path, "data1_000000_000000.parquet")
+    path2 = os.path.join(path, "data1_000001_000000.parquet")
+    assert not os.path.exists(path1)
+    assert not os.path.exists(path2)
+
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+    # now remove dir
+    ds1.write_parquet(path, filesystem=fs, mode="ignore")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_parquet_write_error_save_mode(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds1 = ray.data.from_blocks([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds1._set_uuid("data1")
+    with pytest.raises(ValueError):
+        ds1.write_parquet(path, filesystem=fs, mode="error")
+    # directory was created, should ignore
+    path1 = os.path.join(path, "data1_000000_000000.parquet")
+    path2 = os.path.join(path, "data1_000001_000000.parquet")
+    assert not os.path.exists(path1)
+    assert not os.path.exists(path2)
+
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+    # now remove dir
+    ds1.write_parquet(path, filesystem=fs, mode="errorifexists")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_parquet_write_append_save_mode(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds1 = ray.data.from_blocks([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    ds1._set_uuid("data1")
+    ds1.write_parquet(path, filesystem=fs, mode="append")
+    path1 = os.path.join(path, "data1_000000_000000.parquet")
+    path2 = os.path.join(path, "data1_000001_000000.parquet")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+
+    df3 = pd.DataFrame({"two": [4, 5, 6], "three": ["h", "i", "j"]})
+    ds2 = ray.data.from_blocks([df3])
+
+    # this should add another file
+    ds2._set_uuid("data2")
+    ds2.write_parquet(path, filesystem=fs, mode="append")
+    df = pd.concat([df1, df2, df3])
+    path3 = os.path.join(path, "data2_000000_000000.parquet")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+            pd.read_parquet(path3, storage_options=storage_options),
+        ]
+    )
+
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_parquet_write_mix_save_modes(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds1 = ray.data.from_blocks([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    ds1._set_uuid("data1")
+    ds1.write_parquet(path, filesystem=fs, mode="overwrite")
+    path1 = os.path.join(path, "data1_000000_000000.parquet")
+    path2 = os.path.join(path, "data1_000001_000000.parquet")
+    dfds = pd.concat(
+        [
+            pd.read_parquet(path1, storage_options=storage_options),
+            pd.read_parquet(path2, storage_options=storage_options),
+        ]
+    )
+    assert df.equals(dfds)
+
+    # test save modes
+    df3 = pd.DataFrame({"two": [4, 5, 6], "three": ["h", "i", "j"]})
+    ds2 = ray.data.from_blocks([df3])
+    ds2._set_uuid("data2")
+
+    # this remove path1 and path2
+    path3 = os.path.join(path, "data2_000000_000000.parquet")
+    ds2.write_parquet(path, filesystem=fs, mode="overwrite")
+    assert not os.path.exists(path2)
+    assert not os.path.exists(path1)
+    dfds = pd.read_parquet(path3, storage_options=storage_options)
+    assert df3.equals(dfds)
+
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_parquet_write_mix_save_modes(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
     ds1 = ray.data.from_blocks([df1, df2])
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:

@@ -110,7 +110,7 @@ class _FileDatasink(Datasink[None]):
         from pyarrow.fs import FileType
 
         file_does_exist = (
-            self.self.filesystem.get_file_info(self.path).type is not FileType.NotFound
+            self.filesystem.get_file_info(self.path).type is not FileType.NotFound
         )
         if file_does_exist:
             if self.mode == SaveMode.ERROR:
