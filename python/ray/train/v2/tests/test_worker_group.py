@@ -78,8 +78,11 @@ def test_worker_group_create():
         worker_group.get_workers()
 
 
-def test_worker_group_create_with_runtime_env():
+def test_worker_group_create_with_runtime_env(monkeypatch):
     """Test WorkerGroup.create() factory method with a custom runtime environment."""
+    test_env_var = list(ENV_VARS_TO_PROPAGATE)[0]
+    monkeypatch.setenv(test_env_var, "1")
+
     train_run_context = TrainRunContext(
         run_config=RunConfig(worker_runtime_env={"env_vars": {"DUMMY_VAR": "abcd"}})
     )
