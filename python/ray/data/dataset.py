@@ -109,7 +109,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider
-from ray.data.datasource.file_datasink import _FileDatasink, SaveMode
+from ray.data.datasource.file_datasink import SaveMode, _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
