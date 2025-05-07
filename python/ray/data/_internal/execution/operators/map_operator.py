@@ -592,7 +592,7 @@ class _BlockRefBundler:
         return self._bundle_buffer and (
             self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
-            or (self._finalized and self._bundle_buffer_size > 0)
+            or (self._finalized and self._bundle_buffer_size >= 0)
         )
 
     def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
