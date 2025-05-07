@@ -147,7 +147,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._additional_split_factor = k
 
     def internal_queue_size(self) -> int:
-        return self._block_ref_bundler.total_bundles()
+        return self._block_ref_bundler.num_bundles()
 
     @property
     def name(self) -> str:
@@ -579,7 +579,7 @@ class _BlockRefBundler:
         self._bundle_buffer_size = 0
         self._finalized = False
 
-    def total_bundles(self):
+    def num_bundles(self):
         return len(self._bundle_buffer)
 
     def add_bundle(self, bundle: RefBundle):

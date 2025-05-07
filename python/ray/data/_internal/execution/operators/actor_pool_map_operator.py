@@ -137,7 +137,7 @@ class ActorPoolMapOperator(MapOperator):
         # NOTE: Internal queue size for APMO includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
-        return self._block_ref_bundler.total_bundles() + len(self._bundle_queue)
+        return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
 
     def completed(self) -> bool:
         # TODO separate marking as completed from the check
