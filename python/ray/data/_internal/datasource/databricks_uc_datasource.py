@@ -94,7 +94,9 @@ class DatabricksUCDatasource(Datasource):
             raise
 
         if state != "SUCCEEDED":
-            raise RuntimeError(f"Query {self.query!r} execution failed.\n{response.json()}")
+            raise RuntimeError(
+                f"Query {self.query!r} execution failed.\n{response.json()}"
+            )
 
         manifest = response.json()["manifest"]
         self.is_truncated = manifest["truncated"]
