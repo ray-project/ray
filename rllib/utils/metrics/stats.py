@@ -132,6 +132,8 @@ class Stats:
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
 
+        self._has_returned_zero = False
+
         # On each `.reduce()` call, we store the result of this call in reduce_history[0] and the
         # previous `reduce()` result in reduce_history[1].
         self._reduce_history: deque[List[Any]] = deque(
@@ -705,7 +707,12 @@ class Stats:
         # Special case: Internal values list is empty -> return NaN
         # This makes sure that all metrics are allways logged.
         elif len(values) == 0:
-            return [float("nan")], []
+            if self._reduce_method in ["min", "max", "mean"] or self._has_returned_zero:
+                # We also return np.nan if we have returned zero before.
+                # This helps with cases where stats are cleared on reduce, but we don't want to log 0's, except for the first time.
+                return [np.nan], []
+            else:
+                return [0], []
 
         # Do EMA (always a "mean" reduction; possibly using a window).
         elif self._ema_coeff is not None:
