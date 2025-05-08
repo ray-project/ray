@@ -877,7 +877,8 @@ def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
 
 
 class SamplingParams(BaseModelExtended):
-    """
+    """Parameters for controlling text generation sampling.
+
     Args:
         max_tokens: The maximum number of tokens to generate. Defaults to inf.
         temperature: What sampling temperature to use.
@@ -902,7 +903,6 @@ class SamplingParams(BaseModelExtended):
             the completion.
         response_format: Format to return the final response in. Can be for ex:
             response_format={"type": "json", "schema": "{...}"}
-
     """
 
     _ignored_fields: Set[str] = set()
