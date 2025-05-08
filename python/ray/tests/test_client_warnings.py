@@ -1,10 +1,10 @@
-from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray.util.debug import _logged
+import unittest
 
 import numpy as np
 import pytest
 
-import unittest
+from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray.util.debug import _logged
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +36,7 @@ class LoggerSuite(unittest.TestCase):
 if __name__ == "__main__":
     import os
     import sys
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

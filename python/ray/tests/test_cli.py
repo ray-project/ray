@@ -18,6 +18,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
+import json
 import multiprocessing as mp
 import multiprocessing.connection
 import os
@@ -25,16 +26,17 @@ import re
 import sys
 import tempfile
 import threading
-import json
 import time
 import uuid
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import moto
+import psutil
 import pytest
 from click.testing import CliRunner
 from moto import mock_ec2, mock_iam
@@ -42,18 +44,15 @@ from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
+import ray._private.ray_constants as ray_constants
+import ray._private.utils as utils
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
-import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
-import ray._private.utils as utils
-from ray.util.check_open_ports import check_open_ports
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
+from ray.util.check_open_ports import check_open_ports
 from ray.util.state import list_nodes
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-import psutil
 
 boto3_list = [
     {

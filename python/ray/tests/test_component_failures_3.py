@@ -117,6 +117,7 @@ def test_dying_worker(ray_start_2_cpus):
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

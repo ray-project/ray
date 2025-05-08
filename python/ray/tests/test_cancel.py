@@ -1,23 +1,23 @@
+import _thread
 import os
 import random
 import signal
 import sys
 import threading
-import _thread
 import time
 
 import pytest
 
 import ray
-from ray.exceptions import (
-    TaskCancelledError,
-    RayTaskError,
-    GetTimeoutError,
-    WorkerCrashedError,
-    ObjectLostError,
-)
-from ray._private.utils import DeferSigint
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.utils import DeferSigint
+from ray.exceptions import (
+    GetTimeoutError,
+    ObjectLostError,
+    RayTaskError,
+    TaskCancelledError,
+    WorkerCrashedError,
+)
 from ray.util.state import list_tasks
 
 

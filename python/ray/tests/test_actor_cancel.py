@@ -1,8 +1,8 @@
 import asyncio
+import concurrent.futures
 import os
 import sys
 import time
-import concurrent.futures
 from collections import defaultdict
 
 import pytest

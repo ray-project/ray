@@ -10,8 +10,8 @@ import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.util.state import list_actors
 import ray.cluster_utils
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray._private.test_utils import (
     SignalActor,
     convert_actor_state,
@@ -21,8 +21,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
 )
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.util.state import list_actors
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):

@@ -6,8 +6,8 @@ import re
 import sys
 import threading
 import time
-from unittest.mock import Mock
 from typing import Type
+from unittest.mock import Mock
 
 import numpy as np
 import pytest

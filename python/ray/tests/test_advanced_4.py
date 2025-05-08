@@ -7,8 +7,8 @@ import ray
 from ray._private.test_utils import (
     Semaphore,
     client_test_enabled,
-    wait_for_condition,
     get_gcs_memory_used,
+    wait_for_condition,
 )
 from ray.experimental.internal_kv import _internal_kv_list
 
@@ -268,6 +268,7 @@ def test_function_table_gc_actor(call_ray_start):
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

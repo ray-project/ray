@@ -7,27 +7,25 @@ import tempfile
 import numpy as np
 import pytest
 
+# NOTE: We have to import setproctitle after ray because we bundle setproctitle
+# with ray.
+import setproctitle  # noqa
+
 import ray
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
 from ray._private.test_utils import (
+    SignalActor,
     client_test_enabled,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
-from ray.actor import ActorClassInheritanceException
-from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._private.test_utils import SignalActor
-from ray.core.generated import gcs_pb2
 from ray._private.utils import hex_to_binary
-from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
-
+from ray.actor import ActorClassInheritanceException
+from ray.core.generated import gcs_pb2
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.state import list_actors
-
-
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)

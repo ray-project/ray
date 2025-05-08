@@ -11,15 +11,15 @@ import pytest
 import ray._private.profiling as profiling
 import ray.cluster_utils
 from ray._private.internal_api import (
-    memory_summary,
     get_local_ongoing_lineage_reconstruction_tasks,
+    memory_summary,
 )
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_condition,
 )
-from ray.exceptions import ObjectFreedError
 from ray.core.generated import common_pb2
+from ray.exceptions import ObjectFreedError
 
 if client_test_enabled():
     from ray.util.client import ray

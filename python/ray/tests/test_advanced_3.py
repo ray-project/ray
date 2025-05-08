@@ -1,14 +1,15 @@
 # coding: utf-8
+import importlib
 import logging
 import os
 import pickle
 import socket
 import sys
 import time
-import importlib
 
 import numpy as np
 import pytest
+import setproctitle
 
 import ray
 import ray._private.ray_constants
@@ -16,8 +17,6 @@ import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
-
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
