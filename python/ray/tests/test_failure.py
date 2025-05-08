@@ -787,7 +787,7 @@ def test_update_object_location_batch_failure(
 
         @ray.remote(num_cpus=1)
         def create_large_object():
-            return ray.put(np.zeros(100 * 1024 * 1024, dtype=np.uint8))
+            return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
 
         @ray.remote(num_cpus=0)
         def consume_large_object(obj):
