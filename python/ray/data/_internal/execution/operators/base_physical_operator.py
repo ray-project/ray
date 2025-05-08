@@ -1,3 +1,4 @@
+import abc
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -10,6 +11,13 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+
+class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
+    @abc.abstractmethod
+    def internal_queue_size(self) -> int:
+        """Returns Operator's internal queue size"""
+        ...
 
 
 class OneToOneOperator(PhysicalOperator):
@@ -39,7 +47,7 @@ class OneToOneOperator(PhysicalOperator):
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(PhysicalOperator):
+class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -95,6 +103,9 @@ class AllToAllOperator(PhysicalOperator):
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
+
+    def internal_queue_size(self) -> int:
+        return len(self._input_buffer)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(

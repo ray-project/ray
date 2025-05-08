@@ -135,7 +135,10 @@ class ActorPoolMapOperator(MapOperator):
         self._inputs_done = False
 
     def internal_queue_size(self) -> int:
-        return len(self._bundle_queue)
+        # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
+        #   - Input blocks bundler, alas
+        #   - Own bundle's queue
+        return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
 
     def completed(self) -> bool:
         # TODO separate marking as completed from the check

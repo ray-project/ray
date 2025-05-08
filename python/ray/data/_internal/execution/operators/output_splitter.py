@@ -9,6 +9,9 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
@@ -17,7 +20,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-class OutputSplitter(PhysicalOperator):
+class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
     The output bundles of this operator will have a `bundle.output_split_idx` attr
