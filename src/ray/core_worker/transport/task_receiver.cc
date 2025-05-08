@@ -62,11 +62,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
                              const TaskSpecification &task_spec,
                              const rpc::SendReplyCallback &send_reply_callback) mutable {
-    if (task_spec.GetMessage().skip_execution()) {
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
-    }
-
     auto num_returns = task_spec.NumReturns();
     RAY_CHECK(num_returns >= 0);
 

@@ -5,6 +5,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKI
 
 import ray
 import re
+from concurrent.futures.thread import ThreadPoolExecutor
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -205,6 +206,11 @@ class VLLMEngine(LLMEngine):
         # Also need local instance of the tokenizer to manage prompt formatting.
         self._tokenizer = None
 
+        self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
+        self._atokenize = vllm.utils.make_async(
+            self._tokenize, executor=self._tokenizer_executor
+        )
+
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         """Run the node initializer.
@@ -214,6 +220,12 @@ class VLLMEngine(LLMEngine):
         It's a static method so it can be overridden for testing.
         """
         return await initialize_node_util(llm_config)
+
+    def _tokenize(
+        self, prompt_text: str, add_special_tokens: bool = False
+    ) -> List[int]:
+        encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
+        return encoded.input_ids
 
     async def start(self):
         """Start the vLLM engine.
@@ -504,8 +516,11 @@ class VLLMEngine(LLMEngine):
         else:
             prompt_text = prompt.prompt
 
+        prompt_token_ids = await self._atokenize(prompt_text)
+
         request_params = {
             "prompt": prompt_text,
+            "prompt_token_ids": prompt_token_ids,
             "request_id": request_id,
             "sampling_params": VLLMSamplingParams.from_prompt(prompt),
             "disk_multiplex_config": disk_lora_model,
@@ -538,12 +553,21 @@ class VLLMEngine(LLMEngine):
             logger.info(
                 f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
             )
-        # Construct a results generator from vLLM
-        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
-            prompt=vllm.inputs.TextPrompt(
+
+        if request.prompt_token_ids is not None:
+            prompt = vllm.inputs.TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=request.multi_modal_data,
+            )
+        else:
+            prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multi_modal_data,
-            ),
+            )
+
+        # Construct a results generator from vLLM
+        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
+            prompt=prompt,
             sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore

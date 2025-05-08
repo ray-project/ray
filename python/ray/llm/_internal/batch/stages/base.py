@@ -68,9 +68,9 @@ class StatefulStageUDF:
 
     Args:
         data_column: The internal data column name of the processor. The
-        __call__ method will take the data column as the input of the udf
-        method, and encapsulate the output of the udf method into the data
-        column for the next stage.
+                     __call__ method takes the data column as the input of the UDF
+                     method, and encapsulates the output of the UDF method into the data
+                     column for the next stage.
         expected_input_keys: The expected input keys of the stage.
     """
 

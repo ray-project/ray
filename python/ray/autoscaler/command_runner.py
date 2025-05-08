@@ -46,7 +46,7 @@ class CommandRunnerInterface:
             ssh_options_override_ssh_key: if provided, overwrites
                 SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
             shutdown_after_run: if provided, shutdowns down the machine
-            after executing the command with `sudo shutdown -h now`.
+                after executing the command with `sudo shutdown -h now`.
         """
         raise NotImplementedError
 

@@ -87,7 +87,7 @@ class ImageDatasource(FileBasedDatasource):
             image = image.convert(self.mode)
 
         builder = DelegatingBlockBuilder()
-        array = np.array(image)
+        array = np.asarray(image)
         item = {"image": array}
         builder.add(item)
         block = builder.build()

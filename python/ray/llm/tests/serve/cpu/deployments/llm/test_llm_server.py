@@ -271,10 +271,6 @@ class TestLLMServer:
             model_loading_config=ModelLoadingConfig(
                 model_id="test_model",
             ),
-            experimental_configs={
-                # Maximum batching
-                "stream_batching_interval_ms": 10000,
-            },
         )
 
         server = await create_server(llm_config, engine_cls=MockVLLMEngine)
