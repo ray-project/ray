@@ -1366,7 +1366,9 @@ def test_map_batches_block_bundling_auto(
     # Blocks should be bundled up to the batch size.
     ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
     assert ds1._plan.initial_num_blocks() == math.ceil(
-        num_blocks / max(batch_size // block_size, 1)
+        # If batch_size > block_size, then multiple blocks will be clumped
+        # together to make sure there are at least batch_size rows
+        num_blocks / max(math.ceil(batch_size / block_size), 1)
     )
 
     # Blocks should not be bundled up when batch_size is not specified.
