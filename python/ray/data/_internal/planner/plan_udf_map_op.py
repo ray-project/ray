@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class MapTransformerWrapper: #TODO(mowen): Not sure if I love this name, don't want to overload the MapTransformer class so keeping for now.
+class MapTransformerWrapper:  # TODO(mowen): Not sure if I love this name, don't want to overload the MapTransformer class so keeping for now.
     # Allow all to be None so we don't have to overwrite on construction in _parse_op_fn
     fn: Optional[Callable[[Any], Any]] = None
     init_fn: Optional[Callable[[], None]] = None
@@ -226,7 +226,9 @@ def plan_udf_map_op(
     init_fn = wrapper.init_fn
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn, wrapper.map_actor_context)
+        transform_fn = _generate_transform_fn_for_map_batches(
+            fn, wrapper.map_actor_context
+        )
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             op._batch_size,
@@ -238,7 +240,9 @@ def plan_udf_map_op(
         if isinstance(op, MapRows):
             transform_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(fn, wrapper.map_actor_context)
+            transform_fn = _generate_transform_fn_for_flat_map(
+                fn, wrapper.map_actor_context
+            )
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -404,7 +408,9 @@ def _generate_transform_fn_for_map_batches(
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output, map_actor_context)
+        transform_fn = _generate_transform_fn_for_async_map(
+            fn, _validate_batch_output, map_actor_context
+        )
 
     else:
 
@@ -545,7 +551,9 @@ def _generate_transform_fn_for_flat_map(
 ) -> MapTransformCallable[Row, Row]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output, map_actor_context)
+        transform_fn = _generate_transform_fn_for_async_map(
+            fn, _validate_row_output, map_actor_context
+        )
 
     else:
 
