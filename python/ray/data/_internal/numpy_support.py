@@ -102,7 +102,7 @@ def _convert_datetime_to_np_datetime(datetime_list: List[datetime]) -> np.ndarra
 
     Args:
         datetime_list (List[datetime]): A list of `datetime` objects to be converted.
-        Each `datetime` object represents a specific point in time.
+            Each `datetime` object represents a specific point in time.
 
     Returns:
         np.ndarray: A NumPy array containing the `datetime64` values of the datetime
@@ -128,7 +128,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         The input as an np.ndarray if possible, otherwise the original input.
 
     Raises:
-        ValueError if an input was array-like but we failed to convert it to an array.
+        ValueError: If an input was array-like but we failed to convert it to an array.
     """
 
     if isinstance(column_values, np.ndarray):
