@@ -302,7 +302,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         grid_pos=GridPos(8, 5, 8, 8),
     ),
-    Panel(
+    Panel( #???
         id=6,
         title="Node network",
         description='Network speed per node. Ignores "Application" variable.',
