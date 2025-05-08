@@ -1,5 +1,6 @@
 import warnings
 from typing import Any, Dict, List, Optional, Union, Sequence
+from collections.abc import Sequence as ABCSequence
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,7 @@ import pyarrow
 
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+from ray.data.collate_fn import TensorBatchType, TensorBatchReturnType
 
 
 def get_devices() -> List[torch.device]:
@@ -365,33 +367,6 @@ def arrow_batch_to_tensors(
         )
 
 
-def numpy_batch_to_torch_tensors(
-    batch: Dict[str, np.ndarray],
-    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[Union[str, "torch.device"]] = None,
-) -> Dict[str, List[torch.Tensor]]:
-    """Convert a dictionary of numpy arrays to PyTorch tensors.
-
-    Args:
-        batch: Dictionary mapping column names to numpy arrays
-        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
-            will be inferred from the NumPy ndarray data.
-        device: Optional device to place tensors on
-
-    Returns:
-        A dictionary of column name to list of tensors
-    """
-    from ray.air._internal.torch_utils import (
-        convert_ndarray_batch_to_torch_tensor_batch,
-    )
-
-    return convert_ndarray_batch_to_torch_tensor_batch(
-        batch,
-        dtypes=dtypes,
-        device=device,
-    )
-
-
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
@@ -439,21 +414,12 @@ def concat_tensors_to_device(
     return result
 
 
-TensorBatchType = Union[
-    torch.Tensor,
-    Sequence[torch.Tensor],
-    Sequence[Sequence[torch.Tensor]],
-    Dict[str, torch.Tensor],
-    Dict[str, List[torch.Tensor]],
-]
-
-
 @torch.no_grad()
 def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
-) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
     Args:
@@ -474,40 +440,58 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
-    if isinstance(batch, dict):
+    if isinstance(batch, torch.Tensor):
+        return batch.to(device=device, non_blocking=non_blocking)
+
+    elif isinstance(batch, dict):
+        new_batch = {}
         for k, v in batch.items():
-            if isinstance(v, list):
+            if isinstance(v, torch.Tensor):
+                new_batch[k] = v.to(device=device, non_blocking=non_blocking)
+
+            elif isinstance(v, ABCSequence) and not isinstance(v, (str, bytes)):
                 if all(isinstance(t, torch.Tensor) for t in v):
-                    batch[k] = concat_tensors_to_device(
+                    new_batch[k] = concat_tensors_to_device(
                         v, device=device, non_blocking=non_blocking
                     )
                 else:
                     raise TypeError(
-                        f"Expected list of torch.Tensor for key '{k}', got {[type(t) for t in v]}"
+                        f"Expected a sequence of torch.Tensor for key '{k}', "
+                        f"but got sequence of types: {[type(t) for t in v]}"
                     )
-            elif isinstance(v, torch.Tensor):
-                batch[k] = v.to(device=device, non_blocking=non_blocking)
-            else:
-                raise TypeError(f"Unsupported value type for key '{k}': {type(v)}")
 
-    elif isinstance(batch, (Sequence)):
+            else:
+                raise TypeError(
+                    f"Unsupported type for key '{k}': expected torch.Tensor or "
+                    f"sequence of torch.Tensor, but got {type(v)}"
+                )
+        return new_batch
+
+    elif isinstance(batch, ABCSequence) and not isinstance(batch, (str, bytes)):
         if all(isinstance(t, torch.Tensor) for t in batch):
-            batch = concat_tensors_to_device(
+            return concat_tensors_to_device(
                 batch, device=device, non_blocking=non_blocking
             )
+
         elif all(
-            isinstance(seq, (Sequence))
+            isinstance(seq, ABCSequence)
+            and not isinstance(seq, (str, bytes))
             and all(isinstance(t, torch.Tensor) for t in seq)
             for seq in batch
         ):
-            batch = tuple(
+            return tuple(
                 concat_tensors_to_device(seq, device=device, non_blocking=non_blocking)
                 for seq in batch
             )
-        else:
-            raise TypeError(f"Unsupported batch structure: {type(batch)}")
-    else:
-        assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
-        batch = batch.to(device=device, non_blocking=non_blocking)
 
-    return batch
+        else:
+            sample_type = type(batch[0]) if batch else "empty"
+            raise TypeError(
+                f"Unsupported sequence structure. Got: {type(batch)} with inner type "
+                f"{sample_type}"
+            )
+
+    else:
+        raise TypeError(
+            f"Batch must be one of {TensorBatchType} types, got {type(batch)}"
+        )

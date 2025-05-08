@@ -30,6 +30,9 @@ from ray.data.collate_fn import (
     DefaultCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
+    TensorBatchReturnType,
+    TensorBatchType,
+    is_tensor_batch_type,
 )
 from ray.data.context import DataContext
 from ray.util.annotations import PublicAPI, RayDeprecationWarning
@@ -328,8 +331,7 @@ class DataIterator(abc.ABC):
                 3. pd.DataFrame, where you should provide a callable class that
                    subclasses `PandasBatchCollateFn`
 
-                The output can be any type. If the output is a `torch.Tensor`,
-                `dict[str, torch.Tensor]`, or `list/tuple[torch.Tensor]`, it will be
+                The output can be any type. If the output is a `TensorBatchType`, it will be
                 automatically moved to the current worker's device. For other types,
                 you must handle device transfer manually in your training loop.
                 Note: This function is called in a multi-threaded context; avoid using
@@ -364,7 +366,6 @@ class DataIterator(abc.ABC):
             device = get_device()
 
         from ray.air._internal.torch_utils import (
-            TensorBatchType,
             move_tensors_to_device,
         )
 
@@ -373,21 +374,26 @@ class DataIterator(abc.ABC):
         # to allow independent parallelism of these steps.
         def default_finalize_fn(
             batch: TensorBatchType,
-        ) -> Union[Dict[str, "torch.Tensor"], Any]:
-            """Default finalize function for moving PyTorch tensors to device.
+        ) -> Union[TensorBatchReturnType, Any]:
+            """Default finalize function for moving PyTorch tensors to device. If
+            batch is of type `TensorBatchType`, it will be automatically moved to the
+            current worker's device. For other types, you must handle device transfer
+            manually in your training loop.
 
             Args:
                 batch: Input batch to move to device.
 
             Returns:
-                Batch with tensors moved to the target device. Type matches input type:
-                - If input is Dict[str, List[torch.Tensor]],
-                  returns Dict[str, torch.Tensor]
-                - Otherwise returns the same type as input with tensors moved to device
+                Batch with tensors moved to the target device.
+                - If input is TensorBatchType, returns tensors moved to device
+                - Otherwise returns the same type as input without moving tensors
+                to device.
             """
-            return move_tensors_to_device(batch, device=device)
+            if is_tensor_batch_type(batch):
+                return move_tensors_to_device(batch, device=device)
+            else:
+                return batch
 
-        finalize_fn = None
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
             # Here, we defer host to device data transfer to the subsequent
@@ -396,19 +402,15 @@ class DataIterator(abc.ABC):
                 dtypes=dtypes,
                 device=device,
             )
-            finalize_fn = default_finalize_fn
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
             # The ArrowBatchCollateFn handles formatting and Tensor creation.
             # Here, we defer host to device data transfer to the subsequent
             # finalize_fn.
-            finalize_fn = default_finalize_fn
             batch_format = "pyarrow"
         elif isinstance(collate_fn, NumpyBatchCollateFn):
-            finalize_fn = default_finalize_fn
             batch_format = "numpy"
         elif isinstance(collate_fn, PandasBatchCollateFn):
-            finalize_fn = default_finalize_fn
             batch_format = "pandas"
         elif callable(collate_fn):
             batch_format = "numpy"
@@ -430,7 +432,7 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=finalize_fn,
+            _finalize_fn=default_finalize_fn,
         )
 
     def iter_tf_batches(

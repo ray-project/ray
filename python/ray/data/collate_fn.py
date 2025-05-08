@@ -1,5 +1,17 @@
 import abc
-from typing import TYPE_CHECKING, Dict, Generic, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -15,6 +27,72 @@ if TYPE_CHECKING:
 
 
 DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
+
+
+TensorBatchType = Union[
+    "torch.Tensor",
+    Sequence["torch.Tensor"],
+    Sequence[Sequence["torch.Tensor"]],
+    Dict[str, "torch.Tensor"],
+    Dict[str, List["torch.Tensor"]],
+]
+
+
+def is_tensor_batch_type(batch: Any) -> bool:
+    """Check if a batch matches any of the TensorBatchType variants.
+
+    This function checks if the input batch is one of the following types:
+    1. A single torch.Tensor
+    2. A sequence of torch.Tensors
+    3. A sequence of sequences of torch.Tensors
+    4. A dictionary of torch.Tensors
+    5. A dictionary of sequences of torch.Tensors
+
+    Args:
+        batch: The input batch to check. Can be any type.
+
+    Returns:
+        bool: True if the batch matches any TensorBatchType variant, False otherwise.
+    """
+    import torch
+
+    if isinstance(batch, torch.Tensor):
+        return True
+
+    # A sequence of tensors or sequence of sequences of tensors
+    if isinstance(batch, Sequence) and not isinstance(batch, (str, bytes)):
+        return all(
+            isinstance(t, torch.Tensor)  # Direct tensor
+            or (
+                isinstance(t, Sequence)  # Nested sequence
+                and all(isinstance(tt, torch.Tensor) for tt in t)
+            )
+            for t in batch
+        )
+
+    # A dictionary of tensors or a dictionary of sequences of tensors
+    if isinstance(batch, Mapping):
+        return all(
+            isinstance(v, torch.Tensor)  # The value is a tensor
+            or (
+                isinstance(v, Sequence)  # The value is a sequence
+                and all(isinstance(t, torch.Tensor) for t in v)
+            )
+            or (
+                isinstance(v, list)  # The value is a list
+                and all(isinstance(t, torch.Tensor) for t in v)
+            )
+            for v in batch.values()
+        )
+
+    return False
+
+
+TensorBatchReturnType = Union[
+    "torch.Tensor",
+    Tuple["torch.Tensor", ...],
+    Dict[str, "torch.Tensor"],
+]
 
 
 @DeveloperAPI
@@ -38,7 +116,11 @@ class CollateFn(Generic[DataBatchType]):
 
 @DeveloperAPI
 class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
-    """Collate function that takes pyarrow.Table as the input batch type."""
+    """Collate function that takes pyarrow.Table as the input batch type.
+    Arrow tables with chunked arrays can be efficiently transferred to GPUs without
+    combining the chunks with the `arrow_batch_to_tensors` utility function.
+    See `DefaultCollateFn` for example.
+    """
 
     def __call__(self, batch: "pyarrow.Table") -> "CollatedData":
         """Convert a batch of pyarrow.Table to collated format.
