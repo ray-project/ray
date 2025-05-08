@@ -114,7 +114,7 @@ def _convert_datetime_to_np_datetime(datetime_list: List[datetime]) -> np.ndarra
 
     # Convert each datetime to the corresponding numpy datetime64 with the appropriate
     # precision
-    return np.array([_convert_to_datetime64(dt, precision) for dt in datetime_list])
+    return np.asarray([_convert_to_datetime64(dt, precision) for dt in datetime_list])
 
 
 def convert_to_numpy(column_values: Any) -> np.ndarray:
@@ -180,7 +180,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 # This util works around some limitations of np.array(dtype=object).
                 return create_ragged_ndarray(column_values)
             else:
-                return np.array(column_values)
+                return np.asarray(column_values)
 
         except Exception as e:
             logger.error(
