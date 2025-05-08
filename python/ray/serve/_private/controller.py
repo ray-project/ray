@@ -51,11 +51,14 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
-from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, DeploymentRoute
-from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
-from ray.serve.generated.serve_pb2 import EndpointSet
+from ray.serve.generated.serve_pb2 import (
+    ActorNameList,
+    DeploymentArgs,
+    DeploymentRoute,
+    EndpointInfo as EndpointInfoProto,
+    EndpointSet,
+)
 from ray.serve.schema import (
-    TargetGroup,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -65,6 +68,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TargetGroup,
     gRPCOptionsSchema,
 )
 from ray.util import metrics
@@ -984,7 +988,7 @@ class ServeController:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
-            is NOT_STARTED.
+                  is NOT_STARTED.
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)

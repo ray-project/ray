@@ -1,12 +1,8 @@
 import ray
-
-from ray.serve._private.constants import (
-    SERVE_CONTROLLER_NAME,
-    SERVE_NAMESPACE,
-)
+from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.schema import LoggingConfig
 from ray.serve.config import HTTPOptions
+from ray.serve.schema import LoggingConfig
 
 
 @ray.remote(num_cpus=0)

@@ -335,9 +335,9 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     def get_bundle_loc(bundle):
         block = ray.get(bundle.blocks[0][0])
         fval = list(block["id"])[0]
-        return get_fake_loc(fval)
+        return [get_fake_loc(fval)]
 
-    op._get_location = get_bundle_loc
+    op._get_locations = get_bundle_loc
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
@@ -553,10 +553,13 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
 
 
-def test_actor_pool_map_operator_init(ray_start_regular_shared):
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
     from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
