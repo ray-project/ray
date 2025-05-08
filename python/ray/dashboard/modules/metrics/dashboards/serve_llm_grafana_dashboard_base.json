@@ -39,6 +39,42 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "name": "model_name",
+        "label": "Model",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_vllm:request_prompt_tokens_sum, model_name)",
+        "query": {
+          "query": "label_values(ray_vllm:request_prompt_tokens_sum, model_name)"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "<choose a model>",
+          "value": "<choose a model>"
+        }
+      },
+      {
+        "name": "workerid",
+        "label": "Worker ID",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_rayllm_tokens_input_total, WorkerId)",
+        "query": {
+          "query": "label_values(ray_rayllm_tokens_input_total, WorkerId)"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "<choose a worker>",
+          "value": "<choose a worker>"
+        }
       }
     ]
   },

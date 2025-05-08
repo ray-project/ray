@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import List, Optional
 
 
@@ -9,6 +10,28 @@ class GridPos:
     w: int
     h: int
 
+
+GRAPH_TARGET_TEMPLATE = {
+    "exemplar": True,
+    "expr": "0",
+    "interval": "",
+    "legendFormat": "",
+    "queryType": "randomWalk",
+    "refId": "A",
+}
+
+HEATPMAP_TARGET_TEMPLATE = {
+    "format": "heatmap",
+    "fullMetaSearch": False,
+    "includeNullMetadata": True,
+    "instant": False,
+    "range": True,
+    "useBackend": False
+}
+
+class TargetTemplate(Enum):
+    GRAPH = GRAPH_TARGET_TEMPLATE
+    HEATMAP = HEATPMAP_TARGET_TEMPLATE
 
 @dataclass
 class Target:
@@ -26,7 +49,185 @@ class Target:
 
     expr: str
     legend: str
+    template: Optional[TargetTemplate] = TargetTemplate.GRAPH
 
+HEATMAP_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {"defaults": {}, "overrides": []},
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 12,
+    "options": {
+        "calculate": False,
+        "cellGap": 1,
+        "cellValues": {
+            "unit": "none"
+        },
+        "color": {
+            "exponent": 0.5,
+            "fill": "dark-orange",
+            "min": 0,
+            "mode": "scheme",
+            "reverse": False,
+            "scale": "exponential",
+            "scheme": "Spectral",
+            "steps": 64
+        },
+        "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+            "le": 1e-9
+        },
+        "legend": {
+            "show": True
+        },
+        "rowsFrame": {
+            "layout": "auto",
+            "value": "Request count"
+        },
+        "tooltip": {
+            "mode": "single",
+            "showColorScale": False,
+            "yHistogram": True
+        },
+        "yAxis": {
+            "axisPlacement": "left",
+            "reverse": False,
+            "unit": "none"
+        }
+    },
+    "pluginVersion": "11.2.0",
+    "targets": [],
+    "title": "<Title>",
+    "type": "heatmap",
+    "yaxes": [
+    {
+        "$$hashKey": "object:628",
+        "format": "units",
+        "label": "",
+        "logBase": 1,
+        "max": None,
+        "min": "0",
+        "show": True,
+    },
+    {
+        "$$hashKey": "object:629",
+        "format": "short",
+        "label": None,
+        "logBase": 1,
+        "max": None,
+        "min": None,
+        "show": True,
+    },
+],
+}
+
+
+GRAPH_PANEL_TEMPLATE = {
+    "aliasColors": {},
+    "bars": False,
+    "dashLength": 10,
+    "dashes": False,
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {"defaults": {}, "overrides": []},
+    "fill": 10,
+    "fillGradient": 0,
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "hiddenSeries": False,
+    "id": 26,
+    "legend": {
+        "alignAsTable": True,
+        "avg": False,
+        "current": True,
+        "hideEmpty": False,
+        "hideZero": True,
+        "max": False,
+        "min": False,
+        "rightSide": False,
+        "show": True,
+        "sort": "current",
+        "sortDesc": True,
+        "total": False,
+        "values": True,
+    },
+    "lines": True,
+    "linewidth": 1,
+    "nullPointMode": "null",
+    "options": {"alertThreshold": True},
+    "percentage": False,
+    "pluginVersion": "7.5.17",
+    "pointradius": 2,
+    "points": False,
+    "renderer": "flot",
+    "seriesOverrides": [
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX",
+            "dashes": True,
+            "color": "#1F60C4",
+            "fill": 0,
+            "stack": False,
+        },
+        {
+            "$$hashKey": "object:78",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
+            "hiddenSeries": True,
+        },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX + PENDING",
+            "dashes": True,
+            "color": "#777777",
+            "fill": 0,
+            "stack": False,
+        },
+    ],
+    "spaceLength": 10,
+    "stack": True,
+    "steppedLine": False,
+    "targets": [],
+    "thresholds": [],
+    "timeFrom": None,
+    "timeRegions": [],
+    "timeShift": None,
+    "title": "<Title>",
+    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
+    "type": "graph",
+    "xaxis": {
+        "buckets": None,
+        "mode": "time",
+        "name": None,
+        "show": True,
+        "values": [],
+    },
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "units",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+    "yaxis": {"align": False, "alignLevel": None},
+}
+
+class PanelTemplate(Enum):
+    GRAPH = GRAPH_PANEL_TEMPLATE
+    HEATMAP = HEATMAP_TEMPLATE
 
 @dataclass
 class Panel:
@@ -54,6 +255,7 @@ class Panel:
     stack: bool = True
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
+    template: Optional[PanelTemplate] = PanelTemplate.GRAPH
 
 
 @dataclass
