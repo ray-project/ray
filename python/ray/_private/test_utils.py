@@ -674,16 +674,17 @@ def get_metric_check_condition(
     metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
+
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A list of MetricSamplePattern. The fields that
-      aren't `None` will be matched.
+        metrics_to_check: A list of MetricSamplePattern. The fields that
+            aren't `None` will be matched.
+        export_addr: Optional address to export metrics to.
 
     Returns:
-      A function that returns True if all the metrics are emitted.
-
+        A function that returns True if all the metrics are emitted.
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -1567,7 +1568,6 @@ class WorkerKillerActor(ResourceKillerActor):
                 ("name", "!=", "WorkerKillActor.run"),
             ]
         )
-
     async def _find_resources_to_kill(self):
         from ray.util.state.common import StateResource
 
@@ -2136,3 +2136,4 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
