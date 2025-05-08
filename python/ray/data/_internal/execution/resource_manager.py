@@ -411,12 +411,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
-        # Whether each operator has reserved the minimum resources to run
-        # at least one task.
+        # Whether each operator's reservation satisfies the min resource requirement.
         # This is used to avoid edge cases where the entire resource limits are not
         # enough to run one task of each op.
         # See `test_no_deadlock_on_small_cluster_resources` as an example.
-        self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
+        self._reservation_satisfies_min_requirement: Dict[PhysicalOperator, bool] = {}
 
         self._idle_detector = self.IdleDetector()
 
@@ -440,7 +439,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
-        self._reserved_min_resources.clear()
+        self._reservation_satisfies_min_requirement.clear()
         remaining = global_limits.copy()
 
         if len(eligible_ops) == 0:
@@ -464,26 +463,17 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
             reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
 
-            # Check if the remaining resources are enough for both reserved_for_tasks
-            # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
-            # object_store_memory, because object_store_memory can be oversubscribed,
-            # but CPU/GPU cannot.
+            # Check if the remaining resources are enough for the minimum resource
+            # requirement (reserved_for_tasks + reserved_for_outputs).
+            # Note, we ignore object_store_memory, because the task can still run
+            # when object_store_memory is insufficient, in which case objects will be
+            # spilled to the disk.
             if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
                 remaining, ignore_object_store_memory=True
             ):
-                self._reserved_min_resources[op] = True
+                self._reservation_satisfies_min_requirement[op] = True
             else:
-                # If the remaining resources are not enough to reserve the minimum
-                # resources for this operator, we'll only reserve the minimum object
-                # store memory, but not the CPU and GPU resources.
-                # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
-                # NOTE: we prioritize upstream operators for minimum resource reservation.
-                # ops. It's fine that downstream ops don't get the minimum reservation,
-                # because they can wait for upstream ops to finish and release resources.
-                self._reserved_min_resources[op] = False
-                reserved_for_tasks = ExecutionResources(
-                    0, 0, min_resource_usage.object_store_memory
-                )
+                self._reservation_satisfies_min_requirement[op] = False
                 if index == 0:
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
@@ -519,7 +509,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # backpressure by allowing reading at least 1 block. So the current operator
         # can finish at least one task and yield resources to the downstream operators.
         for next_op in self._get_downstream_eligible_ops(op):
-            if not self._reserved_min_resources[next_op]:
+            if not self._reservation_satisfies_min_requirement[next_op]:
                 # Case 1: the downstream operator hasn't reserved the minimum resources
                 # to run at least one task.
                 return True
