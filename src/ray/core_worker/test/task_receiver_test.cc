@@ -16,20 +16,14 @@
 #include <string>
 #include <vector>
 
-// clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/reference_count.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/normal_task_submitter.h"
-#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
-#include "mock/ray/core_worker/actor_creator.h"
-#include "mock/ray/core_worker/task_manager.h"
-#include "mock/ray/core_worker/reference_count.h"
-// clang-format on
 
 namespace ray {
 namespace core {

@@ -282,6 +282,15 @@ void ActorTaskSubmitter::FailInflightTasks(
   }
 }
 
+size_t ActorTaskSubmitter::NumInflightTasks(const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto queue = client_queues_.find(actor_id);
+  if (queue == client_queues_.end()) {
+    return 0;
+  }
+  return queue->second.inflight_task_callbacks.size();
+}
+
 void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                       const rpc::Address &address,
                                       int64_t num_restarts) {
