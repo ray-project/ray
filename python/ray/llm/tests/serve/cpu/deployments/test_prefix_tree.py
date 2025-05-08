@@ -276,7 +276,7 @@ def test__remove_tenant_single_node(tree: PrefixTree) -> None:
     # 1. Test removing a single node
     tree._reset()
     tree.insert("hello", "tenant_1", 1)
-    h_node: Node = tree.insert("hello", "tenant_1", 1)
+    h_node: Node = tree.root.edge_label_to_child["h"]
 
     removed: int = tree._remove_tenant_single_node("tenant_1", h_node)
     assert removed == 5

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import heapq
 import logging
 import os
 from threading import RLock
@@ -42,6 +41,13 @@ class Node:
         ] = (
             {}
         )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in seconds)
+        # Doubly linked list pointers for LRU tracking per tenant
+        self.tenant_to_older_node: Dict[
+            str, Optional[Node]
+        ] = {}  # Points to the less recently used node (toward tail for eviction)
+        self.tenant_to_newer_node: Dict[
+            str, Optional[Node]
+        ] = {}  # Points to the more recently used node (toward head for retention)
 
 
 class TimestampedNode:
@@ -123,6 +129,10 @@ class PrefixTree:
             {}
         )  # Maps tenant to set of nodes. Used for O(1) testing if a node belongs to a tenant. The keys are the active tenants in the tree.
 
+        # LRU tracking - head is the most recently used node, tail is the least recently used
+        self.tenant_to_lru_head: Dict[str, Optional[Node]] = {}
+        self.tenant_to_lru_tail: Dict[str, Optional[Node]] = {}
+
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
         """
@@ -147,6 +157,8 @@ class PrefixTree:
             self.root = Node()
             self.tenant_to_char_count = {}
             self.tenant_to_nodes = {}
+            self.tenant_to_lru_head = {}
+            self.tenant_to_lru_tail = {}
 
     def _add_tenant(self, tenant: str) -> None:
         """
@@ -164,6 +176,57 @@ class PrefixTree:
 
             self.tenant_to_char_count[tenant] = 0
             self.tenant_to_nodes[tenant] = set()
+            self.tenant_to_lru_head[tenant] = None
+            self.tenant_to_lru_tail[tenant] = None
+
+    def _move_node_to_head(self, node: Node, tenant: str) -> None:
+        """
+        Move a node to the head of the tenant's LRU list.
+
+        Args:
+            node: Node to move
+            tenant: Tenant that owns the node
+        """
+        # If this is the first node, initialize the LRU list
+        if self.tenant_to_lru_head.get(tenant) is None:
+            self.tenant_to_lru_head[tenant] = node
+            self.tenant_to_lru_tail[tenant] = node
+            node.tenant_to_older_node[tenant] = None
+            node.tenant_to_newer_node[tenant] = None
+            return
+
+        # If node is already the head, nothing to do
+        if node == self.tenant_to_lru_head[tenant]:
+            return
+
+        # If node is already in the list, remove it
+        if tenant in node.tenant_to_older_node or tenant in node.tenant_to_newer_node:
+            # Connect older and newer nodes directly (skip this node)
+            older = node.tenant_to_older_node.get(
+                tenant
+            )  # Less recently used (toward tail)
+            newer = node.tenant_to_newer_node.get(
+                tenant
+            )  # More recently used (toward head)
+
+            if older:
+                older.tenant_to_newer_node[tenant] = newer
+
+            if newer:
+                newer.tenant_to_older_node[tenant] = older
+
+            # If this is the tail, update tail pointer
+            if node == self.tenant_to_lru_tail[tenant]:
+                self.tenant_to_lru_tail[tenant] = newer
+
+        # Place at head of list
+        current_head = self.tenant_to_lru_head[tenant]
+        node.tenant_to_newer_node[tenant] = None  # Head has no newer node
+        node.tenant_to_older_node[
+            tenant
+        ] = current_head  # Old head becomes older than new head
+        current_head.tenant_to_newer_node[tenant] = node  # Connect old head to new head
+        self.tenant_to_lru_head[tenant] = node  # Update head pointer
 
     def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
         """
@@ -196,6 +259,29 @@ class PrefixTree:
             self.tenant_to_nodes[tenant].remove(node)
             node.tenant_to_last_access_time.pop(tenant, None)
 
+            # Remove from LRU list
+            older = node.tenant_to_older_node.get(
+                tenant
+            )  # Less recently used (toward tail)
+            newer = node.tenant_to_newer_node.get(
+                tenant
+            )  # More recently used (toward head)
+
+            if older:
+                older.tenant_to_newer_node[tenant] = newer
+
+            if newer:
+                newer.tenant_to_older_node[tenant] = older
+
+            # Update head/tail pointers if necessary
+            if node == self.tenant_to_lru_head[tenant]:
+                self.tenant_to_lru_head[tenant] = older  # Older becomes new head
+            if node == self.tenant_to_lru_tail[tenant]:
+                self.tenant_to_lru_tail[tenant] = newer  # Newer becomes new tail
+
+            node.tenant_to_older_node.pop(tenant, None)
+            node.tenant_to_newer_node.pop(tenant, None)
+
             # Clean up empty nodes
             if not node.tenant_to_last_access_time and node.parent:
                 if (
@@ -205,7 +291,7 @@ class PrefixTree:
 
             return removed_chars_len
 
-    def insert(self, text: str, tenant: str, time_sec: float) -> Node:
+    def insert(self, text: str, tenant: str, time_sec: float) -> None:
         """
         Insert text into tree for a specific tenant.
 
@@ -215,9 +301,6 @@ class PrefixTree:
             text: Text to insert
             tenant: Tenant
             time_sec: Current timestamp in seconds
-
-        Returns:
-            The node that was inserted or updated
 
         Loop structure:
             1. At the start of each iteration, curr_node is a node we potentially update.
@@ -246,6 +329,7 @@ class PrefixTree:
                     self.tenant_to_nodes[tenant].add(curr_node)
 
                 curr_node.tenant_to_last_access_time[tenant] = time_sec
+                self._move_node_to_head(curr_node, tenant)
 
                 if i == len(text):
                     break
@@ -290,6 +374,11 @@ class PrefixTree:
                     )
                     for existing_tenant in new_parent.tenant_to_last_access_time:
                         self.tenant_to_nodes[existing_tenant].add(new_parent)
+                        # Initialize LRU list pointers
+                        new_parent.tenant_to_older_node[existing_tenant] = None
+                        new_parent.tenant_to_newer_node[existing_tenant] = None
+                        # Move to head of LRU list for each tenant
+                        self._move_node_to_head(new_parent, existing_tenant)
 
                     # Update existing matched node
                     matched_node.text = remaining_text
@@ -306,8 +395,6 @@ class PrefixTree:
                     # Full match, continue down the tree
                     curr_node = matched_node
                     i += shared_count
-
-            return curr_node
 
     def prefix_match(
         self, text: str, available_tenants: Optional[List[str]] = None
@@ -404,13 +491,15 @@ class PrefixTree:
 
             self.tenant_to_nodes.pop(tenant, None)
             self.tenant_to_char_count.pop(tenant, None)
+            self.tenant_to_lru_head.pop(tenant, None)
+            self.tenant_to_lru_tail.pop(tenant, None)
 
             return total_chars_removed
 
     def evict_tenant_by_lru(self, tenant: str, min_remove_size: int) -> int:
         """
         Evict least recently used nodes for a tenant until minimum size is freed.
-        Time complexity: O(n + m log n) where n is the number of nodes owned by the tenant, and m is the number of nodes removed.
+        Time complexity: O(m) where m is the number of nodes removed.
 
         Args:
             tenant: The tenant to evict nodes from
@@ -443,31 +532,30 @@ class PrefixTree:
 
             total_chars_removed: int = 0
 
-            # Create a min-heap of nodes ordered by access time
-            # Each entry is a TimestampedNode(node, access_time) object, which has a __lt__ method that is used by heapq.
-            nodes_by_access_time = []
-            for node in self.tenant_to_nodes[tenant]:
-                access_time = node.tenant_to_last_access_time[tenant]
-                nodes_by_access_time.append(TimestampedNode(node, access_time))
-            heapq.heapify(nodes_by_access_time)  # O(n)
+            # Start removing from the tail (least recently used)
+            tail = self.tenant_to_lru_tail.get(tenant)
 
-            # Remove nodes until we've freed enough characters
-            while total_chars_removed < min_remove_size and nodes_by_access_time:
-                # Get the oldest (minimum) access time from the top of the heap
-                oldest_access_time = nodes_by_access_time[0].time_sec
+            # Continue until we've freed enough space or run out of nodes
+            while total_chars_removed < min_remove_size and tail:
+                # Get the current timestamp to remove all nodes with this timestamp
+                current_timestamp = tail.tenant_to_last_access_time[tenant]
+                nodes_with_same_timestamp = []
 
-                # Remove ALL nodes with this same access time to maintain tree consistency
-                # (partial removals could break prefix relationships)
+                # Collect all nodes with the same timestamp (guaranteed to be contiguous in our LRU list)
+                current = tail
                 while (
-                    nodes_by_access_time
-                    and nodes_by_access_time[0].time_sec == oldest_access_time
+                    current
+                    and current.tenant_to_last_access_time[tenant] == current_timestamp
                 ):
-                    node_to_remove = heapq.heappop(
-                        nodes_by_access_time
-                    ).node  # O(log n)
-                    total_chars_removed += self._remove_tenant_single_node(
-                        tenant, node_to_remove
-                    )
+                    nodes_with_same_timestamp.append(current)
+                    current = current.tenant_to_newer_node.get(tenant)
+
+                # Set the new tail to continue from for the next iteration (if needed)
+                tail = current
+
+                # Remove all collected nodes with the same timestamp
+                for node in nodes_with_same_timestamp:
+                    total_chars_removed += self._remove_tenant_single_node(tenant, node)
 
             return total_chars_removed
 
