@@ -32,9 +32,13 @@ DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
 TensorBatchType = Union[
     "torch.Tensor",
     Sequence["torch.Tensor"],
+    # For nested sequences of tensors, the inner sequence of tensors is combined during
+    # GPU transfer in `move_tensors_to_device`.
     Sequence[Sequence["torch.Tensor"]],
-    Dict[str, "torch.Tensor"],
-    Dict[str, List["torch.Tensor"]],
+    Mapping[str, "torch.Tensor"],
+    # For mapping (e.g., dict) of keys to sequences of tensors, the sequence of tensors
+    # is combined during GPU transfer in `move_tensors_to_device`.
+    Mapping[str, Sequence["torch.Tensor"]],
 ]
 
 
@@ -46,8 +50,8 @@ def is_tensor_batch_type(batch: Any) -> bool:
     1. A single torch.Tensor
     2. A sequence of torch.Tensors
     3. A sequence of sequences of torch.Tensors
-    4. A dictionary of torch.Tensors
-    5. A dictionary of sequences of torch.Tensors
+    4. A mapping (e.g., dict) of keys to torch.Tensors
+    5. A mapping (e.g., dict) of keys to sequences of torch.Tensors
 
     Args:
         batch: The input batch to check. Can be any type.
@@ -71,16 +75,13 @@ def is_tensor_batch_type(batch: Any) -> bool:
             for t in batch
         )
 
-    # A dictionary of tensors or a dictionary of sequences of tensors
+    # A mapping (e.g., dict) of keys to torch.Tensors or a mapping (e.g., dict) of
+    # keys to sequences of torch.Tensors
     if isinstance(batch, Mapping):
         return all(
             isinstance(v, torch.Tensor)  # The value is a tensor
             or (
                 isinstance(v, Sequence)  # The value is a sequence
-                and all(isinstance(t, torch.Tensor) for t in v)
-            )
-            or (
-                isinstance(v, list)  # The value is a list
                 and all(isinstance(t, torch.Tensor) for t in v)
             )
             for v in batch.values()

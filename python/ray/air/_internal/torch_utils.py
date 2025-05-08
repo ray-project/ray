@@ -426,15 +426,16 @@ def move_tensors_to_device(
         batch: A tensor or collection of tensors to move to device. Can be:
             - A single tensor
             - A sequence of tensors
-            - A sequence of sequences of tensors
-            - A mapping (e.g., dict) of keys to tensors or sequences of tensors
+            - A sequence of sequences of tensors. The inner sequence of tensors is
+              combined during GPU transfer.
+            - A mapping (e.g., dict) of keys to tensors or sequences of tensors. The
+              sequence of tensors is combined during GPU transfer.
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
 
     Returns:
-        The input tensors moved to the specified device, maintaining the same structure.
-        Note that any sequences of tensors will be concatenated into a single tensor.
+        The input tensors moved to the specified device
     """
     if device is None:
         return batch
