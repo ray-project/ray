@@ -1369,7 +1369,8 @@ def test_map_batches_block_bundling_auto(
     num_expected_blocks = math.ceil(
         # If batch_size > block_size, then multiple blocks will be clumped
         # together to make sure there are at least batch_size rows
-        num_blocks / max(math.ceil(batch_size / block_size), 1)
+        num_blocks
+        / max(math.ceil(batch_size / block_size), 1)
     )
 
     assert ds1._plan.initial_num_blocks() == num_expected_blocks
