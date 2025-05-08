@@ -197,7 +197,7 @@ HANDLE_METRIC_PUSH_INTERVAL_S = float(
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
 # Timeout for GCS RPC request
-RAY_GCS_RPC_TIMEOUT_S = 3.0
+RAY_GCS_RPC_TIMEOUT_S = 30.0
 
 # Maximum duration to wait until broadcasting a long poll update if there are
 # still replicas in the RECOVERING state.
