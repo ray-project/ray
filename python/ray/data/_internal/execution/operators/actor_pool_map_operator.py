@@ -134,7 +134,7 @@ class ActorPoolMapOperator(MapOperator):
         self._inputs_done = False
 
     def internal_queue_size(self) -> int:
-        # NOTE: Internal queue size for APMO includes both
+        # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
         return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
