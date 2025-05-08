@@ -32,7 +32,7 @@ class MockGauge:
 
 def mock_on_report(self, value: float):
     """Mock function to set the value of the train_report_total_blocked_time"""
-    self._metrics_tracker.record(WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, value)
+    self._metrics_tracker.record(WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S, value)
 
 
 def mock_on_worker_group_event(self, value: float, event: str):
@@ -188,18 +188,14 @@ def test_worker_metrics_callback(monkeypatch):
     # Check if the gauges is updated with the correct metrics
     callback.on_report(1.0)
     assert (
-        callback._metrics_tracker.get_value(
-            WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S
-        )
+        callback._metrics_tracker.get_value(WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S)
         == 1.0
     )
 
     # Check if the gauges is updated with the correct metrics
     callback.on_report(2.0)
     assert (
-        callback._metrics_tracker.get_value(
-            WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S
-        )
+        callback._metrics_tracker.get_value(WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S)
         == 3.0
     )
 

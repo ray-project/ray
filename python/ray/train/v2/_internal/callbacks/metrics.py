@@ -105,7 +105,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         yield
         elapsed_time_s = time_monotonic() - start_time_s
         self._metrics_tracker.record(
-            ControllerMetrics.TRAIN_WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, elapsed_time_s
+            ControllerMetrics.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S, elapsed_time_s
         )
 
 
@@ -158,5 +158,5 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
         yield
         elapsed_time_s = time_monotonic() - start_time_s
         self._metrics_tracker.record(
-            WorkerMetrics.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S, elapsed_time_s
+            WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S, elapsed_time_s
         )

@@ -13,10 +13,10 @@ class WorkerMetrics:
 
     # ===== Tag Keys =====
     WORKER_WORLD_RANK_TAG_KEY = "ray_train_worker_world_rank"
-    TAG_KEYS = [RUN_NAME_TAG_KEY, WORKER_WORLD_RANK_TAG_KEY]
+    TAG_KEYS = (RUN_NAME_TAG_KEY, WORKER_WORLD_RANK_TAG_KEY)
 
     # ===== Metric Names =====
-    TRAIN_REPORT_TOTAL_BLOCKED_TIME_S = "train_report_total_blocked_time_s"
+    REPORT_TOTAL_BLOCKED_TIME_S = "train_report_total_blocked_time_s"
 
     @classmethod
     def _create_time_metric(cls, name: str, description: str) -> Metric:
@@ -33,8 +33,8 @@ class WorkerMetrics:
     def get_worker_metrics(cls) -> Dict[str, Metric]:
         """Get all worker metrics."""
         return {
-            cls.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S: cls._create_time_metric(
-                cls.TRAIN_REPORT_TOTAL_BLOCKED_TIME_S,
+            cls.REPORT_TOTAL_BLOCKED_TIME_S: cls._create_time_metric(
+                cls.REPORT_TOTAL_BLOCKED_TIME_S,
                 "Cumulative time in seconds to report a checkpoint to the storage.",
             ),
         }

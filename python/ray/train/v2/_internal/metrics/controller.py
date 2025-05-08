@@ -13,7 +13,7 @@ class ControllerMetrics:
 
     # ===== Tag Keys =====
     # Base tags that apply to all controller metrics
-    TAG_KEYS = [RUN_NAME_TAG_KEY]
+    TAG_KEYS = (RUN_NAME_TAG_KEY,)
 
     # Additional tags for specific metrics
     CONTROLLER_STATE_TAG_KEY = "ray_train_controller_state"
@@ -45,7 +45,7 @@ class ControllerMetrics:
             type=int,
             default=0,
             description="Number of controllers in each state",
-            tag_keys=cls.TAG_KEYS + [cls.CONTROLLER_STATE_TAG_KEY],
+            tag_keys=cls.TAG_KEYS + (cls.CONTROLLER_STATE_TAG_KEY,),
         )
 
     @classmethod

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, Dict, Tuple, Type, TypeVar
+
+from ray.util.metrics import Gauge
 
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 
@@ -12,7 +14,7 @@ class Metric:
     type: Type[T]
     default: T
     description: str
-    tag_keys: List[str]
+    tag_keys: Tuple[str, ...]
 
     def __init__(
         self,
@@ -20,7 +22,7 @@ class Metric:
         type: Type[T],
         default: T,
         description: str,
-        tag_keys: List[str],
+        tag_keys: Tuple[str, ...],
     ):
         self.name = name
         self.type = type
@@ -44,6 +46,13 @@ class Metric:
                 f"Tag keys for metric '{self.name}' don't match expected keys. "
                 f"Expected: {self.tag_keys}, got: {list(tags.keys())}"
             )
+
+    def start(self):
+        self._gauge = Gauge(
+            self.name,
+            description=self.description,
+            tag_keys=self.tag_keys,
+        )
 
     def record(self, tags: Dict[str, str], value: T):
         """Update the metric value with the given tags.
@@ -120,17 +129,17 @@ class MetricsTracker:
         self, metric_name: str, value: Any, additional_tags: Dict[str, str] = None
     ):
         """Record a value for a specific metric."""
+        metric = self._get_metric(metric_name)
         if additional_tags is None:
             additional_tags = {}
-        metric = self._get_metric(metric_name)
         tags = self._base_tags | additional_tags
         metric.record(tags, value)
 
     def get_value(self, metric_name: str, additional_tags: Dict[str, str] = None):
         """Get the value of a specific metric."""
+        metric = self._get_metric(metric_name)
         if additional_tags is None:
             additional_tags = {}
-        metric = self._get_metric(metric_name)
         tags = self._base_tags | additional_tags
         return metric.get_value(tags)
 
