@@ -521,22 +521,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
 
-  if (execute_out_of_order) {
-    // Upon re-connect, task 2 (failed) should be both retried.
-    // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
-    ASSERT_TRUE(CheckSubmitTask(task2));
+  // Upon re-connect, task 2 (failed) should be retried.
+  // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
+  ASSERT_TRUE(CheckSubmitTask(task2));
 
-    // Only task2 should be submitted.
-    ASSERT_EQ(worker_client_->callbacks.size(), 1);
-  } else {
-    // Upon re-connect, task 2 (failed) and 3 (completed) should be both retried.
-    // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
-    // Retry task 3 should happen via event loop
-    ASSERT_TRUE(CheckSubmitTask(task2));
-
-    // Both task2 and task3 should be submitted.
-    ASSERT_EQ(worker_client_->callbacks.size(), 2);
-  }
+  // Only task2 should be submitted. task 3 (completed) should not be retried.
+  ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Finishes all task
   while (!worker_client_->callbacks.empty()) {
@@ -772,14 +762,6 @@ class MockDependencyWaiter : public DependencyWaiter {
   virtual ~MockDependencyWaiter() {}
 };
 
-class MockWorkerContext : public WorkerContext {
- public:
-  MockWorkerContext(WorkerType worker_type, const JobID &job_id)
-      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
-    current_actor_is_direct_call_ = true;
-  }
-};
-
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
@@ -797,14 +779,12 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 class MockTaskReceiver : public TaskReceiver {
  public:
-  MockTaskReceiver(WorkerContext &worker_context,
-                   instrumented_io_context &task_execution_service,
+  MockTaskReceiver(instrumented_io_context &task_execution_service,
                    worker::TaskEventBuffer &task_event_buffer,
                    const TaskHandler &task_handler,
                    std::function<std::function<void()>()> initialize_thread_callback,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
-      : TaskReceiver(worker_context,
-                     task_execution_service,
+      : TaskReceiver(task_execution_service,
                      task_event_buffer,
                      task_handler,
                      initialize_thread_callback,
@@ -819,8 +799,7 @@ class MockTaskReceiver : public TaskReceiver {
 class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
-      : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
-        worker_client_(std::make_shared<MockWorkerClient>()),
+      : worker_client_(std::make_shared<MockWorkerClient>()),
         dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
@@ -831,7 +810,6 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_5,
                                   std::placeholders::_6);
     receiver_ = std::make_unique<MockTaskReceiver>(
-        worker_context_,
         task_execution_service_,
         task_event_buffer_,
         execute_task,
@@ -867,7 +845,6 @@ class TaskReceiverTest : public ::testing::Test {
 
  private:
   rpc::Address rpc_address_;
-  MockWorkerContext worker_context_;
   instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;

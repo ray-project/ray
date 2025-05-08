@@ -1,11 +1,11 @@
 import logging
-from typing import TYPE_CHECKING, List, Union, Dict, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.ray_constants import env_integer
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -96,7 +96,7 @@ def hash_partition(
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
-    partitions_array = np.array(partitions)
+    partitions_array = np.asarray(partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -733,8 +733,8 @@ def combine_chunked_array(
 
     Args:
         array: The chunked array to be combined into a single contiguous array.
-        ensure_copy: Skip copying when ensure_copy is False and there is exactly
-        1 chunk.
+        ensure_copy: Skip copying when ensure_copy is False and there's exactly
+           1 chunk.
     """
 
     import pyarrow as pa

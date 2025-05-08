@@ -2731,7 +2731,7 @@ pyarrow==14.0.2 \
     #   datasets
     #   petastorm
     #   triad
-pyarrow-hotfix==0.6 \
+pyarrow-hotfix==0.7 \
     --hash=sha256:79d3e030f7ff890d408a100ac16d6f00b14d44a502d7897cd9fc3e3a534e9945 \
     --hash=sha256:dcc9ae2d220dff0083be6a9aa8e0cdee5182ad358d4931fce825c545e5c89178
     # via

@@ -8,7 +8,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     Semaphore,
-    enable_external_redis,
+    external_redis_test_enabled,
     client_test_enabled,
     run_string_as_driver,
     wait_for_condition,
@@ -215,7 +215,7 @@ def test_worker_oom_score(shutdown_only):
 call_ray_start_2 = call_ray_start
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 @pytest.mark.parametrize(
     "call_ray_start,call_ray_start_2",
     [
@@ -348,7 +348,7 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
     wait_for_condition(lambda: check_demands(1))
 
 
-@pytest.mark.skipif(enable_external_redis(), reason="Only valid in non redis env")
+@pytest.mark.skipif(external_redis_test_enabled(), reason="Only valid in non redis env")
 def test_redis_not_available(monkeypatch, call_ray_stop_only):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
@@ -363,7 +363,7 @@ def test_redis_not_available(monkeypatch, call_ray_stop_only):
     assert "redis storage is alive or not." in p.stderr.decode()
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     p = subprocess.run(
@@ -375,7 +375,7 @@ def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
     assert "RedisError: ERR AUTH <password> called" in p.stderr.decode()
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 def test_redis_full(ray_start_cluster_head):
     import redis
 
