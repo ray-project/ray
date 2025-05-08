@@ -467,7 +467,6 @@ class MultiAgentEpisode:
                 v is not None
                 for v in [_observation, _action, _reward, _infos, _extra_model_outputs]
             ):
-
                 raise MultiAgentEnvError(
                     f"Agent {agent_id} already had its `SingleAgentEpisode.is_done` "
                     f"set to True, but still received data in a following step! "
@@ -808,7 +807,8 @@ class MultiAgentEpisode:
         Args:
             other: The other `MultiAgentEpisode` to be concatenated to this one.
 
-        Returns: A `MultiAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `MultiAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         # Make sure the IDs match.

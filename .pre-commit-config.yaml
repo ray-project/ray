@@ -43,7 +43,7 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data'
 
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0
