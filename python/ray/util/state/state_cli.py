@@ -1078,7 +1078,7 @@ def log_actor(
     timeout: int,
     err: bool,
 ):
-    """Get logs from an actor.
+    """Get/List logs associated with an actor.
 
     Example:
 
@@ -1103,8 +1103,10 @@ def log_actor(
         ```
 
     Raises:
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+            if the CLI is failed to query the data.
         MissingParameter: if inputs are missing.
-    """
+    """  # noqa: E501
 
     if pid is None and id is None:
         raise click.MissingParameter(
