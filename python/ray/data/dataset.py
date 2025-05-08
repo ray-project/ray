@@ -3581,7 +3581,7 @@ class Dataset:
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
             snapshot_properties: custom properties write to snapshot when committing
-            to an iceberg table.
+                to an iceberg table.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5460,7 +5460,7 @@ class Dataset:
         Args:
             column: The name of the column to convert to numpy. If ``None``, all columns
                 are used. If multiple columns are specified, each returned
-            future represents a dict of ndarrays. Defaults to None.
+                future represents a dict of ndarrays. Defaults to None.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
