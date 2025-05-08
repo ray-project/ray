@@ -44,9 +44,9 @@ from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 
 from ray.air.util.tensor_extensions.utils import (
-    _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
 )
+from ray.data._internal.numpy_support import convert_to_numpy
 from ray.util.annotations import PublicAPI
 
 try:
@@ -739,13 +739,13 @@ class TensorArray(
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
         if isinstance(values, ABCSeries):
-            values = _create_possibly_ragged_ndarray(values)
+            values = convert_to_numpy(values)
         elif isinstance(values, Sequence):
             values = [
                 np.asarray(v) if isinstance(v, TensorArrayElement) else v
                 for v in values
             ]
-            values = _create_possibly_ragged_ndarray(values)
+            values = convert_to_numpy(values)
         elif isinstance(values, TensorArrayElement):
             values = np.array([np.asarray(values)], copy=False)
 
@@ -762,7 +762,7 @@ class TensorArray(
                     values = [np.asarray(v) for v in values]
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
-                    values = _create_possibly_ragged_ndarray(values)
+                    values = convert_to_numpy(values)
                 else:
                     raise TypeError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "
@@ -1430,22 +1430,3 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
-
-
-@PublicAPI(stability="beta")
-def column_needs_tensor_extension(s: pd.Series) -> bool:
-    """Return whether the provided pandas Series column needs a tensor extension
-    representation. This tensor extension representation provides more efficient slicing
-    and interop with ML frameworks.
-
-    Args:
-        s: The pandas Series column that may need to be represented using the tensor
-            extension.
-
-    Returns:
-        Whether the provided Series needs a tensor extension representation.
-    """
-    # NOTE: This is an O(1) check.
-    return (
-        s.dtype.type is np.object_ and not s.empty and isinstance(s.iloc[0], np.ndarray)
-    )
