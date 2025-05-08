@@ -335,9 +335,9 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     def get_bundle_loc(bundle):
         block = ray.get(bundle.blocks[0][0])
         fval = list(block["id"])[0]
-        return get_fake_loc(fval)
+        return [get_fake_loc(fval)]
 
-    op._get_location = get_bundle_loc
+    op._get_locations = get_bundle_loc
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
