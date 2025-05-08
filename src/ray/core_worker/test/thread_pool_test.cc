@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <boost/thread/latch.hpp>
 #include <future>
 
 namespace ray {
@@ -77,6 +78,49 @@ TEST(BoundedExecutorTest, InitializationTimeout) {
       BoundedExecutor executor(
           kNumThreads, initialize_thread_callback, boost::chrono::milliseconds(10)),
       "Failed to initialize threads in 10 milliseconds");
+}
+
+TEST(BoundedExecutorTest, PostBlockingIfFull) {
+  constexpr int kNumThreads = 3;
+  BoundedExecutor executor(kNumThreads);
+
+  boost::latch latch(kNumThreads);
+  std::atomic<bool> block{true};
+  auto callback = [&]() {
+    latch.count_down();
+    while (block.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+  };
+
+  for (int i = 0; i < kNumThreads; i++) {
+    executor.Post(callback);
+  }
+  latch.wait();
+
+  // Submit a new task. It should not run immediately
+  // because the thread pool is full.
+  std::atomic<bool> running{false};
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  executor.Post([&]() {
+    running = true;
+    promise.set_value();
+  });
+
+  // Make sure the task is not running yet after 50 ms.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  ASSERT_FALSE(running.load());
+
+  // Unblock the threads. The task should run immediately.
+  block.store(false);
+
+  // Wait for the task with a timeout
+  auto status = future.wait_for(std::chrono::milliseconds(500));
+  ASSERT_EQ(status, std::future_status::ready) << "Task did not complete within timeout";
+  ASSERT_TRUE(running.load());
+
+  executor.Join();
 }
 
 }  // namespace core
