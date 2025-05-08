@@ -99,7 +99,7 @@ class _FileDatasink(Datasink[None]):
                 logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
                 return
             if self.mode == SaveMode.OVERWRITE:
-                logger.warning(f"[SaveMode={self.mode}] Deleting {self.path}")
+                logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")
                 self.filesystem.delete_dir_contents(self.path)
         self.has_created_dir = self._create_dir(self.path)
 
