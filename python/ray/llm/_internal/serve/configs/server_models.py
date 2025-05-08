@@ -957,6 +957,7 @@ class SamplingParams(BaseModelExtended):
 
 class GenerationRequest(BaseModelExtended):
     prompt: Union[str, List[int], List[str]]
+    prompt_token_ids: Optional[List[int]] = None
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
     stream: bool = False

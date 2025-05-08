@@ -984,7 +984,7 @@ def placement_groups_to_resource_demands(
 
     Args:
         pending_placement_groups (List[PlacementGroupData]): List of
-        PlacementGroupLoad's.
+            PlacementGroupLoad's.
 
     Returns:
         List[ResourceDict]: The placement groups which were converted to a

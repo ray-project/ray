@@ -333,7 +333,7 @@ class TableBlockAccessor(BlockAccessor):
 
         Args:
             sort_key: A column name or list of column names.
-            If this is ``None``, place all rows in a single group.
+               If this is ``None``, place all rows in a single group.
 
             aggs: The aggregations to do.
 
@@ -564,10 +564,10 @@ class TableBlockAccessor(BlockAccessor):
         """Normalize input blocks to the specified `normalize_type`. If the blocks
         are already all of the same type, returns original blocks.
 
-         Args:
+        Args:
             blocks: A list of TableBlocks to be normalized.
             target_block_type: The type to normalize the blocks to. If None,
-                will be chosen such that to minimize amount of data conversions.
+               Ray Data chooses a type to minimize the amount of data conversions.
 
         Returns:
             A list of blocks of the same type.

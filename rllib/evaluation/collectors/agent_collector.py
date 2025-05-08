@@ -402,8 +402,8 @@ class AgentCollector:
 
         Args:
             view_requirements: The viewrequirements dict needed to build the
-            SampleBatch from the raw buffers (which may have data shifts as well as
-            mappings from view-col to data-col in them).
+                SampleBatch from the raw buffers, which may have data shifts as well as
+                mappings from view-col to data-col in them.
 
         Returns:
             SampleBatch: The built SampleBatch for this agent, ready to go into

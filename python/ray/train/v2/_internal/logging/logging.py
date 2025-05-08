@@ -173,7 +173,7 @@ class SessionFileHandler(logging.Handler):
 
     Args:
         filename: The name of the log file. The file is created in the 'logs/train'
-        directory of the Ray session directory.
+            directory of the Ray session directory.
     """
 
     # TODO (hpguo): This handler class is shared by both Ray Train and ray data. We

@@ -988,7 +988,7 @@ class ServeController:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
-            is NOT_STARTED.
+                  is NOT_STARTED.
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)

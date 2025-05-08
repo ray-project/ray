@@ -1510,10 +1510,10 @@ class Dataset:
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
 
-            Note that either `num_blocks` or `target_num_rows_per_block` must be set
-            here, but not both.
-            Additionally, note that, this operation will materialized whole dataset in memory
-            when shuffle is set to True.
+        Note that you must set either `num_blocks` or `target_num_rows_per_block`
+        but not both.
+        Additionally note that this operation materializes the entire dataset in memory
+        when you set shuffle to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
@@ -1681,7 +1681,6 @@ class Dataset:
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
         def random_sample(batch: DataBatch, seed: Optional[int]):
-
             ctx = TaskContext.get_current()
 
             if "rng" in ctx.kwargs:

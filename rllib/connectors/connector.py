@@ -269,7 +269,7 @@ class AgentConnector(Connector):
 
         Args:
             data: Env and agent IDs, plus arbitrary data item from a single agent
-            of an environment.
+                of an environment.
 
         Returns:
             A transformed piece of agent connector data.

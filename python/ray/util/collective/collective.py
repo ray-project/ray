@@ -635,10 +635,10 @@ def recv_multigpu(
     process and receiver process has equal nubmer of GPUs.
 
     Args:
-        tensor: the received tensor, located on a GPU.
-        src_rank: the rank of the source process.
-        src_gpu_index (int)： the index of the source gpu on the src process.
-        group_name: the name of the collective group.
+        tensor: The received tensor, located on a GPU.
+        src_rank: The rank of the source process.
+        src_gpu_index: The index of the source GPU on the src process.
+        group_name: The name of the collective group.
 
     Returns:
         None
