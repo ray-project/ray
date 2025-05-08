@@ -1020,13 +1020,20 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report == ClusterConfigToReport()
+    # can't assert cloud_provider here because it will be set based on
+    # where the test is actually running
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kubernetes"
+    # starts with because additional cloud provider info may be added depending on
+    # the environment
+    assert cluster_config_to_report.cloud_provider.startswith("kubernetes")
     assert cluster_config_to_report.min_workers is None
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type is None
@@ -1036,7 +1043,7 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kuberay"
+    assert cluster_config_to_report.cloud_provider.startswith("kuberay")
 
 
 def test_usage_lib_report_data(
