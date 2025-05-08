@@ -361,7 +361,21 @@ if setup_spec.type == SetupType.RAY:
     #
     # Keep this in sync with python/requirements/llm/llm-requirements.txt
     #
-    setup_spec.extras["llm"] = list(set(["vllm>=0.7.2"] + setup_spec.extras["data"]))
+    setup_spec.extras["llm"] = list(
+        set(
+            [
+                "vllm>=0.8.5",
+                "jsonref>=1.1.0",
+                "jsonschema",
+                "ninja",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
+                "async-timeout; python_version < '3.11'",
+                "typer",
+            ]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
@@ -379,8 +393,6 @@ if setup_spec.type == SetupType.RAY:
         "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
-        "aiosignal",
-        "frozenlist",
         "requests",
     ]
 
@@ -826,7 +838,11 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": [
+            "includes/*.pxd",
+            "*.pxd",
+            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+        ],
     },
     include_package_data=True,
     exclude_package_data={

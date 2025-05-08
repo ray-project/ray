@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
@@ -73,8 +74,6 @@ TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
   EXPECT_EQ(queue.PopNextTaskToSend()->first.ActorCounter(), 1);
   EXPECT_EQ(queue.PopNextTaskToSend()->first.ActorCounter(), 3);
   EXPECT_FALSE(queue.PopNextTaskToSend().has_value());
-
-  EXPECT_TRUE(queue.PopAllOutOfOrderCompletedTasks().empty());
 
   // only contains task 2 and 4.
   for (uint64_t i = 0; i < 5; i++) {

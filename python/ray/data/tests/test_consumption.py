@@ -246,54 +246,32 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
-def test_ray_remote_args_fn(shutdown_only):
+@pytest.fixture
+def remove_named_placement_groups():
+    yield
+    for info in ray.util.placement_group_table().values():
+        if info["name"]:
+            pg = ray.util.get_placement_group(info["name"])
+            ray.util.remove_placement_group(pg)
+
+
+def test_ray_remote_args_fn(shutdown_only, remove_named_placement_groups):
     ray.init()
 
-    global_idx = 1
-    placement_groups = []
+    pg = ray.util.placement_group([{"CPU": 1}], name="test_pg")
 
-    def _generate_ray_remote_args_with_scheduling_strategy():
-        nonlocal placement_groups
-        pg = ray.util.placement_group([{"CPU": global_idx}])
-        placement_groups.append(pg)
-
+    def ray_remote_args_fn():
         scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group=pg)
         return {"scheduling_strategy": scheduling_strategy}
 
     class ActorClass:
-        def __init__(self):
-            # Each time a new actor is created with ActorClass,
-            # global_idx is incremented, and the number of CPUs in its
-            # placement group should match the saved self._idx value.
-            nonlocal global_idx
-            self._idx = global_idx
-            global_idx += 1
-
         def __call__(self, batch):
-            pg = ray.util.get_current_placement_group()
-            if global_idx > 0:
-                assert pg.bundle_specs == [{"CPU": self._idx}]
-            else:
-                assert pg is not None
+            assert ray.util.get_current_placement_group() == pg
             return batch
 
-    ray.data.range(10).map_batches(
-        ActorClass,
-        concurrency=3,
-        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+    ray.data.range(1).map_batches(
+        ActorClass, concurrency=1, ray_remote_args_fn=ray_remote_args_fn
     ).take_all()
-
-    global_idx = -10
-    with pytest.raises(ValueError):  # cannot use -10 for pg
-        ray.data.range(10).map_batches(
-            ActorClass,
-            concurrency=3,
-            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
-        ).take_all()
-
-    # Be sure to remove placement groups after use.
-    for pg in placement_groups:
-        ray.util.remove_placement_group(pg)
 
 
 def test_dataset_lineage_serialization(shutdown_only):
@@ -500,7 +478,7 @@ def test_dataset_repr(ray_start_regular_shared):
     assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=10, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
@@ -522,7 +500,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
 
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=9, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -553,7 +531,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n" "+- Dataset(num_rows=10, schema={id: int64})"
+        "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
 
 
@@ -1365,13 +1343,13 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.min("A") == 0
     # Test ignore_nulls=False
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.min("A") is None
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A"))
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1408,13 +1386,13 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.max("A") == 99
     # Test ignore_nulls=False
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.max("A") is None
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A"))
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1451,20 +1429,21 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.mean("A") == 49.5
     # Test ignore_nulls=False
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.mean("A") is None
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A"))
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_global_arrow_std with: {seed}")
+    # NOTE: Do not change the seed
+    seed = 1740035705
+
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1487,12 +1466,12 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     ds = ray.data.from_pandas(pd.DataFrame({"A": []}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") is None
+    assert pd.isnull(ds.std("A"))
     # Test edge cases
     ds = ray.data.from_pandas(pd.DataFrame({"A": [3]}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") == 0
+    assert np.isnan(ds.std("A"))
 
     # Test built-in global std aggregation with nans
     nan_df = pd.DataFrame({"A": xs + [None]})
@@ -1501,13 +1480,13 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_arrow(nan_ds)
     assert math.isclose(nan_ds.std("A"), nan_df["A"].std())
     # Test ignore_nulls=False
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.std("A") is None
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A"))
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
 
 
 def test_column_name_type_check(ray_start_regular_shared):

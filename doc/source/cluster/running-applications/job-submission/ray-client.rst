@@ -144,7 +144,7 @@ Alternative Connection Approach:
 
 Instead of port-forwarding, you can directly connect to the Ray Client server on the head node if your computer
 has network access to the head node. This is an option if your computer is on the same network as the Cluster or
-if your computer can connct to the Cluster with a VPN.
+if your computer can connect to the Cluster with a VPN.
 
 If your computer does not have direct access, you can modify the network configuration to grant access. On `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_,
 this can be done by modifying the security group to allow inbound access from your local IP address to the Ray Client server port (``10001`` by default).
@@ -178,7 +178,8 @@ this can be done by modifying the security group to allow inbound access from yo
 
 
 .. warning::
-   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.\n
+   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.
+
    **Do not expose this to `0.0.0.0/0`.**
 
 Connect to multiple Ray clusters (Experimental)

@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
 
+#include <map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)
@@ -45,8 +49,6 @@ void SequentialActorSubmitQueue::MarkDependencyFailed(uint64_t sequence_no) {
 
 void SequentialActorSubmitQueue::MarkTaskCanceled(uint64_t sequence_no) {
   requests.erase(sequence_no);
-  // No need to clean out_of_order_completed_tasks because
-  // it means a task has been already submitted and finished.
 }
 
 void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
@@ -64,7 +66,7 @@ std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-absl::optional<std::pair<TaskSpecification, bool>>
+std::optional<std::pair<TaskSpecification, bool>>
 SequentialActorSubmitQueue::PopNextTaskToSend() {
   auto head = requests.begin();
   if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&
@@ -80,51 +82,9 @@ SequentialActorSubmitQueue::PopNextTaskToSend() {
   return absl::nullopt;
 }
 
-std::map<uint64_t, TaskSpecification>
-SequentialActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
-  auto result = std::move(out_of_order_completed_tasks);
-  out_of_order_completed_tasks.clear();
-  return result;
-}
-
-void SequentialActorSubmitQueue::OnClientConnected() {
-  // This assumes that all replies from the previous incarnation
-  // of the actor have been received. This assumption should be OK
-  // because we fail all inflight tasks in `DisconnectRpcClient`.
-  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
-                 << caller_starts_at << " to " << next_task_reply_position;
-  caller_starts_at = next_task_reply_position;
-}
-
 uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
-  RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
-      << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
-  return task_spec.ActorCounter() - caller_starts_at;
-}
-
-void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,
-                                                    const TaskSpecification &task_spec) {
-  // Try to increment queue.next_task_reply_position consecutively until we
-  // cannot. In the case of tasks not received in order, the following block
-  // ensure queue.next_task_reply_position are incremented to the max possible
-  // value.
-  out_of_order_completed_tasks.insert({sequence_no, task_spec});
-  auto min_completed_task = out_of_order_completed_tasks.begin();
-  while (min_completed_task != out_of_order_completed_tasks.end()) {
-    if (min_completed_task->first == next_task_reply_position) {
-      next_task_reply_position++;
-      // increment the iterator and erase the old value
-      out_of_order_completed_tasks.erase(min_completed_task++);
-    } else {
-      break;
-    }
-  }
-
-  RAY_LOG(DEBUG) << "Got PushTaskReply for actor " << actor_id << " with actor_counter "
-                 << sequence_no << " new queue.next_task_reply_position is "
-                 << next_task_reply_position << " and size of out_of_order_tasks set is "
-                 << out_of_order_completed_tasks.size();
+  return task_spec.ActorCounter();
 }
 
 }  // namespace core

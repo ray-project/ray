@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 
+#include <map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 
@@ -82,7 +86,7 @@ std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-absl::optional<std::pair<TaskSpecification, bool>>
+std::optional<std::pair<TaskSpecification, bool>>
 OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   auto it = sending_queue_.begin();
   if (it == sending_queue_.end()) {
@@ -93,20 +97,10 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
 }
 
-std::map<uint64_t, TaskSpecification>
-OutofOrderActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
-  return {};
-}
-
-void OutofOrderActorSubmitQueue::OnClientConnected() {}
-
 uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
   return task_spec.ActorCounter();
 }
-
-void OutofOrderActorSubmitQueue::MarkSeqnoCompleted(uint64_t position,
-                                                    const TaskSpecification &task_spec) {}
 
 }  // namespace core
 }  // namespace ray

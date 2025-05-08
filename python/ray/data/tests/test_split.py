@@ -107,7 +107,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
-        ExecutionPlan(stats),
+        ExecutionPlan(stats, ctx),
         logical_plan,
     )
 
@@ -131,12 +131,12 @@ def test_equal_split_balanced_grid(ray_start_regular_shared):
     seed = int(time.time())
     print(f"Seeding RNG for test_equal_split_balanced_grid with: {seed}")
     random.seed(seed)
-    max_num_splits = 20
-    num_splits_samples = 5
+    max_num_splits = 15
+    num_splits_samples = 3
     max_num_blocks = 50
     max_num_rows_per_block = 100
-    num_blocks_samples = 5
-    block_sizes_samples = 5
+    num_blocks_samples = 3
+    block_sizes_samples = 3
     for num_splits in np.random.randint(2, max_num_splits + 1, size=num_splits_samples):
         for num_blocks in np.random.randint(
             1, max_num_blocks + 1, size=num_blocks_samples

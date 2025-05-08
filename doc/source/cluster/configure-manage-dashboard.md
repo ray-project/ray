@@ -258,7 +258,7 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Dashboard message: either Prometheus or Grafana server is not deteced
+##### Dashboard message: either Prometheus or Grafana server is not detected
 If you have followed the instructions above to set up everything, run the connection checks below in your browser:
 * check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
 * check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.

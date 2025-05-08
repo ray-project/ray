@@ -126,6 +126,7 @@ scripts/nodes.txt
 .idea/**/tasks.xml
 .idea/dictionaries
 .llvm-local.bazelrc
+.aider*
 
 # Sensitive or high-churn files:
 .idea/**/dataSources/

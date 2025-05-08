@@ -138,7 +138,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 
   // Setup file sink.
   spdlog::sink_ptr file_sink = nullptr;
-  if (stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
+  if (stream_redirect_opt.rotation_max_size != 0) {
     file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         stream_redirect_opt.file_path,
         stream_redirect_opt.rotation_max_size,
@@ -213,11 +213,10 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 }
 
 // Pipe streamer is only used in certain cases:
-// 1. Log roration is requested;
+// 1. Log rotation is requested;
 // 2. Multiple sinks are involved.
 bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
-  const bool need_rotation =
-      stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
+  const bool need_rotation = stream_redirect_opt.rotation_max_size != 0;
   return need_rotation || stream_redirect_opt.tee_to_stdout ||
          stream_redirect_opt.tee_to_stderr;
 }

@@ -16,7 +16,7 @@ from packaging import version
 from starlette.types import Receive
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
@@ -27,11 +27,11 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -70,6 +70,7 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     generate_request_id,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
@@ -80,15 +81,8 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
-assert HTTP_REQUEST_MAX_RETRIES >= 0, (
-    f"Got unexpected value {HTTP_REQUEST_MAX_RETRIES} for "
-    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES environment variable. "
-    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
-)
-
-TIMEOUT_ERROR_CODE = "timeout"
-DISCONNECT_ERROR_CODE = "disconnection"
+TIMEOUT_ERROR_CODE = "408"
+DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
@@ -107,10 +101,12 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
         "been deprecated. Please set `request_timeout_s` in your Serve config's "
-        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "`http_options` or `grpc_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
         "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
         "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
-        "ema.request_timeout_s"
+        "ema.request_timeout_s and https://docs.ray.io/en/latest/serve/api/"
+        "doc/ray.serve.config.gRPCOptions.request_timeout_s.html#"
+        "ray.serve.config.gRPCOptions.request_timeout_s"
     )
 
 
@@ -182,13 +178,15 @@ class GenericProxy(ABC):
             ),
         )
 
+        # log REQUEST_LATENCY_BUCKET_MS
+        logger.debug(f"REQUEST_LATENCY_BUCKET_MS: {REQUEST_LATENCY_BUCKETS_MS}")
         self.processing_latency_tracker = metrics.Histogram(
             f"serve_{self.protocol.lower()}_request_latency_ms",
             description=(
                 f"The end-to-end latency of {self.protocol} requests "
                 f"(measured from the Serve {self.protocol} proxy)."
             ),
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=(
                 "method",
                 "route",
@@ -982,7 +980,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            is_error=not status_code.startswith("2"),
+                            is_error=status_code.startswith(("4", "5")),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1043,7 +1041,7 @@ class HTTPProxy(GenericProxy):
             )
         except (BackPressureError, DeploymentUnavailableError) as e:
             status = ResponseStatus(
-                code=503,
+                code="503",
                 is_error=True,
                 message=e.message,
             )
@@ -1125,6 +1123,16 @@ def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
     return http_options
 
 
+def _set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
+    grpc_options = deepcopy(grpc_options) or gRPCOptions()
+
+    grpc_options.request_timeout_s = (
+        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+    )
+
+    return grpc_options
+
+
 @ray.remote(num_cpus=0)
 class ProxyActor:
     def __init__(
@@ -1142,17 +1150,14 @@ class ProxyActor:
 
         # Configure proxy default HTTP and gRPC options.
         http_options = _set_proxy_default_http_options(http_options)
-        grpc_options = grpc_options or gRPCOptions()
+        grpc_options = _set_proxy_default_grpc_options(grpc_options)
         self._http_options = http_options
         self._grpc_options = grpc_options
 
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
 
-        grpc_enabled = (
-            self._grpc_options.port > 0
-            and len(self._grpc_options.grpc_servicer_functions) > 0
-        )
+        grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(
@@ -1204,7 +1209,7 @@ class ProxyActor:
                 node_ip_address=self._node_ip_address,
                 is_head=is_head,
                 proxy_router=self.proxy_router,
-                request_timeout_s=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+                request_timeout_s=self._grpc_options.request_timeout_s,
             )
             if grpc_enabled
             else None

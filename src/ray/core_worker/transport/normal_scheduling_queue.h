@@ -14,15 +14,15 @@
 
 #pragma once
 
+#include <deque>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/transport/scheduling_queue.h"
 #include "ray/core_worker/transport/scheduling_util.h"
-#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {

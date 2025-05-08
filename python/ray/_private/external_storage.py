@@ -635,7 +635,7 @@ class UnstableFileStorage(FileSystemStorage):
         failed = r < self._failure_rate
         partial_failed = r < self._partial_failure_ratio
         if failed:
-            raise IOError("Spilling object failed")
+            raise IOError("Spilling object failed intentionally for testing.")
         elif partial_failed:
             i = random.choice(range(len(object_refs)))
             return super().spill_objects(object_refs[:i], owner_addresses)

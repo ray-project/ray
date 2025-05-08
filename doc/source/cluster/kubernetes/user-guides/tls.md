@@ -79,7 +79,7 @@ openssl x509 -in ca.crt -noout -text
 # Method 1: Use `cat $FILENAME | base64` to encode `ca.key` and `ca.crt`.
 #           Then, paste the encoding strings to the Kubernetes Secret in `ray-cluster.tls.yaml`.
 
-# Method 2: Use kubectl to encode the certifcate as Kubernetes Secret automatically.
+# Method 2: Use kubectl to encode the certificate as Kubernetes Secret automatically.
 #           (Note: You should comment out the Kubernetes Secret in `ray-cluster.tls.yaml`.)
 kubectl create secret generic ca-tls --from-file=ca.key --from-file=ca.crt
 ```

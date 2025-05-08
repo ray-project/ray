@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/actor_task_submitter.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -85,26 +91,31 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
 
 Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId()) << "Submitting actor creation task";
+  const auto actor_id = task_spec.ActorCreationId();
+  const auto task_id = task_spec.TaskId();
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+      << "Submitting actor creation task";
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and
     // outside of this closure).
-    task_finisher_.MarkDependenciesResolved(task_spec.TaskId());
+    const auto actor_id = task_spec.ActorCreationId();
+    const auto task_id = task_spec.TaskId();
+    task_finisher_.MarkDependenciesResolved(task_id);
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
+      RAY_LOG(WARNING).WithField(actor_id).WithField(task_id)
+          << "Resolving actor creation task dependencies failed " << status;
       RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+          task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
-    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+        << "Actor creation task dependencies resolved";
     // The actor creation task will be sent to
     // gcs server directly after the in-memory dependent objects are resolved. For
     // more details please see the protocol of actor management based on gcs.
     // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-    auto actor_id = task_spec.ActorCreationId();
-    auto task_id = task_spec.TaskId();
-    RAY_LOG(DEBUG).WithField(actor_id) << "Creating actor via GCS";
+    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Creating actor via GCS";
     RAY_CHECK_OK(actor_creator_.AsyncCreateActor(
         task_spec,
         [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
@@ -118,7 +129,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               // Update the task execution error to be CreationTaskError.
               push_task_reply.set_task_execution_error(status.ToString());
             } else {
-              RAY_LOG(DEBUG).WithField(actor_id) << "Created actor";
+              RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Created actor";
             }
             // NOTE: When actor creation task failed we will not retry the creation
             // task so just marking the task fails.
@@ -131,14 +142,15 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             // Either fails the rpc call or actor scheduling cancelled.
             rpc::RayErrorInfo ray_error_info;
             if (status.IsSchedulingCancelled()) {
-              RAY_LOG(DEBUG).WithField(actor_id) << "Actor creation cancelled";
+              RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+                  << "Actor creation cancelled";
               task_finisher_.MarkTaskCanceled(task_id);
               if (reply.has_death_cause()) {
                 ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
               }
             } else {
-              RAY_LOG(INFO).WithField(actor_id)
-                  << "Failed to create actor with status: " << status.ToString();
+              RAY_LOG(INFO).WithField(actor_id).WithField(task_id)
+                  << "Failed to create actor with status: " << status;
             }
             // Actor creation task retry happens in GCS
             // and transient rpc errors are retried in gcs client
@@ -318,9 +330,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
-    queue->second.actor_submit_queue->OnClientConnected();
 
-    ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
   }
 
@@ -557,26 +567,6 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   }
 }
 
-void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id) {
-  auto it = client_queues_.find(actor_id);
-  RAY_CHECK(it != client_queues_.end());
-  if (!it->second.rpc_client) {
-    return;
-  }
-  auto &client_queue = it->second;
-  RAY_CHECK(!client_queue.worker_id.empty());
-  auto out_of_order_completed_tasks =
-      client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
-
-  for (const auto &completed_task : out_of_order_completed_tasks) {
-    // Making a copy here because we are flipping a flag and the original value is
-    // const.
-    auto task_spec = completed_task.second;
-    task_spec.GetMutableMessage().set_skip_execution(true);
-    PushActorTask(client_queue, task_spec, /*skip_queue=*/true);
-  }
-}
-
 void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                        const TaskSpecification &task_spec,
                                        bool skip_queue) {
@@ -643,18 +633,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
-  const auto actor_counter = task_spec.ActorCounter();
-  const auto task_skipped = task_spec.GetMessage().skip_execution();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
-  if (task_skipped) {
-    // NOTE(simon):Increment the task counter regardless of the status because the
-    // reply for a previously completed task. We are not calling CompletePendingTask
-    // because the tasks are pushed directly to the actor, not placed on any queues
-    // in task_finisher_.
-  } else if (status.ok() && !is_retryable_exception) {
+  if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
@@ -732,10 +715,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
         GetTaskFinisherWithoutMu().CompletePendingTask(
             task_id, reply, addr, reply.is_application_error());
-      }
-      // last failure = Actor death, but we still see the actor "alive" so we optionally
-      // wait for a grace period for the death info.
-      else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+
+      } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+        // last failure = Actor death, but we still see the actor "alive" so we optionally
+        // wait for a grace period for the death info.
+
         int64_t death_info_grace_period_ms =
             current_time_ms() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();
@@ -768,12 +752,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
-    // On exception-retry we update the seqno so we need to call;
-    // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || is_retryable_exception) {
-      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
-    }
     queue.cur_pending_calls--;
   }
 }

@@ -17,7 +17,10 @@
 #include <gtest/gtest_prod.h>
 
 #include <chrono>
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "ray/common/grpc_util.h"
@@ -507,6 +510,7 @@ class GcsRpcClient {
                              GcsSubscriberCommandBatch,
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
+
   /// Operations for autoscaler
   VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
                                   AutoscalerStateService,

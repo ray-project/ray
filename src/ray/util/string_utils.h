@@ -16,6 +16,9 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
 
 namespace ray {
 
@@ -44,6 +47,33 @@ std::string JoinPaths(std::string base, const Paths &...components) {
   };
   (join(base, std::string_view(components)), ...);
   return base;
+}
+
+template <typename T>
+std::string GetDebugString(const T &element,
+                           std::string (*debug_string_func)(const T &)) {
+  return debug_string_func(element);
+}
+
+template <typename T>
+std::string GetDebugString(const T &element,
+                           const std::string (T::*debug_string_func)() const) {
+  return (element.*debug_string_func)();
+}
+
+template <typename T, typename F>
+inline std::string VectorToString(const std::vector<T> &vec, const F &debug_string_func) {
+  std::string result = "[";
+  bool first = true;
+  for (const auto &element : vec) {
+    if (!first) {
+      absl::StrAppend(&result, ", ");
+    }
+    absl::StrAppend(&result, GetDebugString(element, debug_string_func));
+    first = false;
+  }
+  absl::StrAppend(&result, "]");
+  return result;
 }
 
 }  // namespace ray

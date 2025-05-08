@@ -979,6 +979,52 @@ def check_train_results(train_results: ResultDict):
     return train_results
 
 
+# TODO (simon): Use this function in the `run_rllib_example_experiment` when
+# `no_tune` is `True`.
+def should_stop(
+    stop: Dict[str, Any], results: ResultDict, keep_ray_up: bool = False
+) -> bool:
+    """Checks stopping criteria on `ResultDict`
+
+    Args:
+        stop: Dictionary of stopping criteria. Each criterium is a mapping of
+            a metric in the `ResultDict` of the algorithm to a certain criterium.
+        results: An RLlib `ResultDict` containing all results from a training step.
+        keep_ray_up: Optionally shutting down the runnin Ray instance.
+
+    Returns: True, if any stopping criterium is fulfilled. Otherwise, False.
+    """
+    for key, threshold in stop.items():
+        val = results
+        for k in key.split("/"):
+            k = k.strip()
+            # If k exists in the current level, continue down;
+            # otherwise, set val to None and break out of this inner loop.
+            if isinstance(val, dict) and k in val:
+                val = val[k]
+            else:
+                val = None
+                break
+
+        # If the key was not found, simply skip to the next criterion.
+        if val is None:
+            continue
+
+        try:
+            # Check that val is numeric and meets the threshold.
+            if not np.isnan(val) and val >= threshold:
+                print(f"Stop criterion ({key}={threshold}) fulfilled!")
+                if not keep_ray_up:
+                    ray.shutdown()
+                return True
+        except TypeError:
+            # If val isn't numeric, skip this criterion.
+            continue
+
+    # If none of the criteria are fulfilled, return False.
+    return False
+
+
 # TODO (sven): Make this the de-facto, well documented, and unified utility for most of
 #  our tests:
 #  - CI (label: "learning_tests")
@@ -1159,8 +1205,7 @@ def run_rllib_example_script_experiment(
                     "You are running your script with --num-learners="
                     f"{args.num_learners} and --num-gpus-per-learner="
                     f"{args.num_gpus_per_learner}, but your cluster only has "
-                    f"{num_gpus_available} GPUs! Will run "
-                    f"with {num_gpus_available} CPU Learners instead."
+                    f"{num_gpus_available} GPUs!"
                 )
 
             # All required GPUs are available -> Use them.
@@ -1204,7 +1249,10 @@ def run_rllib_example_script_experiment(
                     EPISODE_RETURN_MEAN, np.nan
                 )
                 print(f"iter={i} R={mean_return}", end="")
-            if EVALUATION_RESULTS in results:
+            if (
+                EVALUATION_RESULTS in results
+                and ENV_RUNNER_RESULTS in results[EVALUATION_RESULTS]
+            ):
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
                 ]

@@ -47,8 +47,8 @@ class LogsManager:
     def data_source_client(self) -> StateDataSourceClient:
         return self.client
 
-    def ip_to_node_id(self, node_ip: Optional[str]):
-        """Resolve the node id from a given node ip.
+    async def ip_to_node_id(self, node_ip: Optional[str]) -> Optional[str]:
+        """Resolve the node id in hex from a given node ip.
 
         Args:
             node_ip: The node ip.
@@ -57,7 +57,7 @@ class LogsManager:
             node_id if there's a node id that matches the given node ip and is alive.
             None otherwise.
         """
-        return self.client.ip_to_node_id(node_ip)
+        return await self.client.ip_to_node_id(node_ip)
 
     async def list_logs(
         self, node_id: str, timeout: int, glob_filter: str = "*"
@@ -91,7 +91,9 @@ class LogsManager:
         Return:
             Async generator of streamed logs in bytes.
         """
-        node_id = options.node_id or self.ip_to_node_id(options.node_ip)
+        node_id = options.node_id
+        if node_id is None:
+            node_id = await self.ip_to_node_id(options.node_ip)
 
         res = await self.resolve_filename(
             node_id=node_id,

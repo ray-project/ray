@@ -1,4 +1,5 @@
 import importlib
+import sys
 
 import pytest
 
@@ -54,6 +55,25 @@ def test_trainer_restore():
         DataParallelTrainer.can_restore("dummy")
 
 
+def test_serialized_imports(ray_start_4_cpus):
+    """Check that captured imports are deserialized properly without circular imports."""
+
+    from ray.train.lightgbm import LightGBMTrainer
+    from ray.train.torch import TorchTrainer
+    from ray.train.xgboost import XGBoostTrainer
+
+    if sys.version_info < (3, 12):
+        from ray.train.tensorflow import TensorflowTrainer
+    else:
+        TensorflowTrainer = None
+
+    @ray.remote
+    def dummy_task():
+        _ = (TorchTrainer, TensorflowTrainer, XGBoostTrainer, LightGBMTrainer)
+
+    ray.get(dummy_task.remote())
+
+
 @pytest.mark.parametrize("env_v2_enabled", [True, False])
 def test_train_v2_import(monkeypatch, env_v2_enabled):
     monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", str(int(env_v2_enabled)))
@@ -66,8 +86,10 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
     # isort: on
 
     # Import from the absolute module paths as references
-    from ray.train.v2.api.config import FailureConfig as FailureConfigV2
-    from ray.train.v2.api.config import RunConfig as RunConfigV2
+    from ray.train.v2.api.config import (
+        FailureConfig as FailureConfigV2,
+        RunConfig as RunConfigV2,
+    )
     from ray.train.v2.api.result import Result as ResultV2
 
     if env_v2_enabled:

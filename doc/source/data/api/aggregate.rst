@@ -12,6 +12,7 @@ compute aggregations.
     :nosignatures:
     :toctree: doc/
 
+    AggregateFnV2
     AggregateFn
     Count
     Sum

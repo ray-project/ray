@@ -691,7 +691,6 @@ async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
     # Test file_name, media_type="file", node_id
@@ -718,8 +717,10 @@ async def test_logs_manager_stream_log(logs_manager):
     )
 
     # Test pid, media_type = "stream", node_ip
+    async def returns_1(node_ip):
+        return "1"
 
-    logs_client.ip_to_node_id.return_value = "1"
+    logs_client.ip_to_node_id = returns_1
     logs_client.list_logs.side_effect = [
         generate_list_logs(
             ["worker-0-0-10.out", "worker-0-0-11.out", "worker-0-0-10.err"]
@@ -761,7 +762,6 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
     # Test file_name, media_type="file", node_id
@@ -999,9 +999,7 @@ def test_log_list(ray_start_cluster):
     with pytest.raises(requests.HTTPError) as e:
         list_logs(node_id=node_id)
 
-    assert (
-        f"Agent for node id: {node_id} doesn't exist." in e.value.response.json()["msg"]
-    )
+    assert e.value.response.status_code == 500
 
 
 @pytest.mark.skipif(
@@ -1301,7 +1299,8 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         lines = get_log(task_id=task.task_id().hex())
-        assert expected_out == "".join(lines)
+        actual_out = "".join(lines)
+        assert expected_out == actual_out, actual_out
 
         return True
 

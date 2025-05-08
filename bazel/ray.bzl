@@ -1,6 +1,6 @@
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS_WITHOUT_LOG = select({
@@ -14,6 +14,8 @@ COPTS_WITHOUT_LOG = select({
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
+        "-Wno-misleading-indentation",
+        "-Wimplicit-fallthrough",
     ],
 }) + select({
     "//:clang-cl": [
@@ -30,6 +32,8 @@ PYX_COPTS = select({
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
+        "-Wno-shadow",
+        "-Wno-implicit-fallthrough",
     ],
 }) + select({
     "@platforms//os:windows": [
@@ -215,3 +219,10 @@ filter_files_with_suffix = rule(
         "suffix": attr.string(),
     },
 )
+
+# It will be passed to the FlatBuffers compiler when defining flatbuffer_cc_library
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]

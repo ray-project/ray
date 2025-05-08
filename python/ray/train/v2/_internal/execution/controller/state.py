@@ -1,9 +1,9 @@
 from enum import Enum
 
-from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ScalingDecision,
 )
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 class TrainControllerStateType(Enum):
