@@ -25,6 +25,7 @@ user-guides/rayserve-dev-doc
 user-guides/pod-command
 user-guides/helm-chart-rbac
 user-guides/tls
+user-guides/webhooks
 user-guides/k8s-autoscaler
 user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
@@ -58,6 +59,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-helm-chart-rbac`
 * {ref}`kuberay-tls`
 * {ref}`kuberay-gke-bucket`
+* {ref}`kuberay-webhooks`
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
 * {ref}`kubectl-plugin`
