@@ -162,6 +162,14 @@ const ActorTable = ({
     { label: "" },
     { label: "ID" },
     {
+      label: "Worker ID",
+      helpInfo: (
+        <Typography>
+          The ID of the worker process that hosts this actor.
+        </Typography>
+      ),
+    },
+    {
       label: "Class",
       helpInfo: (
         <Typography>
@@ -245,9 +253,9 @@ const ActorTable = ({
           Hardware CPU usage of this Actor (from Worker Process).
           <br />
           <br />
-          Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+          Node's CPU usage is calculated against all CPU cores. Worker Process's
           CPU usage is calculated against 1 CPU core. As a result, the sum of
-          CPU usage from all Worker Processes is not equal to the Node’s CPU
+          CPU usage from all Worker Processes is not equal to the Node's CPU
           usage.
         </Typography>
       ),
@@ -406,6 +414,21 @@ const ActorTable = ({
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("name", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Worker ID"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("workerId", value.trim());
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -585,6 +608,24 @@ const ActorTable = ({
                         />
                       </Box>
                     </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    {actors[actorId]?.workerId ? (
+                      <Tooltip title={actors[actorId].workerId} arrow>
+                        <Box
+                          sx={{
+                            maxWidth: "120px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {actors[actorId].workerId}
+                        </Box>
+                      </Tooltip>
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
