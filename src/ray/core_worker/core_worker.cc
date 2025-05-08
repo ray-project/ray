@@ -719,25 +719,14 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
-        spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-        if (!object_recovery) {
-          // Retry after a delay to emulate the existing Raylet reconstruction
-          // behaviour. TODO(ekl) backoff exponentially.
-          RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
-                        << "ms delay: " << spec.DebugString();
-          absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
-          to_resubmit_.push(std::move(task_to_retry));
+      [this](TaskSpecification &spec) {
+        if (spec.IsActorTask()) {
+          auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+          actor_handle->SetResubmittedActorTaskSpec(spec);
+          RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
         } else {
-          if (spec.IsActorTask()) {
-            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(spec);
-            RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
-          } else {
-            RAY_CHECK(spec.IsNormalTask());
-            RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
-          }
+          RAY_CHECK(spec.IsNormalTask());
+          RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
         }
       },
       push_error_callback,
@@ -1358,18 +1347,9 @@ void CoreWorker::ExitIfParentRayletDies() {
 
 void CoreWorker::InternalHeartbeat() {
   // Retry tasks.
-  std::vector<TaskToRetry> tasks_to_resubmit;
-  {
-    absl::MutexLock lock(&mutex_);
-    const auto current_time = current_time_ms();
-    while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
-      tasks_to_resubmit.emplace_back(to_resubmit_.top());
-      to_resubmit_.pop();
-    }
-  }
+  std::vector<TaskSpecification> tasks_to_retry = task_manager_->PopTasksToRetry();
 
-  for (auto &task_to_retry : tasks_to_resubmit) {
-    auto &spec = task_to_retry.task_spec;
+  for (auto &spec : tasks_to_retry) {
     if (spec.IsActorTask()) {
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
