@@ -52,7 +52,8 @@ class BoundedExecutor {
       std::function<std::function<void()>()> initialize_thread_callback = nullptr,
       boost::chrono::milliseconds timeout_ms = boost::chrono::milliseconds(10000));
 
-  /// Posts work to the pool
+  /// Posts work to the pool. This is a non-blocking call. In addition, the execution
+  /// order of the tasks is not guaranteed if there are multiple threads in the pool.
   void Post(std::function<void()> fn);
 
   /// Stop the thread pool.
