@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,32 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "ray/core_worker/transport/actor_task_submitter.h"
 
-// clang-format off
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/common/test_util.h"
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/core_worker/actor_creator.h"
-#include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/core_worker/reference_count.h"
-// clang-format on
+#include "mock/ray/core_worker/task_manager.h"
+#include "ray/common/test_util.h"
+#include "ray/rpc/worker/core_worker_client.h"
 
-namespace ray {
-namespace core {
+namespace ray::core {
 
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Return;
-
 rpc::ActorDeathCause CreateMockDeathCause() {
   ray::rpc::ActorDeathCause death_cause;
   death_cause.mutable_runtime_env_failed_context()->set_error_message("failed");
@@ -58,20 +46,6 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(counter);
   task.GetMutableMessage().set_num_returns(0);
   return task;
-}
-
-rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id,
-                                                 int64_t counter,
-                                                 WorkerID caller_worker_id,
-                                                 TaskID caller_id,
-                                                 int64_t caller_timestamp) {
-  auto task_spec = CreateActorTaskHelper(actor_id, caller_worker_id, counter, caller_id);
-
-  rpc::PushTaskRequest request;
-  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  request.set_sequence_number(request.task_spec().actor_task_spec().actor_counter());
-  request.set_client_processed_up_to(-1);
-  return request;
 }
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
@@ -753,208 +727,4 @@ INSTANTIATE_TEST_SUITE_P(ExecuteOutOfOrder,
                          ActorTaskSubmitterTest,
                          ::testing::Values(true, false));
 
-class MockDependencyWaiter : public DependencyWaiter {
- public:
-  MOCK_METHOD2(Wait,
-               void(const std::vector<rpc::ObjectReference> &dependencies,
-                    std::function<void()> on_dependencies_available));
-
-  virtual ~MockDependencyWaiter() {}
-};
-
-class MockTaskEventBuffer : public worker::TaskEventBuffer {
- public:
-  void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
-
-  void FlushEvents(bool forced) override {}
-
-  Status Start(bool auto_flush = true) override { return Status::OK(); }
-
-  void Stop() override {}
-
-  bool Enabled() const override { return true; }
-
-  std::string DebugString() override { return ""; }
-};
-
-class MockTaskReceiver : public TaskReceiver {
- public:
-  MockTaskReceiver(instrumented_io_context &task_execution_service,
-                   worker::TaskEventBuffer &task_event_buffer,
-                   const TaskHandler &task_handler,
-                   std::function<std::function<void()>()> initialize_thread_callback,
-                   const OnActorCreationTaskDone &actor_creation_task_done_)
-      : TaskReceiver(task_execution_service,
-                     task_event_buffer,
-                     task_handler,
-                     initialize_thread_callback,
-                     actor_creation_task_done_) {}
-
-  void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
-                                    const std::vector<ConcurrencyGroup> &cgs) {
-    concurrency_groups_cache_[actor_id] = cgs;
-  }
-};
-
-class TaskReceiverTest : public ::testing::Test {
- public:
-  TaskReceiverTest()
-      : worker_client_(std::make_shared<MockWorkerClient>()),
-        dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
-    auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
-                                  this,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2,
-                                  std::placeholders::_3,
-                                  std::placeholders::_4,
-                                  std::placeholders::_5,
-                                  std::placeholders::_6);
-    receiver_ = std::make_unique<MockTaskReceiver>(
-        task_execution_service_,
-        task_event_buffer_,
-        execute_task,
-        /* intiialize_thread_callback= */ []() { return []() { return; }; },
-        /* actor_creation_task_done= */ []() { return Status::OK(); });
-    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
-                        [&](const rpc::Address &addr) { return worker_client_; }),
-                    rpc_address_,
-                    dependency_waiter_.get());
-  }
-
-  Status MockExecuteTask(
-      const TaskSpecification &task_spec,
-      std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrowed_refs) {
-    return Status::OK();
-  }
-
-  void StartIOService() { task_execution_service_.run(); }
-
-  void StopIOService() {
-    // We must delete the receiver before stopping the IO service, since it
-    // contains timers referencing the service.
-    receiver_.reset();
-    task_execution_service_.stop();
-  }
-
-  std::unique_ptr<MockTaskReceiver> receiver_;
-
- private:
-  rpc::Address rpc_address_;
-  instrumented_io_context task_execution_service_;
-  MockTaskEventBuffer task_event_buffer_;
-  std::shared_ptr<MockWorkerClient> worker_client_;
-  std::unique_ptr<DependencyWaiter> dependency_waiter_;
-};
-
-TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
-  TaskID current_task_id = TaskID::Nil();
-  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  WorkerID worker_id = WorkerID::FromRandom();
-  TaskID caller_id =
-      TaskID::ForActorTask(JobID::FromInt(0), current_task_id, 0, actor_id);
-
-  int64_t curr_timestamp = current_sys_time_ms();
-  int64_t old_timestamp = curr_timestamp - 1000;
-  int64_t new_timestamp = curr_timestamp + 1000;
-
-  int callback_count = 0;
-
-  // Push a task request with actor counter 0. This should scucceed
-  // on the receiver.
-  {
-    auto request =
-        CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
-      ++callback_count;
-      ASSERT_TRUE(status.ok());
-    };
-    receiver_->UpdateConcurrencyGroupsCache(actor_id, {});
-    receiver_->HandleTask(request, &reply, reply_callback);
-  }
-
-  // Push a task request with actor counter 1. This should scucceed
-  // on the receiver.
-  {
-    auto request =
-        CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
-      ++callback_count;
-      ASSERT_TRUE(status.ok());
-    };
-    receiver_->HandleTask(request, &reply, reply_callback);
-  }
-
-  // Create another request with the same caller id, but a different worker id,
-  // and a newer timestamp. This simulates caller reconstruction.
-  // Note that here the task request still has counter 0, which should be
-  // ignored normally, but here it's from a different worker and with a newer
-  // timestamp, in this case it should succeed.
-  {
-    worker_id = WorkerID::FromRandom();
-    auto request =
-        CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
-      ++callback_count;
-      ASSERT_TRUE(status.ok());
-    };
-    receiver_->HandleTask(request, &reply, reply_callback);
-  }
-
-  // Push a task request with actor counter 1, but with a different worker id,
-  // and a older timestamp. In this case the request should fail.
-  {
-    worker_id = WorkerID::FromRandom();
-    auto request =
-        CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
-      ++callback_count;
-      ASSERT_TRUE(!status.ok());
-    };
-    receiver_->HandleTask(request, &reply, reply_callback);
-  }
-
-  StartIOService();
-
-  // Wait for all the callbacks to be invoked.
-  auto condition_func = [&callback_count]() -> bool { return callback_count == 4; };
-
-  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  StopIOService();
-}
-
-}  // namespace core
-}  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  return RUN_ALL_TESTS();
-}
+}  // namespace ray::core
