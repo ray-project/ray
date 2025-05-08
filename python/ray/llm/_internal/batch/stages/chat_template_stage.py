@@ -28,8 +28,8 @@ class ChatTemplateUDF(StatefulStageUDF):
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
             chat_template: The chat template in Jinja template format. This is
-            usually not needed if the model checkpoint already contains the
-            chat template.
+                           usually not needed if the model checkpoint already contains the
+                           chat template.
         """
         from transformers import AutoProcessor
 
