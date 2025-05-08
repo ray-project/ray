@@ -21,8 +21,8 @@ def test_get_alive_nodes(ray_start_cluster):
     cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
     cluster_node_info_cache.update()
     assert set(cluster_node_info_cache.get_alive_nodes()) == {
-        (head_node_id, ray.nodes()[0]["NodeName"]),
-        (worker_node_id, ray.nodes()[0]["NodeName"]),
+        (head_node_id, ray.nodes()[0]["NodeName"], ""),
+        (worker_node_id, ray.nodes()[0]["NodeName"], ""),
     }
     assert cluster_node_info_cache.get_alive_node_ids() == {
         head_node_id,
@@ -39,7 +39,7 @@ def test_get_alive_nodes(ray_start_cluster):
     # The killed worker node shouldn't show up in the alive node list.
     cluster_node_info_cache.update()
     assert cluster_node_info_cache.get_alive_nodes() == [
-        (head_node_id, ray.nodes()[0]["NodeName"])
+        (head_node_id, ray.nodes()[0]["NodeName"], "")
     ]
     assert cluster_node_info_cache.get_alive_node_ids() == {head_node_id}
     assert (

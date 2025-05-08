@@ -102,6 +102,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
     node_ip = controller_details.node_ip
+    node_instance_id = controller_details.node_instance_id
     proxy_details = ray.get(controller.get_proxy_details.remote(node_id=node_id))
     deployment_timestamp = ray.get(
         controller.get_deployment_timestamps.remote(app_name="default")
@@ -204,12 +205,24 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
             "target_capacity": None,
             "target_groups": [
                 {
-                    "targets": [{"ip": node_ip, "port": 8000}],
+                    "targets": [
+                        {
+                            "ip": node_ip,
+                            "port": 8000,
+                            "instance_id": node_instance_id,
+                        },
+                    ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
                 },
                 {
-                    "targets": [{"ip": node_ip, "port": 9000}],
+                    "targets": [
+                        {
+                            "ip": node_ip,
+                            "port": 9000,
+                            "instance_id": node_instance_id,
+                        },
+                    ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
                 },
