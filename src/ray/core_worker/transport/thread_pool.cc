@@ -16,6 +16,7 @@
 
 #include <boost/asio/post.hpp>
 #include <future>
+#include <latch>
 #include <memory>
 #include <utility>
 
@@ -27,24 +28,28 @@ BoundedExecutor::BoundedExecutor(
     std::function<std::function<void()>()> initialize_thread_callback)
     : work_guard_(boost::asio::make_work_guard(io_context_)) {
   RAY_CHECK(max_concurrency > 0) << "max_concurrency must be greater than 0";
+
+  std::latch init_latch(max_concurrency);
+
   threads_.reserve(max_concurrency);
   for (int i = 0; i < max_concurrency; i++) {
-    std::promise<void> init_promise;
-    auto init_future = init_promise.get_future();
-    threads_.emplace_back([this, initialize_thread_callback, &init_promise]() {
+    threads_.emplace_back([this, initialize_thread_callback, &init_latch]() {
       std::function<void()> releaser;
       if (initialize_thread_callback) {
         releaser = initialize_thread_callback();
       }
-      init_promise.set_value();
+
+      init_latch.count_down();
       // `io_context_.run()` will block until `work_guard_.reset()` is called.
       io_context_.run();
+
       if (releaser) {
         releaser();
       }
     });
-    init_future.wait();
   }
+
+  init_latch.wait();
 }
 
 void BoundedExecutor::Post(std::function<void()> fn) {

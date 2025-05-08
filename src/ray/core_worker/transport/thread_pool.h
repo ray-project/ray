@@ -39,6 +39,12 @@ class BoundedExecutor {
     return max_concurrency_in_default_group > 1 || has_other_concurrency_groups;
   }
 
+  /// Create a thread pool with `max_concurrency` threads, and execute
+  /// `initialize_thread_callback` on each thread. The releaser function returned by the
+  /// callback function will be called before the thread is joined.
+  ///
+  /// \param max_concurrency The maximum number of threads in the pool.
+  /// \param initialize_thread_callback The callback function that initializes threads.
   explicit BoundedExecutor(
       int max_concurrency,
       std::function<std::function<void()>()> initialize_thread_callback = nullptr);
