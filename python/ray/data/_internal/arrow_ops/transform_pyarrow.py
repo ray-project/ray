@@ -734,7 +734,7 @@ def combine_chunked_array(
     Args:
         array: The chunked array to be combined into a single contiguous array.
         ensure_copy: Skip copying when ensure_copy is False and there's exactly
-                     1 chunk.
+           1 chunk.
     """
 
     import pyarrow as pa

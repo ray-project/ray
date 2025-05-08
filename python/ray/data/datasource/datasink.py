@@ -70,7 +70,7 @@ class Datasink(Generic[WriteReturnType]):
 
         Args:
             write_result: Aggregated result of the
-                          Write operator, containing write results and stats.
+               Write operator, containing write results and stats.
         """
         pass
 

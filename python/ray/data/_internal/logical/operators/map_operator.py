@@ -322,7 +322,7 @@ class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
-                                   streaming repartition.
+           streaming repartition.
     """
 
     def __init__(
