@@ -338,6 +338,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent in task submission backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
+    task_completion_time: float = metric_field(
+        default=0,
+        description="Time spent running all tasks to completion.",
+        metrics_group=MetricsGroup.TASKS,
+    )
 
     # === Actor-related metrics ===
     num_alive_actors: int = metric_field(
@@ -685,7 +690,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._op_task_duration_stats.add_duration(
             time.perf_counter() - task_info.start_time
         )
-
+        self.task_completion_time = self._op_task_duration_stats.mean()
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()

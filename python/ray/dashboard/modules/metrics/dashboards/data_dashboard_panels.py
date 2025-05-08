@@ -431,6 +431,20 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=True,
     ),
+    Panel(
+        id=38,
+        title="Mean Task Completion Time",
+        description="Mean time spent running all tasks to completion.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_task_completion_time{{{global_filters}}}) by (dataset, operator)",
+                legend="Backpressure Time: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
     # Ray Data Metrics (Object Store Memory)
     Panel(
         id=13,
