@@ -15,7 +15,7 @@ class URICache:
     `mark_unused` to signal that the URI is safe for deletion.
 
     URIs in the cache can be marked as "in use" by calling `mark_used`.
-    
+
     Deletion of URIs on disk does not occur until the size limit is exceeded.
     When this happens, URIs that are not in use are deleted randomly until the
     size limit is satisfied, or there are no more URIs that are not in use.

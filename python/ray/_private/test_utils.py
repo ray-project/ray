@@ -1568,6 +1568,7 @@ class WorkerKillerActor(ResourceKillerActor):
                 ("name", "!=", "WorkerKillActor.run"),
             ]
         )
+
     async def _find_resources_to_kill(self):
         from ray.util.state.common import StateResource
 
@@ -2136,4 +2137,3 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
-
