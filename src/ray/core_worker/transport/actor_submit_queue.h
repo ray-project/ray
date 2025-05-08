@@ -32,15 +32,10 @@ namespace core {
  * The task is not ready until it's being marked as
  * MarkDependencyResolved; and being removed from the queue if it's beking marked as
  * MarkDependencyFailed.
- * The caller should call PopNextTaskToSend to find next task to send; and once the
- * task is known to send, MarkSeqnoCompleted is expected to be called to remove
- * the task from sending queue.
+ * The caller should call PopNextTaskToSend to find next task to send.
  * This queue is also aware of client connection/reconnection, so it needs to
  * call OnClientConnected whenever client is connected, and use GetSequenceNumber
  * to know the actual sequence_no to send over the network.
- * For some of the implementation (such as SequentialActorSubmitQueue), it guarantees
- * the sequential order between client and server and works with retry/actor restart,
- * so PopAllOutOfOrderCompletedTasks is called during actor restart.
  *
  * This class is not thread safe.
  * TODO(scv119): the protocol could be improved.
@@ -71,14 +66,8 @@ class IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   virtual std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() = 0;
-  /// On client connect/reconnect, find all the tasks that's known to be
-  /// executed out of order. This is specific to SequentialActorSubmitQueue.
-  virtual std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() = 0;
   /// Get the sequence number of the task to send according to the protocol.
   virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
-  /// Mark a task has been executed on the receiver side.
-  virtual void MarkSeqnoCompleted(uint64_t sequence_no,
-                                  const TaskSpecification &task_spec) = 0;
   virtual bool Empty() = 0;
 };
 }  // namespace core
