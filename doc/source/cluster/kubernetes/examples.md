@@ -18,7 +18,7 @@ examples/rayjob-kueue-gang-scheduling
 examples/distributed-checkpointing-with-gcsfuse
 examples/modin-example
 examples/vllm-rayservice
-examples/ray-llm-example
+examples/rayserve-llm-example
 ```
 
 
