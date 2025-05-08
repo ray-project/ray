@@ -26,5 +26,4 @@ show you how achieve several tasks.
     monitoring-your-workload
     execution-configurations
     batch_inference
-    performance-tips
     custom-datasource-example
