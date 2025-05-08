@@ -32,21 +32,6 @@ class Metric:
         self._gauge = None
         self._values = {}
 
-    def _validate_tags(self, tags: Dict[str, str]):
-        """Validate that the provided tags match the expected tag keys.
-
-        Args:
-            tags: Dictionary of tag key-value pairs to validate
-
-        Raises:
-            ValueError: If the tag keys don't match the expected keys
-        """
-        if set(tags.keys()) != set(self.tag_keys):
-            raise ValueError(
-                f"Tag keys for metric '{self.name}' don't match expected keys. "
-                f"Expected: {self.tag_keys}, got: {list(tags.keys())}"
-            )
-
     def start(self):
         self._gauge = Gauge(
             self.name,
@@ -82,7 +67,7 @@ class Metric:
         if self._gauge is not None:
             self._gauge.set(self._values[key], tags)
 
-    def get_value(self, tags: Dict[str, str]) -> Any:
+    def get_value(self, tags: Dict[str, str]) -> T:
         """Get the value of the metric for the given tags."""
         self._validate_tags(tags)
 
@@ -102,6 +87,21 @@ class Metric:
         self.reset()
         self._values = {}
 
+    def _validate_tags(self, tags: Dict[str, str]):
+        """Validate that the provided tags match the expected tag keys.
+
+        Args:
+            tags: Dictionary of tag key-value pairs to validate
+
+        Raises:
+            ValueError: If the tag keys don't match the expected keys
+        """
+        if set(tags.keys()) != set(self.tag_keys):
+            raise ValueError(
+                f"Tag keys for metric '{self.name}' don't match expected keys. "
+                f"Expected: {self.tag_keys}, got: {list(tags.keys())}"
+            )
+
 
 class MetricsTracker:
     """Tracks metric values for a set of defined metrics."""
@@ -114,16 +114,6 @@ class MetricsTracker:
         """Start all metrics."""
         for metric in self._metrics.values():
             metric.start()
-
-    def shutdown(self):
-        """Shutdown all metrics."""
-        for metric in self._metrics.values():
-            metric.shutdown()
-
-    def reset(self):
-        """Reset all metrics."""
-        for metric in self._metrics.values():
-            metric.reset()
 
     def record(
         self, metric_name: str, value: Any, additional_tags: Dict[str, str] = None
@@ -142,6 +132,16 @@ class MetricsTracker:
             additional_tags = {}
         tags = self._base_tags | additional_tags
         return metric.get_value(tags)
+
+    def reset(self):
+        """Reset all metrics."""
+        for metric in self._metrics.values():
+            metric.reset()
+
+    def shutdown(self):
+        """Shutdown all metrics."""
+        for metric in self._metrics.values():
+            metric.shutdown()
 
     def _get_metric(self, metric_name: str) -> Metric:
         """Get a specific metric."""
