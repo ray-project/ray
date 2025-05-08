@@ -38,6 +38,7 @@ TensorBatchType = Union[
 ]
 
 
+@DeveloperAPI
 def is_tensor_batch_type(batch: Any) -> bool:
     """Check if a batch matches any of the TensorBatchType variants.
 
