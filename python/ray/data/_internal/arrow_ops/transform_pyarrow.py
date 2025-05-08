@@ -96,7 +96,7 @@ def hash_partition(
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
-    partitions_array = np.array(partitions)
+    partitions_array = np.asarray(partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -759,8 +759,8 @@ def combine_chunked_array(
 
     Args:
         array: The chunked array to be combined into a single contiguous array.
-        ensure_copy: Skip copying when ensure_copy is False and there is exactly
-        1 chunk.
+        ensure_copy: Skip copying when ensure_copy is False and there's exactly
+           1 chunk.
     """
 
     import pyarrow as pa
