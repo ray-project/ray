@@ -3,6 +3,7 @@ import collections
 import inspect
 import logging
 import queue
+from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
 from typing import Any, Callable, Iterable, List, Optional
@@ -53,6 +54,14 @@ from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MapTransformerWrapper: #TODO(mowen): Not sure if I love this name, don't want to overload the MapTransformer class so keeping for now.
+    # Allow all to be None so we don't have to overwrite on construction in _parse_op_fn
+    fn: Optional[Callable[[Any], Any]] = None
+    init_fn: Optional[Callable[[], None]] = None
+    map_actor_context: Optional["_MapActorContext"] = None
 
 
 class _MapActorContext:
@@ -179,7 +188,9 @@ def plan_filter_op(
             zero_copy_batch=True,
         )
     else:
-        filter_fn, init_fn = _parse_op_fn(op)
+        wrapper = _parse_op_fn(op)
+        filter_fn = wrapper.fn
+        init_fn = wrapper.init_fn
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
@@ -210,10 +221,12 @@ def plan_udf_map_op(
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
-    fn, init_fn = _parse_op_fn(op)
+    wrapper = _parse_op_fn(op)
+    fn = wrapper.fn
+    init_fn = wrapper.init_fn
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn)
+        transform_fn = _generate_transform_fn_for_map_batches(fn, wrapper.map_actor_context)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             op._batch_size,
@@ -225,7 +238,7 @@ def plan_udf_map_op(
         if isinstance(op, MapRows):
             transform_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(fn)
+            transform_fn = _generate_transform_fn_for_flat_map(fn, wrapper.map_actor_context)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -246,13 +259,17 @@ def plan_udf_map_op(
     )
 
 
-def _parse_op_fn(op: AbstractUDFMap):
+def _parse_op_fn(op: AbstractUDFMap) -> MapTransformerWrapper:
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to caputure the entire operator, which may not
     # be serializable.
     op_fn = op._fn
     fn_args = op._fn_args or ()
     fn_kwargs = op._fn_kwargs or {}
+
+    # We will return a MapTransformerWrapper that owns its own `_MapActorContext`
+    # Prepare that object here and later assign the corresponding fields.
+    wrapper = MapTransformerWrapper()
 
     if isinstance(op._fn, CallableClass):
         fn_constructor_args = op._fn_constructor_args or ()
@@ -266,8 +283,8 @@ def _parse_op_fn(op: AbstractUDFMap):
             op_fn = make_callable_class_concurrent(op_fn)
 
         def init_fn():
-            if ray.data._map_actor_context is None:
-                ray.data._map_actor_context = _MapActorContext(
+            if wrapper.map_actor_context is None:
+                wrapper.map_actor_context = _MapActorContext(
                     udf_map_cls=op_fn,
                     udf_map_fn=op_fn(
                         *fn_constructor_args,
@@ -279,11 +296,11 @@ def _parse_op_fn(op: AbstractUDFMap):
         if is_async_gen:
 
             async def fn(item: Any) -> Any:
-                assert ray.data._map_actor_context is not None
-                assert ray.data._map_actor_context.is_async
+                assert wrapper.map_actor_context is not None
+                assert wrapper.map_actor_context.is_async
 
                 try:
-                    return ray.data._map_actor_context.udf_map_fn(
+                    return wrapper.map_actor_context.udf_map_fn(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -294,10 +311,10 @@ def _parse_op_fn(op: AbstractUDFMap):
         else:
 
             def fn(item: Any) -> Any:
-                assert ray.data._map_actor_context is not None
-                assert not ray.data._map_actor_context.is_async
+                assert wrapper.map_actor_context is not None
+                assert not wrapper.map_actor_context.is_async
                 try:
-                    return ray.data._map_actor_context.udf_map_fn(
+                    return wrapper.map_actor_context.udf_map_fn(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -316,7 +333,10 @@ def _parse_op_fn(op: AbstractUDFMap):
         def init_fn():
             pass
 
-    return fn, init_fn
+    # Assign the parsed functions to the wrapper.
+    wrapper.init_fn = init_fn
+    wrapper.fn = fn
+    return wrapper
 
 
 def _handle_debugger_exception(e: Exception, item: Any = None):
@@ -380,10 +400,11 @@ def _validate_batch_output(batch: Block) -> None:
 
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
+    map_actor_context: Optional[_MapActorContext] = None,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output)
+        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output, map_actor_context)
 
     else:
 
@@ -433,6 +454,7 @@ def _generate_transform_fn_for_map_batches(
 def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
     validate_fn,
+    map_actor_context: _MapActorContext,
 ) -> MapTransformCallable:
     # Generates a transform function for asynchronous mapping of items (either batches or rows)
     # using a user-defined function (UDF). This consolidated function handles both asynchronous
@@ -460,7 +482,7 @@ def _generate_transform_fn_for_async_map(
 
         async def process_all_items():
             try:
-                loop = ray.data._map_actor_context.udf_map_asyncio_loop
+                loop = map_actor_context.udf_map_asyncio_loop
                 tasks = [loop.create_task(process_item(x)) for x in input_iterable]
 
                 ctx = ray.data.DataContext.get_current()
@@ -474,7 +496,7 @@ def _generate_transform_fn_for_async_map(
                 output_item_queue.put(sentinel)
 
         # Use the existing event loop to create and run Tasks to process each item
-        loop = ray.data._map_actor_context.udf_map_asyncio_loop
+        loop = map_actor_context.udf_map_asyncio_loop
         asyncio.run_coroutine_threadsafe(process_all_items(), loop)
 
         # Yield results as they become available.
@@ -519,10 +541,11 @@ def _generate_transform_fn_for_map_rows(
 
 def _generate_transform_fn_for_flat_map(
     fn: UserDefinedFunction,
+    map_actor_context: _MapActorContext,
 ) -> MapTransformCallable[Row, Row]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output)
+        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output, map_actor_context)
 
     else:
 
