@@ -1,1 +1,1 @@
-/home/ray/default/ray/doc/source/ray-overview/examples/entity-recognition-with-llms/ci/build.sh
+../../../doc/source/ray-overview/examples/entity-recognition-with-llms/ci/build.sh
