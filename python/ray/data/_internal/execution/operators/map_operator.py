@@ -90,6 +90,7 @@ class MapOperator(OneToOneOperator, ABC):
         # NOTE: This constructor must be called by subclasses.
 
         self._map_transformer = map_transformer
+        self._map_transformer_ref = None
         self._supports_fusion = supports_fusion
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
@@ -112,11 +113,6 @@ class MapOperator(OneToOneOperator, ABC):
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size)
 
-        # If set, then all output blocks will be split into
-        # this many sub-blocks. This is to avoid having
-        # too-large blocks, which may reduce parallelism for
-        # the subsequent operator.
-        self._additional_split_factor = None
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
@@ -136,14 +132,6 @@ class MapOperator(OneToOneOperator, ABC):
         for fn in self._map_task_kwargs_fns:
             kwargs.update(fn())
         return kwargs
-
-    def get_additional_split_factor(self) -> int:
-        if self._additional_split_factor is None:
-            return 1
-        return self._additional_split_factor
-
-    def set_additional_split_factor(self, k: int):
-        self._additional_split_factor = k
 
     @property
     def name(self) -> str:
@@ -269,12 +257,15 @@ class MapOperator(OneToOneOperator, ABC):
             self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
 
         map_transformer = self._map_transformer
+
+        # TODO remove
         # Apply additional block split if needed.
-        if self.get_additional_split_factor() > 1:
-            split_transformer = MapTransformer(
-                [ApplyAdditionalSplitToOutputBlocks(self.get_additional_split_factor())]
-            )
-            map_transformer = map_transformer.fuse(split_transformer)
+        # if self.get_additional_split_factor() > 1:
+        #     split_transformer = MapTransformer(
+        #         [ApplyAdditionalSplitToOutputBlocks(self.get_additional_split_factor())]
+        #     )
+        #     map_transformer = map_transformer.fuse(split_transformer)
+
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._map_transformer_ref = ray.put(map_transformer)

@@ -32,6 +32,18 @@ class Read(AbstractMap):
         self._mem_size = mem_size
         self._concurrency = concurrency
         self._detected_parallelism = None
+        # If set, determines target number of output blocks this operator
+        # is expected to produce.
+        #
+        # NOTE: This could be divergent from the total number of tasks,
+        #       therefore necessitating produced output blocks to be
+        #       further
+        #           - Recombined (in case of target output blocks < tasks) or
+        #           - Split (in case of target output blocks > tasks)
+        self._target_num_output_blocks = None
+
+    def set_target_num_blocks(self, target_num_blocks: int):
+        self._target_num_output_blocks = target_num_blocks
 
     def set_detected_parallelism(self, parallelism: int):
         """

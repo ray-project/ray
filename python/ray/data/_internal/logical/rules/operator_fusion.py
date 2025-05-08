@@ -163,6 +163,7 @@ class FuseOperators(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
+        # TODO remove
         if up_op.get_additional_split_factor() > 1:
             return False
 

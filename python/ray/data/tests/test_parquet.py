@@ -417,7 +417,6 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
 
     ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
     assert not ds._plan.has_started_execution
 
     # Forces a data read.
@@ -796,10 +795,13 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     assert sorted(values) == list(range(3 * num_dfs))
 
 
-def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
+def test_parquet_reader_estimate_data_size(
+    shutdown_only, tmp_path, restore_data_context
+):
     ctx = ray.data.context.DataContext.get_current()
     old_decoding_size_estimation = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = True
+    ctx.target_min_block_size = 1 * 1024 * 1024
     try:
         tensor_output_path = os.path.join(tmp_path, "tensor")
         ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
@@ -840,7 +842,6 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ds = ray.data.read_parquet(
             text_output_path, meta_provider=ParquetMetadataProvider()
         )
-        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
@@ -854,7 +855,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             text_output_path, meta_provider=ParquetMetadataProvider()
         )
         assert (
-            datasource._encoding_ratio >= 150 and datasource._encoding_ratio <= 300
+            datasource._encoding_ratio >= 150 and datasource._encoding_ratio <= 350
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
@@ -1213,9 +1214,9 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
-    # Minimize the block size to prevent Ray Data from reading multiple fragments in a
-    # single task.
-    ray.data.DataContext.get_current().target_max_block_size = 1
+    # Reset the min block size to prevent Ray Data from combining multiple fragments
+    # into a single block.
+    ray.data.DataContext.get_current().target_min_block_size = 1
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.

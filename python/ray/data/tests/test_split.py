@@ -753,8 +753,8 @@ def test_train_test_split(ray_start_regular_shared):
 
     # shuffle
     train, test = ds.train_test_split(test_size=0.25, shuffle=True, seed=1)
-    assert extract_values("id", train.take()) == [4, 5, 3, 2, 7, 6]
-    assert extract_values("id", test.take()) == [0, 1]
+    assert extract_values("id", train.take()) == [5, 1, 2, 3, 7, 0]
+    assert extract_values("id", test.take()) == [6, 4]
 
     # error handling
     with pytest.raises(TypeError):

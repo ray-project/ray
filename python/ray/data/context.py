@@ -39,14 +39,18 @@ class ShuffleStrategy(str, enum.Enum):
 # tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM
 # * DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
 # fraction set by Ray core), assuming typical memory:core ratio of 4:1.
-DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
+DEFAULT_TARGET_MAX_BLOCK_SIZE = env_integer(
+    "RAY_DATA_DEFAULT_TARGET_MAX_BLOCK_SIZE", 128 * 1024 * 1024
+)
 
 # We set a higher target block size because we have to materialize
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
 # excessive number of partitions.
 # We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
-DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = env_integer(
+    "RAY_DATA_DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE", 1024 * 1024 * 1024
+)
 
 # We will attempt to slice blocks whose size exceeds this factor *
 # target_max_block_size. We will warn the user if slicing fails and we produce
@@ -59,11 +63,15 @@ MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
 
 
-DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
+DEFAULT_TARGET_MIN_BLOCK_SIZE = env_integer(
+    "RAY_DATA_DEFAULT_TARGET_MIN_BLOCK_SIZE", 16 * 1024 * 1024
+)
 
 # This default appears to work well with most file sizes on remote storage systems,
 # which is very sensitive to the buffer size.
-DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
+DEFAULT_STREAMING_READ_BUFFER_SIZE = env_integer(
+    "RAY_DATA_DEFAULT_STREAMING_READ_BUFFER_SIZE", 32 * 1024 * 1024
+)
 
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
