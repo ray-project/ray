@@ -334,17 +334,16 @@ class Stats:
         """
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
-            reduced, _ = self._reduced_values()
+            reduced, new_internal_values = self._reduced_values()
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
                 # If we clear on reduce, following reduce calls should not return the old values.
                 self._has_new_values = True
             else:
+                self._set_values(new_internal_values)
+                # If we we use a window, we don't want to replace the internal values list
                 self._has_new_values = False
-                if self._inf_window:
-                    # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
-                    self._set_values(reduced)
         else:
             reduced = self.get_reduce_history()[-1]
 
@@ -355,9 +354,6 @@ class Stats:
             # It only makes sense to extend the history if we are reducing to a single value.
             # We need to make a copy here because the new_values_list is a reference to the internal values list
             self._reduce_history.append(force_list(reduced.copy()))
-        else:
-            # If there is a window and no reduce method, we don't want to use the reduce history to return reduced values in other methods
-            self._has_new_values = True
 
         if compile and self._reduce_method is not None:
             assert (
@@ -705,7 +701,10 @@ class Stats:
         # Special case: Internal values list is empty -> return NaN
         # This makes sure that all metrics are allways logged.
         elif len(values) == 0:
-            return [float("nan")], []
+            if self._reduce_method in ["min", "max", "mean"]:
+                return [float("nan")], []
+            else:
+                return [0], []
 
         # Do EMA (always a "mean" reduction; possibly using a window).
         elif self._ema_coeff is not None:
