@@ -15,8 +15,8 @@
 #include "ray/core_worker/transport/thread_pool.h"
 
 #include <boost/asio/post.hpp>
+#include <boost/thread/latch.hpp>
 #include <future>
-#include <latch>
 #include <memory>
 #include <utility>
 
@@ -29,7 +29,7 @@ BoundedExecutor::BoundedExecutor(
     : work_guard_(boost::asio::make_work_guard(io_context_)) {
   RAY_CHECK(max_concurrency > 0) << "max_concurrency must be greater than 0";
 
-  std::latch init_latch(max_concurrency);
+  boost::latch init_latch(max_concurrency);
 
   threads_.reserve(max_concurrency);
   for (int i = 0; i < max_concurrency; i++) {
