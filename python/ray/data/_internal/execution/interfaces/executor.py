@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import ContextManager, Iterator, Optional
 
-from ray.data._internal.stats import DatasetStats
-
 from .execution_options import ExecutionOptions
 from .physical_operator import PhysicalOperator
 from .ref_bundle import RefBundle
+from ray.data._internal.stats import DatasetStats
 
 
 class OutputIterator(Iterator[RefBundle], ABC):
