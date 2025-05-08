@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 import time
 import threading
-from typing import Any, Dict, List, Tuple, Union, Optional
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -38,26 +38,25 @@ class Stats:
 
     def __init__(
         self,
-        init_values: Optional[Any] = None,
-        reduce: Optional[str] = "mean",
-        window: Optional[Union[int, float]] = None,
-        ema_coeff: Optional[float] = None,
-        clear_on_reduce: bool = False,
-        throughput: Union[bool, float] = False,
-        throughput_ema_coeff: Optional[float] = None,
+        init_values,
+        reduce,
+        window,
+        ema_coeff,
+        clear_on_reduce,
+        throughput,
+        throughput_ema_coeff,
     ):
         """Initializes a Stats instance.
 
         Args:
-            init_values: Optional initial values to be placed into `self.values`. If None,
-                `self.values` will start empty.
+            init_values: Initial values to be placed into `self.values`.
             reduce: The name of the reduce method to be used. Allowed are "mean", "min",
                 "max", and "sum". Use None to apply no reduction method (leave
                 `self.values` as-is when reducing, except for shortening it to
                 `window`). Note that if both `reduce` and `window` are None, the user of
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
-            window: An optional window size to reduce over.
+            window: Window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
                 is shortened to hold at most `window` items (the most recent ones).
@@ -69,7 +68,7 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
-            ema_coeff: An optional EMA coefficient to use if reduce is "mean"
+            ema_coeff: EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
                 `reduce` must be "mean".
@@ -91,7 +90,7 @@ class Stats:
                 `throughput_per_sec = Stats.peek(throughput=True)`.
                 If a float, track throughput and also set current throughput estimate
                 to the given value.
-            throughput_ema_coeff: An optional EMA coefficient to use for throughput tracking.
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if throughput=True.
         """
         # Thus far, we only support mean, max, min, and sum.
@@ -131,8 +130,6 @@ class Stats:
 
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
-
-        self._has_returned_zero = False
 
         # On each `.reduce()` call, we store the result of this call in reduce_history[0] and the
         # previous `reduce()` result in reduce_history[1].
@@ -258,7 +255,7 @@ class Stats:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
-        Thus, users can call this method to get an accurate look at the reduced value(s)
+        Thus, users can call this method to get an accurate look at the reduced values
         given the current internal values list.
 
         Args:
@@ -291,7 +288,7 @@ class Stats:
         Returns:
             A list containing the history of reduced values.
         """
-        # Turning the reduce history into a deque avoids mutating the original reduce history's elements
+        # Make a 1 level deep copy of the reduce history to avoid mutating the original reduce history's elements
         return list(self._reduce_history)
 
     @property
@@ -318,30 +315,6 @@ class Stats:
         """
         return self._throughput_stats is not None
 
-    def reduce_lifetime_stat_and_get_stats(self) -> "Stats":
-        """Reduces the internal values list, clearing the internal values list of this Stats object.
-
-        Raises:
-            ValueError: If this Stats object is not a lifetime stat.
-
-        Returns:
-            A new Stats object with the reduced values.
-        """
-        # Check if this is a lifetime stat (clear_on_reduce=False, reduce="sum" and infinite window)
-        is_lifetime_stat = (
-            not self._clear_on_reduce
-            and self._reduce_method == "sum"
-            and self._inf_window
-        )
-
-        if not is_lifetime_stat:
-            raise ValueError("This Stats object is not a lifetime stat")
-
-        self._clear_on_reduce = True
-        return_value = self.reduce(compile=False)
-        self._clear_on_reduce = False
-        return Stats.similar_to(self, init_values=return_value)
-
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values list according to the constructor settings.
 
@@ -360,16 +333,17 @@ class Stats:
         """
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
-            reduced, new_internal_values = self._reduced_values()
+            reduced, _ = self._reduced_values()
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
                 # If we clear on reduce, following reduce calls should not return the old values.
                 self._has_new_values = True
             else:
-                self._set_values(new_internal_values)
-                # If we we use a window, we don't want to replace the internal values list
                 self._has_new_values = False
+                if self._inf_window:
+                    # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
+                    self._set_values(reduced)
         else:
             reduced = self.get_reduce_history()[-1]
 
@@ -380,6 +354,9 @@ class Stats:
             # It only makes sense to extend the history if we are reducing to a single value.
             # We need to make a copy here because the new_values_list is a reference to the internal values list
             self._reduce_history.append(force_list(reduced.copy()))
+        else:
+            # If there is a window and no reduce method, we don't want to use the reduce history to return reduced values in other methods
+            self._has_new_values = True
 
         if compile and self._reduce_method is not None:
             assert (
@@ -665,7 +642,7 @@ class Stats:
     @staticmethod
     def similar_to(
         other: "Stats",
-        init_values: Optional[Any] = None,
+        init_values: Any = None,
     ) -> "Stats":
         """Returns a new Stats object that's similar to `other`.
 
@@ -727,12 +704,7 @@ class Stats:
         # Special case: Internal values list is empty -> return NaN
         # This makes sure that all metrics are allways logged.
         elif len(values) == 0:
-            if self._reduce_method in ["min", "max", "mean"] or self._has_returned_zero:
-                # We also return np.nan if we have returned zero before.
-                # This helps with cases where stats are cleared on reduce, but we don't want to log 0's, except for the first time.
-                return [np.nan], []
-            else:
-                return [0], []
+            return [float("nan")], []
 
         # Do EMA (always a "mean" reduction; possibly using a window).
         elif self._ema_coeff is not None:

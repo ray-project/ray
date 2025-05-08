@@ -239,7 +239,7 @@ def test_throughput_tracking(logger):
         logger.peek("count", throughput=True), approx_throughput, rtol=0.1
     )  # 10% tolerance in throughput
 
-    # Test _get_throughputs() method without key (returns all throughputs)
+    # Test get_throughputs() method without key (returns all throughputs)
     throughputs = logger.peek(throughput=True)
     check(throughputs["count_throughput"], approx_throughput, rtol=0.2)
 
@@ -396,8 +396,8 @@ def test_lifetime_stats_behavior():
     # Reduce children again - non-root loggers should not retain previous values and return lists to merge downstream
     results1 = child1.reduce()
     results2 = child2.reduce()
-    check(results1["lifetime_metric"], [5])
-    check(results2["lifetime_metric"], [15])
+    check(results1["lifetime_metric"], [15])  # 15 (10+5)
+    check(results2["lifetime_metric"], [35])  # 35 (20+15)
 
     # Merge new results into root - root should accumulate
     root_logger.merge_and_log_n_dicts([results1, results2])
@@ -597,16 +597,16 @@ def test_hierarchical_metrics_system():
     results_b2 = leaf_b2.reduce()
 
     # Verify leaf results - these should only contain the new values, not accumulated ones
-    check(results_a1["lifetime_sum"], [1])
-    check(results_a1["nested"]["lifetime"], [10])
+    check(results_a1["lifetime_sum"], [6])  # 6 (5+1)
+    check(results_a1["nested"]["lifetime"], [110])  # 110 (100+10)
 
     # Merge level 2 results into level 1 nodes
     node_a.merge_and_log_n_dicts([results_a1, results_a2])
     node_b.merge_and_log_n_dicts([results_b1, results_b2])
 
     # Verify level 1 aggregation
-    check(node_a.peek("lifetime_sum"), [3])
-    check(node_a.peek(["nested", "lifetime"]), [30])
+    check(node_a.peek("lifetime_sum"), [18])  # 18 (15+3)
+    check(node_a.peek(["nested", "lifetime"]), [330])  # 330 (300+30)
 
     # Reduce level 1 and merge into root
     results_a = node_a.reduce()
