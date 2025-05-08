@@ -22,7 +22,7 @@
 
 namespace ray {
 
-enum LabelSelectorOperator {
+enum class LabelSelectorOperator {
   // This is to support equality or in semantics.
   IN = 0,
   // This is to support not equal or not in semantics.
