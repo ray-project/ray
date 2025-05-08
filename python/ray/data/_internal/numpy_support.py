@@ -76,7 +76,7 @@ def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
     Args:
         dt: A datetime object to be converted.
         precision: The desired precision for the datetime64 conversion. Possible
-        values are 'D', 's', 'ms', 'us', 'ns'.
+           values are 'D', 's', 'ms', 'us', 'ns'.
 
     Returns:
         np.datetime64: A numpy datetime64 object with the specified precision.
@@ -106,8 +106,8 @@ def _convert_datetime_to_np_datetime(datetime_list: List[datetime]) -> np.ndarra
 
     Returns:
         np.ndarray: A NumPy array containing the `datetime64` values of the datetime
-        objects from the input list, with the appropriate precision (e.g., nanoseconds,
-        microseconds, milliseconds, etc.).
+           objects from the input list, with the appropriate precision (e.g., nanoseconds,
+           microseconds, milliseconds, etc.).
     """
     # Detect the highest precision for the datetime objects
     precision = _detect_highest_datetime_precision(datetime_list)
