@@ -863,7 +863,7 @@ class ServeController:
             DeploymentRoute's protobuf serialized bytes
 
         Raises:
-            KeyError if the deployment doesn't exist.
+            KeyError: If the deployment doesn't exist.
         """
         id = DeploymentID(name=name, app_name=app_name)
         deployment_info = self.deployment_state_manager.get_deployment(id)

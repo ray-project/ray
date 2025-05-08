@@ -494,6 +494,21 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_torch_batches_gpu",
+    size = "medium",
+    srcs = ["tests/test_iter_torch_batches_gpu.py"],
+    tags = [
+        "exclusive",
+        "gpu_only",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
     name = "test_gpu_auto_transfer",
     size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],

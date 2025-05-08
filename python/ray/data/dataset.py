@@ -603,7 +603,8 @@ class Dataset:
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 

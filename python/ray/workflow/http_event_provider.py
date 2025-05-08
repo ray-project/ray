@@ -248,11 +248,13 @@ class HTTPListener(EventListener):
     async def poll_for_event(self, event_key: str = None) -> Event:
         """workflow.wait_for_event calls this method to subscribe to the
         HTTPEventProvider and return the received external event
+
         Args:
             event_key: a unique identifier to the receiving node in a workflow;
-            if missing, default to current workflow task id
+                if missing, default to current workflow task id
+
         Returns:
-            tuple(event_key, event_payload)
+            Tuple[event_key: str, event_payload: Event]'
         """
         workflow_id = workflow_context.get_current_workflow_id()
         if event_key is None:

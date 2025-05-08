@@ -273,10 +273,9 @@ class StateApiClient(SubmissionClient):
             Empty list for objects if not found, or list of ObjectState for objects
 
         Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
-
+            Exception: This doesn't catch any exceptions raised when the underlying request
+                call raises exceptions. For example, it could raise `requests.Timeout`
+                when timeout occurs.
             ValueError:
                 if the resource could not be GET by id, i.e. jobs and runtime-envs.
 
@@ -482,9 +481,9 @@ class StateApiClient(SubmissionClient):
             A list of queried result from `ListApiResponse`,
 
         Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
+            Exception: This doesn't catch any exceptions raised when the
+                underlying request call raises exceptions. For example, it could
+                raise `requests.Timeout` when timeout occurs.
 
         """
         if options.has_conflicting_filters():
@@ -530,9 +529,9 @@ class StateApiClient(SubmissionClient):
             A dictionary of queried result from `SummaryApiResponse`.
 
         Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
+            Exception: This doesn't catch any exceptions raised when the
+                underlying request call raises exceptions. For example, it could
+                raise `requests.Timeout` when timeout occurs.
         """
         params = {"timeout": options.timeout}
         endpoint = f"/api/v0/{resource.value}/summarize"

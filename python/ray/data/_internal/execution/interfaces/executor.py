@@ -27,7 +27,7 @@ class OutputIterator(Iterator[RefBundle], ABC):
                 only allowed for iterators created by `Dataset.streaming_split()`.
 
         Raises:
-            StopIteration if there are no more outputs to return.
+            StopIteration: If there are no more outputs to return.
         """
         ...
 

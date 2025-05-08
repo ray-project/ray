@@ -361,7 +361,7 @@ class Worker:
         from being replayed on the server side in the event that the client
         must retry a requsest.
         Args:
-            metadata - the gRPC metadata to append the IDs to
+            metadata: the gRPC metadata to append the IDs to
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
