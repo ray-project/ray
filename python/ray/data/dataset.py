@@ -4644,7 +4644,7 @@ class Dataset:
             An iterable over batches of data.
         """
         batch_format = _apply_batch_format(batch_format)
-        return self.iterator().iter_batches(
+        return self.iterator()._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
