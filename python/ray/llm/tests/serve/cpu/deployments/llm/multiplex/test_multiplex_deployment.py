@@ -166,6 +166,7 @@ async def test_multiplex_deployment(
     print("**baseout**", arg.model_dump())
     expected_model_dump = {
         "prompt": "Generate some sql please.",
+        "prompt_token_ids": None,
         "request_id": "req_id",
         "sampling_params": {
             "max_tokens": None,
