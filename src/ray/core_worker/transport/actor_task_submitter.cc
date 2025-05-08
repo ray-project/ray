@@ -331,7 +331,6 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
 
-    ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
   }
 
@@ -568,26 +567,6 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   }
 }
 
-void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id) {
-  auto it = client_queues_.find(actor_id);
-  RAY_CHECK(it != client_queues_.end());
-  if (!it->second.rpc_client) {
-    return;
-  }
-  auto &client_queue = it->second;
-  RAY_CHECK(!client_queue.worker_id.empty());
-  auto out_of_order_completed_tasks =
-      client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
-
-  for (const auto &completed_task : out_of_order_completed_tasks) {
-    // Making a copy here because we are flipping a flag and the original value is
-    // const.
-    auto task_spec = completed_task.second;
-    task_spec.GetMutableMessage().set_skip_execution(true);
-    PushActorTask(client_queue, task_spec, /*skip_queue=*/true);
-  }
-}
-
 void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                        const TaskSpecification &task_spec,
                                        bool skip_queue) {
@@ -654,18 +633,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
-  const auto actor_counter = task_spec.ActorCounter();
-  const auto task_skipped = task_spec.GetMessage().skip_execution();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
-  if (task_skipped) {
-    // NOTE(simon):Increment the task counter regardless of the status because the
-    // reply for a previously completed task. We are not calling CompletePendingTask
-    // because the tasks are pushed directly to the actor, not placed on any queues
-    // in task_finisher_.
-  } else if (status.ok() && !is_retryable_exception) {
+  if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
@@ -780,12 +752,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
-    // On exception-retry we update the seqno so we need to call;
-    // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || is_retryable_exception) {
-      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
-    }
     queue.cur_pending_calls--;
   }
 }
