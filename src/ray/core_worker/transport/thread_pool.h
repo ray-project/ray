@@ -16,6 +16,7 @@
 
 #include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/io_context.hpp>
+#include <boost/chrono.hpp>
 #include <functional>
 #include <memory>
 #include <thread>
@@ -45,9 +46,11 @@ class BoundedExecutor {
   ///
   /// \param max_concurrency The maximum number of threads in the pool.
   /// \param initialize_thread_callback The callback function that initializes threads.
+  /// \param timeout_ms The timeout for the thread pool to initialize.
   explicit BoundedExecutor(
       int max_concurrency,
-      std::function<std::function<void()>()> initialize_thread_callback = nullptr);
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr,
+      boost::chrono::milliseconds timeout_ms = boost::chrono::milliseconds(10000));
 
   /// Posts work to the pool
   void Post(std::function<void()> fn);

@@ -52,6 +52,24 @@ TEST(BoundedExecutorTest, InitializeThreadCallbackAndReleaserAreCalled) {
   ASSERT_EQ(release_count.load(), kNumThreads);
 }
 
+TEST(BoundedExecutorTest, InitializeThreadCallbackAndReleaserAreCalledWithTimeout) {
+  constexpr int kNumThreads = 3;
+
+  // Create a callback that will hang indefinitely to trigger the timeout
+  auto initialize_thread_callback = [&]() {
+    while (true) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return nullptr;
+  };
+
+  // Verify that the constructor fails with the expected error message
+  EXPECT_DEATH(
+      BoundedExecutor executor(
+          kNumThreads, initialize_thread_callback, boost::chrono::milliseconds(10)),
+      "Failed to initialize threads in 10 milliseconds");
+}
+
 }  // namespace core
 }  // namespace ray
 

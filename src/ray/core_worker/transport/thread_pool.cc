@@ -25,7 +25,8 @@ namespace core {
 
 BoundedExecutor::BoundedExecutor(
     int max_concurrency,
-    std::function<std::function<void()>()> initialize_thread_callback)
+    std::function<std::function<void()>()> initialize_thread_callback,
+    boost::chrono::milliseconds timeout_ms)
     : work_guard_(boost::asio::make_work_guard(io_context_)),
       initialize_thread_callback_(initialize_thread_callback) {
   RAY_CHECK(max_concurrency > 0) << "max_concurrency must be greater than 0";
@@ -47,7 +48,11 @@ BoundedExecutor::BoundedExecutor(
     });
   }
 
-  init_latch.wait();
+  // Wait for all threads to initialize with a timeout to prevent hanging.
+  auto status = init_latch.wait_for(timeout_ms);
+  bool timed_out = status == boost::cv_status::timeout;
+  RAY_CHECK(!timed_out) << "Failed to initialize threads in " +
+                               std::to_string(timeout_ms.count()) + " milliseconds";
 }
 
 void BoundedExecutor::Post(std::function<void()> fn) {
