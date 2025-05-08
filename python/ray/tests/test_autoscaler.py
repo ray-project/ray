@@ -3673,7 +3673,6 @@ class AutoscalingTest(unittest.TestCase):
         # Restore min_workers to allow scaling down to 0.
         config["available_node_types"]["worker"]["min_workers"] = 0
         self.write_config(config)
-        autoscaler.update()
 
         # Create a placement group with 2 bundles that require 2 workers.
         placement_group_table_data = gcs_pb2.PlacementGroupTableData(
