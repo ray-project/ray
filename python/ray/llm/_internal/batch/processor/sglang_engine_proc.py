@@ -5,6 +5,9 @@ from typing import Any, Dict, Optional
 from pydantic import Field, root_validator
 
 from ray.data.block import UserDefinedFunction
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
+)
 
 import ray
 from ray.llm._internal.batch.processor.base import (
@@ -121,14 +124,22 @@ def build_sglang_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas. Note that we use a single
-                # integer to let Ray Data prepare all replicas before kicking
-                # off the processing for now.
-                concurrency=config.concurrency,
+                # The number of running replicas. This is a deprecated field, but
+                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+                # which initiates enough many overlapping UDF calls per actor, to
+                # saturate `max_concurrency`.
+                compute=ray.data.ActorPoolStrategy(
+                    min_size=config.concurrency,
+                    max_size=config.concurrency,
+                    max_tasks_in_flight_per_actor=max(
+                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                    ),
+                ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
+                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
