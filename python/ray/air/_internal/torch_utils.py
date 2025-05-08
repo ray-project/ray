@@ -1,6 +1,6 @@
 import warnings
 from typing import Any, Dict, List, Optional, Union, Sequence
-from collections.abc import Sequence as ABCSequence
+from collections.abc import Mapping, Sequence as ABCSequence
 
 import numpy as np
 import pandas as pd
@@ -427,8 +427,7 @@ def move_tensors_to_device(
             - A single tensor
             - A sequence of tensors
             - A sequence of sequences of tensors
-            - A dict mapping keys to tensors
-            - A dict mapping keys to lists of tensors
+            - A mapping (e.g., dict) of keys to tensors or sequences of tensors
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
@@ -443,7 +442,7 @@ def move_tensors_to_device(
     if isinstance(batch, torch.Tensor):
         return batch.to(device=device, non_blocking=non_blocking)
 
-    elif isinstance(batch, dict):
+    elif isinstance(batch, Mapping):
         new_batch = {}
         for k, v in batch.items():
             if isinstance(v, torch.Tensor):
