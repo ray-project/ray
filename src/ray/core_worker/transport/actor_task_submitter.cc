@@ -633,17 +633,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
-  const auto task_skipped = task_spec.GetMessage().skip_execution();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
-  if (task_skipped) {
-    // NOTE(simon):Increment the task counter regardless of the status because the
-    // reply for a previously completed task. We are not calling CompletePendingTask
-    // because the tasks are pushed directly to the actor, not placed on any queues
-    // in task_finisher_.
-  } else if (status.ok() && !is_retryable_exception) {
+  if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
