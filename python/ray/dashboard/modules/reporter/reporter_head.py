@@ -214,7 +214,9 @@ class ReportHead(SubprocessModule):
         return pid, worker_id
 
     @routes.get("/task/traceback")
-    async def get_task_traceback(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+    async def get_task_traceback(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
         """Retrieves the traceback information for a specific task.
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
@@ -304,7 +306,9 @@ class ReportHead(SubprocessModule):
         )
 
     @routes.get("/task/cpu_profile")
-    async def get_task_cpu_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+    async def get_task_cpu_profile(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
         """Retrieves the CPU profile for a specific task.
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
