@@ -206,7 +206,8 @@ class VLLMEngineConfig(BaseModelExtended):
 
 
 class VLLMSamplingParams(SamplingParams):
-    """
+    """Sampling parameters specific to vLLM engine.
+
     Args:
         top_k: The number of highest probability vocabulary tokens to keep for top-k-filtering.
         seed: Seed for deterministic sampling with temperature>0.
