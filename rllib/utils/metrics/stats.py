@@ -316,6 +316,30 @@ class Stats:
         """
         return self._throughput_stats is not None
 
+    def reduce_lifetime_stat_and_get_stats(self) -> "Stats":
+        """Reduces the internal values list, clearing the internal values list of this Stats object.
+
+        Raises:
+            ValueError: If this Stats object is not a lifetime stat.
+
+        Returns:
+            A new Stats object with the reduced values.
+        """
+        # Check if this is a lifetime stat (clear_on_reduce=False, reduce="sum" and infinite window)
+        is_lifetime_stat = (
+            not self._clear_on_reduce
+            and self._reduce_method == "sum"
+            and self._inf_window
+        )
+
+        if not is_lifetime_stat:
+            raise ValueError("This Stats object is not a lifetime stat")
+
+        self._clear_on_reduce = True
+        return_value = self.reduce(compile=False)
+        self._clear_on_reduce = False
+        return Stats.similar_to(self, init_values=return_value)
+
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values list according to the constructor settings.
 

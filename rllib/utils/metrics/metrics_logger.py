@@ -745,18 +745,6 @@ class MetricsLogger:
                 base_stats = copy.deepcopy(incoming_stats[0])
             elif len(incoming_stats) > 0:
                 base_stats = own_stats
-
-                # Special case: `base_stats` is a lifetime sum (reduce=sum,
-                # clear_on_reduce=False) -> We subtract the previous value (from 2
-                # `reduce()` calls ago) from all to-be-merged stats, so we don't count
-                # twice the older sum from before.
-                if (
-                    base_stats._reduce_method == "sum"
-                    and base_stats._inf_window
-                    and base_stats._clear_on_reduce is False
-                ):
-                    for stat in incoming_stats:
-                        base_stats.push(-stat.get_reduce_history()[-2][0])
             else:
                 continue
 
@@ -931,9 +919,19 @@ class MetricsLogger:
             # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
             # We need to do this so that lifetime stats are accumulated only in the root logger
             if not self._is_root_logger:
-                # For non-root logger or non-lifetime stats, reduce normally
-                values = stats.reduce(compile=False)
-                return Stats.similar_to(stats, init_values=values)
+                # Check if this is a lifetime stat (clear_on_reduce=False, reduce="sum" and infinite window)
+                is_lifetime_stat = (
+                    not stats._clear_on_reduce
+                    and stats._reduce_method == "sum"
+                    and stats._inf_window
+                )
+
+                if is_lifetime_stat:
+                    return stats.reduce_lifetime_stat_and_get_stats()
+                else:
+                    # For non-root logger or non-lifetime stats, reduce normally
+                    values = stats.reduce(compile=False)
+                    return Stats.similar_to(stats, init_values=values)
             else:
                 # Only the root logger should return the actual values
                 return stats.reduce(compile=True)
