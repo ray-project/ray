@@ -428,6 +428,23 @@ py_test_module_list(
 )
 
 py_test_module_list(
+    size = "small",
+    files = [
+        "test_channel_serialization.py",
+    ],
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "large",
     files = [
         "test_channel.py",
