@@ -40,19 +40,28 @@ TEST(BoundedExecutorTest, InitializeThreadCallbackAndReleaserAreCalled) {
     ASSERT_EQ(init_count.load(), kNumThreads);
     ASSERT_EQ(release_count.load(), 0);
 
-    // Post a dummy task to ensure threads are running.
-    std::promise<void> p;
-    executor.Post([&] { p.set_value(); });
-    p.get_future().wait();
+    std::atomic<int> task_count{0};
+    auto callback = [&]() {
+      task_count++;
+      while (task_count.load() < kNumThreads) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+    };
+
+    // Make sure all threads can run tasks.
+    for (int i = 0; i < kNumThreads; i++) {
+      executor.Post(callback);
+    }
 
     // Join the pool, which should call the releasers.
     executor.Join();
+    ASSERT_EQ(task_count.load(), kNumThreads);
   }
   // After join, all releasers should have been called.
   ASSERT_EQ(release_count.load(), kNumThreads);
 }
 
-TEST(BoundedExecutorTest, InitializeThreadCallbackAndReleaserAreCalledWithTimeout) {
+TEST(BoundedExecutorTest, InitializationTimeout) {
   constexpr int kNumThreads = 3;
 
   // Create a callback that will hang indefinitely to trigger the timeout
