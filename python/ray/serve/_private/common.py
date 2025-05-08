@@ -222,7 +222,7 @@ class DeploymentStatusInfo:
 
         Args:
             trigger: An internal trigger that determines the state
-            transition.
+                transition.
             message: The message to set in status info.
 
         Returns:

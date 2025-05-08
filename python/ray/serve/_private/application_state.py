@@ -133,7 +133,7 @@ class StatusOverview:
 
         Returns:
             Optional[DeploymentStatusInfo]: The status of the deployment if it exists,
-            otherwise None.
+                otherwise None.
         """
 
         for deployment_status in self.deployment_statuses:
