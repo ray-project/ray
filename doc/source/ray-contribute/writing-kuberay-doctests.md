@@ -18,9 +18,9 @@ jupyter lab
 
 ![Jupyter Lab Interface](./jupyterlab.png)
 
-Then write the doc using a Jupyter notebook. Make sure you select the Bash kernel (red box in the image above).
+Write the doc using a Jupyter notebook. Make sure you select the Bash kernel (red box in the preceding image).
 
-While editing code blocks, use the "Common Tools" side panel to manage tags (blue box in the image above).
+While editing code blocks, use the "Common Tools" side panel to manage tags (blue box in the preceding image).
 
 Some tags control whether the code block appears in the final document. See [this doc](jupyter-notebook-tags) for details.
 
