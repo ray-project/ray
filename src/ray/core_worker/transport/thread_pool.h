@@ -62,6 +62,11 @@ class BoundedExecutor {
   boost::asio::io_context io_context_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
   std::vector<std::thread> threads_;
+  std::function<std::function<void()>()> initialize_thread_callback_;
+
+  /// A wrapper function that calls the `initialize_thread_callback_` and returns
+  /// the releaser function. This should be called on each thread.
+  std::function<void()> InitializeThread();
 };
 
 }  // namespace core

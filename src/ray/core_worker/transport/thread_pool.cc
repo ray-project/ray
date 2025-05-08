@@ -26,18 +26,16 @@ namespace core {
 BoundedExecutor::BoundedExecutor(
     int max_concurrency,
     std::function<std::function<void()>()> initialize_thread_callback)
-    : work_guard_(boost::asio::make_work_guard(io_context_)) {
+    : work_guard_(boost::asio::make_work_guard(io_context_)),
+      initialize_thread_callback_(initialize_thread_callback) {
   RAY_CHECK(max_concurrency > 0) << "max_concurrency must be greater than 0";
 
   boost::latch init_latch(max_concurrency);
 
   threads_.reserve(max_concurrency);
   for (int i = 0; i < max_concurrency; i++) {
-    threads_.emplace_back([this, initialize_thread_callback, &init_latch]() {
-      std::function<void()> releaser;
-      if (initialize_thread_callback) {
-        releaser = initialize_thread_callback();
-      }
+    threads_.emplace_back([this, &init_latch]() {
+      std::function<void()> releaser = InitializeThread();
 
       init_latch.count_down();
       // `io_context_.run()` will block until `work_guard_.reset()` is called.
@@ -70,6 +68,13 @@ void BoundedExecutor::Join() {
       thread.join();
     }
   }
+}
+
+std::function<void()> BoundedExecutor::InitializeThread() {
+  if (initialize_thread_callback_) {
+    return initialize_thread_callback_();
+  }
+  return nullptr;
 }
 
 }  // namespace core
