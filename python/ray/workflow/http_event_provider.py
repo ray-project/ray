@@ -102,20 +102,20 @@ class HTTPEventProvider:
     @app.post("/send_event/{workflow_id}")
     async def send_event(self, workflow_id: str, req: Request) -> JSONResponse:
         """Receive an external event message and acknowledge if it was processed
-        by the workflow
+        by the workflow.
         Args:
-            workflow_id: the workflow that this event is submitted for
-            req: the JSON formatted request that contains two string fields: '
-            event_key' and 'event_payload'
-                'event_key' uniquely identifies a node in the receiving workflow;
-                'event_payload' refers to the event's content
+            workflow_id: The workflow that this event is submitted for.
+            req: The JSON formatted request that contains two string fields:
+                'event_key', which uniquely identifies a node in the receiving
+                workflow and
+                'event_payload', which refers to the event's content.
         Example:
-            JSON formatted request {"event_key":"node_event","event_payload":"approved"}
+            JSON formatted request:
+            {"event_key":"node_event","event_payload":"approved"}
         Returns:
-            if the event was received and processed, HTTP response status 200
-            if the event was not expected or the workflow_id did not exist, HTTP
-                response status 404
-            if the event was received but failed at checkpointing, HTTP response 500
+            HTTP 200 if the event was received and processed.
+            HTTP 404 if the event was not expected or the workflow_id did not exist.
+            HTTP 500 if the event was received but failed at checkpointing.
 
         """
         req_json = await req.json()
