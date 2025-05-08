@@ -1,5 +1,4 @@
 from ray.data._internal.datasource.sql_datasource import Connection
-from ray.data.datasource.savemode import SaveMode  # isort: skip_file
 from ray.data.datasource.datasink import (
     Datasink,
     DummyOutputDatasink,
@@ -35,6 +34,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.savemode import SaveMode
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use

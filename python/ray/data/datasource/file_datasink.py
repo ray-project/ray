@@ -13,13 +13,13 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource import SaveMode
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.savemode import SaveMode
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
