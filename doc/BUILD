@@ -575,6 +575,6 @@ doctest(
 
 filegroup(
     name = "example_configs",
-    files = glob(["source/ray-overview/examples/**/*.yaml"]),
+    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
