@@ -238,8 +238,8 @@ class LLMConfig(BaseModelExtended):
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        True,
-        description="Enable additional engine metrics via Prometheus.",
+        False,
+        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
