@@ -27,7 +27,9 @@ class TorchDatasource(Datasource):
         assert parallelism == 1
 
         meta = BlockMetadata(
-            num_rows=len(self._dataset),
+            # Note: avoid len(self._dataset) because it will trigger
+            # iterating through IterableDataset, which can cause OOM.
+            num_rows=None,
             size_bytes=None,
             schema=None,
             input_files=None,
