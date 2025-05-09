@@ -34,7 +34,7 @@ ray_num_workers: 4
 resources_per_worker:
   GPU: 1
   anyscale/accelerator_shape:4xL4: 0.001  # Use this to specify a specific node shape,
-  # accelerator_type:A10G: 1           # Or use this to simply specify a GPU type.
+  # accelerator_type:L4: 1           # Or use this to simply specify a GPU type.
   # see https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types
 placement_strategy: PACK
 
@@ -42,7 +42,7 @@ placement_strategy: PACK
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-4
-num_train_epochs: 5.0
+num_train_epochs: 3.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true

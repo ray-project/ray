@@ -32,12 +32,12 @@ And all of these workloads come with all the observability views you need to deb
 ## Set up
 
 ### Compute
-This [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) automatically provisions and autoscales the compute your workloads need. If you're not on Anyscale, then you need to provision `4xA10G:48CPU-192GB` for this tutorial.
+This [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) automatically provisions and autoscales the compute your workloads need. If you're not on Anyscale, then you need to provision the appropriate compute (L4) for this tutorial.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/compute.png" width=500>
 
 ### Dependencies
-Start by downloading the dependencies required for this tutorial. Notice in your [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) you have a base image [`anyscale/ray-llm:2.44.1-py311-cu124`](https://hub.docker.com/layers/anyscale/ray-llm/2.44.1-py311-cu124/images/sha256-8099edda787fc96847af7e1c51f30ad09792aa250efa27f9aa825b15016e6b3f) followed by a list of pip packages. If you're not on [Anyscale](https://console.anyscale.com/), you can pull this Docker image yourself and install the dependencies.
+Start by downloading the dependencies required for this tutorial. Notice in your [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) you have a base image [`anyscale/ray-llm:latest-py311-cu124`](https://hub.docker.com/layers/anyscale/ray-llm/latest-py311-cu124/images/sha256-5a1c55f7f416d2d2eb5f4cdd13afeda25d4f7383406cfee1f1f60da495d1b50f) followed by a list of pip packages. If you're not on [Anyscale](https://console.anyscale.com/), you can pull this Docker image yourself and install the dependencies.
 
 
 
@@ -356,7 +356,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="nt">resources_per_worker</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">GPU</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">  </span><span class="nt">anyscale/accelerator_shape:4xL4</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.001</span><span class="w">  </span><span class="c1"># Use this to specify a specific node shape,</span>
-<span class="w">  </span><span class="c1"># accelerator_type:A10G: 1           # Or use this to simply specify a GPU type.</span>
+<span class="w">  </span><span class="c1"># accelerator_type:L4: 1           # Or use this to simply specify a GPU type.</span>
 <span class="w">  </span><span class="c1"># see https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types</span>
 <span class="nt">placement_strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PACK</span>
 
@@ -459,7 +459,7 @@ USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
         │ train_loop_config/args/ray_run_name                                                     lora_sft_ray │
         │ train_loop_config/args/ray_storage_path                                         ...orage/viggo/saves │
         │ train_loop_config/args/resources_per_worker/GPU                                                    1 │
-        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xA10G                      1 │
+        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xL4                      1 │
         │ train_loop_config/args/resume_from_checkpoint                                                        │
         │ train_loop_config/args/save_only_model                                                         False │
         │ train_loop_config/args/save_steps                                                                500 │
@@ -653,10 +653,10 @@ if [[ "$STORAGE_PATH" == s3://* ]]; then
 # Google Cloud Storage operations.
 elif [[ "$STORAGE_PATH" == gs://* ]]; then
     if gsutil ls "$STORAGE_PATH" > /dev/null 2>&1; then
-        gsutil -m rm -q -r "$STORAGE_PATH"
+        gsutil -m -q rm -r "$STORAGE_PATH"
     fi
-    gsutil -m cp -q -r "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs"
-    gsutil -m cp -q -r "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves"
+    gsutil -m -q cp -r "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs"
+    gsutil -m -q cp -r "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves"
 
 else
     echo "Unsupported storage protocol: $STORAGE_PATH"
@@ -762,7 +762,12 @@ from ray.data.llm import vLLMEngineProcessorConfig
 ```python
 config = vLLMEngineProcessorConfig(
     model_source=model_source,
-    # runtime_env={"env_vars": {"HF_TOKEN": os.environ.get("HF_TOKEN")}},
+    runtime_env={
+        "env_vars": {
+            "VLLM_USE_V1": "0",  # v1 doesn't support lora adapters yet
+            # "HF_TOKEN": os.environ.get("HF_TOKEN"),
+        },
+    },
     engine_kwargs={
         "enable_lora": True,
         "max_lora_rank": 8,
@@ -777,7 +782,7 @@ config = vLLMEngineProcessorConfig(
     },
     concurrency=1,
     batch_size=16,
-    accelerator_type="A10G",
+    accelerator_type="L4",
 )
 ```
 
@@ -973,7 +978,7 @@ llm_config = LLMConfig(
             # complete list: https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling
         }
     },
-    accelerator_type="A10G",
+    accelerator_type="L4",
     engine_kwargs={
         "max_model_len": 4096,  # Or increase KV cache size.
         "tensor_parallel_size": 1,
@@ -1033,6 +1038,11 @@ And of course, you can observe the running service, the deployments, and metrics
 
 </div>
 
+```python
+# Shutdown the service
+serve.shutdown()
+```
+
 ## Production
 
 Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to run [reliable batch jobs](https://docs.anyscale.com/platform/jobs) and deploy [highly available services](https://docs.anyscale.com/platform/services). Given you've been developing in an environment that's almost identical to production with a multi-node cluster, this integration should drastically speed up your dev to prod velocity.
@@ -1045,6 +1055,8 @@ Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anysca
 - [define and manage](https://docs.anyscale.com/platform/jobs/manage-jobs) your Jobs in many different ways, like CLI and Python SDK
 - set up [queues](https://docs.anyscale.com/platform/jobs/job-queues) and [schedules](https://docs.anyscale.com/platform/jobs/schedules)
 - set up all the [observability, alerting, etc.](https://docs.anyscale.com/platform/jobs/monitoring-and-debugging) around your Jobs
+
+<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/job_result.png" width=700>
 
 ### Services
 
@@ -1067,6 +1079,6 @@ STORAGE_PATH="$ANYSCALE_ARTIFACT_STORAGE/viggo"
 if [[ "$STORAGE_PATH" == s3://* ]]; then
     aws s3 rm "$STORAGE_PATH" --recursive --quiet
 elif [[ "$STORAGE_PATH" == gs://* ]]; then
-    gsutil -m rm -q -r "$STORAGE_PATH"
+    gsutil -m -q rm -r "$STORAGE_PATH"
 fi
 ```
