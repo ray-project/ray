@@ -25,33 +25,39 @@ class ThirdPartyIsolationTest(unittest.TestCase):
                 timeout=60,
                 text=True,
             )
-            
+
             # Print output for debugging
             stdout = completed_process.stdout
             stderr = completed_process.stderr
-            
+
             print(f"Test script stdout:\n{stdout}")
             if stderr:
                 print(f"Test script stderr:\n{stderr}")
-            
+
             # Check the return code
             if completed_process.returncode != 0:
-                self.fail(f"Test script exited with code {completed_process.returncode}")
-                
+                self.fail(
+                    f"Test script exited with code {completed_process.returncode}"
+                )
+
             # Verify the test passed
             self.assertIn("SUCCESS", stdout, "Test did not report success")
-            
+
         except subprocess.TimeoutExpired as e:
             print(f"Test timed out after {e.timeout} seconds")
             if e.stdout:
-                print(f"Stdout before timeout:\n{e.stdout.decode('utf-8', errors='replace')}")
+                print(
+                    f"Stdout before timeout:\n{e.stdout.decode('utf-8', errors='replace')}"
+                )
             if e.stderr:
-                print(f"Stderr before timeout:\n{e.stderr.decode('utf-8', errors='replace')}")
+                print(
+                    f"Stderr before timeout:\n{e.stderr.decode('utf-8', errors='replace')}"
+                )
             raise
         finally:
             # Clean up temporary file
             os.unlink(script_path)
-            
+
     def test_path_isolation(self):
         """Test that Ray's vendored libraries directory isn't in sys.path."""
         script = """
@@ -99,7 +105,7 @@ ray.shutdown()
 print("SUCCESS: psutil isolation test passed")
 """
         self._run_test_script(script, "psutil import")
-        
+
     def test_setproctitle_import(self):
         """Test that system setproctitle can be imported and used after Ray init."""
         script = """
@@ -129,4 +135,5 @@ print("SUCCESS: setproctitle isolation test passed")
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__])) 
+
+    sys.exit(pytest.main(["-v", __file__]))
