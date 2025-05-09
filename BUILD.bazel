@@ -311,7 +311,7 @@ ray_cc_library(
     ],
     deps = [
         ":grpc_common_lib",
-        ":object_manager_grpc_stub_manager",
+        "//src/ray/object_manager:object_manager_grpc_stub_manager",
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
@@ -562,8 +562,8 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
-        ":object_manager_common",
-        ":object_directory",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/object_manager:object_directory",
         "//src/ray/pubsub:subscriber_lib",
         ":worker_pool",
         ":worker_rpc",
@@ -607,7 +607,8 @@ ray_cc_library(
         ":local_object_manager",
         ":node_manager_fbs",
         ":node_manager_rpc",
-        ":object_manager",
+        "//src/ray/object_manager:object_manager",
+        "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/pubsub:pubsub_lib",
         ":raylet_agent_manager",
         ":runtime_env_agent_client",
@@ -676,106 +677,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "pull_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/pull_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":pull_manager",
-        "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "object_buffer_pool_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/object_buffer_pool_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":object_buffer_pool",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "ownership_based_object_directory_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/ownership_based_object_directory_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":ownership_based_object_directory",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "push_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/push_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":raylet_lib",
-        "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "spilled_object_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/spilled_object_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":raylet_lib",
-        "@boost//:endian",
-        "//src/ray/common:test_util",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-
-ray_cc_test(
-    name = "create_request_queue_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/create_request_queue_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/object_manager/plasma:plasma_store_server_lib",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "get_request_queue_test",
-    size = "small",
-    srcs = [
-        "src/ray/object_manager/test/get_request_queue_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/object_manager/plasma:plasma_store_server_lib",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "worker_pool_test",
     size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
@@ -784,7 +685,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":raylet_lib",
+        ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -949,178 +850,6 @@ ray_cc_test(
 )
 
 ray_cc_library(
-    name = "object_manager",
-    srcs = ["src/ray/object_manager/object_manager.cc"],
-    hdrs = ["src/ray/object_manager/object_manager.h"],
-    deps = [
-        ":chunk_object_reader",
-        ":object_buffer_pool",
-        ":object_directory",
-        ":object_manager_common",
-        ":object_manager_rpc",
-        ":ownership_based_object_directory",
-        ":pull_manager",
-        ":push_manager",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:status",
-        "//src/ray/object_manager/plasma:plasma_store_server_lib",
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:node_manager_cc_proto",
-        "@boost//:asio",
-        "@boost//:bind",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-ray_cc_library(
-    name = "push_manager",
-    srcs = ["src/ray/object_manager/push_manager.cc"],
-    hdrs = ["src/ray/object_manager/push_manager.h"],
-    deps = [
-        "//src/ray/stats:stats_metric",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:status",
-        "//src/ray/util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "pull_manager",
-    srcs = ["src/ray/object_manager/pull_manager.cc"],
-    hdrs = ["src/ray/object_manager/pull_manager.h"],
-    deps = [
-        ":object_manager_rpc",
-        ":ownership_based_object_directory",
-        "//src/ray/stats:stats_metric",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:status",
-        "//src/ray/util:container_util",
-        "//src/ray/util:counter_map",
-        "@boost//:asio",
-        "@boost//:bind",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-ray_cc_library(
-    name = "ownership_based_object_directory",
-    srcs = ["src/ray/object_manager/ownership_based_object_directory.cc"],
-    hdrs = ["src/ray/object_manager/ownership_based_object_directory.h"],
-    deps = [
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        ":object_directory",
-        "//src/ray/pubsub:subscriber_lib",
-        ":worker_rpc",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
-        "//src/ray/util:sequencer",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "object_directory",
-    hdrs = ["src/ray/object_manager/object_directory.h"],
-    deps = [
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        ":object_manager_common",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
-    ],
-)
-
-ray_cc_library(
-    name = "object_buffer_pool",
-    srcs = ["src/ray/object_manager/object_buffer_pool.cc"],
-    hdrs = ["src/ray/object_manager/object_buffer_pool.h"],
-    deps = [
-        ":memory_object_reader",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
-        "//src/ray/util:logging",
-        "@boost//:asio",
-        "@boost//:bind",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-ray_cc_library(
-    name = "object_manager_common",
-    srcs = ["src/ray/object_manager/common.cc"],
-    hdrs = ["src/ray/object_manager/common.h"],
-    deps = [
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:status",
-        "@boost//:asio",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-ray_cc_library(
-    name = "object_manager_grpc_stub_manager",
-    hdrs = ["src/ray/object_manager/grpc_stub_manager.h"],
-    deps = [
-        ":grpc_client",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
-ray_cc_library(
-    name = "memory_object_reader",
-    srcs = ["src/ray/object_manager/memory_object_reader.cc"],
-    hdrs = ["src/ray/object_manager/memory_object_reader.h"],
-    deps = [
-        ":object_reader",
-        "//src/ray/object_manager/plasma:plasma_client",
-    ],
-)
-
-ray_cc_library(
-    name = "chunk_object_reader",
-    srcs = ["src/ray/object_manager/chunk_object_reader.cc"],
-    hdrs = ["src/ray/object_manager/chunk_object_reader.h"],
-    deps = [
-        ":spilled_object_reader",
-        "//src/ray/util:logging",
-    ],
-)
-
-ray_cc_library(
-    name = "spilled_object_reader",
-    srcs = ["src/ray/object_manager/spilled_object_reader.cc"],
-    hdrs = ["src/ray/object_manager/spilled_object_reader.h"],
-    deps = [
-        ":object_reader",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "object_reader",
-    hdrs = ["src/ray/object_manager/object_reader.h"],
-    deps = ["//src/ray/protobuf:common_cc_proto"],
-)
-
-ray_cc_library(
     name = "platform_shims",
     srcs = [] + select({
         "@platforms//os:windows": glob([
@@ -1157,30 +886,6 @@ proto_library(
 cc_proto_library(
     name = "extra_actions_cc_proto_lib",
     deps = [":extra_actions_base_proto_lib"],
-)
-
-filegroup(
-    name = "iwyu_sh",
-    srcs = ["ci/run/iwyu.sh"],
-)
-
-action_listener(
-    name = "iwyu_cpp",
-    extra_actions = [":iwyu_action"],
-    mnemonics = ["CppCompile"],
-)
-
-extra_action(
-    name = "iwyu_action",
-    cmd = "$(location :iwyu_sh) postbuild $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE) > $(output $(ACTION_ID).iwyu.txt)",
-    out_templates = [
-        "$(ACTION_ID).iwyu.txt",
-    ],
-    tools = [
-        ":extra_actions_base_proto",
-        ":iwyu_sh",
-        "@com_google_protobuf//:protoc",
-    ],
 )
 
 ray_cc_library(

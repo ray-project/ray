@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
@@ -334,9 +335,9 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     def get_bundle_loc(bundle):
         block = ray.get(bundle.blocks[0][0])
         fval = list(block["id"])[0]
-        return get_fake_loc(fval)
+        return [get_fake_loc(fval)]
 
-    op._get_location = get_bundle_loc
+    op._get_locations = get_bundle_loc
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
@@ -546,16 +547,19 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown()
+    op.shutdown(timer=Timer())
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
 
 
-def test_actor_pool_map_operator_init(ray_start_regular_shared):
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
     from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
@@ -750,55 +754,141 @@ def test_limit_operator(ray_start_regular_shared):
 def _get_bundles(bundle: RefBundle):
     output = []
     for block_ref in bundle.block_refs:
-        output.extend(list(ray.get(block_ref)["id"]))
+        output.append(list(ray.get(block_ref)["id"]))
     return output
+
+
+def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
+    rbs = []
+    for raw_bundle in raw_bundles:
+        blocks = []
+
+        for raw_block in raw_bundle:
+            print(f">>> {raw_block=}")
+
+            block = pd.DataFrame({"id": raw_block})
+            blocks.append(
+                (ray.put(block), BlockAccessor.for_block(block).get_metadata())
+            )
+
+        rb = RefBundle(blocks=blocks, owns_blocks=True)
+
+        rbs.append(rb)
+
+    return rbs
 
 
 @pytest.mark.parametrize(
     "target,in_bundles,expected_bundles",
     [
         (
-            1,  # Unit target, should leave unchanged.
-            [[1], [2], [3, 4], [5]],
-            [[1], [2], [3, 4], [5]],
+            # Unit target, should leave unchanged.
+            1,
+            [
+                # Input bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
+            [
+                # Output bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
         ),
         (
-            None,  # No target, should leave unchanged.
-            [[1], [2], [3, 4], [5]],
-            [[1], [2], [3, 4], [5]],
+            # No target, should leave unchanged.
+            None,
+            [
+                # Input bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
+            [
+                # Output bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
         ),
         (
-            2,  # Empty blocks should be handled.
-            [[1], [], [2, 3], []],
-            [[1], [2, 3]],
+            # Proper handling of empty blocks
+            2,
+            [
+                # Input bundles
+                [[1]],
+                [[]],
+                [[]],
+                [[2, 3]],
+                [[]],
+                [[]],
+            ],
+            [
+                # Output bundles
+                [[1], [], [], [2, 3]],
+                [[], []],
+            ],
         ),
         (
-            2,  # Test bundling, finalizing, passing, leftovers, etc.
-            [[1], [2], [3, 4, 5], [6], [7], [8], [9, 10], [11]],
-            [[1, 2], [3, 4, 5], [6, 7], [8], [9, 10], [11]],
+            # Test bundling, finalizing, passing, leftovers, etc.
+            2,
+            [
+                # Input bundles
+                [[1], [2]],
+                [[3, 4, 5]],
+                [[6], [7]],
+                [[8]],
+                [[9, 10], [11]],
+            ],
+            [[[1], [2]], [[3, 4, 5]], [[6], [7]], [[8], [9, 10], [11]]],
         ),
         (
-            3,  # Test bundling, finalizing, passing, leftovers, etc.
-            [[1], [2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
-            [[1, 2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
+            # Test bundling, finalizing, passing, leftovers, etc.
+            3,
+            [
+                # Input bundles
+                [[1]],
+                [[2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
+            ],
+            [
+                # Output bundles
+                [[1], [2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
+            ],
         ),
     ],
 )
 def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Test that the bundler creates the expected output bundles.
     bundler = _BlockRefBundler(target)
-    bundles = make_ref_bundles(in_bundles)
+    bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
             out_bundle = _get_bundles(bundler.get_next_bundle()[1])
             out_bundles.append(out_bundle)
+
     bundler.done_adding_bundles()
+
     if bundler.has_bundle():
         out_bundle = _get_bundles(bundler.get_next_bundle()[1])
         out_bundles.append(out_bundle)
-    assert len(out_bundles) == len(expected_bundles)
+
+    # Assert expected output
+    assert out_bundles == expected_bundles
+    # Assert that all bundles have been ingested
+    assert bundler.num_bundles() == 0
+
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
 
@@ -807,7 +897,7 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     "target,n,num_bundles,num_out_bundles,out_bundle_size",
     [
         (5, 20, 20, 4, 5),
-        (5, 20, 10, 5, 4),
+        (5, 24, 10, 4, 6),
         (8, 16, 4, 2, 8),
     ],
 )

@@ -153,8 +153,7 @@ class Autoscaler:
     def update_autoscaling_state(
         self,
     ) -> Optional[AutoscalingState]:
-        """
-        Update the autoscaling state of the cluster by reconciling the current
+        """Update the autoscaling state of the cluster by reconciling the current
         state of the cluster resources, the cloud providers as well as instance
         update subscribers with the desired state.
 
@@ -163,7 +162,7 @@ class Autoscaler:
             the state is not updated.
 
         Raises:
-            No exception.
+            None: No exception.
         """
 
         try:

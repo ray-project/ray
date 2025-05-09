@@ -1,5 +1,5 @@
-from typing import Any, Optional
 from dataclasses import dataclass
+from typing import Any, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch

@@ -9,13 +9,11 @@ from enum import Enum
 from pydantic import BaseModel, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
-from ray.llm._internal.utils import try_import
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-
-sgl = try_import("sglang")
+from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 
 logger = logging.getLogger(__name__)
 
@@ -119,14 +117,16 @@ class SGLangEngineWrapper:
         self.skip_tokenizer_init = kwargs.pop("skip_tokenizer_init", True)
         kwargs["skip_tokenizer_init"] = self.skip_tokenizer_init
 
-        if sgl is None:
+        try:
+            import sglang
+        except ImportError as e:
             raise ImportError(
                 "SGLang is not installed or failed to import. Please run "
                 "`pip install sglang[all]` to install required dependencies."
-            )
+            ) from e
 
         # Initialize the SGLang engine
-        self.engine = sgl.Engine(**kwargs)
+        self.engine = sglang.Engine(**kwargs)
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -155,14 +155,13 @@ class SGLangEngineWrapper:
 
         # Prepare sampling parameters.
         if self.task_type == SGLangTaskType.GENERATE:
-            params = row.pop("sampling_params")
+            params = maybe_convert_ndarray_to_list(row.pop("sampling_params"))
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
         if tokenized_prompt is not None and not self.skip_tokenizer_init:
             raise ValueError(
-                "To use a token-in-token-out mode of SGLang Engine, "
-                "please set engine_kwargs['skip_tokenizer_init'] to True."
+                "To use a token-in-token-out mode of SGLang Engine, please set engine_kwargs['skip_tokenizer_init'] to True."
             )
 
         request = SGLangEngineRequest(
@@ -220,8 +219,7 @@ class SGLangEngineWrapper:
                 return output
 
         raise RuntimeError(
-            "[SGLang] The request is not finished. This should not happen. "
-            "Please report this issue to the Ray team."
+            "[SGLang] The request is not finished. This should not happen. Please report this issue to the Ray team."
         )
 
     def shutdown(self):
@@ -393,11 +391,9 @@ class SGLangEngineStage(StatefulStage):
         ret = {"prompt": "The text prompt (str)."}
         task_type = self.fn_constructor_kwargs.get("task_type", SGLangTaskType.GENERATE)
         if task_type == SGLangTaskType.GENERATE:
-            ret["sampling_params"] = (
-                "The sampling parameters. See "
-                "https://docs.sglang.ai/backend/sampling_params.html"
-                "for details."
-            )
+            ret[
+                "sampling_params"
+            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.htmlfor details."
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:

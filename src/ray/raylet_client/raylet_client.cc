@@ -200,7 +200,7 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
   return result;
 }
 
-Status RayletClient::WaitForDirectActorCallArgs(
+Status RayletClient::WaitForActorCallArgs(
     const std::vector<rpc::ObjectReference> &references, int64_t tag) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<ObjectID> object_ids;
@@ -209,10 +209,10 @@ Status RayletClient::WaitForDirectActorCallArgs(
     object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
     owner_addresses.push_back(ref.owner_address());
   }
-  auto message = protocol::CreateWaitForDirectActorCallArgsRequest(
+  auto message = protocol::CreateWaitForActorCallArgsRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses), tag);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
+  return conn_->WriteMessage(MessageType::WaitForActorCallArgsRequest, &fbb);
 }
 
 Status RayletClient::PushError(const JobID &job_id,
@@ -330,15 +330,15 @@ void RayletClient::PushMutableObject(
     uint64_t data_size,
     uint64_t metadata_size,
     void *data,
+    void *metadata,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
   // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
   // slightly lower value to allow extra padding just in case.
   uint64_t kMaxGrpcPayloadSize = RayConfig::instance().max_grpc_message_size() * 0.98;
-  uint64_t total_size = data_size + metadata_size;
-  uint64_t total_num_chunks = total_size / kMaxGrpcPayloadSize;
-  // If `total_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an
+  uint64_t total_num_chunks = data_size / kMaxGrpcPayloadSize;
+  // If `data_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an
   // extra chunk with the remaining data.
-  if (total_size % kMaxGrpcPayloadSize) {
+  if (data_size % kMaxGrpcPayloadSize) {
     total_num_chunks++;
   }
 
@@ -349,14 +349,14 @@ void RayletClient::PushMutableObject(
     request.set_total_metadata_size(metadata_size);
 
     uint64_t chunk_size = (i < total_num_chunks - 1) ? kMaxGrpcPayloadSize
-                                                     : (total_size % kMaxGrpcPayloadSize);
+                                                     : (data_size % kMaxGrpcPayloadSize);
     uint64_t offset = i * kMaxGrpcPayloadSize;
     request.set_offset(offset);
     request.set_chunk_size(chunk_size);
-    // This assumes that the format of the object is a contiguous buffer of (data |
-    // metadata).
-    request.set_payload(absl::MakeCordFromExternal(
-        absl::string_view(static_cast<char *>(data) + offset, chunk_size), []() {}));
+    request.set_data(static_cast<char *>(data) + offset, chunk_size);
+    // Set metadata for each message so on the receiver side
+    // metadata from any message can be used.
+    request.set_metadata(static_cast<char *>(metadata), metadata_size);
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(

@@ -1,9 +1,9 @@
+import logging
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
-import uuid
 
 import ray
-from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
@@ -14,9 +14,13 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
-from ray.data._internal.stats import StatsDict
-from ray.data.context import DataContext
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.stats import StatsDict, Timer
+from ray.data.context import DataContext
+
+from .ref_bundle import RefBundle
+
+logger = logging.getLogger(__name__)
 
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
@@ -215,6 +219,7 @@ class PhysicalOperator(Operator):
         self._output_block_size_option = None
         self.set_target_max_block_size(target_max_block_size)
         self._started = False
+        self._shutdown = False
         self._in_task_submission_backpressure = False
         self._in_task_output_backpressure = False
         self._estimated_num_output_bundles = None
@@ -289,6 +294,14 @@ class PhysicalOperator(Operator):
             self._output_block_size_option = None
 
     def mark_execution_finished(self):
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        if isinstance(self, InternalQueueOperatorMixin):
+            assert self.internal_queue_size() == 0, (
+                "Operator is marked as finished execution, but internal queue is "
+                f"non-empty (got {self.internal_queue_size()} bundles)!"
+            )
+
         """Manually mark that this operator has finished execution."""
         self._execution_finished = True
 
@@ -300,17 +313,32 @@ class PhysicalOperator(Operator):
         return self._execution_finished
 
     def completed(self) -> bool:
-        """Return True when this operator is completed.
+        """Returns whether this operator has been fully completed.
 
-        An operator is completed when all these conditions hold true:
-        * The operator has finished execution (i.e., `execution_finished()` is True).
-        * All outputs have been taken (i.e., `has_next()` is False).
+        An operator is completed iff:
+            * The operator has finished execution (i.e., `execution_finished()` is True).
+            * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        internal_queue_size = (
+            self.internal_queue_size()
+            if isinstance(self, InternalQueueOperatorMixin)
+            else 0
+        )
+
         if not self._execution_finished:
-            if self._inputs_complete and self.num_active_tasks() == 0:
-                # If all inputs are complete and there are no active tasks,
-                # then the operator has completed execution.
+            if (
+                self._inputs_complete
+                and internal_queue_size == 0
+                and self.num_active_tasks() == 0
+            ):
+                # NOTE: Operator is considered completed iff
+                #   - All input blocks have been ingested
+                #   - Internal queue is empty
+                #   - There are no active or pending tasks
                 self._execution_finished = True
+
         return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
@@ -474,38 +502,26 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def internal_queue_size(self) -> int:
-        """If the operator has an internal input queue, return its size.
-
-        This is used to report tasks pending submission to actor pools.
-        """
-        return 0
-
-    def shutdown(self, force: bool = False) -> None:
+    def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        if not self._started:
+        if self._shutdown:
+            return
+        elif not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
-        elif force:
-            tasks: List[OpTask] = self.get_active_tasks()
+        # Mark operator as shut down
+        self._shutdown = True
+        # Time shutdown sequence duration
+        with timer.timer():
+            self._do_shutdown(force)
 
-            # Interrupt all (still) running tasks immediately
-            for task in tasks:
-                task._cancel(force=True)
-
-            # Wait for all tasks to get cancelled before returning
-            for task in tasks:
-                try:
-                    ray.get(task.get_waitable())
-                except ray.exceptions.RayError:
-                    # Cancellation either succeeded, or the task might have already
-                    # failed with a different error, or cancellation failed.
-                    # In all cases, we swallow the exception.
-                    pass
+    def _do_shutdown(self, force: bool):
+        # Default implementation simply cancels any outstanding active task
+        self._cancel_active_tasks(force=force)
 
     def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated CPU and GPU usage of this operator, excluding
@@ -542,13 +558,18 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources(0, 0, 0)
 
-    def base_resource_usage(self) -> ExecutionResources:
-        """Returns the minimum amount of resources required for execution.
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns the min and max resources to start the operator and make progress.
 
         For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its base usage.
+        return ExecutionResources(gpu=8) as its minimum usage.
+
+        This method is used by the resource manager to reserve minimum resources and to
+        ensure that it doesn't over-provision resources.
         """
-        return ExecutionResources()
+        return ExecutionResources.zero(), ExecutionResources.inf()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
@@ -619,3 +640,23 @@ class PhysicalOperator(Operator):
         Actors.
         """
         return 0, 0, 0
+
+    def _cancel_active_tasks(self, force: bool):
+        tasks: List[OpTask] = self.get_active_tasks()
+
+        # Interrupt all (still) running tasks immediately
+        for task in tasks:
+            task._cancel(force=force)
+
+        # In case of forced cancellation block until task actually return
+        # to guarantee all tasks are done upon return from this method
+        if force:
+            # Wait for all tasks to get cancelled before returning
+            for task in tasks:
+                try:
+                    ray.get(task.get_waitable())
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task might have already
+                    # failed with a different error, or cancellation failed.
+                    # In all cases, we swallow the exception.
+                    pass
