@@ -61,7 +61,6 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
         runtime_env = dict(
             env_vars=dict(
                 VLLM_USE_V1="1",
-                VLLM_WORKER_MULTIPROC_METHOD="spawn",
             ),
         )
         # vLLM v1 does not support decoupled tokenizer,
@@ -145,7 +144,6 @@ def test_vllm_llama_lora():
             "env_vars": {
                 # TODO(lk-chen): Remove this once ray.data.llm enables LoRA in v1.
                 "VLLM_USE_V1": "0",
-                "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
             }
         },
     )
@@ -198,7 +196,6 @@ def test_vllm_vision_language_models(
         runtime_env = dict(
             env_vars=dict(
                 VLLM_USE_V1="1",
-                VLLM_WORKER_MULTIPROC_METHOD="spawn",
             ),
         )
         # vLLM v1 does not support decoupled tokenizer,
