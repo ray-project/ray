@@ -12,7 +12,7 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
 )
-from ray.train.v2._internal.metrics.base import RUN_NAME_TAG_KEY, Metric
+from ray.train.v2._internal.metrics.base import Metric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2._internal.util import time_monotonic
@@ -27,21 +27,16 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
 
     def after_controller_start(self):
         """Initialize metrics after controller starts."""
-        base_tags = {RUN_NAME_TAG_KEY: self._run_name}
-        self._metrics = ControllerMetrics.get_controller_metrics(base_tags)
-        # Start all metrics
-        for metric in self._metrics.values():
-            metric.start()
+        self._metrics = ControllerMetrics.get_controller_metrics(self._run_name)
         # Record initial state
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
-            TrainControllerStateType.INITIALIZING, 1
+            TrainControllerStateType.INITIALIZING
         )
 
     def before_controller_shutdown(self):
         """Shutdown metrics before controller shuts down."""
-        if self._metrics:
-            for metric in self._metrics.values():
-                metric.shutdown()
+        for metric in self._metrics.values():
+            metric.reset()
 
     def after_controller_state_update(
         self,
@@ -49,18 +44,9 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         current_state: TrainControllerState,
     ):
         """Record state transitions after controller state updates."""
-        if self._metrics:
-            if previous_state._state_type != current_state._state_type:
-                # Decrement the previous state counter
-                self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
-                    previous_state._state_type,
-                    -1,
-                )
-                # Increment the counter for the new state
-                self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
-                    current_state._state_type,
-                    1,
-                )
+        self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
+            current_state._state_type
+        )
 
     @contextmanager
     def on_worker_group_start(self):
@@ -92,23 +78,13 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
 
     def after_init_train_context(self):
         """Initialize metrics after train context is initialized."""
-        base_tags = {
-            RUN_NAME_TAG_KEY: self._run_name,
-            WorkerMetrics.WORKER_WORLD_RANK_TAG_KEY: str(
-                get_train_context().get_world_rank()
-            ),
-        }
-        self._metrics = WorkerMetrics.get_worker_metrics(base_tags)
-
-        # Start all metrics
-        for metric in self._metrics.values():
-            metric.start()
+        world_rank = get_train_context().get_world_rank()
+        self._metrics = WorkerMetrics.get_worker_metrics(self._run_name, world_rank)
 
     def before_shutdown(self):
         """Shutdown metrics before shutdown."""
-        if self._metrics:
-            for metric in self._metrics.values():
-                metric.shutdown()
+        for metric in self._metrics.values():
+            metric.reset()
 
     @contextmanager
     def on_report(self):

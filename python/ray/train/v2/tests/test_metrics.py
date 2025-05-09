@@ -12,7 +12,7 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     TrainControllerStateType,
 )
-from ray.train.v2._internal.metrics.base import EnumMetric, Metric, TimeMetric
+from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2.api.config import RunConfig
@@ -55,51 +55,16 @@ def mock_time_monotonic(monkeypatch, time_values: list[float]):
     )
 
 
-def test_metrics(monkeypatch):
-    """Test the core functionality of Metric."""
-    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
-
-    base_tags = {"base_tag": "base_value"}
-
-    metric = Metric(
-        name="test_metric",
-        type=int,
-        default=0,
-        description="Test metric",
-        tag_keys=("base_tag",),
-        base_tags=base_tags,
-    )
-
-    # Start metrics
-    metric.start()
-
-    # Test initial state
-    assert metric.get_value() == 0
-
-    # Test updating metric
-    metric.record(1)
-    assert metric.get_value() == 1
-
-    # Test updating same metric
-    metric.record(2)
-    assert metric.get_value() == 3
-
-    # Test shutdown
-    metric.shutdown()
-    assert metric._values == {}
-
-
 def test_time_metric(monkeypatch):
     """Test TimeMetric functionality."""
+    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     base_tags = {"run_name": "test_run"}
     metric = TimeMetric(
         name="test_time",
         description="Test time metric",
-        tag_keys=("run_name",),
         base_tags=base_tags,
     )
-    metric.start()
 
     # Test recording values
     metric.record(1.0)
@@ -109,13 +74,14 @@ def test_time_metric(monkeypatch):
     metric.record(2.0)
     assert metric.get_value() == 3.0
 
-    # Test shutdown
-    metric.shutdown()
-    assert metric._values == {}
+    # Test reset
+    metric.reset()
+    assert metric.get_value() == 0.0
 
 
-def test_enum_metric():
+def test_enum_metric(monkeypatch):
     """Test EnumMetric functionality."""
+    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     class TestEnum(enum.Enum):
         A = "A"
@@ -123,29 +89,34 @@ def test_enum_metric():
         C = "C"
 
     base_tags = {"run_name": "test_run"}
-    metric = EnumMetric(
+    metric = EnumMetric[TestEnum](
         name="test_enum",
         description="Test enum metric",
-        tag_keys=("run_name", "state"),
         base_tags=base_tags,
-        enum_type=TestEnum,
         enum_tag_key="state",
     )
-    metric.start()
 
     # Test recording values
-    metric.record(TestEnum.A, 1)
+    metric.record(TestEnum.A)
     assert metric.get_value(TestEnum.A) == 1
     assert metric.get_value(TestEnum.B) == 0
     assert metric.get_value(TestEnum.C) == 0
 
-    metric.record(TestEnum.B, 2)
-    assert metric.get_value(TestEnum.A) == 1
-    assert metric.get_value(TestEnum.B) == 2
+    metric.record(TestEnum.B)
+    assert metric.get_value(TestEnum.A) == 0
+    assert metric.get_value(TestEnum.B) == 1
     assert metric.get_value(TestEnum.C) == 0
 
-    # Test shutdown
-    metric.shutdown()
+    metric.record(TestEnum.C)
+    assert metric.get_value(TestEnum.A) == 0
+    assert metric.get_value(TestEnum.B) == 0
+    assert metric.get_value(TestEnum.C) == 1
+
+    # Test reset
+    metric.reset()
+    assert metric.get_value(TestEnum.A) == 0
+    assert metric.get_value(TestEnum.B) == 0
+    assert metric.get_value(TestEnum.C) == 0
 
 
 def test_worker_metrics_callback(monkeypatch):
@@ -298,6 +269,25 @@ def test_controller_state_metrics(monkeypatch):
     )
 
     callback.before_controller_shutdown()
+
+    assert (
+        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+            TrainControllerStateType.INITIALIZING
+        )
+        == 0
+    )
+    assert (
+        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+            TrainControllerStateType.RUNNING
+        )
+        == 0
+    )
+    assert (
+        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+            TrainControllerStateType.FINISHED
+        )
+        == 0
+    )
 
 
 if __name__ == "__main__":

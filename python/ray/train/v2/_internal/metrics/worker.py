@@ -16,7 +16,6 @@ class WorkerMetrics:
 
     # ===== Tag Keys =====
     WORKER_WORLD_RANK_TAG_KEY = "ray_train_worker_world_rank"
-    TAG_KEYS = (RUN_NAME_TAG_KEY, WORKER_WORLD_RANK_TAG_KEY)
 
     @classmethod
     def _create_time_metric(
@@ -26,13 +25,18 @@ class WorkerMetrics:
         return TimeMetric(
             name=name,
             description=description,
-            tag_keys=cls.TAG_KEYS,
             base_tags=base_tags,
         )
 
     @classmethod
-    def get_worker_metrics(cls, base_tags: Dict[str, str]) -> Dict[str, TimeMetric]:
+    def get_worker_metrics(
+        cls, run_name: str, world_rank: int
+    ) -> Dict[str, TimeMetric]:
         """Get all worker metrics."""
+        base_tags = {
+            RUN_NAME_TAG_KEY: run_name,
+            cls.WORKER_WORLD_RANK_TAG_KEY: str(world_rank),
+        }
         return {
             cls.REPORT_TOTAL_BLOCKED_TIME_S: cls._create_time_metric(
                 cls.REPORT_TOTAL_BLOCKED_TIME_S,

@@ -18,7 +18,6 @@ class ControllerMetrics:
     WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S = "train_worker_group_shutdown_total_time_s"
 
     # ===== Tag Keys =====
-    TAG_KEYS = (RUN_NAME_TAG_KEY,)
     CONTROLLER_STATE_TAG_KEY = "ray_train_controller_state"
 
     @classmethod
@@ -28,7 +27,6 @@ class ControllerMetrics:
         return TimeMetric(
             name=name,
             description=description,
-            tag_keys=cls.TAG_KEYS,
             base_tags=base_tags,
         )
 
@@ -36,19 +34,18 @@ class ControllerMetrics:
     def _create_controller_state_metric(
         cls, base_tags: Dict[str, str]
     ) -> EnumMetric[TrainControllerStateType]:
-        return EnumMetric(
+        return EnumMetric[TrainControllerStateType](
             name=cls.CONTROLLER_STATE,
             description="Current state of the Ray Train controller",
-            tag_keys=cls.TAG_KEYS + (cls.CONTROLLER_STATE_TAG_KEY,),
             base_tags=base_tags,
-            enum_type=TrainControllerStateType,
             enum_tag_key=cls.CONTROLLER_STATE_TAG_KEY,
         )
 
     @classmethod
     def get_controller_metrics(
-        cls, base_tags: Dict[str, str]
+        cls, run_name: str
     ) -> Dict[str, Union[TimeMetric, EnumMetric[TrainControllerStateType]]]:
+        base_tags = {RUN_NAME_TAG_KEY: run_name}
         return {
             cls.WORKER_GROUP_START_TOTAL_TIME_S: cls._create_time_metric(
                 cls.WORKER_GROUP_START_TOTAL_TIME_S,
