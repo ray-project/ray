@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-import ray
 import tempfile
 import subprocess
 
@@ -73,7 +72,6 @@ for path in sys.path:
     if path.endswith("thirdparty_files"):
         print(f"ERROR: Found thirdparty_files in sys.path: {path}")
         sys.exit(1)
-        
 print("Confirmed thirdparty_files is not in sys.path")
 ray.shutdown()
 print("SUCCESS: sys.path isolation test passed")

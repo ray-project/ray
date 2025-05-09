@@ -411,6 +411,7 @@ py_test_module_list(
         "test_node_death.py",
         "test_numba.py",
         "test_raylet_output.py",
+        "test_thirdparty_isolation.py",
         "test_top_level_api.py",
         "test_unhandled_error.py",
         "test_wait.py",

@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-import argparse
 import logging
-import signal
 import sys
-import time
-import traceback
 
 try:
     from ray._private.setproctitle import setproctitle
