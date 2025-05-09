@@ -40,7 +40,7 @@ class ControllerMetrics:
         """Create the controller state metric."""
         return EnumMetric(
             name=cls.CONTROLLER_STATE,
-            description="Number of controllers in each state",
+            description="Current state of the Ray Train controller",
             tag_keys=cls.TAG_KEYS + (cls.CONTROLLER_STATE_TAG_KEY,),
             base_tags=base_tags,
             enum_type=TrainControllerStateType,
