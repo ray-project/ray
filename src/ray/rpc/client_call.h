@@ -108,7 +108,7 @@ class ClientCallImpl : public ClientCall {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
     }
-    if (!status.ok()) {
+    if (record_stats_ && !status.ok()) {
       stats::STATS_grpc_client_req_failures.Record(1.0, stats_handle_->event_name);
     }
     if (callback_ != nullptr) {
