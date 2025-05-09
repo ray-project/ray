@@ -360,9 +360,7 @@ class ClientCallManager {
   /// The number of polling threads.
   int num_threads_;
 
-  /// Whether to record grpc_client_req_failures for this.
-  /// Recorded for everything except gcs client and clients on workers.
-  /// All rpc's to gcs are always retried anyways.
+  /// Whether to record stats for these client calls.
   bool record_stats_;
 
   /// Whether the client has shutdown.
