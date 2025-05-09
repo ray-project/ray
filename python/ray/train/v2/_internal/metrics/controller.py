@@ -50,7 +50,6 @@ class ControllerMetrics:
     def get_controller_metrics(
         cls, base_tags: Dict[str, str]
     ) -> Dict[str, Union[TimeMetric, EnumMetric[TrainControllerStateType]]]:
-        """Get all controller metrics."""
         return {
             cls.WORKER_GROUP_START_TOTAL_TIME_S: cls._create_time_metric(
                 cls.WORKER_GROUP_START_TOTAL_TIME_S,
