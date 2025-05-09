@@ -60,7 +60,7 @@ class ControllerMetrics:
             ),
             cls.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S: cls._create_time_metric(
                 cls.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S,
-                "Total time taken to shutdown worker groups",
+                "Total time taken to shutdown the worker group",
                 base_tags,
             ),
             cls.CONTROLLER_STATE: cls._create_controller_state_metric(base_tags),
