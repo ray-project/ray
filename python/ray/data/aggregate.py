@@ -481,7 +481,7 @@ class Std(AggregateFnV2):
 
     See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
-    Example:
+    Usage:
         `ds.groupby("group_key").aggregate(Std(on="value_col"))`
 
     Args:
@@ -562,7 +562,7 @@ class Std(AggregateFnV2):
 class AbsMax(AggregateFnV2):
     """Defines absolute max aggregation.
 
-    Example:
+    Usage:
         `ds.groupby("group_key").aggregate(AbsMax(on="value_col"))`
 
     Args:
@@ -609,12 +609,8 @@ class AbsMax(AggregateFnV2):
 class Quantile(AggregateFnV2):
     """Defines Quantile aggregation.
 
-    Example:
-        To calculate the median (0.5 quantile):
+    Usage:
         `ds.groupby("group_key").aggregate(Quantile(on="value_col", q=0.5))`
-
-        To calculate the 75th percentile (0.75 quantile):
-        `ds.groupby("group_key").aggregate(Quantile(on="value_col", q=0.75))`
 
     Args:
         on: The name of the column to calculate the quantile on. Must be provided.
