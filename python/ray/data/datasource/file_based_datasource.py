@@ -263,7 +263,7 @@ class FileBasedDatasource(Datasource):
                             block = block_accessor.fill_column("path", read_path)
                         yield block
 
-        def create_read_task_fn(read_paths, num_threads):
+        def create_read_task_fn(read_paths, num_threads, buffer_size):
             def read_task_fn():
                 nonlocal num_threads, read_paths
 
@@ -285,6 +285,7 @@ class FileBasedDatasource(Datasource):
                         read_files,
                         num_workers=num_threads,
                         preserve_ordering=True,
+                        buffer_size=buffer_size,
                     )
                 else:
                     logger.debug(f"Reading {len(read_paths)} files.")
@@ -294,6 +295,46 @@ class FileBasedDatasource(Datasource):
 
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
+
+        def compute_buffer_size(
+            file_sizes: list[int],
+            num_threads_per_task: int,
+            memory_fraction: float = 0.5,
+            max_buffer_size: int = 128,
+        ) -> int:
+            """
+            Compute number of files each thread can buffer based on available memory.
+
+            Args:
+                file_sizes: List of file sizes in bytes.
+                num_threads_per_task: Threads per task.
+                memory_fraction: Fraction of available memory to use.
+                max_buffer_size: Maximum buffer size in files.
+            Returns:
+                buffer_size: Number of files to buffer per thread.
+            """
+            import multiprocessing
+
+            import psutil
+
+            # Estimate total number of threads across all workers (1 task per CPU core)
+            total_workers = multiprocessing.cpu_count()
+            total_threads = max(1, total_workers * num_threads_per_task)
+
+            available_memory = psutil.virtual_memory().available
+            buffer_memory = int(available_memory * memory_fraction)
+
+            avg_file_size = (
+                int(sum(file_sizes) / len(file_sizes)) if file_sizes else 1 << 20
+            )
+            per_thread_buffer_memory = buffer_memory // total_threads
+            buffer_size = min(
+                max_buffer_size, per_thread_buffer_memory // avg_file_size
+            )
+
+            return buffer_size
+
+        buffer_size = compute_buffer_size(file_sizes, self._NUM_THREADS_PER_TASK)
 
         read_tasks = []
         split_paths = np.array_split(paths, parallelism)
@@ -310,7 +351,9 @@ class FileBasedDatasource(Datasource):
                 file_sizes=file_sizes,
             )
 
-            read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
+            read_task_fn = create_read_task_fn(
+                read_paths, self._NUM_THREADS_PER_TASK, buffer_size
+            )
 
             read_task = ReadTask(read_task_fn, meta)
 
