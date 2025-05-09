@@ -1,6 +1,6 @@
 from typing import Dict
 
-from ray.train.v2._internal.metrics.base import RUN_NAME_TAG_KEY, Metric
+from ray.train.v2._internal.metrics.base import RUN_NAME_TAG_KEY, TimeMetric
 
 
 class WorkerMetrics:
@@ -11,30 +11,32 @@ class WorkerMetrics:
     description, and required tags.
     """
 
+    # ===== Metric Names =====
+    REPORT_TOTAL_BLOCKED_TIME_S = "train_report_total_blocked_time_s"
+
     # ===== Tag Keys =====
     WORKER_WORLD_RANK_TAG_KEY = "ray_train_worker_world_rank"
     TAG_KEYS = (RUN_NAME_TAG_KEY, WORKER_WORLD_RANK_TAG_KEY)
 
-    # ===== Metric Names =====
-    REPORT_TOTAL_BLOCKED_TIME_S = "train_report_total_blocked_time_s"
-
     @classmethod
-    def _create_time_metric(cls, name: str, description: str) -> Metric:
+    def _create_time_metric(
+        cls, name: str, description: str, base_tags: Dict[str, str]
+    ) -> TimeMetric:
         """Create a time-based metric."""
-        return Metric(
+        return TimeMetric(
             name=name,
-            type=float,
-            default=0.0,
             description=description,
             tag_keys=cls.TAG_KEYS,
+            base_tags=base_tags,
         )
 
     @classmethod
-    def get_worker_metrics(cls) -> Dict[str, Metric]:
+    def get_worker_metrics(cls, base_tags: Dict[str, str]) -> Dict[str, TimeMetric]:
         """Get all worker metrics."""
         return {
             cls.REPORT_TOTAL_BLOCKED_TIME_S: cls._create_time_metric(
                 cls.REPORT_TOTAL_BLOCKED_TIME_S,
                 "Cumulative time in seconds to report a checkpoint to the storage.",
+                base_tags,
             ),
         }

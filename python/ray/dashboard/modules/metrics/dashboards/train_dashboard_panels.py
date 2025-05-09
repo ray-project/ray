@@ -44,7 +44,7 @@ TRAIN_GRAFANA_PANELS = [
         id=3,
         title="Train Controller State",
         description="State of the train controller.",
-        unit="train runs",
+        unit="",
         targets=[
             Target(
                 expr="sum(ray_train_controller_state{{{global_filters}}}) by (ray_train_run_name, ray_train_controller_state)",

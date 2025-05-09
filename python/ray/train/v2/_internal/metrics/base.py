@@ -1,11 +1,13 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple, Type, TypeVar
+from enum import Enum
+from typing import Dict, Generic, Tuple, Type, TypeVar
 
 from ray.util.metrics import Gauge
 
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 
 T = TypeVar("T")
+E = TypeVar("E", bound=Enum)
 
 
 @dataclass
@@ -15,6 +17,7 @@ class Metric:
     default: T
     description: str
     tag_keys: Tuple[str, ...]
+    base_tags: Dict[str, str]
 
     def __init__(
         self,
@@ -23,35 +26,51 @@ class Metric:
         default: T,
         description: str,
         tag_keys: Tuple[str, ...],
+        base_tags: Dict[str, str],
     ):
         self.name = name
         self.type = type
         self.default = default
         self.description = description
         self.tag_keys = tag_keys
+        self.base_tags = base_tags
         self._gauge = None
         self._values = {}
+        self._started = False
 
     def start(self):
+        """Initialize the gauge for this metric."""
         self._gauge = Gauge(
             self.name,
             description=self.description,
             tag_keys=self.tag_keys,
         )
+        self._started = True
 
-    def record(self, tags: Dict[str, str], value: T):
-        """Update the metric value with the given tags.
+    def _assert_started(self):
+        """Assert that the metric has been started.
+
+        Raises:
+            RuntimeError: If the metric has not been started.
+        """
+        if not self._started:
+            raise RuntimeError(
+                f"Metric '{self.name}' has not been started. "
+                f"Call start() before using this method."
+            )
+
+    def record(self, value: T):
+        """Update the metric value.
 
         For numerical values (int, float), the value will be added to the current value.
         For non-numerical values, the current value will be replaced.
 
         Args:
             value: The value to update the metric with.
-            tags: Dictionary of tag key-value pairs.
         """
-        self._validate_tags(tags)
-
-        key = frozenset(tags.items())
+        self._assert_started()
+        self._validate_tags(self.base_tags)
+        key = frozenset(self.base_tags.items())
 
         # Initialize with default value for new tag combination
         if key not in self._values:
@@ -63,29 +82,29 @@ class Metric:
         else:
             self._values[key] = value
 
-        # Update the gauge if it exists
-        if self._gauge is not None:
-            self._gauge.set(self._values[key], tags)
+        self._gauge.set(self._values[key], self.base_tags)
 
-    def get_value(self, tags: Dict[str, str]) -> T:
-        """Get the value of the metric for the given tags."""
-        self._validate_tags(tags)
-
-        key = frozenset(tags.items())
+    def get_value(self) -> T:
+        """Get the value of the metric."""
+        self._assert_started()
+        self._validate_tags(self.base_tags)
+        key = frozenset(self.base_tags.items())
         return self._values.get(key, self.default)
 
     def reset(self):
         """Reset all values to default for all tag combinations."""
+        self._assert_started()
         for key, _ in self._values.items():
             tags = dict(key)
             self._values[key] = self.default
-            if self._gauge is not None:
-                self._gauge.set(self.default, tags)
+            self._gauge.set(self.default, tags)
 
     def shutdown(self):
         """Reset values and clean up resources."""
-        self.reset()
-        self._values = {}
+        if self._started:
+            self.reset()
+            self._values = {}
+            self._started = False
 
     def _validate_tags(self, tags: Dict[str, str]):
         """Validate that the provided tags match the expected tag keys.
@@ -103,48 +122,84 @@ class Metric:
             )
 
 
-class MetricsTracker:
-    """Tracks metric values for a set of defined metrics."""
+class TimeMetric(Metric):
+    """A metric for tracking elapsed time."""
 
-    def __init__(self, metrics: Dict[str, Metric], base_tags: Dict[str, str]):
-        self._metrics = metrics
-        self._base_tags = base_tags
-
-    def start(self):
-        """Start all metrics."""
-        for metric in self._metrics.values():
-            metric.start()
-
-    def record(
-        self, metric_name: str, value: Any, additional_tags: Dict[str, str] = None
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        tag_keys: Tuple[str, ...],
+        base_tags: Dict[str, str],
     ):
-        """Record a value for a specific metric."""
-        metric = self._get_metric(metric_name)
-        if additional_tags is None:
-            additional_tags = {}
-        tags = self._base_tags | additional_tags
-        metric.record(tags, value)
+        super().__init__(
+            name=name,
+            type=float,
+            default=0.0,
+            description=description,
+            tag_keys=tag_keys,
+            base_tags=base_tags,
+        )
 
-    def get_value(self, metric_name: str, additional_tags: Dict[str, str] = None):
-        """Get the value of a specific metric."""
-        metric = self._get_metric(metric_name)
-        if additional_tags is None:
-            additional_tags = {}
-        tags = self._base_tags | additional_tags
-        return metric.get_value(tags)
 
-    def reset(self):
-        """Reset all metrics."""
-        for metric in self._metrics.values():
-            metric.reset()
+class EnumMetric(Metric, Generic[E]):
+    """A metric for tracking enum values."""
 
-    def shutdown(self):
-        """Shutdown all metrics."""
-        for metric in self._metrics.values():
-            metric.shutdown()
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        tag_keys: Tuple[str, ...],
+        base_tags: Dict[str, str],
+        enum_type: Type[E],
+        enum_tag_key: str,
+    ):
+        super().__init__(
+            name=name,
+            type=int,
+            default=0,
+            description=description,
+            tag_keys=tag_keys,
+            base_tags=base_tags,
+        )
+        self.enum_type = enum_type
+        self.enum_tag_key = enum_tag_key
 
-    def _get_metric(self, metric_name: str) -> Metric:
-        """Get a specific metric."""
-        if metric_name not in self._metrics:
-            raise ValueError(f"Unknown metric: {metric_name}")
-        return self._metrics[metric_name]
+    def record(self, enum_value: E, value: int = 1):
+        """Record a value for a specific enum value.
+
+        Args:
+            enum_value: The enum value to record for
+            value: The value to record (default: 1)
+        """
+        self._assert_started()
+        tags = dict(self.base_tags)
+        tags[self.enum_tag_key] = enum_value.name
+        self._validate_tags(tags)
+        key = frozenset(tags.items())
+
+        # Initialize with default value for new tag combination
+        if key not in self._values:
+            self._values[key] = self.default
+
+        # Add the value
+        self._values[key] += value
+
+        # Update the gauge if it exists
+        self._gauge.set(self._values[key], tags)
+
+    def get_value(self, enum_value: E) -> int:
+        """Get the value for a specific enum value.
+
+        Args:
+            enum_value: The enum value to get the value for
+
+        Returns:
+            The value for the enum value
+        """
+        self._assert_started()
+        tags = dict(self.base_tags)
+        tags[self.enum_tag_key] = enum_value.name
+        self._validate_tags(tags)
+        key = frozenset(tags.items())
+        return self._values.get(key, self.default)
