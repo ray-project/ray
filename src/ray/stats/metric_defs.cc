@@ -199,9 +199,10 @@ DEFINE_stats(grpc_server_req_failed,
              (),
              ray::stats::COUNT);
 
-/// GRPC Client Failures
+/// Number of failures observed from gRPC client(s).
+/// A failure is an RPC whose response status was not `OK`.
 DEFINE_stats(grpc_client_req_failures,
-             "Number of gRPC client failures.",
+             "Number of gRPC client failures (non-OK response statuses).",
              ("Method"),
              (),
              ray::stats::COUNT);
