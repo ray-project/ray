@@ -145,6 +145,7 @@ class Stats:
         self,
         init_value: Optional[Any] = None,
         reduce: Optional[str] = "mean",
+        reduce_per_index_on_merge: Optional[bool] = None,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -173,6 +174,9 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
+            reduce_per_index_on_merge: If True, when merging Stats objects, we reduce incoming values per index such that the new value at index `n` will be the reduced values of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be the reduced values of all incoming values at index `0`, the next `n` merged values will be the reduced values of all incoming values at index `1`, etc.
+                If None, the default behavior is False.
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
@@ -207,6 +211,7 @@ class Stats:
             raise ValueError(
                 "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
             )
+
         # If `window` is explicitly set to inf, `clear_on_reduce` must be True.
         # Otherwise, we risk a memory leak.
         if window == float("inf") and not clear_on_reduce:
@@ -225,6 +230,13 @@ class Stats:
         self._window = window
         self._inf_window = self._window in [None, float("inf")]
         self._ema_coeff = ema_coeff
+
+        if self._reduce_method != "mean" and reduce_per_index_on_merge:
+            raise ValueError(
+                "reduce_per_index_on_merge is only supported for mean reduction!"
+            )
+
+        self._reduce_per_index_on_merge = reduce_per_index_on_merge or False
 
         # Timing functionality (keep start times per thread).
         self._start_times = defaultdict(lambda: None)
@@ -561,14 +573,21 @@ class Stats:
 
             # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
             # TODO (sven) : explain why all this
+
+            if self._reduce_per_index_on_merge:
+                n_values = 1
+            else:
+                n_values = len(tmp_values)
+
             if self._ema_coeff is not None:
-                new_values.extend([np.nanmean(tmp_values)] * len(tmp_values))
+                new_values.extend([np.nanmean(tmp_values)] * n_values)
             elif self._reduce_method in [None, "sum"]:
-                new_values.extend(tmp_values)
+                new_values.extend([self._reduced_values(values=tmp_values)[0]])
             else:
                 new_values.extend(
-                    [self._reduced_values(values=tmp_values)[0]] * len(tmp_values)
+                    [self._reduced_values(values=tmp_values)[0]] * n_values
                 )
+
             tmp_values.clear()
             if len(new_values) >= win:
                 break
