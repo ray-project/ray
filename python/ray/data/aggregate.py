@@ -125,7 +125,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         4. **Finalization**: Optionally, the `_finalize` method transforms the
            final combined accumulator into the desired output format.
 
-    See built-in aggregations like `Count`, `Sum`, `Min`, `Max`, and `Mean` for 
+    See built-in aggregations like `Count`, `Sum`, `Min`, `Max`, and `Mean` for
     examples of how to implement custom aggregations.
 
     Args:
@@ -276,13 +276,13 @@ class Count(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = False, # Note: Default is False for Count to align with SQL COUNT(*)
+        ignore_nulls: bool = False,  # Note: Default is False for Count to align with SQL COUNT(*)
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             # Name for the output column, e.g., "count()" or "count(col_name)"
             alias_name if alias_name else f"count({on or ''})",
-            on=on, # Target column, if any
+            on=on,  # Target column, if any
             ignore_nulls=ignore_nulls,
             # zero_factory provides the initial value for the count, which is 0.
             zero_factory=lambda: 0,
@@ -306,7 +306,7 @@ class Count(AggregateFnV2):
         # current_accumulator is the count from previous blocks/combines.
         # new is the count from a new block.
         return current_accumulator + new
-    
+
     # _finalize is not needed for Count, as the accumulated sum (the count)
     # is already the final desired value.
 
@@ -332,13 +332,13 @@ class Sum(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True, # Default is True, common for sum operations
+        ignore_nulls: bool = True,  # Default is True, common for sum operations
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             # Name for the output column, e.g., "sum(col_name)"
             alias_name if alias_name else f"sum({str(on)})",
-            on=on, # Target numerical column to sum
+            on=on,  # Target numerical column to sum
             ignore_nulls=ignore_nulls,
             # zero_factory provides the initial value for the sum, which is 0.
             zero_factory=lambda: 0,
@@ -356,7 +356,7 @@ class Sum(AggregateFnV2):
         # current_accumulator is the sum from previous blocks/combines.
         # new is the sum from a new block.
         return current_accumulator + new
-    
+
     # _finalize is not needed for Sum, as the accumulated sum
     # is already the final desired value.
 
@@ -390,7 +390,7 @@ class Min(AggregateFnV2):
         super().__init__(
             # Name for the output column, e.g., "min(col_name)"
             alias_name if alias_name else f"min({str(on)})",
-            on=on, # Target column to find the minimum value from
+            on=on,  # Target column to find the minimum value from
             ignore_nulls=ignore_nulls,
             # zero_factory provides the initial value for finding a minimum.
             # Positive infinity is used so any actual value will be smaller.
@@ -409,7 +409,7 @@ class Min(AggregateFnV2):
         # current_accumulator is the minimum from previous blocks/combines.
         # new is the minimum from a new block.
         return min(current_accumulator, new)
-    
+
     # _finalize is not needed for Min, as the accumulated minimum
     # is already the final desired value.
 
@@ -437,13 +437,13 @@ class Max(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True, # Default is True, common for max operations
+        ignore_nulls: bool = True,  # Default is True, common for max operations
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             # Name for the output column, e.g., "max(col_name)"
             alias_name if alias_name else f"max({str(on)})",
-            on=on, # Target column to find the maximum value from
+            on=on,  # Target column to find the maximum value from
             ignore_nulls=ignore_nulls,
             # zero_factory provides the initial value for finding a maximum.
             # Negative infinity is used so any actual value will be larger.
@@ -462,7 +462,7 @@ class Max(AggregateFnV2):
         # current_accumulator is the maximum from previous blocks/combines.
         # new is the maximum from a new block.
         return max(current_accumulator, new)
-    
+
     # _finalize is not needed for Max, as the accumulated maximum
     # is already the final desired value.
 
@@ -488,13 +488,13 @@ class Mean(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True, # Default is True, common for mean operations
+        ignore_nulls: bool = True,  # Default is True, common for mean operations
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             # Name for the output column, e.g., "mean(col_name)"
             alias_name if alias_name else f"mean({str(on)})",
-            on=on, # Target numerical column for mean calculation
+            on=on,  # Target numerical column for mean calculation
             ignore_nulls=ignore_nulls,
             # The accumulator is a list: [current_sum, current_count].
             # zero_factory initializes this to [0, 0].
@@ -576,7 +576,7 @@ class Std(AggregateFnV2):
     ):
         super().__init__(
             alias_name if alias_name else f"std({str(on)})",
-            on=on, # Target column for standard deviation
+            on=on,  # Target column for standard deviation
             ignore_nulls=ignore_nulls,
             # Accumulator: [M2, mean, count]
             # M2: sum of squares of differences from the current mean
@@ -621,7 +621,7 @@ class Std(AggregateFnV2):
 
         if count == 0:
             # Avoid division by zero if combined count is zero (e.g. both empty)
-            return [0, 0, 0] # Return a zero state
+            return [0, 0, 0]  # Return a zero state
 
         # Numerically stable way to calculate the combined mean
         mean = (mean_a * count_a + mean_b * count_b) / count
@@ -669,7 +669,7 @@ class AbsMax(AggregateFnV2):
 
         super().__init__(
             alias_name if alias_name else f"abs_max({str(on)})",
-            on=on, # Target column for absolute max
+            on=on,  # Target column for absolute max
             ignore_nulls=ignore_nulls,
             # Initial accumulator for absolute max is 0.
             # Any absolute value will be >= 0.
@@ -700,8 +700,8 @@ class AbsMax(AggregateFnV2):
         # Given two absolute maximums (current_accumulator from previous combines/blocks,
         # and new from a new block), return the larger of the two.
         return max(current_accumulator, new)
-    
-    # _finalize is not needed here, as the accumulated absolute maximum 
+
+    # _finalize is not needed here, as the accumulated absolute maximum
     # is already the final desired value.
 
 
@@ -738,7 +738,7 @@ class Quantile(AggregateFnV2):
 
         super().__init__(
             alias_name if alias_name else f"quantile({str(on)})",
-            on=on, # Target column
+            on=on,  # Target column
             ignore_nulls=ignore_nulls,
             # The accumulator is a list of all values seen so far for the group.
             # zero_factory returns an empty list.
@@ -757,13 +757,15 @@ class Quantile(AggregateFnV2):
 
         if isinstance(current_accumulator, List) and (not isinstance(new, List)):
             # Current is a list, new is a single item (or None).
-            if new is not None and new != "": # Append if new is a valid item.
+            if new is not None and new != "":  # Append if new is a valid item.
                 current_accumulator.append(new)
             return current_accumulator
 
         if isinstance(new, List) and (not isinstance(current_accumulator, List)):
             # New is a list, current is a single item (or None).
-            if current_accumulator is not None and current_accumulator != "": # Append if current is valid.
+            if (
+                current_accumulator is not None and current_accumulator != ""
+            ):  # Append if current is valid.
                 new.append(current_accumulator)
             return new
 
@@ -806,7 +808,7 @@ class Quantile(AggregateFnV2):
         # The key is identity function, assuming comparable elements.
         key = lambda x: x  # noqa: E731
         input_values = sorted(accumulator)
-        
+
         # Linear interpolation for quantile calculation, similar to numpy.quantile.
         k = (len(input_values) - 1) * self._q
         f = math.floor(k)
@@ -820,7 +822,7 @@ class Quantile(AggregateFnV2):
         d0 = key(input_values[int(f)]) * (c - k)
         d1 = key(input_values[int(c)]) * (k - f)
 
-        return round(d0 + d1, 5) # Round to 5 decimal places for consistency.
+        return round(d0 + d1, 5)  # Round to 5 decimal places for consistency.
 
 
 @PublicAPI
@@ -852,7 +854,7 @@ class Unique(AggregateFnV2):
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
-            on=on, # Target column for unique values
+            on=on,  # Target column for unique values
             ignore_nulls=ignore_nulls,
             # The accumulator is a set, to automatically handle uniqueness.
             # zero_factory returns an empty set.
@@ -868,7 +870,7 @@ class Unique(AggregateFnV2):
         return self._to_set(current_accumulator) | self._to_set(new)
 
     def aggregate_block(self, block: Block) -> AggType:
-        import pyarrow.compute as pac # Lazy import for pyarrow.compute
+        import pyarrow.compute as pac  # Lazy import for pyarrow.compute
 
         # Access the target column from the block as a PyArrow Array.
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
@@ -889,7 +891,7 @@ class Unique(AggregateFnV2):
             # If it's a single item (e.g. after null_safe_zero_factory gave None, then combine got a single val),
             # put it in a set.
             return {x}
-    
+
     # _finalize is not needed here. The accumulator (a set of unique items)
     # is implicitly converted to a list by Ray Data when results are presented,
     # which is the desired final format.
