@@ -82,6 +82,8 @@ from ray.dag.dag_node_operation import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from ray.experimental.channel.accelerator_context import AcceleratorContext
+
 logger = logging.getLogger(__name__)
 
 # Keep tracking of every compiled dag created during the lifetime of
@@ -1322,6 +1324,12 @@ class CompiledDAG:
             for type_hint in type_hints:
                 type_hint.set_communicator_id(communicator_id)
 
+        # Second, get registered accelerator context if any.
+        accelerator_module_name = AcceleratorContext.get().get_registed_module_name()
+        accelerator_communicator_cls = (
+            AcceleratorContext.get().get_registed_communicator_cls()
+        )
+
         # Then, create communicators for collective operations.
         # Reuse an already created communicator for the same set of actors.
         for collective_op in self._collective_ops_with_unresolved_communicators:
@@ -1338,6 +1346,8 @@ class CompiledDAG:
                     list(actors),
                     None,
                     self._overlap_gpu_communication,
+                    accelerator_module_name,
+                    accelerator_communicator_cls,
                 )
                 self._actors_to_created_communicator_id[actors] = communicator_id
             collective_op.type_hint.set_communicator_id(communicator_id)
@@ -1359,6 +1369,8 @@ class CompiledDAG:
                     list(self._p2p_actors_with_unresolved_communicators),
                     None,
                     self._overlap_gpu_communication,
+                    accelerator_module_name,
+                    accelerator_communicator_cls,
                 )
             for dag_node in self._p2p_dag_nodes_with_unresolved_communicators:
                 dag_node.type_hint.set_communicator_id(p2p_communicator_id)

@@ -19,6 +19,7 @@ from typing import (
 import ray
 import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -127,6 +128,8 @@ class ChannelContext:
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
         self.communicators: Dict[str, "Communicator"] = {}
+        # Used for driver process to store actors in the communicator.
+        self.communicator_handles: Dict[str, "CommunicatorHandle"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
