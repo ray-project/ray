@@ -69,13 +69,12 @@ def _check_working_dir_files(
 
 def _get_uv_run_cmdline() -> Optional[List[str]]:
     """
-    uv spawns the python process as a child process, so to determine if
-    we are running under 'uv run', we check the parent process commandline. We also
-    check our parent's parents since the Ray driver might be run as a subprocess
-    of the 'uv run' process.
+    Return the command line of the first ancestor process that was run with
+    "uv run" and None if there is no such ancestor.
 
-    Return the uv run command line if any of our ancestors was run with "uv run"
-    and None otherwise.
+    uv spawns the python process as a child process, so we first check the
+    parent process command line. We also check our parent's parents since
+    the Ray driver might be run as a subprocess of the 'uv run' process.
     """
     parents = psutil.Process().parents()
     for parent in parents:
