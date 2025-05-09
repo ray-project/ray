@@ -1260,6 +1260,40 @@ def test_torch_tensor_exceptions2(
 
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_torch_tensor_exceptions3(
+    ray_start_regular,
+):
+    """
+    Test exception when creating a communicator group with
+    actors using different accelerators.
+    """
+
+    sender = TorchTensorWorker.options(num_gpus=1).remote()
+    receiver = TorchTensorWorker.options(num_gpus=0).remote()
+
+    with InputNode() as inp:
+        dag = sender.send_int.bind(inp)
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+            _static_shape=True,
+        )
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Actor Actor\(TorchTensorWorker, .*?\) returns a tensor with type hint "
+            r'TorchTensor\(transport="nccl"\) or '
+            r"TorchTensor\(transport=nccl_group_handle\) "
+            r"but actor does not have an accelerator assigned by Ray\."
+        ),
+    ):
+        dag.experimental_compile()
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_explicit_communicator(ray_start_regular):
     if sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) < 2:

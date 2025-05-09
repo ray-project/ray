@@ -159,7 +159,7 @@ class _SerializationContext:
         if target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
         elif target_device in [Device.GPU, Device.CUDA]:
-            target_device_type = AcceleratorContext._torch_module_name
+            target_device_type = AcceleratorContext.get().get_module_name()
         else:
             target_device_type = target_device.value
 
