@@ -14,6 +14,7 @@
 
 #include "ray/common/scheduling/label_selector.h"
 
+#include "absl/strings/match.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -50,7 +51,7 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
   absl::flat_hash_set<std::string> values;
   LabelSelectorOperator op;
 
-  if (val.rfind("in(", 0) == 0 && val.back() == ')') {
+  if (absl::StartsWith(val, "in(") && val.back() == ')') {
     val.remove_prefix(3);  // Remove "in("
     val.remove_suffix(1);  // Remove ')'
 
@@ -68,10 +69,12 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
       RAY_LOG(ERROR) << "No values provided for Label Selector key: " << key;
     }
 
-    op = is_negated ? LabelSelectorOperator::NOT_IN : LabelSelectorOperator::IN;
+    op = is_negated ? LabelSelectorOperator::LABEL_NOT_IN
+                    : LabelSelectorOperator::LABEL_IN;
   } else {
     values.insert(std::string(val));
-    op = is_negated ? LabelSelectorOperator::NOT_IN : LabelSelectorOperator::IN;
+    op = is_negated ? LabelSelectorOperator::LABEL_NOT_IN
+                    : LabelSelectorOperator::LABEL_IN;
   }
 
   return {op, values};
