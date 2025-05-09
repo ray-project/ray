@@ -48,11 +48,12 @@ class TorchConfig(BackendConfig):
             for environment variable initialization or "tcp" for TCP
             initialization. Defaults to "env".
         timeout_s: Seconds for process group operations to timeout.
+            Default value is None, which will use Torch's default timeout.
     """
 
     backend: Optional[str] = None
     init_method: str = "env"
-    timeout_s: int = 1800
+    timeout_s: Optional[int] = None
 
     @property
     def backend_cls(self):
@@ -68,7 +69,7 @@ def _setup_torch_process_group(
     world_rank: int,
     world_size: int,
     init_method: str,
-    timeout_s: int = 1800,
+    timeout_s: Optional[int] = None,
 ):
     """Connects the distributed PyTorch backend.
 
@@ -112,12 +113,14 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
 
+    timeout = timedelta(seconds=timeout_s) if timeout_s is not None else None
+
     dist.init_process_group(
         backend=backend,
         init_method=init_method,
         rank=world_rank,
         world_size=world_size,
-        timeout=timedelta(seconds=timeout_s),
+        timeout=timeout,
     )
 
 
