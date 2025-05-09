@@ -358,6 +358,7 @@ class ReplicaScheduler(ABC):
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
+        self.fifo_scheduling = True
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -646,19 +647,31 @@ class ReplicaScheduler(ABC):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
+    def pending_request_matched(
+        self, pending_request: PendingRequest, request_metadata: RequestMetadata
+    ) -> bool:
+        if not self.fifo_scheduling:
+            return (
+                not pending_request.future.done()
+                and pending_request.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            )
+
+        return (
+            not pending_request.future.done()
+            and pending_request.metadata.internal_request_id
+            == request_metadata.internal_request_id
+        )
+
     def _get_pending_request_matching_metadata(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
+        if request_metadata is None:
             return None
 
         for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
+            if self.pending_request_matched(pr, request_metadata):
                 return pr
 
         return None
