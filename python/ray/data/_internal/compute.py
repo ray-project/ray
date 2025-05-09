@@ -80,7 +80,7 @@ class ActorPoolStrategy(ComputeStrategy):
         Args:
             size: Specify a fixed size actor pool of this size. It is an error to
                 specify both `size` and `min_size` or `max_size`.
-            min_size: The minimize size of the actor pool.
+            min_size: The minimum size of the actor pool.
             max_size: The maximum size of the actor pool.
             max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
                 send to a single actor worker. Increasing this will increase

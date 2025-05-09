@@ -1,5 +1,6 @@
 import inspect
 import logging
+import math
 import pickle
 from typing import Dict, List, Optional, Sequence, Type, Union
 
@@ -341,7 +342,7 @@ class NevergradSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
-                        lower=domain.lower, upper=domain.upper, exponent=sampler.base
+                        lower=domain.lower, upper=domain.upper, exponent=math.e
                     )
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
@@ -350,7 +351,7 @@ class NevergradSearch(Searcher):
                     return ng.p.Log(
                         lower=domain.lower,
                         upper=domain.upper - 1,  # Upper bound exclusive
-                        exponent=sampler.base,
+                        exponent=math.e,
                     ).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,

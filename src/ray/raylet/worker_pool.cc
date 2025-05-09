@@ -47,7 +47,6 @@ DEFINE_stats(worker_register_time_ms,
 
 namespace {
 
-// A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::ClientConnection> &connection) {
@@ -70,25 +69,17 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
   return nullptr;
 }
 
-// A helper function to remove a worker from a list. Returns true if the worker
-// was found and removed.
+// Remove the worker from the set, returning true if it was present.
 bool RemoveWorker(
     std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
 
-// If both `ask` and `have` are set, they must match. If either of them is not set, it
-// is considered a match.
-bool OptionalMatches(const std::optional<bool> &ask, const std::optional<bool> &have) {
+// Return true if the optionals' values match or if either of them is empty.
+bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
+                                 const std::optional<bool> &have) {
   return !ask.has_value() || !have.has_value() || ask.value() == have.value();
-}
-
-// Similar to OptionalMatches, but for JobID or ActorID.
-// TODO(ryw): use std::optional<IDType>.
-template <typename IDType>
-bool IdMatches(const IDType &ask, const IDType &have) {
-  return ask.IsNil() || have.IsNil() || ask == have;
 }
 
 }  // namespace
@@ -1289,28 +1280,39 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
     return WorkerUnfitForTaskReason::OTHERS;
   }
 
-  if (!IdMatches(pop_worker_request.root_detached_actor_id,
-                 worker.GetRootDetachedActorId())) {
+  // For scheduling requests with a root detached actor ID, ensure that either the
+  // worker has _no_ detached actor ID or it matches the request.
+  // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
+  // which is checked below. The pop_worker_request for a task rooted in a detached
+  // actor will have the job ID of the job that created the detached actor.
+  if (!pop_worker_request.root_detached_actor_id.IsNil() &&
+      !worker.GetRootDetachedActorId().IsNil() &&
+      pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
-  // Only compare job id for actors not rooted to a detached actor.
-  if (pop_worker_request.root_detached_actor_id.IsNil()) {
-    if (!IdMatches(pop_worker_request.job_id, worker.GetAssignedJobId())) {
-      return WorkerUnfitForTaskReason::ROOT_MISMATCH;
-    }
+
+  // Only consider workers that haven't been assigned to a job yet or have been assigned
+  // to the requested job.
+  const auto worker_job_id = worker.GetAssignedJobId();
+  if (!worker_job_id.IsNil() && pop_worker_request.job_id != worker_job_id) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
+
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
-  if (!OptionalMatches(pop_worker_request.is_gpu, worker.GetIsGpu())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_gpu, worker.GetIsGpu())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // If the request asks for a is_actor_worker, and the worker is assigned a different
   // is_actor_worker, then skip it.
-  if (!OptionalMatches(pop_worker_request.is_actor_worker, worker.GetIsActorWorker())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_actor_worker,
+                                   worker.GetIsActorWorker())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  // TODO(clarng): consider re-using worker that has runtime envionrment
-  // if the task doesn't require one.
+  // Skip workers with a mismatched runtime_env.
+  // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
+  // worker with a runtime_env because the task is expected to run in the base
+  // environment.
   if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash) {
     return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
@@ -1452,21 +1454,28 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     return false;
   };
   auto &state = GetStateForLanguage(pop_worker_request.language);
-  auto good_worker_it = std::find_if(idle_of_all_languages_.rbegin(),
-                                     idle_of_all_languages_.rend(),
-                                     worker_fits_for_task_fn);
-  if (good_worker_it != idle_of_all_languages_.rend()) {
-    state.idle.erase(good_worker_it->worker);
-    // We can't erase a reverse_iterator.
-    auto lit = good_worker_it.base();
-    lit--;
-    std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
-    idle_of_all_languages_.erase(lit);
-    return worker;
+  auto worker_it = std::find_if(idle_of_all_languages_.rbegin(),
+                                idle_of_all_languages_.rend(),
+                                worker_fits_for_task_fn);
+  if (worker_it == idle_of_all_languages_.rend()) {
+    RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
+                   << debug_string(skip_reason_count);
+    return nullptr;
   }
-  RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
-                 << debug_string(skip_reason_count);
-  return nullptr;
+
+  state.idle.erase(worker_it->worker);
+  // We can't erase a reverse_iterator.
+  auto lit = worker_it.base();
+  lit--;
+  std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
+  idle_of_all_languages_.erase(lit);
+
+  // Assigned workers should always match the request's job_id
+  // *except* if the task originates from a detached actor.
+  RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+            worker->GetAssignedJobId() == pop_worker_request.job_id ||
+            !pop_worker_request.root_detached_actor_id.IsNil());
+  return worker;
 }
 
 void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {

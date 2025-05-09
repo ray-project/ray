@@ -375,7 +375,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             )
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
-        Python objects.
+        Python objects. In the schema, the column name defaults to "item". 
 
         .. testcode::
 
@@ -987,7 +987,8 @@ Synthetic datasets can be useful for testing and benchmarking.
     .. tab-item:: Int Range
 
         To create a synthetic :class:`~ray.data.Dataset` from a range of integers, call
-        :func:`~ray.data.range`. Ray Data stores the integer range in a single column.
+        :func:`~ray.data.range`. Ray Data stores the integer range in a single column called
+        "id".
 
         .. testcode::
 
@@ -1007,7 +1008,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
         To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
         :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
-        the provided shape.
+        the provided shape. In the schema, the column name defaults to "data". 
 
         .. testcode::
 

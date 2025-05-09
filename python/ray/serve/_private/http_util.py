@@ -6,12 +6,12 @@ import pickle
 import socket
 from collections import deque
 from dataclasses import dataclass
-from packaging import version
 from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
 
 import starlette
 import uvicorn
 from fastapi.encoders import jsonable_encoder
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -19,10 +19,10 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
-from ray.serve.config import HTTPOptions
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.utils import serve_encoders, generate_request_id
+from ray.serve._private.utils import generate_request_id, serve_encoders
+from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
