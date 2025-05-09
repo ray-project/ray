@@ -142,6 +142,10 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+TaskAttempt TaskSpecification::TaskAttempt() const {
+  return std::make_pair(TaskId(), AttemptNumber());
+}
+
 const std::string TaskSpecification::GetSerializedActorHandle() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().serialized_actor_handle();

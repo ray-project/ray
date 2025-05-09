@@ -340,8 +340,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// case we hard code an error info.
     std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
-    /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
-    /// without replies.
+    /// Stores all callbacks of inflight tasks. An actor task is inflight
+    /// if the PushTask RPC is sent but the reply is not received yet.
     absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 

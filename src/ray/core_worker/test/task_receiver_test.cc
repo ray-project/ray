@@ -149,7 +149,7 @@ class TaskReceiverTest : public ::testing::Test {
         task_execution_service_,
         task_event_buffer_,
         execute_task,
-        /* intiialize_thread_callback= */ []() { return []() { return; }; },
+        /* initialize_thread_callback= */ []() { return []() { return; }; },
         /* actor_creation_task_done= */ []() { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
