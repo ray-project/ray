@@ -62,19 +62,12 @@ class TrainControllerState:
 
     def __repr__(self) -> str:
         attrs = {
-            "type": self.get_type(),
-            "is_terminal": self.is_terminal(),
-            "needs_new_run_attempt": self.needs_new_run_attempt(),
-            **{k: v for k, v in vars(self).items() if not k.startswith("_")},
+            "type": self._state_type.name,
+            "is_terminal": self._state_type.is_terminal,
+            "needs_new_run_attempt": self._state_type.needs_new_run_attempt,
         }
         attrs_str = "\n    ".join(f"{k}={v}" for k, v in attrs.items())
         return f"{self.__class__.__name__}(\n    {attrs_str}\n)"
-
-    def get_type(self) -> TrainControllerStateType:
-        return self._state_type
-
-    def get_name(self) -> str:
-        return self._state_type.name
 
     def is_terminal(self) -> bool:
         return self._state_type.is_terminal

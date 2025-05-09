@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Union
 
 from ray.train.v2._internal.execution.controller.state import TrainControllerStateType
 from ray.train.v2._internal.metrics.base import RUN_NAME_TAG_KEY, EnumMetric, TimeMetric
@@ -50,7 +50,7 @@ class ControllerMetrics:
     @classmethod
     def get_controller_metrics(
         cls, base_tags: Dict[str, str]
-    ) -> Dict[str, TimeMetric | EnumMetric[TrainControllerStateType]]:
+    ) -> Dict[str, Union[TimeMetric, EnumMetric[TrainControllerStateType]]]:
         """Get all controller metrics."""
         return {
             cls.WORKER_GROUP_START_TOTAL_TIME_S: cls._create_time_metric(
