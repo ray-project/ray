@@ -1380,6 +1380,20 @@ py_test(
 )
 
 py_test(
+    name = "test_xml",
+    size = "small",
+    srcs = ["tests/test_xml.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_state_export",
     size = "small",
     srcs = ["tests/test_state_export.py"],
