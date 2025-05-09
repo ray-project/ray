@@ -228,6 +228,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

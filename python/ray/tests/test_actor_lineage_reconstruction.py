@@ -1,13 +1,12 @@
-import os
 import gc
+import os
 import sys
 
 import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.core.generated import gcs_pb2
-from ray.core.generated import common_pb2
+from ray.core.generated import common_pb2, gcs_pb2
 
 
 def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_cluster):

@@ -1,7 +1,9 @@
-from ray.autoscaler._private import cli_logger
 import io
 from unittest.mock import patch
+
 import pytest
+
+from ray.autoscaler._private import cli_logger
 
 
 def test_colorful_mock_with_style():

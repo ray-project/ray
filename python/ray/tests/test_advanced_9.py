@@ -1,24 +1,24 @@
 import os
+import subprocess
 import sys
 import time
 
+import psutil
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     Semaphore,
-    external_redis_test_enabled,
     client_test_enabled,
-    run_string_as_driver,
-    wait_for_condition,
+    external_redis_test_enabled,
     get_gcs_memory_used,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
-import subprocess
-import psutil
 
 
 @pytest.fixture

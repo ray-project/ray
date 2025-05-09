@@ -4,8 +4,8 @@ import random
 import sys
 import time
 from glob import glob
-from unittest.mock import patch, MagicMock
 from itertools import chain
+from unittest.mock import MagicMock, patch
 
 import grpc
 import pytest
