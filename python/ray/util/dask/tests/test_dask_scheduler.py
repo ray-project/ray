@@ -124,6 +124,39 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
         c = dask.delayed(get_node_id)
         result = c().compute(resources={"pin": 0.01})
 
+    def get_node_id(row):
+        return pd.Series(ray._private.worker.global_worker.node.unique_id)
+
+    # # Test annotations on collection.
+    # This doesn't work with dask_expr (dask/dask#10937).
+    # with dask.annotate(ray_remote_args=dict(num_cpus=1, resources={"pin": 0.01})):
+    #     df = dd.from_pandas(
+    #         pd.DataFrame(
+    #             np.random.randint(0, 2, size=(2, 2)), columns=["age", "grade"]
+    #         ),
+    #         npartitions=2,
+    #     )
+    #     c = df.apply(get_node_id, axis=1, meta={"id": str})
+    # result = c.compute(optimize_graph=False)
+    # assert result[0].iloc[0] == pinned_node.unique_id
+
+    # Test annotations on compute.
+    df = dd.from_pandas(
+        pd.DataFrame(
+            np.random.randint(0, 2, size=(2, 2)), columns=["age", "grade"]
+        ),
+        npartitions=2,
+    )
+    c = df.apply(get_node_id, axis=1, meta={0: str})
+    with dask.annotate(ray_remote_args=dict(num_gpus=1, resources={"pin": 0.01})):
+        result = c.compute(optimize_graph=False)
+    assert result[0].iloc[0] == pinned_node.unique_id
+
+    # Test compute global Ray remote args.
+    c = df.apply(get_node_id, axis=1, meta={0: str})
+    result = c.compute(ray_remote_args={"resources": {"pin": 0.01}}, optimize_graph=False)
+    assert result[0].iloc[0] == pinned_node.unique_id
+
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_ray_dask_persist(ray_start_1_cpu):
@@ -149,10 +182,10 @@ def test_sort_with_progress_bar(ray_start_1_cpu):
     sorted_without_pb = None
     with ProgressBarCallback():
         sorted_with_pb = df.set_index(
-            ["age"], shuffle="tasks", max_branch=npartitions
+            ["age"], shuffle_method="tasks", max_branch=npartitions
         ).compute(scheduler=ray_dask_get, _ray_enable_progress_bar=True)
     sorted_without_pb = df.set_index(
-        ["age"], shuffle="tasks", max_branch=npartitions
+        ["age"], shuffle_method="tasks", max_branch=npartitions
     ).compute(scheduler=ray_dask_get)
     assert sorted_with_pb.equals(sorted_without_pb)
 
