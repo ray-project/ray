@@ -25,7 +25,6 @@ class ControllerMetrics:
     def _create_time_metric(
         cls, name: str, description: str, base_tags: Dict[str, str]
     ) -> TimeMetric:
-        """Create a time-based metric."""
         return TimeMetric(
             name=name,
             description=description,
