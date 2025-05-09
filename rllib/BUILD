@@ -2866,6 +2866,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_stats",
+    size = "small",
+    srcs = ["utils/metrics/tests/test_stats.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+)
+
 # @OldAPIStack
 py_test(
     name = "test_value_predictions",
