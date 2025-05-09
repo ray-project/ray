@@ -6,7 +6,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Panel,
     Target,
     TargetTemplate,
-    PanelTemplate
+    PanelTemplate,
 )
 
 SERVE_LLM_GRAFANA_PANELS = [
@@ -17,13 +17,13 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="tokens/s",
         targets=[
             Target(
-                expr="rate(ray_vllm:request_prompt_tokens_sum{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Prompt Tokens/Sec"
+                expr='rate(ray_vllm:request_prompt_tokens_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Prompt Tokens/Sec",
             ),
             Target(
-                expr="rate(ray_vllm:generation_tokens_total{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Generation Tokens/Sec"
-            )
+                expr='rate(ray_vllm:generation_tokens_total{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Generation Tokens/Sec",
+            ),
         ],
         fill=1,
         linewidth=2,
@@ -37,24 +37,24 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="tokens",
         targets=[
             Target(
-                expr="histogram_quantile(0.99, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P99"
+                expr='histogram_quantile(0.99, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P99",
             ),
             Target(
-                expr="histogram_quantile(0.95, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P95"
+                expr='histogram_quantile(0.95, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P95",
             ),
             Target(
-                expr="histogram_quantile(0.9, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P90"
+                expr='histogram_quantile(0.9, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P90",
             ),
             Target(
-                expr="histogram_quantile(0.5, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P50"
+                expr='histogram_quantile(0.5, sum by(le) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P50",
             ),
             Target(
-                expr="rate(ray_vllm:time_per_output_token_seconds_sum{{model_name=\"$model_name\"}}[$__rate_interval])\n/\nrate(ray_vllm:time_per_output_token_seconds_count{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Mean"
+                expr='rate(ray_vllm:time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])\n/\nrate(ray_vllm:time_per_output_token_seconds_count{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Mean",
             ),
         ],
         fill=1,
@@ -69,13 +69,13 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percentunit",
         targets=[
             Target(
-                expr="ray_vllm:gpu_cache_usage_perc{{model_name=\"$model_name\"}}",
-                legend="GPU Cache Usage"
+                expr='ray_vllm:gpu_cache_usage_perc{{model_name=~"$vllm_model_name"}}',
+                legend="GPU Cache Usage",
             ),
             Target(
-                expr="ray_vllm:cpu_cache_usage_perc{{model_name=\"$model_name\"}}",
-                legend="CPU Cache Usage"
-            )
+                expr='ray_vllm:cpu_cache_usage_perc{{model_name=~"$vllm_model_name"}}',
+                legend="CPU Cache Usage",
+            ),
         ],
         fill=1,
         linewidth=2,
@@ -89,24 +89,24 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr="rate(ray_vllm:time_to_first_token_seconds_sum{{model_name=\"$model_name\"}}[$__rate_interval])\n/\nrate(ray_vllm:time_to_first_token_seconds_count{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Average"
+                expr='rate(ray_vllm:time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])\n/\nrate(ray_vllm:time_to_first_token_seconds_count{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Average",
             ),
             Target(
-                expr="histogram_quantile(0.5, sum by(le)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P50"
+                expr='histogram_quantile(0.5, sum by(le)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P50",
             ),
             Target(
-                expr="histogram_quantile(0.9, sum by(le)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P90"
+                expr='histogram_quantile(0.9, sum by(le)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P90",
             ),
             Target(
-                expr="histogram_quantile(0.95, sum by(le) (rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P95"
+                expr='histogram_quantile(0.95, sum by(le) (rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P95",
             ),
             Target(
-                expr="histogram_quantile(0.99, sum by(le)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P99"
+                expr='histogram_quantile(0.99, sum by(le)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P99",
             ),
         ],
         fill=1,
@@ -121,24 +121,24 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr="rate(ray_vllm:e2e_request_latency_seconds_sum{{model_name=\"$model_name\"}}[$__rate_interval])\n/\nrate(ray_vllm:e2e_request_latency_seconds_count{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Average"
+                expr='rate(ray_vllm:e2e_request_latency_seconds_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])\n/\nrate(ray_vllm:e2e_request_latency_seconds_count{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Average",
             ),
             Target(
-                expr="histogram_quantile(0.5, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P50"
+                expr='histogram_quantile(0.5, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P50",
             ),
             Target(
-                expr="histogram_quantile(0.9, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P90"
+                expr='histogram_quantile(0.9, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P90",
             ),
             Target(
-                expr="histogram_quantile(0.95, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P95"
+                expr='histogram_quantile(0.95, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P95",
             ),
             Target(
-                expr="histogram_quantile(0.99, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=\"$model_name\"}}[$__rate_interval])))",
-                legend="P99"
+                expr='histogram_quantile(0.99, sum by(le) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval])))',
+                legend="P99",
             ),
         ],
         fill=1,
@@ -153,16 +153,16 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr="ray_vllm:num_requests_running{{model_name=\"$model_name\"}}",
-                legend="Num Running"
+                expr='ray_vllm:num_requests_running{{model_name=~"$vllm_model_name"}}',
+                legend="Num Running",
             ),
             Target(
-                expr="ray_vllm:num_requests_swapped{{model_name=\"$model_name\"}}",
-                legend="Num Swapped"
+                expr='ray_vllm:num_requests_swapped{{model_name=~"$vllm_model_name"}}',
+                legend="Num Swapped",
             ),
             Target(
-                expr="ray_vllm:num_requests_waiting{{model_name=\"$model_name\"}}",
-                legend="Num Waiting"
+                expr='ray_vllm:num_requests_waiting{{model_name=~"$vllm_model_name"}}',
+                legend="Num Waiting",
             ),
         ],
         fill=1,
@@ -177,16 +177,16 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr="sum by(le) (increase(ray_vllm:request_prompt_tokens_bucket{{model_name=\"$model_name\"}}[$__rate_interval]))",
+                expr='sum by(le) (increase(ray_vllm:request_prompt_tokens_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval]))',
                 legend="{{le}}",
-                template=TargetTemplate.HEATMAP
+                template=TargetTemplate.HEATMAP,
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
         grid_pos=GridPos(0, 24, 12, 8),
-        template=PanelTemplate.HEATMAP
+        template=PanelTemplate.HEATMAP,
     ),
     Panel(
         id=9,
@@ -195,16 +195,16 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr="sum by(le) (increase(ray_vllm:request_generation_tokens_bucket{{model_name=\"$model_name\"}}[$__rate_interval]))",
+                expr='sum by(le) (increase(ray_vllm:request_generation_tokens_bucket{{model_name=~"$vllm_model_name"}}[$__rate_interval]))',
                 legend="{{le}}",
-                template=TargetTemplate.HEATMAP
+                template=TargetTemplate.HEATMAP,
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
         grid_pos=GridPos(12, 24, 12, 8),
-        template=PanelTemplate.HEATMAP
+        template=PanelTemplate.HEATMAP,
     ),
     Panel(
         id=10,
@@ -213,8 +213,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr="sum by(finished_reason) (increase(ray_vllm:request_success_total{{model_name=\"$model_name\"}}[$__rate_interval]))",
-                legend="__auto"
+                expr='sum by(finished_reason) (increase(ray_vllm:request_success_total{{model_name=~"$vllm_model_name"}}[$__rate_interval]))',
+                legend="__auto",
             ),
         ],
         fill=1,
@@ -229,8 +229,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr="rate(ray_vllm:request_queue_time_seconds_sum{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="__auto"
+                expr='rate(ray_vllm:request_queue_time_seconds_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="{{model_name}}",
             ),
         ],
         fill=1,
@@ -245,12 +245,12 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr="rate(ray_vllm:request_decode_time_seconds_sum{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Decode"
+                expr='rate(ray_vllm:request_decode_time_seconds_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Decode",
             ),
             Target(
-                expr="rate(ray_vllm:request_prefill_time_seconds_sum{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Prefill"
+                expr='rate(ray_vllm:request_prefill_time_seconds_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="Prefill",
             ),
         ],
         fill=1,
@@ -265,8 +265,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="none",
         targets=[
             Target(
-                expr="rate(ray_vllm:request_max_num_generation_tokens_sum{{model_name=\"$model_name\"}}[$__rate_interval])",
-                legend="Tokens"
+                expr='rate(ray_vllm:request_max_num_generation_tokens_sum{{model_name=~"$vllm_model_name"}}[$__rate_interval])',
+                legend="{{model_name}}",
             ),
         ],
         fill=1,
@@ -280,13 +280,20 @@ SERVE_LLM_GRAFANA_PANELS = [
         description="",
         unit="Tokens",
         targets=[
-            Target(expr="(sum by (WorkerId) (delta(ray_rayllm_tokens_input{{WorkerId=~\"$workerid\"}}[1d])))", legend="Input"),
-            Target(expr="(sum by (WorkerId) (delta(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[1d])))", legend="Generated")
+            Target(
+                expr='(sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid", model_id !~ ".+--.+"}}[1d])))',
+                legend="Input: {{model_id}}",
+            ),
+            Target(
+                expr='(sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid", model_id !~ ".+--.+"}}[1d])))',
+                legend="Generated: {{model_id}}",
+            ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 48, 12, 8)
+        grid_pos=GridPos(0, 48, 12, 8),
+        template=PanelTemplate.STAT,
     ),
     Panel(
         id=15,
@@ -294,13 +301,20 @@ SERVE_LLM_GRAFANA_PANELS = [
         description="",
         unit="Tokens",
         targets=[
-            Target(expr="(sum by (WorkerId) (delta(ray_rayllm_tokens_input{{WorkerId=~\"$workerid\"}}[1h])))", legend="Input"),
-            Target(expr="(sum by (WorkerId) (delta(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[1h])))", legend="Generated")
+            Target(
+                expr='delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid"}}[1h])',
+                legend="Input: {{model_id}}",
+            ),
+            Target(
+                expr='delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid"}}[1h])',
+                legend="Generated: {{model_id}}",
+            ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 48, 12, 8)
+        grid_pos=GridPos(12, 48, 12, 8),
+        template=PanelTemplate.STAT,
     ),
     Panel(
         id=16,
@@ -309,166 +323,183 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr="(sum by (WorkerId) (delta(ray_rayllm_requests_errored{{WorkerId=~\"$workerid\"}}[1h])))",
-                legend="Errored"
+                expr='(sum by (WorkerId) (delta(ray_rayllm_requests_errored{{WorkerId=~"$workerid"}}[1h])))',
+                legend="Errored",
             ),
             Target(
-                expr="(sum by (WorkerId) (delta(ray_rayllm_requests_finished{{WorkerId=~\"$workerid\"}}[1h])))",
-                legend="Finished"
+                expr='(sum by (WorkerId) (delta(ray_rayllm_requests_finished{{WorkerId=~"$workerid"}}[1h])))',
+                legend="Finished",
             ),
             Target(
-                expr="(sum by (WorkerId) (delta(ray_rayllm_requests_started{{WorkerId=~\"$workerid\"}}[1h])))",
-                legend="Started"
+                expr='(sum by (WorkerId) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid"}}[1h])))',
+                legend="Started",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 56, 12, 8)
+        grid_pos=GridPos(0, 56, 12, 8),
     ),
-    Panel( # Should be a pie chart
+    Panel(
         id=17,
         title="Distribution of Requests Per Model Last 24 Hours",
         description="",
         unit="Requests",
         targets=[
             Target(
-                expr="sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~\"$workerid\", model_id !~ \".+--.+\"}}[1d]))",
-                legend="{{model_id}}"
+                expr='sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid", model_id !~ ".+--.+"}}[1d]))',
+                legend="{{model_id}}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 56, 12, 8)
+        grid_pos=GridPos(12, 56, 12, 8),
+        template=PanelTemplate.PIE_CHART,
     ),
-    Panel( # Should be stat type
+    Panel(
         id=18,
         title="Ratio Input:Generated Tokens Last 24 Hours",
         description="",
         unit="none",
         targets=[
             Target(
-                expr="sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~\"$workerid\"}}[1d])) / sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[1d]))",
-                legend="{{model_id}}"
+                expr='sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid"}}[1d])) / sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid"}}[1d]))',
+                legend="{{model_id}}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 64, 12, 8)
+        grid_pos=GridPos(0, 64, 12, 8),
+        template=PanelTemplate.STAT,
     ),
-    Panel( # This should show all models, not just the currently selected one. And should be a stat instead
+    Panel(
         id=19,
         title="Tokens Per Model Last 24 Hours",
         description="",
         unit="Tokens",
         targets=[
             Target(
-                expr="sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~\"$workerid\"}}[1d])) + sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[1d]))",
-                legend="{{model_id}}"
+                expr='sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid"}}[1d])) + sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid"}}[1d]))',
+                legend="{{model_id}}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 64, 12, 8)
+        grid_pos=GridPos(12, 64, 12, 8),
+        template=PanelTemplate.STAT,
     ),
     Panel(
-        id=20,
-        title="Tokens Per Second Per Model Last 24 Hours",
-        description="",
-        unit="Tokens/s",
-        targets=[
-            Target(
-                expr="max_over_time(sum by (model_id) (rate(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[2m]))[24h:])",
-                legend="{{ model_id }}"
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(0, 72, 12, 8)
-    ),
-    Panel( #Should be stat
         id=21,
         title="Peak Tokens Per Second Per Model Last 24 Hours",
         description="",
         unit="Tokens/s",
         targets=[
             Target(
-                expr="max_over_time(sum by (model_id) (rate(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[2m]))[24h:])",
-                legend="{{ model_id }}"
+                expr='max_over_time(sum by (model_id) (rate(ray_rayllm_tokens_generated{{WorkerId=~"$workerid"}}[2m]))[24h:])',
+                legend="{{ model_id }}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 72, 12, 8)
+        grid_pos=GridPos(0, 72, 12, 8),
+        template=PanelTemplate.STAT,
     ),
-    Panel( #Should be stat, also FIXME: label_replace query
-        id=22,
-        title="Peak Tokens Per Second Per Model Replica Last 24 Hours",
-        description="",
-        unit="Tokens/s",
-        targets=[
-            Target(
-                expr="max_over_time((sum by (model_id) (rate(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\"}}[2m]))\n/\nsum by (model_id) (label_replace(ray_serve_deployment_replica_healthy{{WorkerId=~\"$workerid\"}}, \"model_id\", \"$1/$2\", \"deployment\", \"VLLMDeployment:(.*)--(.*)\")))[24h:])",
-                legend="{{ model_id }}"
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(0, 80, 12, 8)
-    ),
-    Panel( #Should be a gauge
+    Panel(
         id=23,
         title="Requests Per Model Last Week",
         description="",
         unit="Requests",
         targets=[
             Target(
-                expr="sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~\"$workerid\",model_id !~ \".+--.+\"}}[1w]))",
-                legend="{{ model_id }}"
+                expr='sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w]))',
+                legend="{{ model_id }}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 80, 12, 8)
+        grid_pos=GridPos(12, 72, 12, 8),
+        template=PanelTemplate.GAUGE,
     ),
-    Panel( #Should be a gauge
+    Panel(
         id=24,
         title="Avg Total Tokens Per Request Last 7 Days",
         description="",
         unit="Requests",
         targets=[
             Target(
-                expr="(sum(delta(ray_rayllm_tokens_input{{WorkerId=~\"$workerid\",model_id !~ \".+--.+\"}}[1w])) +\nsum(delta(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\",model_id !~ \".+--.+\"}}[1w]))) / sum(delta(ray_rayllm_requests_started{{WorkerId=~\"$workerid\",model_id !~ \".+--.+\"}}[1w]))",
-                legend="{{ model_id }}"
+                expr='(sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+", model_id=~"$ray_llm_model_id"}}[1w])) +\nsum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+", model_id=~"$ray_llm_model_id"}}[1w]))) / sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+", model_id=~"$ray_llm_model_id"}}[1w]))',
+                legend="{{ model_id }}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 88, 12, 8)
+        grid_pos=GridPos(0, 80, 12, 8),
+        template=PanelTemplate.GAUGE,
     ),
-    Panel( #Should be a gauge
+    Panel(
         id=25,
-        title="Total Tokens Per Model Last 7 Days",
+        title="Avg Total Tokens Per Request Per Model Last 7 Days",
         description="",
         unit="Requests",
         targets=[
             Target(
-                expr="sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~\"$workerid\",model_id !~ \".+--.+\"}}[1w])) +\nsum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~\"$workerid\",model_id !~ \".+--.+\"}}[1w]))",
-                legend="{{ model_id }}"
+                expr='(sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w])) + sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w])))/ sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w]))',
+                legend="{{ model_id }}",
             ),
         ],
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 88, 12, 8)
+        grid_pos=GridPos(12, 80, 12, 8),
+        template=PanelTemplate.GAUGE,
+    ),
+    Panel(
+        id=26,
+        title="Tokens Per Model Last 7 Days",
+        description="",
+        unit="Tokens",
+        targets=[
+            Target(
+                expr='sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w]))',
+                legend="In: {{ model_id }}",
+            ),
+            Target(
+                expr='sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w]))',
+                legend="Out: {{ model_id }}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(0, 88, 12, 8),
+        template=PanelTemplate.GAUGE,
+    ),
+    Panel(
+        id=27,
+        title="Tokens Per Request Per Model Last 7 Days",
+        description="",
+        unit="Tokens",
+        targets=[
+            Target(
+                expr='sum by (model_id) (delta(ray_rayllm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w])) / sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w]))',
+                legend="In: {{ model_id }}",
+            ),
+            Target(
+                expr='sum by (model_id) (delta(ray_rayllm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w])) / sum by (model_id) (delta(ray_rayllm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+"}}[1w]))',
+                legend="Out: {{ model_id }}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(12, 88, 12, 8),
+        template=PanelTemplate.GAUGE,
     ),
 ]
 
@@ -483,9 +514,7 @@ serve_llm_dashboard_config = DashboardConfig(
     name="SERVE_LLM",
     default_uid="rayServeLlmDashboard",
     panels=SERVE_LLM_GRAFANA_PANELS,
-    standard_global_filters=[
-
-    ],
+    standard_global_filters=[],
     # Base Grafana dashboard template that is injected with panels from this file
     base_json_file_name="serve_llm_grafana_dashboard_base.json",
 )
