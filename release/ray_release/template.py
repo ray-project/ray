@@ -92,7 +92,7 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def get_working_dir(test: "Test") -> str:
+def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) -> str:
     working_dir = test.get("working_dir", "")
     if working_dir.startswith("//"):
         return bazel_runfile(working_dir.lstrip("//"))
@@ -104,7 +104,7 @@ def get_working_dir(test: "Test") -> str:
 def get_cluster_env_path(
     test: "Test", test_definition_root: Optional[str] = None
 ) -> str:
-    working_dir = get_working_dir(test)
+    working_dir = get_working_dir(test, test_definition_root)
     cluster_env_file = test["cluster"]["cluster_env"]
     return os.path.join(working_dir, cluster_env_file)
 
@@ -113,7 +113,7 @@ def load_test_cluster_compute(
     test: "Test", test_definition_root: Optional[str] = None
 ) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
-    working_dir = get_working_dir(test)
+    working_dir = get_working_dir(test, test_definition_root)
     f = os.path.join(working_dir, cluster_compute_file)
     env = populate_cluster_compute_variables(test)
     return load_and_render_yaml_template(f, env=env)
