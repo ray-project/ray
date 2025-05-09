@@ -187,15 +187,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         """Check whether or not the obtained_data_size is as expected.
 
         Args:
-             metadata_len: Actual metadata length of the object.
-             buffer_len: Actual buffer length of the object.
-             obtained_data_size: Data size specified in the
-                url_with_offset.
+            address_len: Length of the address.
+            metadata_len: Actual metadata length of the object.
+            buffer_len: Actual buffer length of the object.
+            obtained_data_size: Data size specified in the url_with_offset.
 
         Raises:
-            ValueError if obtained_data_size is different from
-            address_len + metadata_len + buffer_len +
-            24 (first 8 bytes to store length).
+            ValueError: If obtained_data_size is different from
+                address_len + metadata_len + buffer_len + 24 (first 8 bytes to store length).
         """
         data_size_in_bytes = (
             address_len + metadata_len + buffer_len + self.HEADER_LENGTH

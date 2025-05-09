@@ -36,7 +36,16 @@ class ProtocolsProvider:
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
-        """Download file from remote URI to dest file"""
+        """Download file from remote URI to destination file.
+
+        Args:
+            protocol: The protocol to use for downloading (e.g., 's3', 'https').
+            source_uri: The source URI to download from.
+            dest_file: The destination file path to save to.
+
+        Raises:
+            ImportError: If required dependencies for the protocol are not installed.
+        """
         assert protocol in cls.get_remote_protocols()
 
         tp = None

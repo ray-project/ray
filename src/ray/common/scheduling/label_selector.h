@@ -22,11 +22,11 @@
 
 namespace ray {
 
-enum LabelSelectorOperator {
+enum class LabelSelectorOperator {
   // This is to support equality or in semantics.
-  IN = 0,
+  LABEL_IN = 0,
   // This is to support not equal or not in semantics.
-  NOT_IN = 1
+  LABEL_NOT_IN = 1
 };
 
 // Defines requirements for a label key and value.
@@ -57,7 +57,8 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  LabelSelector(const google::protobuf::Map<std::string, std::string> &label_selector);
+  explicit LabelSelector(
+      const google::protobuf::Map<std::string, std::string> &label_selector);
 
   void AddConstraint(const std::string &key, const std::string &value);
 
@@ -65,7 +66,7 @@ class LabelSelector {
     constraints_.push_back(std::move(constraint));
   }
 
-  const std::vector<LabelConstraint> GetConstraints() const { return constraints_; }
+  const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
 
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);

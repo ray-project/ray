@@ -356,18 +356,19 @@ class RuntimeEnvAgent:
             setup_timeout_seconds,
             runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
-            """
-            Create runtime env with retry times. This function won't raise exceptions.
+            """Create runtime env with retry times. This function won't raise exceptions.
 
             Args:
                 runtime_env: The instance of RuntimeEnv class.
                 setup_timeout_seconds: The timeout of runtime environment creation for
-                each attempt.
+                    each attempt.
+                runtime_env_config: The configuration for the runtime environment.
 
             Returns:
-                a tuple which contains result (bool), runtime env context (str), error
-                message(str).
-
+                Tuple[bool, str, str]: A tuple containing:
+                    - result (bool): Whether the creation was successful
+                    - runtime_env_context (str): The serialized context if successful, None otherwise
+                    - error_message (str): Error message if failed, None otherwise
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
