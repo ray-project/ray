@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
@@ -19,7 +20,6 @@ from ray.data.datasource.filename_provider import (
     _DefaultFilenameProvider,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.data.datasource.savemode import SaveMode
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
