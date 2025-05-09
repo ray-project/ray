@@ -46,7 +46,7 @@ class CloudwatchHelper:
         ] = {
             CloudwatchConfigType.AGENT.value: self._replace_cwa_config_vars,
             CloudwatchConfigType.DASHBOARD.value: self._replace_dashboard_config_vars,
-            CloudwatchConfigType.ALARM.value: self._load_config_file,
+            CloudwatchConfigType.ALARM.value: self._replace_alarm_config_vars,
         }
         self.CLOUDWATCH_CONFIG_TYPE_TO_UPDATE_FUNC_HEAD_NODE: Dict[str, Callable] = {
             CloudwatchConfigType.AGENT.value: self._restart_cloudwatch_agent,
