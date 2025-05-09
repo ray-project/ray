@@ -142,7 +142,7 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
-TaskAttempt TaskSpecification::TaskAttempt() const {
+TaskAttempt TaskSpecification::GetTaskAttempt() const {
   return std::make_pair(TaskId(), AttemptNumber());
 }
 
