@@ -49,20 +49,16 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
       int64_t max_object_report_batch_size,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
 
-  virtual ~OwnershipBasedObjectDirectory() {}
-
   void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
 
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
+  ray::Status SubscribeObjectLocations(const ObjectID &object_id,
                                        const rpc::Address &owner_address,
                                        const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
+  ray::Status UnsubscribeObjectLocations(const ObjectID &object_id) override;
 
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
@@ -93,11 +89,11 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     /// The callback to invoke when object locations are found.
-    absl::flat_hash_map<UniqueID, OnLocationsFound> callbacks;
+    OnLocationsFound callback;
     /// The current set of known locations of this object.
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
-    std::string spilled_url = "";
+    std::string spilled_url;
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
@@ -171,10 +167,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Number of object locations removed from this object directory.
   uint64_t metrics_num_object_locations_removed_;
   double metrics_num_object_locations_removed_per_second_;
-
-  /// Number of object location lookups.
-  uint64_t metrics_num_object_location_lookups_;
-  double metrics_num_object_location_lookups_per_second_;
 
   /// Number of object location updates.
   uint64_t metrics_num_object_location_updates_;

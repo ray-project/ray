@@ -83,25 +83,18 @@ class IObjectDirectory {
   /// listener is subscribed to the same object: This occurs when location data
   /// for the object has already been obtained.
   ///
-  /// \param callback_id The id associated with the specified callback. This is
-  /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
   /// \param success_cb Invoked with non-empty list of node ids and object_id.
   /// \return Status of whether subscription succeeded.
-  virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                               const ObjectID &object_id,
+  virtual ray::Status SubscribeObjectLocations(const ObjectID &object_id,
                                                const rpc::Address &owner_address,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
   ///
-  /// \param callback_id The id associated with a callback. This was given
-  /// at subscription time, and unsubscribes the corresponding callback from
-  /// further notifications about the given object's location.
   /// \param object_id The object id invoked with Subscribe.
   /// \return Status of unsubscribing from object location notifications.
-  virtual ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                                 const ObjectID &object_id) = 0;
+  virtual ray::Status UnsubscribeObjectLocations(const ObjectID &object_id) = 0;
 
   /// Report objects added to this node's store to the object directory.
   ///
