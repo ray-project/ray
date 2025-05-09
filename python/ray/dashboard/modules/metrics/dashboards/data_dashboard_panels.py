@@ -435,11 +435,11 @@ DATA_GRAFANA_PANELS = [
         id=38,
         title="Mean Task Completion Time",
         description="Mean time spent running all tasks to completion.",
-        unit="seconds",
+        unit="ms",
         targets=[
             Target(
                 expr="sum(ray_data_task_completion_time{{{global_filters}}}) by (dataset, operator)",
-                legend="Backpressure Time: {{dataset}}, {{operator}}",
+                legend="Completion Time: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
