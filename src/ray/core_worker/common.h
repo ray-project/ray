@@ -81,9 +81,7 @@ struct TaskOptions {
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        tensor_transport(std::move(tensor_transport_p)) {
-          RAY_LOG(INFO) << "TaskOptions tensor_transport: " << tensor_transport;
-        }
+        tensor_transport(std::move(tensor_transport_p)) {}
 
   /// The name of this task.
   std::string name;

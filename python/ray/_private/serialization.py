@@ -551,7 +551,7 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value, obj_id=None):
+    def serialize(self, value, obj_id=None, tensor_transport=None):
         """Serialize an object.
 
         Args:
@@ -566,11 +566,9 @@ class SerializationContext:
             from ray.experimental.channel import ChannelContext
 
             ctx = ChannelContext.get_current().serialization_context
-            # TODO(swang): Only set the external transport flag if
-            # this is the output of an actor method that was
-            # decorated with tensor_transport.
             prev_use_external_transport = ctx.use_external_transport
-            ctx.set_use_external_transport(True)
+            if tensor_transport == "nccl":
+                ctx.set_use_external_transport(True)
 
             try:
                 val = self._serialize_to_msgpack(value)
