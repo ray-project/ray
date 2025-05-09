@@ -20,18 +20,20 @@ GRAPH_TARGET_TEMPLATE = {
     "refId": "A",
 }
 
-HEATPMAP_TARGET_TEMPLATE = {
+HEATMAP_TARGET_TEMPLATE = {
     "format": "heatmap",
     "fullMetaSearch": False,
     "includeNullMetadata": True,
     "instant": False,
     "range": True,
-    "useBackend": False
+    "useBackend": False,
 }
+
 
 class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
-    HEATMAP = HEATPMAP_TARGET_TEMPLATE
+    HEATMAP = HEATMAP_TARGET_TEMPLATE
+
 
 @dataclass
 class Target:
@@ -51,18 +53,16 @@ class Target:
     legend: str
     template: Optional[TargetTemplate] = TargetTemplate.GRAPH
 
+
 HEATMAP_TEMPLATE = {
     "datasource": r"${datasource}",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "id": 12,
     "options": {
         "calculate": False,
         "cellGap": 1,
-        "cellValues": {
-            "unit": "none"
-        },
+        "cellValues": {"unit": "none"},
         "color": {
             "exponent": 0.5,
             "fill": "dark-orange",
@@ -71,58 +71,40 @@ HEATMAP_TEMPLATE = {
             "reverse": False,
             "scale": "exponential",
             "scheme": "Spectral",
-            "steps": 64
+            "steps": 64,
         },
-        "exemplars": {
-            "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-            "le": 1e-9
-        },
-        "legend": {
-            "show": True
-        },
-        "rowsFrame": {
-            "layout": "auto",
-            "value": "Request count"
-        },
-        "tooltip": {
-            "mode": "single",
-            "showColorScale": False,
-            "yHistogram": True
-        },
-        "yAxis": {
-            "axisPlacement": "left",
-            "reverse": False,
-            "unit": "none"
-        }
+        "exemplars": {"color": "rgba(255,0,255,0.7)"},
+        "filterValues": {"le": 1e-9},
+        "legend": {"show": True},
+        "rowsFrame": {"layout": "auto", "value": "Request count"},
+        "tooltip": {"mode": "single", "showColorScale": False, "yHistogram": True},
+        "yAxis": {"axisPlacement": "left", "reverse": False, "unit": "none"},
     },
     "pluginVersion": "11.2.0",
     "targets": [],
     "title": "<Title>",
     "type": "heatmap",
     "yaxes": [
-    {
-        "$$hashKey": "object:628",
-        "format": "units",
-        "label": "",
-        "logBase": 1,
-        "max": None,
-        "min": "0",
-        "show": True,
-    },
-    {
-        "$$hashKey": "object:629",
-        "format": "short",
-        "label": None,
-        "logBase": 1,
-        "max": None,
-        "min": None,
-        "show": True,
-    },
-],
+        {
+            "$$hashKey": "object:628",
+            "format": "units",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
 }
-
 
 GRAPH_PANEL_TEMPLATE = {
     "aliasColors": {},
@@ -134,7 +116,6 @@ GRAPH_PANEL_TEMPLATE = {
     "fieldConfig": {"defaults": {}, "overrides": []},
     "fill": 10,
     "fillGradient": 0,
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "hiddenSeries": False,
     "id": 26,
     "legend": {
@@ -154,7 +135,7 @@ GRAPH_PANEL_TEMPLATE = {
     },
     "lines": True,
     "linewidth": 1,
-    "nullPointMode": "null",
+    "nullPointMode": None,
     "options": {"alertThreshold": True},
     "percentage": False,
     "pluginVersion": "7.5.17",
@@ -225,9 +206,163 @@ GRAPH_PANEL_TEMPLATE = {
     "yaxis": {"align": False, "alignLevel": None},
 }
 
+STAT_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "fieldConfig": {
+        "defaults": {
+            "color": {"mode": "thresholds"},
+            "mappings": [],
+            "min": 0,
+            "thresholds": {
+                "mode": "percentage",
+                "steps": [
+                    {"color": "super-light-yellow", "value": None},
+                    {"color": "super-light-green", "value": 50},
+                    {"color": "green", "value": 100},
+                ],
+            },
+            "unit": "short",
+        },
+        "overrides": [],
+    },
+    "id": 78,
+    "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+        "text": {},
+        "textMode": "auto",
+    },
+    "pluginVersion": "7.5.17",
+    "targets": [],
+    "timeFrom": None,
+    "timeShift": None,
+    "title": "<Title>",
+    "type": "stat",
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "Tokens",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+}
+
+
+GAUGE_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "fieldConfig": {
+        "defaults": {
+            "color": {"mode": "continuous-YlBl"},
+            "mappings": [],
+            "thresholds": {
+                "mode": "percentage",
+                "steps": [{"color": "rgb(230, 230, 230)", "value": None}],
+            },
+            "unit": "short",
+        },
+        "overrides": [],
+    },
+    "id": 10,
+    "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+        "showThresholdLabels": False,
+        "showThresholdMarkers": False,
+        "text": {"titleSize": 12},
+    },
+    "pluginVersion": "7.5.17",
+    "targets": [],
+    "title": "<Title>",
+    "type": "gauge",
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "Tokens",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+}
+
+PIE_CHART_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {"defaults": {}, "overrides": []},
+    "id": 26,
+    "options": {
+        "displayLabels": [],
+        "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["percent", "value"],
+        },
+        "pieType": "pie",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+        "text": {},
+    },
+    "pluginVersion": "7.5.17",
+    "targets": [],
+    "timeFrom": None,
+    "timeShift": None,
+    "title": "<Title>",
+    "type": "piechart",
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "units",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+}
+
+
 class PanelTemplate(Enum):
     GRAPH = GRAPH_PANEL_TEMPLATE
     HEATMAP = HEATMAP_TEMPLATE
+    PIE_CHART = PIE_CHART_TEMPLATE
+    STAT = STAT_PANEL_TEMPLATE
+    GAUGE = GAUGE_PANEL_TEMPLATE
+
 
 @dataclass
 class Panel:

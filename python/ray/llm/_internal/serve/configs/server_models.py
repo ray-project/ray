@@ -237,7 +237,7 @@ class LLMConfig(BaseModelExtended):
         "router replicas per model replica.\n",
     )
 
-    enable_additional_engine_metrics: Optional[bool] = Field(
+    log_engine_metrics: Optional[bool] = Field(
         True,
         description="Enable additional engine metrics via Prometheus.",
     )
