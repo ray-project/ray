@@ -36,7 +36,6 @@ class ControllerMetrics:
     def _create_controller_state_metric(
         cls, base_tags: Dict[str, str]
     ) -> EnumMetric[TrainControllerStateType]:
-        """Create the controller state metric."""
         return EnumMetric(
             name=cls.CONTROLLER_STATE,
             description="Current state of the Ray Train controller",
