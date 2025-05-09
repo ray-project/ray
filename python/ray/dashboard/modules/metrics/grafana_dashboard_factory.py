@@ -30,6 +30,7 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 
+
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
 ) -> Tuple[str, List[str]]:

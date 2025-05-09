@@ -477,21 +477,22 @@ class VLLMEngine(LLMEngine):
 
         _clear_current_platform_cache()
 
+        custom_stat_loggers = None
+        if self.llm_config.log_engine_metrics:
+            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
+                RayPrometheusStatLogger,
+            )
+
+            # V1 AsyncLLMEngine does not yet support add_logger
+            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            custom_stat_loggers = [RayPrometheusStatLogger]
+
         engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
+            stat_loggers=custom_stat_loggers,
         )
-
-        if self.llm_config.log_engine_metrics:
-            from vllm.engine.metrics import RayPrometheusStatLogger
-
-            ray_metrics_logger = RayPrometheusStatLogger(
-                local_interval=0.5,
-                labels={"model_name": engine_args.model},
-                vllm_config=vllm_config,
-            )
-            engine.add_logger("ray", ray_metrics_logger)
 
         return engine
 
