@@ -15,7 +15,7 @@ Create or Update A Virtual Cluster
 
 To create or update a virtual cluster, users can send a POST request to the http endpoint at `/virtual_clusters`.
 
-**Simple Request:**
+**Sample Request:**
 
 .. code-block:: json
 
@@ -114,6 +114,56 @@ If there are still jobs running in the virtual cluster, then the sample reply wi
         "msg":"Failed to remove virtual cluster virtual_cluster_1: The virtual cluster virtual_cluster_1 can not be removed as it is still in use. ",
         "data":{
             "virtualClusterId":"virtual_cluster_1"
+        }
+    }
+
+Remove Nodes From A Virtual Cluster
+-----------------------------------
+
+Users can remove some specified nodes from a virtual cluster by sending a POST request to the http endpoint at `/virtual_clusters/remove_nodes`.
+
+After nodes are removed from a virtual cluster, they are returned to the primary cluster.
+
+Currently, we do not support removing specified nodes from a job cluster.
+
+**Sample Request:**
+
+.. code-block:: json
+
+    {
+        "virtualClusterId":"virtual_cluster_1", // Unique id of the virtual cluster
+        "nodesToRemove":[  // The list of node id that are expected to be removed
+            "1434167efc236b03e1618ba59b5210dd4a7399287389606792eac8cf",
+            "805faffa6c48e77407ef7e2e62b30d0af914e4a92837468987ad8dbe"
+        ],
+    }
+
+**Success Response:**
+
+.. code-block:: json
+
+    {
+        "result":true,
+        "msg":"Virtual cluster successfully updated.",
+        "data":{
+            "virtualClusterId":"virtual_cluster_1"
+        }
+    }
+
+**Error Response:**
+
+If there are any nodes that are not allowed for removal, the request would fail and the sample reply will be:
+
+.. code-block:: json
+
+    {
+        "result":false,
+        "msg":"Failed to remove nodes from virtual cluster virtual_cluster_1: Failed to remove some of the nodes because they are not idle nor found in the virtual cluster. These nodes with failure are shown below.",
+        "data":{
+            "virtualClusterId":"virtual_cluster_1",
+            "nodesWithFailure":[
+                "805faffa6c48e77407ef7e2e62b30d0af914e4a92837468987ad8dbe"
+            ]
         }
     }
 
