@@ -263,6 +263,7 @@ if setup_spec.type == SetupType.RAY:
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
+            "tzlocal >= 5.3",  # Required for Ray dashboard timezone handling
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [

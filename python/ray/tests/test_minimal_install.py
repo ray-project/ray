@@ -82,6 +82,7 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
         "aiohttp_cors",
         "pydantic",
         "grpc",
+        "tzlocal",
     ]
     for i in range(len(optional_modules)):
         for install_modules in itertools.combinations(optional_modules, i):
