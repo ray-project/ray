@@ -118,6 +118,20 @@ class LongPollClient:
         but the snapshot ID will be preserved, so the new listener will only be called
         on the *next* update to that key.
         """
+        # We need to run the underlying method in the same event loop that runs
+        # the long poll loop, because we need to mutate the mapping of snapshot IDs,
+        # which also needs to be serialized by the long poll's RPC to the
+        # Serve Controller. If those happened concurrently in different threads,
+        # we could get a `RuntimeError: dictionary changed size during iteration`.
+        # See https://github.com/ray-project/ray/pull/52793 for more details.
+        self.event_loop.call_soon_threadsafe(self._add_key_listeners, key_listeners)
+
+    def _add_key_listeners(
+        self, key_listeners: Dict[KeyType, UpdateStateCallable]
+    ) -> None:
+        """Inner method that actually adds the key listeners, to be called
+        via call_soon_threadsafe for thread safety.
+        """
         # Only initialize snapshot ids for *new* keys.
         self.snapshot_ids.update(
             {key: -1 for key in key_listeners.keys() if key not in self.key_listeners}
