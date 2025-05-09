@@ -250,9 +250,12 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
       [this, worker_id, node_id, owner_address](
           const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR).WithField(worker_id)
-              << "Failed to get object location update. This should not happen because "
-                 "this rpc is using the retryable grpc client.";
+          RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+              << "Failed to get object location update. This should only happen if the "
+                 "worker / node is dead.";
+          location_buffers_.erase(worker_id);
+          owner_client_pool_->Disconnect(worker_id);
+          return;
         }
         auto in_flight_request_it = in_flight_requests_.find(worker_id);
         RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
