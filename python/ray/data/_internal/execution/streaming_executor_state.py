@@ -612,6 +612,15 @@ def get_eligible_operators(
         # Signal whether op in backpressure for stats collections
         op.notify_in_task_submission_backpressure(in_backpressure)
 
+    # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
+    # limits in case when topology is entirely idle (no active tasks running)
+    if (
+        not eligible_ops
+        and ensure_liveness
+        and all(op.num_active_tasks() == 0 for op in topology)
+    ):
+        return dispatchable_ops
+
     return eligible_ops
 
 
