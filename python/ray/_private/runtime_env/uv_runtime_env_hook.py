@@ -65,6 +65,26 @@ def _check_working_dir_files(
             "working directory before running 'uv run', or by using the 'working_dir' "
             "parameter of the runtime_environment."
         )
+    
+
+def _is_running_with_uv_run() -> bool:
+    """
+    uv spawns the python process as a child process, so to determine if
+    we are running under 'uv run', we check the parent process commandline. We also
+    check our parent's parents since the Ray driver might be run as a subprocess.
+    Return True if any of our ancestors was run with "uv run" and False otherwise.
+    """
+    parents = psutil.Process().parents()
+    for parent in parents:
+        try:
+            cmdline = parent.cmdline()
+            if len(cmdline) > 1 and os.path.basename(cmdline[0]) == "uv" and cmdline[1] == "run":
+                return True
+        except psutil.NoSuchProcess:
+            continue
+        except psutil.AccessDenied:
+            continue
+    return False
 
 
 def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -72,12 +92,8 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     runtime_env = copy.deepcopy(runtime_env) or {}
 
-    # uv spawns the python process as a child process, so to determine if
-    # we are running under 'uv run', we check the parent process commandline.
-    parent = psutil.Process().parent()
-    cmdline = parent.cmdline()
-    if os.path.basename(cmdline[0]) != "uv" or cmdline[1] != "run":
-        # This means the driver was not run with 'uv run' -- in this case
+    if not _is_running_with_uv_run():
+        # This means the driver was not run in a 'uv run' environment -- in this case
         # we leave the runtime environment unchanged
         return runtime_env
 
