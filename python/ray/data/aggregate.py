@@ -125,9 +125,6 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         4. **Finalization**: Optionally, the `_finalize` method transforms the
            final combined accumulator into the desired output format.
 
-    See built-in aggregations like `Count`, `Sum`, `Min`, `Max`, and `Mean` for
-    examples of how to implement custom aggregations.
-
     Args:
         name: The name of the aggregation. This will be used as the column name
             in the output, e.g., "sum(my_col)".
@@ -276,15 +273,13 @@ class Count(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = False,  # Note: Default is False for Count to align with SQL COUNT(*)
+        ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            # Name for the output column, e.g., "count()" or "count(col_name)"
             alias_name if alias_name else f"count({on or ''})",
-            on=on,  # Target column, if any
+            on=on,
             ignore_nulls=ignore_nulls,
-            # zero_factory provides the initial value for the count, which is 0.
             zero_factory=lambda: 0,
         )
 
@@ -292,23 +287,15 @@ class Count(AggregateFnV2):
         block_accessor = BlockAccessor.for_block(block)
 
         if self._target_col_name is None:
-            # If no target column ('on' was not specified), count all rows in the block.
+            # In case of global count, simply fetch number of rows
             return block_accessor.num_rows()
 
-        # If a target column is specified, count values in that column.
-        # The behavior regarding nulls is controlled by self._ignore_nulls.
         return block_accessor.count(
             self._target_col_name, ignore_nulls=self._ignore_nulls
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # To combine two partial counts, simply add them together.
-        # current_accumulator is the count from previous blocks/combines.
-        # new is the count from a new block.
         return current_accumulator + new
-
-    # _finalize is not needed for Count, as the accumulated sum (the count)
-    # is already the final desired value.
 
 
 @PublicAPI
@@ -332,33 +319,23 @@ class Sum(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,  # Default is True, common for sum operations
+        ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            # Name for the output column, e.g., "sum(col_name)"
             alias_name if alias_name else f"sum({str(on)})",
-            on=on,  # Target numerical column to sum
+            on=on,
             ignore_nulls=ignore_nulls,
-            # zero_factory provides the initial value for the sum, which is 0.
             zero_factory=lambda: 0,
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        # For each block, calculate the sum of values in the 'on' column.
-        # BlockAccessor.sum() handles nulls based on self._ignore_nulls.
         return BlockAccessor.for_block(block).sum(
             self._target_col_name, self._ignore_nulls
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # To combine two partial sums, add them together.
-        # current_accumulator is the sum from previous blocks/combines.
-        # new is the sum from a new block.
         return current_accumulator + new
-
-    # _finalize is not needed for Sum, as the accumulated sum
-    # is already the final desired value.
 
 
 @PublicAPI
@@ -388,30 +365,19 @@ class Min(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            # Name for the output column, e.g., "min(col_name)"
             alias_name if alias_name else f"min({str(on)})",
-            on=on,  # Target column to find the minimum value from
+            on=on,
             ignore_nulls=ignore_nulls,
-            # zero_factory provides the initial value for finding a minimum.
-            # Positive infinity is used so any actual value will be smaller.
             zero_factory=lambda: float("+inf"),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        # For each block, find the minimum value in the 'on' column.
-        # BlockAccessor.min() handles nulls based on self._ignore_nulls.
         return BlockAccessor.for_block(block).min(
             self._target_col_name, self._ignore_nulls
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # To combine two partial minimums, return the smaller of the two.
-        # current_accumulator is the minimum from previous blocks/combines.
-        # new is the minimum from a new block.
         return min(current_accumulator, new)
-
-    # _finalize is not needed for Min, as the accumulated minimum
-    # is already the final desired value.
 
 
 @PublicAPI
@@ -437,34 +403,24 @@ class Max(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,  # Default is True, common for max operations
+        ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
+
         super().__init__(
-            # Name for the output column, e.g., "max(col_name)"
             alias_name if alias_name else f"max({str(on)})",
-            on=on,  # Target column to find the maximum value from
+            on=on,
             ignore_nulls=ignore_nulls,
-            # zero_factory provides the initial value for finding a maximum.
-            # Negative infinity is used so any actual value will be larger.
             zero_factory=lambda: float("-inf"),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        # For each block, find the maximum value in the 'on' column.
-        # BlockAccessor.max() handles nulls based on self._ignore_nulls.
         return BlockAccessor.for_block(block).max(
             self._target_col_name, self._ignore_nulls
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # To combine two partial maximums, return the larger of the two.
-        # current_accumulator is the maximum from previous blocks/combines.
-        # new is the maximum from a new block.
         return max(current_accumulator, new)
-
-    # _finalize is not needed for Max, as the accumulated maximum
-    # is already the final desired value.
 
 
 @PublicAPI
@@ -488,16 +444,14 @@ class Mean(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,  # Default is True, common for mean operations
+        ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            # Name for the output column, e.g., "mean(col_name)"
             alias_name if alias_name else f"mean({str(on)})",
-            on=on,  # Target numerical column for mean calculation
+            on=on,
             ignore_nulls=ignore_nulls,
-            # The accumulator is a list: [current_sum, current_count].
-            # zero_factory initializes this to [0, 0].
+            # The accumulator is: [current_sum, current_count].
             # NOTE: We copy the returned list `list([0,0])` as some internal mechanisms
             # might modify accumulators in-place.
             zero_factory=lambda: list([0, 0]),  # noqa: C410
@@ -505,30 +459,23 @@ class Mean(AggregateFnV2):
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
-        # Calculate count of non-null values in the target column for this block.
         count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
         if count == 0 or count is None:
-            # If block is empty or all values are null (and ignore_nulls=True),
-            # the partial sum/count is undefined for this block.
-            # This will be handled by null-safe wrappers (returns None).
+            # Empty or all null.
             return None
 
-        # Calculate sum of values in the target column for this block.
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
 
         if is_null(sum_):
-            # If sum is null (e.g., ignore_nulls=False and a null was encountered),
-            # return the null sum directly.
+            # In case of ignore_nulls=False and column containing 'null'
+            # return as is (to prevent unnecessary type conversions, when, for ex,
+            # using Pandas and returning None)
             return sum_
 
-        # Return the partial accumulator for this block: [block_sum, block_count]
         return [sum_, count]
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # current_accumulator is [sum_A, count_A] from previous combines/blocks.
-        # new is [sum_B, count_B] from a new block.
-        # Combine by adding respective sums and counts.
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
     def _finalize(self, accumulator: AggType) -> Optional[U]:
@@ -538,7 +485,6 @@ class Mean(AggregateFnV2):
             # the mean is undefined. Return NaN
             return np.nan
 
-        # Calculate mean: total_sum / total_count.
         return accumulator[0] / accumulator[1]
 
 
@@ -576,7 +522,7 @@ class Std(AggregateFnV2):
     ):
         super().__init__(
             alias_name if alias_name else f"std({str(on)})",
-            on=on,  # Target column for standard deviation
+            on=on,
             ignore_nulls=ignore_nulls,
             # Accumulator: [M2, mean, count]
             # M2: sum of squares of differences from the current mean
@@ -590,25 +536,19 @@ class Std(AggregateFnV2):
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
-        # Count non-null elements in the target column for this block
         count = block_acc.count(self._target_col_name, ignore_nulls=self._ignore_nulls)
         if count == 0 or count is None:
-            # If block is empty or all values are null (and ignore_nulls=True),
-            # return None. This will be handled by null-safe wrappers.
+            # Empty or all null.
             return None
-        # Calculate sum for the block
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
         if is_null(sum_):
             # If sum is null (e.g., ignore_nulls=False and a null was encountered),
-            # return the null value directly.
+            # return as is to prevent type conversions.
             return sum_
-        # Calculate mean for the block
         mean = sum_ / count
-        # Calculate M2 (sum of squares of differences from the mean) for the block
         M2 = block_acc.sum_of_squared_diffs_from_mean(
             self._target_col_name, self._ignore_nulls, mean
         )
-        # Return the partial accumulator: [M2, mean, count]
         return [M2, mean, count]
 
     def combine(self, current_accumulator: List[float], new: List[float]) -> AggType:
@@ -618,14 +558,12 @@ class Std(AggregateFnV2):
         M2_b, mean_b, count_b = new
         delta = mean_b - mean_a
         count = count_a + count_b
-
-        if count == 0:
-            # Avoid division by zero if combined count is zero (e.g. both empty)
-            return [0, 0, 0]  # Return a zero state
-
-        # Numerically stable way to calculate the combined mean
+        # NOTE: We use this mean calculation since it's more numerically
+        # stable than mean_a + delta * count_b / count, which actually
+        # deviates from Pandas in the ~15th decimal place and causes our
+        # exact comparison tests to fail.
         mean = (mean_a * count_a + mean_b * count_b) / count
-        # Update M2 (sum of squared differences)
+        # Update the sum of squared differences.
         M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
         return [M2, mean, count]
 
@@ -669,40 +607,27 @@ class AbsMax(AggregateFnV2):
 
         super().__init__(
             alias_name if alias_name else f"abs_max({str(on)})",
-            on=on,  # Target column for absolute max
+            on=on,
             ignore_nulls=ignore_nulls,
-            # Initial accumulator for absolute max is 0.
-            # Any absolute value will be >= 0.
             zero_factory=lambda: 0,
         )
 
     def aggregate_block(self, block: Block) -> AggType:
         block_accessor = BlockAccessor.for_block(block)
 
-        # Find the maximum value in the block for the target column
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
-        # Find the minimum value in the block for the target column
         min_ = block_accessor.min(self._target_col_name, self._ignore_nulls)
 
         if is_null(max_) or is_null(min_):
-            # If either max or min is null (e.g., block is empty or all nulls
-            # and ignore_nulls=True), the abs_max is undefined for this block.
-            # This will be handled by null-safe wrappers.
             return None
 
-        # The absolute max for the block is the greater of abs(max_) and abs(min_)
         return max(
             abs(max_),
             abs(min_),
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # Given two absolute maximums (current_accumulator from previous combines/blocks,
-        # and new from a new block), return the larger of the two.
         return max(current_accumulator, new)
-
-    # _finalize is not needed here, as the accumulated absolute maximum
-    # is already the final desired value.
 
 
 @PublicAPI
@@ -738,65 +663,53 @@ class Quantile(AggregateFnV2):
 
         super().__init__(
             alias_name if alias_name else f"quantile({str(on)})",
-            on=on,  # Target column
+            on=on,
             ignore_nulls=ignore_nulls,
-            # The accumulator is a list of all values seen so far for the group.
-            # zero_factory returns an empty list.
             zero_factory=list,
         )
 
     def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
-        # Combines two lists of values (accumulators) into one.
-        # Handles cases where one or both inputs might not be lists initially
-        # (e.g. single items from blocks, or initial None from null_safe_zero_factory).
-
         if isinstance(current_accumulator, List) and isinstance(new, List):
-            # Both are lists, extend current with new.
             current_accumulator.extend(new)
             return current_accumulator
 
         if isinstance(current_accumulator, List) and (not isinstance(new, List)):
-            # Current is a list, new is a single item (or None).
-            if new is not None and new != "":  # Append if new is a valid item.
+            if new is not None and new != "":
                 current_accumulator.append(new)
             return current_accumulator
 
         if isinstance(new, List) and (not isinstance(current_accumulator, List)):
-            # New is a list, current is a single item (or None).
-            if (
-                current_accumulator is not None and current_accumulator != ""
-            ):  # Append if current is valid.
+            if current_accumulator is not None and current_accumulator != "":
                 new.append(current_accumulator)
             return new
 
-        # Neither is a list; create a new list with valid items.
         ls = []
+
         if current_accumulator is not None and current_accumulator != "":
             ls.append(current_accumulator)
+
         if new is not None and new != "":
             ls.append(new)
+
         return ls
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
         ls = []
-        # Iterate over rows in the block and extract values from the target column.
+
         for row in block_acc.iter_rows(public_row_format=False):
             ls.append(row.get(self._target_col_name))
-        # Returns a list of all values from the target column in this block.
+
         return ls
 
     def _finalize(self, accumulator: List[Any]) -> Optional[U]:
-        # Accumulator is the list of all values for the group.
         if self._ignore_nulls:
-            # Filter out nulls if ignore_nulls is True.
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
-            # If not ignoring nulls, check if any null exists.
             nulls = [v for v in accumulator if is_null(v)]
             if len(nulls) > 0:
-                # If nulls are present and not ignored, the quantile is undefined (null).
-                # Return the first null encountered to preserve column type if possible.
+                # If nulls are present and not ignored, the quantile is undefined.
+                # Return the first null encountered to preserve column type.
                 return nulls[0]
 
         if not accumulator:
@@ -804,25 +717,20 @@ class Quantile(AggregateFnV2):
             # quantile is undefined.
             return None
 
-        # Sort the values to prepare for quantile calculation.
-        # The key is identity function, assuming comparable elements.
         key = lambda x: x  # noqa: E731
         input_values = sorted(accumulator)
-
-        # Linear interpolation for quantile calculation, similar to numpy.quantile.
         k = (len(input_values) - 1) * self._q
         f = math.floor(k)
         c = math.ceil(k)
 
         if f == c:
-            # If k is an integer, the quantile is the element at that index.
             return key(input_values[int(k)])
 
         # Interpolate between the elements at floor and ceil indices.
         d0 = key(input_values[int(f)]) * (c - k)
         d1 = key(input_values[int(c)]) * (k - f)
 
-        return round(d0 + d1, 5)  # Round to 5 decimal places for consistency.
+        return round(d0 + d1, 5)
 
 
 @PublicAPI
@@ -854,47 +762,28 @@ class Unique(AggregateFnV2):
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
-            on=on,  # Target column for unique values
+            on=on,
             ignore_nulls=ignore_nulls,
-            # The accumulator is a set, to automatically handle uniqueness.
-            # zero_factory returns an empty set.
             zero_factory=set,
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        # Combines two sets of unique values (or items that will be converted to sets).
-        # `current_accumulator` is typically a set from previous combines/blocks.
-        # `new` is typically a list of unique items from a new block (from aggregate_block)
-        # or another set from a parallel task.
-        # The result is the union of the two sets.
         return self._to_set(current_accumulator) | self._to_set(new)
 
     def aggregate_block(self, block: Block) -> AggType:
-        import pyarrow.compute as pac  # Lazy import for pyarrow.compute
+        import pyarrow.compute as pac
 
-        # Access the target column from the block as a PyArrow Array.
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        # Use pyarrow.compute.unique to get unique elements from the column in this block.
-        # .to_pylist() converts the Arrow Array of unique values to a Python list.
-        # This list will be converted to a set in the `combine` step or by null-safe wrappers.
         return pac.unique(col).to_pylist()
 
     @staticmethod
     def _to_set(x):
-        # Helper to ensure an item is a set for the union operation in `combine`.
         if isinstance(x, set):
             return x
         elif isinstance(x, list):
-            # If it's a list (e.g. from aggregate_block), convert to set.
             return set(x)
         else:
-            # If it's a single item (e.g. after null_safe_zero_factory gave None, then combine got a single val),
-            # put it in a set.
             return {x}
-
-    # _finalize is not needed here. The accumulator (a set of unique items)
-    # is implicitly converted to a list by Ray Data when results are presented,
-    # which is the desired final format.
 
 
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
