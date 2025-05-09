@@ -17,7 +17,11 @@ import uuid
 from pdb import Pdb
 from typing import Callable
 
-import setproctitle
+try:
+    from ray._private.setproctitle import setproctitle
+except ImportError:
+    # Fall back to system setproctitle if our private copy is unavailable
+    import setproctitle
 
 import ray
 from ray._private import ray_constants

@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import psutil
 import time
+import logging
 
 from ray._private.test_utils import (
     SignalActor,
@@ -17,6 +18,12 @@ from ray._private.test_utils import (
     wait_for_condition,
     run_string_as_driver_nonblocking,
 )
+
+try:
+    from ray._private.setproctitle import setproctitle
+except ImportError:
+    # Fall back to system setproctitle if our private copy is unavailable
+    import setproctitle
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

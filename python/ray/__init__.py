@@ -50,7 +50,25 @@ def _configure_system():
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
     )
+
+    # Temporarily add thirdparty_files to sys.path to import the libraries,
+    # but ensure we restore path and properly isolate the imports
+    original_sys_path = sys.path.copy()
     sys.path.insert(0, thirdparty_files)
+
+    try:
+        # Import for Ray internal usage
+        import psutil
+        import setproctitle
+        import colorama
+
+        # Save the modules in Ray's private namespace
+        sys.modules["ray._private.psutil"] = psutil
+        sys.modules["ray._private.setproctitle"] = setproctitle
+        sys.modules["ray._private.colorama"] = colorama
+    finally:
+        # Restore original sys.path to avoid affecting user imports
+        sys.path = original_sys_path
 
     if (
         platform.system() == "Linux"

@@ -1,12 +1,22 @@
+#!/usr/bin/env python
+import argparse
+import logging
+import signal
+import sys
+import time
+import traceback
+
+try:
+    from ray._private.setproctitle import setproctitle
+except ImportError:
+    # Fall back to system setproctitle if our private copy is unavailable
+    import setproctitle
 import abc
 import asyncio
 import aiohttp
 import inspect
-import logging
-import sys
 import os
 from dataclasses import dataclass
-import setproctitle
 import multiprocessing
 import multiprocessing.connection
 
