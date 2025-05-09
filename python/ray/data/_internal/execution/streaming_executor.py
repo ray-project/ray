@@ -89,7 +89,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._last_debug_log_time = 0
 
-        register_dataset_logger(self._dataset_id)
+        self._data_context.set_dataset_logger_id(
+            register_dataset_logger(self._dataset_id)
+        )
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -239,13 +241,17 @@ class StreamingExecutor(Executor, threading.Thread):
 
             self._autoscaler.on_executor_shutdown()
 
-            unregister_dataset_logger(self._dataset_id)
-
             dur = time.perf_counter() - start
 
             logger.debug(
                 f"Shut down executor for dataset {self._dataset_id} "
                 f"(took {round(dur, 3)}s)"
+            )
+
+            # Unregister should be called after all operators are shut down to
+            # capture as many logs as possible.
+            self._data_context.set_dataset_logger_id(
+                unregister_dataset_logger(self._dataset_id)
             )
 
     def run(self):
@@ -345,6 +351,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 break
 
             topology[op].dispatch_next_task()
+
             self._resource_manager.update_usages()
 
             i += 1
@@ -446,9 +453,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": (
-                        op.internal_queue_size() + op_state.total_input_enqueued()
-                    ),
+                    "queued_blocks": op_state.total_enqueued_input_bundles(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
