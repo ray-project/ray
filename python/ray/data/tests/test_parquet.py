@@ -913,8 +913,8 @@ def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
     os.mkdir(path)
-    in_memory_df = pa.Table.from_pydict({"one": [1]})
-    ds = ray.data.from_arrow(in_memory_df)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
     ds.write_parquet(path, filesystem=None, mode="ignore")
 
     # directory was created, should ignore
@@ -927,19 +927,17 @@ def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
 
     # should write
     ds.write_parquet(path, filesystem=None, mode="ignore")
-    on_disk_df = pq.read_table(path)
+    on_disk_table = pq.read_table(path)
 
-    assert in_memory_df.equals(on_disk_df)
-
-    shutil.rmtree(path)
+    assert in_memory_table.equals(on_disk_table)
 
 
 def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
     os.mkdir(path)
-    in_memory_df = pa.Table.from_pydict({"one": [1]})
-    ds = ray.data.from_arrow(in_memory_df)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
 
     with pytest.raises(ValueError):
         ds.write_parquet(path, filesystem=None, mode="error")
@@ -949,18 +947,16 @@ def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
 
     # should write
     ds.write_parquet(path, filesystem=None, mode="error")
-    on_disk_df = pq.read_table(path)
+    on_disk_table = pq.read_table(path)
 
-    assert in_memory_df.equals(on_disk_df)
-
-    shutil.rmtree(path)
+    assert in_memory_table.equals(on_disk_table)
 
 
 def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
-    in_memory_df = pa.Table.from_pydict({"one": [1]})
-    ds = ray.data.from_arrow(in_memory_df)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
     ds.write_parquet(path, filesystem=None, mode="append")
 
     # one file should be added
@@ -968,8 +964,8 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         count_of_files = sum(1 for path in file_paths)
         assert count_of_files == 1
 
-    appended_in_memory_df = pa.Table.from_pydict({"two": [2]})
-    ds = ray.data.from_arrow(appended_in_memory_df)
+    appended_in_memory_table = pa.Table.from_pydict({"two": [2]})
+    ds = ray.data.from_arrow(appended_in_memory_table)
     ds.write_parquet(path, filesystem=None, mode="append")
 
     # another file should be added
@@ -977,14 +973,12 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         count_of_files = sum(1 for path in file_paths)
         assert count_of_files == 2
 
-    shutil.rmtree(path)
-
 
 def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
-    in_memory_df = pa.Table.from_pydict({"one": [1]})
-    ds = ray.data.from_arrow(in_memory_df)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
     ds.write_parquet(path, filesystem=None, mode="overwrite")
 
     # one file should be added
@@ -992,8 +986,8 @@ def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path)
         count_of_files = sum(1 for path in file_paths)
         assert count_of_files == 1
 
-    overwritten_in_memory_df = pa.Table.from_pydict({"two": [2]})
-    ds = ray.data.from_arrow(overwritten_in_memory_df)
+    overwritten_in_memory_table = pa.Table.from_pydict({"two": [2]})
+    ds = ray.data.from_arrow(overwritten_in_memory_table)
     ds.write_parquet(path, filesystem=None, mode="overwrite")
 
     # another file should NOT be added
@@ -1001,10 +995,8 @@ def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path)
         count_of_files = sum(1 for path in file_paths)
         assert count_of_files == 1
 
-    on_disk_df = pq.read_table(path)
-    assert on_disk_df.equals(overwritten_in_memory_df)
-
-    shutil.rmtree(path)
+    on_disk_table = pq.read_table(path)
+    assert on_disk_table.equals(overwritten_in_memory_table)
 
 
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
