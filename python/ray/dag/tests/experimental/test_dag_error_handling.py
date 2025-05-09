@@ -22,9 +22,9 @@ from ray._common.utils import (
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
+    SignalActor,
 )
 import signal
-import psutil
 
 from ray.dag.tests.experimental.actor_defs import Actor
 
@@ -315,14 +315,25 @@ def test_buffered_get_timeout(ray_start_regular):
 
 
 def test_get_with_zero_timeout(ray_start_regular):
-    a = Actor.remote(0)
+    @ray.remote
+    class Actor:
+        def __init__(self, signal_actor):
+            self.signal_actor = signal_actor
+
+        def send(self, x):
+            self.signal_actor.send.remote()
+            return x
+
+    signal_actor = SignalActor.remote()
+    a = Actor.remote(signal_actor)
     with InputNode() as inp:
-        dag = a.inc.bind(inp)
+        dag = a.send.bind(inp)
 
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute(1)
     # Give enough time for DAG execution result to be ready
-    time.sleep(2)
+    ray.get(signal_actor.wait.remote())
+    time.sleep(0.1)
     # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1
@@ -840,7 +851,6 @@ def test_missing_input_node():
         dag.experimental_compile()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
 def test_sigint_get_dagref(ray_start_cluster):
     driver_script = """
 import ray
@@ -852,27 +862,24 @@ ray.init()
 @ray.remote
 class Actor:
     def sleep(self, x):
-        while(True):
-            time.sleep(x)
+        time.sleep(x)
 
 a = Actor.remote()
 with InputNode() as inp:
     dag = a.sleep.bind(inp)
 compiled_dag = dag.experimental_compile()
-ref = compiled_dag.execute(1)
-ray.get(ref, timeout=100)
+ref = compiled_dag.execute(100)
+print("executing", flush=True)
+ray.get(ref)
 """
     driver_proc = run_string_as_driver_nonblocking(
-        driver_script, env={"RAY_CGRAPH_teardown_timeout": "5"}
+        driver_script, env={"RAY_CGRAPH_teardown_timeout": "0"}
     )
-    pid = driver_proc.pid
     # wait for graph execution to start
-    time.sleep(5)
-    proc = psutil.Process(pid)
-    assert proc.status() == psutil.STATUS_RUNNING
-    os.kill(pid, signal.SIGINT)  # ctrl+c
-    # teardown will kill actors after 5 second timeout
-    wait_for_pid_to_exit(pid, 10)
+    assert driver_proc.stdout.readline() == b"executing\n"
+    driver_proc.send_signal(signal.SIGINT)  # ctrl+c
+    # teardown will kill actors after timeout
+    wait_for_pid_to_exit(driver_proc.pid, 10)
 
 
 if __name__ == "__main__":

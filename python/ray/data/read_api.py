@@ -49,6 +49,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
     FromBlocks,
@@ -57,7 +58,6 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -108,7 +108,6 @@ if TYPE_CHECKING:
 
     from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
-
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -151,7 +150,8 @@ def from_items(
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
 
-    Use this method to create small datasets from data that fits in memory.
+    Use this method to create small datasets from data that fits in memory. The column
+    name defaults to "item".
 
     Examples:
 
@@ -237,7 +237,7 @@ def range(
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
     This function allows for easy creation of synthetic datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. The column name defaults to "id".
 
     Examples:
 
@@ -291,7 +291,7 @@ def range_tensor(
     [0...n].
 
     This function allows for easy creation of synthetic tensor datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. The column name defaults to "data".
 
     Examples:
 
@@ -449,6 +449,8 @@ def read_audio(
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
 
+    The column names default to "amplitude" and "sample_rate".
+
     Examples:
         >>> import ray
         >>> path = "s3://anonymous@air-example-data-2/6G-audio-data-LibriSpeech-train-clean-100-flac/train-clean-100/5022/29411/5022-29411-0000.flac"
@@ -537,7 +539,8 @@ def read_videos(
 ):
     """Creates a :class:`~ray.data.Dataset` from video files.
 
-    Each row in the resulting dataset represents a video frame.
+    Each row in the resulting dataset represents a video frame. The column names default
+    to "frame", "frame_index" and "frame_timestamp".
 
     Examples:
         >>> import ray
@@ -981,6 +984,8 @@ def read_images(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
+
+    The column name defaults to "image".
 
     Examples:
         >>> import ray
@@ -1500,7 +1505,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema={a: int64, b: int64})
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1603,6 +1608,8 @@ def read_text(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
+
+    The column name default to "text".
 
     Examples:
         Read a file in remote storage.
@@ -1826,6 +1833,8 @@ def read_numpy(
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
+    The column name defaults to "data".
+
     Examples:
         Read a directory of files in remote storage.
 
@@ -1911,6 +1920,7 @@ def read_tfrecords(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1944,10 +1954,7 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1957,10 +1964,7 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1973,6 +1977,7 @@ def read_tfrecords(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -2053,6 +2058,7 @@ def read_tfrecords(
     ds = read_datasource(
         datasource,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -2822,6 +2828,8 @@ def from_pandas_refs(
 def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays.
 
+    The column name defaults to "data".
+
     Examples:
         >>> import numpy as np
         >>> import ray
@@ -2852,6 +2860,8 @@ def from_numpy_refs(
 ) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
     NumPy ndarrays.
+
+    The column name defaults to "data".
 
     Examples:
         >>> import numpy as np
@@ -3309,6 +3319,8 @@ def from_torch(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
+
+    The column name defaults to "data".
 
     .. note::
         The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.

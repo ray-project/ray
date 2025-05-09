@@ -22,6 +22,7 @@
 #include <Winternl.h>
 #include <process.h>
 #else
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
@@ -67,6 +68,19 @@ int execvpe(const char *program, char *const argv[], char *const envp[]) {
 #endif
 
 namespace ray {
+
+#if !defined(_WIN32)
+void SetFdCloseOnExec(int fd) {
+  if (fd < 0) {
+    return;
+  }
+  int flags = fcntl(fd, F_GETFD, 0);
+  RAY_CHECK_NE(flags, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
+  const int ret = fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+  RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
+  RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
+}
+#endif
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
@@ -202,6 +216,8 @@ class ProcessFD {
     if (pid != 0 && pipefds[1] != -1) {
       close(pipefds[1]);  // not the child, so close the write end of the pipe
       pipefds[1] = -1;
+      // make sure the read end of the pipe is closed on exec
+      SetFdCloseOnExec(pipefds[0]);
     }
 
     // Create a pipe and redirect the read pipe to a child's stdin.
@@ -213,11 +229,14 @@ class ProcessFD {
         // Child. Close sthe write end of the pipe from child.
         close(parent_lifetime_pipe[1]);
         parent_lifetime_pipe[1] = -1;
+        SetFdCloseOnExec(parent_lifetime_pipe[0]);
       }
       if (pid != 0 && parent_lifetime_pipe[0] != -1) {
         // Parent. Close the read end of the pipe.
         close(parent_lifetime_pipe[0]);
         parent_lifetime_pipe[0] = -1;
+        // Make sure the write end of the pipe is closed on exec.
+        SetFdCloseOnExec(parent_lifetime_pipe[1]);
       }
     } else {
       // parent_lifetime_pipe pipes are not used.

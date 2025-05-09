@@ -1,4 +1,5 @@
 import itertools
+import logging
 from typing import List, Optional, Tuple
 
 from ray.data._internal.compute import (
@@ -36,6 +37,9 @@ from ray.data.context import DataContext
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+
+
+logger = logging.getLogger(__name__)
 
 
 class FuseOperators(Rule):
@@ -175,34 +179,21 @@ class FuseOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
+                and self._can_fuse_map_ops(up_logical_op, down_logical_op)
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, RandomShuffle)
             )
+            # Do not fuse Repartition operator if shuffle is disabled
+            # (i.e. using split shuffle).
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
+                and down_logical_op._shuffle
             )
         ):
             return False
-
-        # Do not fuse Repartition operator if shuffle is disabled
-        # (i.e. using split shuffle).
-        if isinstance(down_logical_op, Repartition) and not down_logical_op._shuffle:
-            return False
-
-        if isinstance(down_logical_op, AbstractMap) and isinstance(
-            up_logical_op, AbstractMap
-        ):
-            if (
-                self._fuse_compute_strategy(
-                    up_logical_op._compute,
-                    down_logical_op._compute,
-                )
-                is None
-            ):
-                return False
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
@@ -228,8 +219,9 @@ class FuseOperators(Rule):
         # Otherwise, ops are compatible for fusion.
         return True
 
+    @classmethod
     def _fuse_compute_strategy(
-        self, up_compute: ComputeStrategy, down_compute: ComputeStrategy
+        cls, up_compute: ComputeStrategy, down_compute: ComputeStrategy
     ) -> Optional[ComputeStrategy]:
         """Fuse the compute strategies of the upstream and downstream operators.
         Returns None if they are not compatible.
@@ -302,21 +294,10 @@ class FuseOperators(Rule):
         assert isinstance(down_logical_op, AbstractMap)
         assert isinstance(up_logical_op, AbstractMap)
 
-        # Merge minimum block sizes.
-        down_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
-        up_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
-
-        if (
-            down_min_rows_per_bundled_input is not None
-            and up_min_rows_per_bundled_input is not None
-        ):
-            min_rows_per_bundled_input = max(
-                down_min_rows_per_bundled_input, up_min_rows_per_bundled_input
-            )
-        elif up_min_rows_per_bundled_input is not None:
-            min_rows_per_bundled_input = up_min_rows_per_bundled_input
-        else:
-            min_rows_per_bundled_input = down_min_rows_per_bundled_input
+        # Derive min num rows per input bundle
+        min_rows_per_bundled_input = self._derive_bundle_min_num_rows(
+            down_logical_op, up_logical_op
+        )
 
         target_max_block_size = self._get_merged_target_max_block_size(
             up_op.target_max_block_size, down_op.target_max_block_size
@@ -389,6 +370,27 @@ class FuseOperators(Rule):
         # Return the fused physical operator.
         return op
 
+    @classmethod
+    def _derive_bundle_min_num_rows(
+        cls,
+        down_logical_op: AbstractMap,
+        up_logical_op: AbstractMap,
+    ) -> Optional[int]:
+        us_bundle_min_rows_req = up_logical_op._min_rows_per_bundled_input
+        ds_bundle_min_rows_req = down_logical_op._min_rows_per_bundled_input
+
+        # In case neither of the ops specify `min_rows_per_bundled_input`,
+        # return None
+        if us_bundle_min_rows_req is None and ds_bundle_min_rows_req is None:
+            return None
+
+        # Target min bundle size is selected as max of upstream and downstream ones
+        # such that it could satisfy both of their requirements
+        return max(
+            ds_bundle_min_rows_req or 0,
+            us_bundle_min_rows_req or 0,
+        )
+
     def _get_fused_all_to_all_operator(
         self, down_op: AllToAllOperator, up_op: MapOperator
     ) -> AllToAllOperator:
@@ -459,6 +461,50 @@ class FuseOperators(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
+
+    @classmethod
+    def _can_fuse_map_ops(
+        cls,
+        upstream_op: AbstractMap,
+        downstream_op: AbstractMap,
+    ) -> bool:
+        if (
+            cls._fuse_compute_strategy(
+                upstream_op._compute,
+                downstream_op._compute,
+            )
+            is None
+        ):
+            return False
+
+        # Do not fuse Map operators in case:
+        #
+        #   - Upstream could (potentially) drastically modify number of rows, while
+        #   - Downstream has `min_rows_per_input_bundle` specified
+        #
+        # Fusing such transformations is not desirable as it could
+        #
+        #   - Drastically reduce parallelism for the upstream up (for ex, if
+        #   fusing ``Read->MapBatches(batch_size=...)`` with large enough batch-size
+        #   could drastically reduce parallelism level of the Read op)
+        #
+        #   - Potentially violate batching semantic by fusing
+        #   ``Filter->MapBatches(batch_size=...)``
+        #
+        if (
+            upstream_op.can_modify_num_rows()
+            and downstream_op._min_rows_per_bundled_input is not None
+        ):
+            logger.debug(
+                f"Upstream operator '{upstream_op}' could be modifying # of input "
+                f"rows, while downstream operator '{downstream_op}' expects at least "
+                f"{downstream_op._min_rows_per_bundled_input} rows in a batch. "
+                f"Skipping fusion"
+            )
+
+            return False
+
+        return True
 
 
 def _are_remote_args_compatible(prev_args, next_args):

@@ -69,8 +69,8 @@ std::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
         }
       }
     } else {
-      RAY_LOG(WARNING) << "No locality data available for object " << object_id
-                       << ", won't be included in locality cost";
+      RAY_LOG(WARNING).WithField(object_id) << "No locality data available for object "
+                                            << ", won't be included in locality cost";
     }
   }
   return max_bytes_node;

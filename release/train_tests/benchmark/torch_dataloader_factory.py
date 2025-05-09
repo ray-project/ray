@@ -4,10 +4,12 @@ from abc import ABC, abstractmethod
 
 import torch
 from torch.utils.data import IterableDataset
+from torch.utils.data.distributed import DistributedSampler
 
 import ray.train
 import ray
 
+from constants import DatasetKey
 from config import BenchmarkConfig, TorchConfig
 from dataloader_factory import BaseDataLoaderFactory
 from logger_utils import ContextLoggerAdapter
@@ -102,20 +104,21 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for training
         """
         worker_rank = ray.train.get_context().get_world_rank()
+        world_size = ray.train.get_context().get_world_size()
         logger.info(f"Worker {worker_rank}: Creating train dataloader")
 
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
 
         # Create dataset and dataloader
-        train_ds = self.get_iterable_datasets()["train"]
+        train_ds = self.get_iterable_datasets()[DatasetKey.TRAIN]
 
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
         persistent_workers = num_workers > 0
         pin_memory = dataloader_config.torch_pin_memory
 
-        if dataloader_config.prefetch_factor >= 0:
+        if dataloader_config.torch_prefetch_factor >= 0:
             prefetch_factor = dataloader_config.torch_prefetch_factor
         else:
             prefetch_factor = None
@@ -132,6 +135,13 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"timeout={timeout}, batch_size={batch_size}"
         )
 
+        if self.benchmark_config.task == "localfs_image_classification_jpeg":
+            train_sampler = DistributedSampler(
+                train_ds, num_replicas=world_size, rank=worker_rank, shuffle=False
+            )
+        else:
+            train_sampler = None
+
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
             batch_size=batch_size,
@@ -142,6 +152,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
+            multiprocessing_context="forkserver",
+            sampler=train_sampler,
         )
 
         return self.create_batch_iterator(dataloader, device)
@@ -153,13 +165,14 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for validation
         """
         worker_rank = ray.train.get_context().get_world_rank()
+        world_size = ray.train.get_context().get_world_size()
         logger.info(f"Worker {worker_rank}: Creating validation dataloader")
 
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
 
         # Create dataset and dataloader with row limits
-        val_ds = self.get_iterable_datasets()["val"]
+        val_ds = self.get_iterable_datasets()[DatasetKey.VALID]
 
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
@@ -168,10 +181,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             dataloader_config.torch_pin_memory and torch.cuda.is_available()
         )  # Use config setting
 
-        # Only set prefetch_factor and timeout when using workers
-        prefetch_factor = (
-            dataloader_config.prefetch_batches if num_workers > 0 else None
-        )
+        if dataloader_config.torch_prefetch_factor >= 0:
+            prefetch_factor = dataloader_config.torch_prefetch_factor
+        else:
+            prefetch_factor = None
+
         timeout = (
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
@@ -184,6 +198,13 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"timeout={timeout}, batch_size={batch_size}"
         )
 
+        if self.benchmark_config.task == "localfs_image_classification_jpeg":
+            val_sampler = DistributedSampler(
+                val_ds, num_replicas=world_size, rank=worker_rank, shuffle=False
+            )
+        else:
+            val_sampler = None
+
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
             batch_size=batch_size,
@@ -194,5 +215,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
+            multiprocessing_context="forkserver",
+            sampler=val_sampler,
         )
         return self.create_batch_iterator(dataloader, device)
