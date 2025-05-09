@@ -572,3 +572,9 @@ doctest(
     ),
     tags = ["team:core"],
 )
+
+filegroup(
+    name = "example_configs",
+    files = glob(["source/ray-overview/examples/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
+)
