@@ -40,6 +40,7 @@ def train_fn_per_worker(config):
 
 
 def main():
+    start_time = time.perf_counter()
     logging.basicConfig(level=logging.INFO)
 
     benchmark_config: BenchmarkConfig = cli_to_config()
@@ -72,8 +73,6 @@ def main():
     else:
         raise ValueError(f"Unknown task: {benchmark_config.task}")
 
-    start_time = time.perf_counter()
-
     ray_data_execution_options = ray.train.DataConfig.default_ingest_options()
     ray_data_execution_options.locality_with_output = (
         benchmark_config.locality_with_output
@@ -81,6 +80,8 @@ def main():
     ray_data_execution_options.actor_locality_enabled = (
         benchmark_config.actor_locality_enabled
     )
+
+    factory.set_dataset_creation_time(time.perf_counter() - start_time)
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
@@ -104,6 +105,7 @@ def main():
         ),
         datasets=factory.get_ray_datasets(),
     )
+    
     trainer.fit()
 
     end_time = time.perf_counter()
