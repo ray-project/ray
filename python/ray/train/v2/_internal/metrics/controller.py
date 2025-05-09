@@ -55,7 +55,7 @@ class ControllerMetrics:
         return {
             cls.WORKER_GROUP_START_TOTAL_TIME_S: cls._create_time_metric(
                 cls.WORKER_GROUP_START_TOTAL_TIME_S,
-                "Total time taken to start worker groups",
+                "Total time taken to start the worker group",
                 base_tags,
             ),
             cls.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S: cls._create_time_metric(
