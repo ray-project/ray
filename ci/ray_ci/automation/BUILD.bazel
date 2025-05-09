@@ -199,6 +199,16 @@ py_binary(
 )
 
 py_binary(
+    name = "generate_index",
+    srcs = ["generate_index.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
     name = "check_nightly_ray_commit",
     srcs = ["check_nightly_ray_commit.py"],
     exec_compatible_with = ["//:hermetic_python"],
