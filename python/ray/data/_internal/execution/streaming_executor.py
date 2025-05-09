@@ -351,6 +351,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 break
 
             topology[op].dispatch_next_task()
+
             self._resource_manager.update_usages()
 
             i += 1
@@ -452,9 +453,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": (
-                        op.internal_queue_size() + op_state.total_input_enqueued()
-                    ),
+                    "queued_blocks": op_state.total_enqueued_input_bundles(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,

@@ -83,21 +83,15 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def enable_external_redis():
-    import os
-
+def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def redis_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
 def redis_sentinel_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
 
 
@@ -680,16 +674,17 @@ def get_metric_check_condition(
     metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
+
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A list of MetricSamplePattern. The fields that
-      aren't `None` will be matched.
+        metrics_to_check: A list of MetricSamplePattern. The fields that
+            aren't `None` will be matched.
+        export_addr: Optional address to export metrics to.
 
     Returns:
-      A function that returns True if all the metrics are emitted.
-
+        A function that returns True if all the metrics are emitted.
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]

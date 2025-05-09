@@ -15,7 +15,7 @@ import ray
 from ray._private import ray_constants
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import enable_external_redis, wait_for_condition
+from ray._private.test_utils import external_redis_test_enabled, wait_for_condition
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env.runtime_env import RuntimeEnv
 
@@ -210,7 +210,7 @@ class HangPlugin(DummyPlugin):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(enable_external_redis(), reason="Failing in redis mode.")
+@pytest.mark.skipif(external_redis_test_enabled(), reason="Failing in redis mode.")
 def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
     @ray.remote(num_cpus=0.1)
     def f():

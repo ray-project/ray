@@ -23,7 +23,7 @@ files and manually decode data.
     .. tab-item:: Text lines
 
         To read lines of text, call :func:`~ray.data.read_text`. Ray Data creates a
-        row for each line of text.
+        row for each line of text. In the schema, the column name defaults to "text". 
 
         .. testcode::
 
