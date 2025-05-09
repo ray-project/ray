@@ -72,8 +72,7 @@ class TimeMetric(Metric):
         description: str,
         base_tags: Dict[str, str],
     ):
-        self._cache_key = frozenset(base_tags.items())
-        self._values = {}
+        self._current_value = 0.0
         super().__init__(
             name=name,
             default=0.0,
@@ -85,26 +84,17 @@ class TimeMetric(Metric):
         """Update the time metric value by accumulating the time.
 
         Args:
-            value: The time value to add to the metric.
+            value: The time value to increment the metric by.
         """
-        accumulated_value = self.get_value() + value
-        # Replace the value
-        self._values[self._cache_key] = accumulated_value
-        self._gauge.set(accumulated_value, self._base_tags)
+        self._current_value += value
+        self._gauge.set(self._current_value, self._base_tags)
 
     def get_value(self) -> float:
-        """Get the value of the metric.
-
-        Returns:
-            The value of the metric. If the metric has not been recorded,
-            the default value is returned.
-        """
-        return self._values.get(self._cache_key, self._default)
+        return self._current_value
 
     def reset(self):
-        """Reset values and clean up resources."""
         self._gauge.set(self._default, self._base_tags)
-        self._values = {}
+        self._current_value = 0.0
 
 
 class EnumMetric(Metric, Generic[E]):
@@ -166,10 +156,10 @@ class EnumMetric(Metric, Generic[E]):
             self._gauge.set(self._default, tags)
         self._current_value = None
 
+    def _get_tag_keys(self) -> Tuple[str, ...]:
+        return tuple(self._base_tags.keys()) + (self._enum_tag_key,)
+
     def _get_tags(self, enum_value: E) -> Dict[str, str]:
         tags = self._base_tags.copy()
         tags[self._enum_tag_key] = enum_value.name
         return tags
-
-    def _get_tag_keys(self) -> Tuple[str, ...]:
-        return tuple(self._base_tags.keys()) + (self._enum_tag_key,)
