@@ -74,7 +74,8 @@ def _get_uv_run_cmdline() -> Optional[List[str]]:
     check our parent's parents since the Ray driver might be run as a subprocess
     of the 'uv run' process.
 
-    Return the commandline if any of our ancestors was run with "uv run" and None otherwise.
+    Return the uv run command line if any of our ancestors was run with "uv run"
+    and None otherwise.
     """
     parents = psutil.Process().parents()
     for parent in parents:
@@ -140,6 +141,15 @@ if __name__ == "__main__":
     test_parser = argparse.ArgumentParser()
     test_parser.add_argument("runtime_env")
     args = test_parser.parse_args()
+
+    # If the env variable is set, add one more level of subprocess indirection
+    if os.environ.get("RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION") == "1":
+        import subprocess
+        env = os.environ.copy()
+        env.pop("RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION")
+        subprocess.check_call([sys.executable] + sys.argv, env=env)
+        sys.exit(0)
+
     # We purposefully modify sys.argv here to make sure the hook is robust
     # against such modification.
     sys.argv.pop(1)
