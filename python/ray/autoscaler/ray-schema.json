@@ -363,6 +363,7 @@
 							   }
 						   }
                        },
+                       "ray_node_type": {"type": "string", "nullable": true},
                        "initialization_commands": {
                            "$ref": "#/definitions/commands",
                            "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."

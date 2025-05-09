@@ -177,7 +177,8 @@ class Autoscaler:
 
             # Get the current state of the ray cluster resources.
             ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
-            logger.debug(
+            logger.info(
+                f"Cluster resource constraints: {ray_cluster_resource_state.cluster_resource_constraints}\n"
                 f"Virtual cluster states: {ray_cluster_resource_state.virtual_cluster_states}"
             )
 
@@ -198,6 +199,7 @@ class Autoscaler:
                 ray_stop_errors=ray_stop_errors,
                 autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
+                gcs_client=self._gcs_client,
             )
         except Exception as e:
             logger.exception(e)

@@ -149,5 +149,48 @@ void VirtualClusterInfoAccessor::AsyncResubscribe() {
   }
 }
 
+Status VirtualClusterInfoAccessor::SyncCreateOrUpdateVirtualCluster(
+    const std::string &virtual_cluster_id,
+    bool divisible,
+    const std::unordered_map<std::string, int32_t> &replica_sets,
+    int64_t revision,
+    int64_t timeout_ms,
+    std::string &serialized_reply) {
+  rpc::CreateOrUpdateVirtualClusterRequest request;
+  request.set_virtual_cluster_id(virtual_cluster_id);
+  request.set_divisible(divisible);
+  request.mutable_replica_sets()->insert(replica_sets.begin(), replica_sets.end());
+  request.set_revision(revision);
+
+  rpc::CreateOrUpdateVirtualClusterReply reply;
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncCreateOrUpdateVirtualCluster(
+      request, &reply, timeout_ms));
+
+  if (!reply.SerializeToString(&serialized_reply)) {
+    return Status::IOError("Failed to serialize CreateOrUpdateVirtualClusterReply");
+  }
+  return Status::OK();
+}
+
+Status VirtualClusterInfoAccessor::SyncRemoveNodesFromVirtualCluster(
+    const std::string &virtual_cluster_id,
+    const std::vector<std::string> &nodes_to_remove,
+    int64_t timeout_ms,
+    std::string &serialized_reply) {
+  rpc::RemoveNodesFromVirtualClusterRequest request;
+  request.set_virtual_cluster_id(virtual_cluster_id);
+  request.mutable_nodes_to_remove()->Assign(nodes_to_remove.begin(),
+                                            nodes_to_remove.end());
+
+  rpc::RemoveNodesFromVirtualClusterReply reply;
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncRemoveNodesFromVirtualCluster(
+      request, &reply, timeout_ms));
+
+  if (!reply.SerializeToString(&serialized_reply)) {
+    return Status::IOError("Failed to serialize RemoveNodesFromVirtualClusterReply");
+  }
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

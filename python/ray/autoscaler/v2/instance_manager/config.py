@@ -137,6 +137,8 @@ class NodeTypeConfig:
     # config, and the node's config in the `AutoscalingConfig` for the node
     # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
+    # The ray node type. Normally it is specified by env `RAY_NODE_TYPE_NAME`.
+    ray_node_type: str = ""
 
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
@@ -351,6 +353,7 @@ class AutoscalingConfig:
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
+                ray_node_type=node_config.get("ray_node_type", ""),
             )
         return node_type_configs
 

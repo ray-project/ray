@@ -9,7 +9,10 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
-from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_CONSERVE_GPU_NODES,
+    PRIMARY_CLUSTER_ID,
+)
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
     _fits,
@@ -823,7 +826,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 if node.termination_request is not None
             ]
 
-    def schedule(self, request: SchedulingRequest) -> SchedulingReply:
+    def schedule(
+        self, request: SchedulingRequest, virtual_cluster_id: str = ""
+    ) -> SchedulingReply:
         logger.debug(
             "Scheduling for request: resource_request={}, gang_resource_request={}, "
             "cluster_constraint={}".format(
@@ -880,15 +885,16 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         if self._event_logger is not None:
             try:
-                self._event_logger.log_cluster_scheduling_update(
-                    launch_requests=reply.to_launch,
-                    terminate_requests=reply.to_terminate,
-                    infeasible_requests=infeasible_requests,
-                    infeasible_gang_requests=infeasible_gang_requests,
-                    infeasible_cluster_resource_constraints=infeasible_constraints,
-                    cluster_shape=ctx.get_cluster_shape(),
-                    node_type_configs=ctx.get_node_type_configs(),
-                )
+                if virtual_cluster_id == "" or virtual_cluster_id == PRIMARY_CLUSTER_ID:
+                    self._event_logger.log_cluster_scheduling_update(
+                        launch_requests=reply.to_launch,
+                        terminate_requests=reply.to_terminate,
+                        infeasible_requests=infeasible_requests,
+                        infeasible_gang_requests=infeasible_gang_requests,
+                        infeasible_cluster_resource_constraints=infeasible_constraints,
+                        cluster_shape=ctx.get_cluster_shape(),
+                        node_type_configs=ctx.get_node_type_configs(),
+                    )
             except Exception:
                 logger.exception("Failed to emit event logs.")
 

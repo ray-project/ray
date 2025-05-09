@@ -1,11 +1,15 @@
+import copy
 import logging
 import math
 import time
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
+from ray._raylet import GcsClient
 from ray._private.utils import binary_to_hex
+from ray.autoscaler._private.constants import PRIMARY_CLUSTER_ID
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -35,6 +39,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     PendingInstance,
     PendingInstanceRequest,
+    VirtualClusterState,
 )
 from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
@@ -45,9 +50,440 @@ from ray.core.generated.instance_manager_pb2 import (
     NodeKind,
     StatusCode,
     UpdateInstanceManagerStateRequest,
+    TerminationRequest,
+    LaunchRequest,
+)
+
+from ray.core.generated.gcs_service_pb2 import (
+    CreateOrUpdateVirtualClusterReply,
+    RemoveNodesFromVirtualClusterReply,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BufferedNodePool:
+    # The map from virtual_cluster_id to launch requests (scaling-up decisions made by the corresponding virtual cluster).
+    launching_nodes: Dict[str, List[LaunchRequest]] = field(default_factory=dict)
+    # The unavailable (e.g., dead, draining) nodes left in the primary cluster.
+    unavailable_nodes: Set[str] = field(default_factory=set)
+    # The map from ray node type to unassigned (to any virtual cluster) nodes.
+    unassigned_nodes: Dict[str, List[str]] = field(default_factory=dict)
+    # The map from ray node id to its node state.
+    all_node_states: Dict[str, NodeState] = field(default_factory=dict)
+
+
+class VirtualClusterReconciler:
+    @staticmethod
+    def scale_virtual_clusters(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_cluster_resource_state: ClusterResourceState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+        gcs_client: GcsClient,
+    ):
+        buffered_node_pool = BufferedNodePool()
+        # Extract all node states from the cluster resource state.
+        for node_state in ray_cluster_resource_state.node_states:
+            buffered_node_pool.all_node_states[
+                binary_to_hex(node_state.node_id)
+            ] = node_state
+
+        # The nodes in the primary cluster are considered unassigned nodes.
+        for node_id in ray_cluster_resource_state.virtual_cluster_states[
+            PRIMARY_CLUSTER_ID
+        ].nodes:
+            if node_id in buffered_node_pool.all_node_states:
+                if (
+                    buffered_node_pool.all_node_states[node_id].status
+                    == NodeStatus.RUNNING
+                    or buffered_node_pool.all_node_states[node_id].status
+                    == NodeStatus.IDLE
+                ):
+                    node_list = buffered_node_pool.unassigned_nodes.setdefault(
+                        buffered_node_pool.all_node_states[node_id].ray_node_type_name,
+                        [],
+                    )
+                    node_list.append(node_id)
+                else:
+                    buffered_node_pool.unavailable_nodes.add(node_id)
+
+        for (
+            virtual_cluster_id,
+            virtual_cluster_state,
+        ) in ray_cluster_resource_state.virtual_cluster_states.items():
+            if (
+                virtual_cluster_id == PRIMARY_CLUSTER_ID
+                or virtual_cluster_state.divisible
+            ):
+                continue
+
+            # Scale one single virtual cluster.
+            VirtualClusterReconciler._scale_virtual_cluster(
+                autoscaling_state=autoscaling_state,
+                instance_manager=instance_manager,
+                ray_state=virtual_cluster_state,
+                scheduler=scheduler,
+                autoscaling_config=autoscaling_config,
+                virtual_cluster_id=virtual_cluster_id,
+                buffered_node_pool=buffered_node_pool,
+                gcs_client=gcs_client,
+            )
+
+        # Finally scale the primary cluster.
+        VirtualClusterReconciler._scale_primary_cluster(
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            ray_state=ray_cluster_resource_state,
+            scheduler=scheduler,
+            autoscaling_config=autoscaling_config,
+            buffered_node_pool=buffered_node_pool,
+            gcs_client=gcs_client,
+        )
+
+    @staticmethod
+    def _scale_virtual_cluster(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_state: VirtualClusterState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+        virtual_cluster_id: str,
+        buffered_node_pool: BufferedNodePool,
+        gcs_client: GcsClient,
+    ) -> None:
+        """
+        Scale the cluster based on the resource state and the resource scheduler's
+        decision:
+        - It launches new instances if needed.
+        - It terminates extra ray nodes if they should be shut down (preemption
+            or idle termination)
+        Args:
+            autoscaling_state: The autoscaling state to reconcile.
+            instance_manager: The instance manager to reconcile.
+            ray_state: The ray cluster's resource state.
+            scheduler: The resource scheduler to make scaling decisions.
+            autoscaling_config: The autoscaling config.
+        """
+
+        logger.info(
+            f"Start to scale virtual cluster {virtual_cluster_id} "
+            + f"with pending resource requests {ray_state.pending_resource_requests} "
+            + f", and pending gang resource requests {ray_state.pending_gang_resource_requests}"
+        )
+        # Get the current instance states.
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+        autoscaler_instances = []
+        node_set = set(ray_state.nodes)
+        for im_instance in im_instances:
+            if im_instance.node_id in node_set:
+                ray_node = buffered_node_pool.all_node_states.get(im_instance.node_id)
+                autoscaler_instances.append(
+                    AutoscalerInstance(
+                        ray_node=ray_node,
+                        im_instance=im_instance,
+                        cloud_instance_id=(
+                            im_instance.cloud_instance_id
+                            if im_instance.cloud_instance_id
+                            else None
+                        ),
+                    )
+                )
+
+        node_type_configs = autoscaling_config.get_node_type_configs()
+        sched_request = SchedulingRequest(
+            node_type_configs=node_type_configs,
+            max_num_nodes=autoscaling_config.get_max_num_nodes(),
+            resource_requests=ray_state.pending_resource_requests,
+            gang_resource_requests=ray_state.pending_gang_resource_requests,
+            # For now, we don't support resource constraints at the virtual cluster level.
+            cluster_resource_constraints=[],
+            current_instances=autoscaler_instances,
+            idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
+            disable_launch_config_check=(
+                autoscaling_config.disable_launch_config_check()
+            ),
+        )
+
+        # Ask scheduler for updates to the cluster shape.
+        reply = scheduler.schedule(sched_request, virtual_cluster_id)
+
+        # Populate the autoscaling state.
+        autoscaling_state.infeasible_resource_requests.extend(
+            reply.infeasible_resource_requests
+        )
+        autoscaling_state.infeasible_gang_resource_requests.extend(
+            reply.infeasible_gang_resource_requests
+        )
+
+        if autoscaling_config.provider == Provider.READ_ONLY:
+            # We shouldn't be scaling the cluster if the provider is read-only.
+            return
+
+        # Scale the virtual cluster if needed.
+        to_terminate = reply.to_terminate
+        nodes_to_remove = []
+
+        # The terminating nodes are only moved out of the virtual cluster. They
+        # will be buffered in the primary cluster.
+        for terminate_request in to_terminate:
+            nodes_to_remove.append(terminate_request.ray_node_id)
+            node_set.remove(terminate_request.ray_node_id)
+
+        if len(nodes_to_remove) > 0:
+            logger.info(
+                "Removing nodes {} from virtual cluster {}".format(
+                    nodes_to_remove, virtual_cluster_id
+                )
+            )
+            try:
+                str_reply = gcs_client.remove_nodes_from_virtual_cluster(
+                    virtual_cluster_id, nodes_to_remove
+                )
+
+                remove_nodes_reply = RemoveNodesFromVirtualClusterReply()
+                remove_nodes_reply.ParseFromString(str_reply)
+                logger.info(remove_nodes_reply)
+                if remove_nodes_reply.status.code == 0:
+                    # Update the virtual cluster's node list.
+                    ray_state.nodes[:] = []
+                    ray_state.nodes.extend(list(node_set))
+                    # The terminating nodes are added to the unassigned
+                    # nodes of the primary cluster (with a buffered node pool).
+                    for terminate_request in to_terminate:
+                        if (
+                            buffered_node_pool.all_node_states[
+                                terminate_request.ray_node_id
+                            ].status
+                            == NodeStatus.RUNNING
+                            or buffered_node_pool.all_node_states[
+                                terminate_request.ray_node_id
+                            ].status
+                            == NodeStatus.IDLE
+                        ):
+                            node_list = buffered_node_pool.unassigned_nodes.setdefault(
+                                node_type_configs[
+                                    terminate_request.instance_type
+                                ].ray_node_type,
+                                [],
+                            )
+                            node_list.append(terminate_request.ray_node_id)
+                        else:
+                            buffered_node_pool.unavailable_nodes.add(
+                                terminate_request.ray_node_id
+                            )
+            except Exception as ex:
+                logger.warning(
+                    "Failed to remove nodes from virtual cluster {}: {}".format(
+                        virtual_cluster_id, ex
+                    )
+                )
+
+        # Buffer launching requests.
+        if len(reply.to_launch) > 0:
+            launch_reqs = buffered_node_pool.launching_nodes.setdefault(
+                virtual_cluster_id, []
+            )
+            launch_reqs.extend(reply.to_launch)
+            logger.info(
+                f"Need to add nodes {reply.to_launch} to virtual cluster {virtual_cluster_id}"
+            )
+
+    @staticmethod
+    def _scale_primary_cluster(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_state: ClusterResourceState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+        buffered_node_pool: BufferedNodePool,
+        gcs_client: GcsClient,
+    ) -> None:
+        logger.info(f"Start to scale the primary cluster")
+        # Try fulfilling the launching requests (of virtual clusters) from the unassigned node pool.
+        node_type_configs = autoscaling_config.get_node_type_configs()
+        for (
+            virtual_cluster_id,
+            launch_requests,
+        ) in buffered_node_pool.launching_nodes.copy().items():
+            # Make a deep copy in case of any failure.
+            launch_requests_copy = copy.deepcopy(launch_requests)
+            unassigned_nodes_copy = copy.deepcopy(buffered_node_pool.unassigned_nodes)
+
+            expanding_replica_sets: Dict[str, int] = {}
+            for index in range(len(launch_requests) - 1, -1, -1):
+                launch_request = launch_requests[index]
+                ray_node_type = node_type_configs[
+                    launch_request.instance_type
+                ].ray_node_type
+                if ray_node_type in buffered_node_pool.unassigned_nodes:
+                    available_node_list = buffered_node_pool.unassigned_nodes[
+                        ray_node_type
+                    ]
+                    # There are enough unassigned nodes with the same node type.
+                    if len(available_node_list) >= launch_request.count:
+                        logger.info(
+                            f"There are {len(available_node_list)} available nodes that can be assinged to {virtual_cluster_id}."
+                        )
+                        expanding_replica_sets[ray_node_type] = launch_request.count
+                        launch_requests.pop(index)
+                        available_node_list = available_node_list[
+                            launch_request.count :
+                        ]
+                        if len(available_node_list) == 0:
+                            buffered_node_pool.unassigned_nodes.pop(ray_node_type)
+                    elif len(available_node_list) > 0:
+                        expanding_replica_sets[ray_node_type] = len(available_node_list)
+                        launch_request.count -= len(available_node_list)
+                        buffered_node_pool.unassigned_nodes.pop(ray_node_type)
+            if len(launch_requests) == 0:
+                buffered_node_pool.launching_nodes.pop(virtual_cluster_id)
+
+            # This virtual cluster has to scale up.
+            if len(expanding_replica_sets) > 0:
+                replica_sets: Dict[str, int] = {}
+                for node_id in ray_state.virtual_cluster_states[
+                    virtual_cluster_id
+                ].nodes:
+                    replica_sets[
+                        buffered_node_pool.all_node_states[node_id].ray_node_type_name
+                    ] = (
+                        replica_sets.get(
+                            buffered_node_pool.all_node_states[
+                                node_id
+                            ].ray_node_type_name,
+                            0,
+                        )
+                        + 1
+                    )
+
+                # Get the expected replica sets of the virtual cluster.
+                for template_id, count in expanding_replica_sets.items():
+                    replica_sets[template_id] = replica_sets.get(template_id, 0) + count
+
+                logger.info(
+                    f"Updating virtual cluster {virtual_cluster_id} with replica_sets {replica_sets}"
+                )
+                try:
+                    str_reply = gcs_client.create_or_update_virtual_cluster(
+                        virtual_cluster_id,
+                        ray_state.virtual_cluster_states[virtual_cluster_id].divisible,
+                        replica_sets,
+                        ray_state.virtual_cluster_states[virtual_cluster_id].revision,
+                    )
+                    reply = CreateOrUpdateVirtualClusterReply()
+                    reply.ParseFromString(str_reply)
+                    logger.info(reply)
+                except Exception as ex:
+                    logger.warning(
+                        f"Failed to update virtual cluster {virtual_cluster_id}: {ex}"
+                    )
+                    # Revert the changes. The virtual cluster will be updated at the next round.
+                    buffered_node_pool.launching_nodes[
+                        virtual_cluster_id
+                    ] = launch_requests_copy
+                    buffered_node_pool.unassigned_nodes = unassigned_nodes_copy
+            else:
+                logger.info(
+                    f"There is no available unassigned nodes for virtual cluster {virtual_cluster_id}. Wait for new instances."
+                )
+
+        # Get the current instance states.
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+        autoscaler_instances = []
+
+        primary_cluster_nodes = copy.deepcopy(buffered_node_pool.unavailable_nodes)
+        # Only the unassigned nodes are considered.
+        for _, node_list in buffered_node_pool.unassigned_nodes.items():
+            primary_cluster_nodes.update(node_list)
+        for im_instance in im_instances:
+            if im_instance.node_id in primary_cluster_nodes:
+                ray_node = buffered_node_pool.all_node_states.get(im_instance.node_id)
+                autoscaler_instances.append(
+                    AutoscalerInstance(
+                        ray_node=ray_node,
+                        im_instance=im_instance,
+                        cloud_instance_id=(
+                            im_instance.cloud_instance_id
+                            if im_instance.cloud_instance_id
+                            else None
+                        ),
+                    )
+                )
+
+        # When virtual cluster is used, we assume there is no pending (gang) resource requests in the primary cluster.
+        # Meanwhile, cluster resource constraints are still handled here.
+        sched_request = SchedulingRequest(
+            node_type_configs=autoscaling_config.get_node_type_configs(),
+            max_num_nodes=autoscaling_config.get_max_num_nodes(),
+            resource_requests=[],
+            gang_resource_requests=[],
+            cluster_resource_constraints=ray_state.cluster_resource_constraints,
+            current_instances=autoscaler_instances,
+            idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
+            disable_launch_config_check=(
+                autoscaling_config.disable_launch_config_check()
+            ),
+        )
+
+        # Ask scheduler for updates to the cluster shape.
+        reply = scheduler.schedule(sched_request, PRIMARY_CLUSTER_ID)
+
+        # Populate the autoscaling state.
+        autoscaling_state.infeasible_cluster_resource_constraints.extend(
+            reply.infeasible_cluster_resource_constraints
+        )
+
+        if not Reconciler._is_head_node_running(instance_manager):
+            # We shouldn't be scaling the cluster until the head node is ready.
+            # This could happen when the head node (i.e. the raylet) is still
+            # pending registration even though GCS is up.
+            # We will wait until the head node is running and ready to avoid
+            # scaling the cluster from min worker nodes constraint.
+            logger.info("Head node is not running.")
+            return
+
+        if autoscaling_config.provider == Provider.READ_ONLY:
+            # We shouldn't be scaling the cluster if the provider is read-only.
+            return
+
+        # Scale the clusters if needed.
+        to_launch = reply.to_launch
+        logger.info(f"{len(to_launch)} new nodes are needed for the primary cluster.")
+        to_terminate = reply.to_terminate
+        updates = {}
+        # Add terminating instances.
+        logger.info(f"{len(to_terminate)} nodes should be terminated.")
+        for terminate_request in to_terminate:
+            instance_id = terminate_request.instance_id
+            updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance_id,
+                new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                termination_request=terminate_request,
+                details=f"draining ray: {terminate_request.details}",
+            )
+
+        # Add new instances.
+        for _, launch_requests in buffered_node_pool.launching_nodes.items():
+            to_launch.extend(launch_requests)
+        logger.info(f"Launching {len(to_launch)} nodes in total.")
+        for launch_request in to_launch:
+            for _ in range(launch_request.count):
+                instance_id = InstanceUtil.random_instance_id()
+                updates[instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.QUEUED,
+                    instance_type=launch_request.instance_type,
+                    upsert=True,
+                    details=(
+                        f"queuing new instance of {launch_request.instance_type} "
+                        "from scheduler"
+                    ),
+                )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
 
 class Reconciler:
@@ -70,6 +506,7 @@ class Reconciler:
         ray_stop_errors: Optional[List[RayStopError]] = None,
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
+        gcs_client: GcsClient = None,
     ) -> AutoscalingState:
         """
         The reconcile method computes InstanceUpdateEvents for the instance manager
@@ -125,6 +562,7 @@ class Reconciler:
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
             _logger=_logger,
+            gcs_client=gcs_client,
         )
 
         Reconciler._report_metrics(
@@ -230,6 +668,7 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
         _logger: Optional[logging.Logger] = None,
+        gcs_client: GcsClient = None,
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
@@ -271,13 +710,23 @@ class Reconciler:
             _logger=_logger or logger,
         )
 
-        Reconciler._scale_cluster(
-            autoscaling_state=autoscaling_state,
-            instance_manager=instance_manager,
-            ray_state=ray_cluster_resource_state,
-            scheduler=scheduler,
-            autoscaling_config=autoscaling_config,
-        )
+        if len(ray_cluster_resource_state.virtual_cluster_states) == 0:
+            Reconciler._scale_cluster(
+                autoscaling_state=autoscaling_state,
+                instance_manager=instance_manager,
+                ray_state=ray_cluster_resource_state,
+                scheduler=scheduler,
+                autoscaling_config=autoscaling_config,
+            )
+        else:
+            VirtualClusterReconciler.scale_virtual_clusters(
+                autoscaling_state=autoscaling_state,
+                instance_manager=instance_manager,
+                ray_cluster_resource_state=ray_cluster_resource_state,
+                scheduler=scheduler,
+                autoscaling_config=autoscaling_config,
+                gcs_client=gcs_client,
+            )
 
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config

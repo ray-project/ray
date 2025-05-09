@@ -212,6 +212,20 @@ def _node_type_from_group_spec(
     if idle_timeout_s is not None:
         node_type["idle_timeout_s"] = float(idle_timeout_s)
 
+    # Extract ray node type name from the container's env.
+    if (
+        "template" in group_spec
+        and "spec" in group_spec["template"]
+        and "containers" in group_spec["template"]["spec"]
+        and len(group_spec["template"]["spec"]["containers"]) > 0
+    ):
+        container = group_spec["template"]["spec"]["containers"][0]
+        if "env" in container:
+            for env_pair in container["env"]:
+                if env_pair["name"] == "RAY_NODE_TYPE_NAME":
+                    node_type["ray_node_type"] = env_pair["value"]
+                    break
+
     return node_type
 
 
