@@ -130,12 +130,12 @@ bool NodeResources::NodeLabelMatchesConstraint(const LabelConstraint &constraint
   const auto &values = constraint.GetLabelValues();
 
   const auto &node_labels = this->labels;
-  if (match_operator == LabelSelectorOperator::IN) {
+  if (match_operator == LabelSelectorOperator::LABEL_IN) {
     // Check for equals or in() labels
     if (node_labels.contains(key) && values.contains(node_labels.at(key))) {
       return true;
     }
-  } else if (match_operator == LabelSelectorOperator::NOT_IN) {
+  } else if (match_operator == LabelSelectorOperator::LABEL_NOT_IN) {
     // Check for not equals (!) or not in (!in()) labels
     if (!(node_labels.contains(key) && values.contains(node_labels.at(key)))) {
       return true;
