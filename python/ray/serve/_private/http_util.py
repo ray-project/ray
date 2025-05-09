@@ -468,10 +468,8 @@ class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
     def __init__(self, app_or_func: Union[ASGIApp, Callable]):
-        self._using_builder_func = False
         if inspect.isfunction(app_or_func):
             self._asgi_app = app_or_func()
-            self._using_builder_func = True
         else:
             self._asgi_app = app_or_func
 

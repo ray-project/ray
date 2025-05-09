@@ -377,6 +377,10 @@ class ReplicaBase(ABC):
 
         self._port: Optional[int] = None
 
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
@@ -690,6 +694,14 @@ class ReplicaBase(ABC):
                     self._user_callable_asgi_app = await asyncio.wrap_future(
                         self._user_callable_wrapper.initialize_callable()
                     )
+                    if self._user_callable_asgi_app:
+                        docs_path = self._user_callable_wrapper._callable.docs_path
+                        # Since it's possible for user to pass a builder function that returns a FastAPI app
+                        # we will not have a docs path on the ASGI app object untill initialize_callable is called
+                        # so we set the docs path on the controller in this case
+                        await self._controller_handle.set_docs_path.remote(
+                            self._deployment_id.app_name, docs_path
+                        )
                     await self._on_initialized()
                     self._user_callable_initialized = True
 
@@ -1171,10 +1183,6 @@ class UserCallableWrapper:
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
 
-        self._controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        )
-
         # Will be populated in `initialize_callable`.
         self._callable = None
 
@@ -1360,12 +1368,6 @@ class UserCallableWrapper:
         self._callable: ASGIAppReplicaWrapper
 
         app: Starlette = self._callable.app
-        docs_path = self._callable.docs_path
-        if self._callable._using_builder_func and docs_path:
-            # since the builder function is run in replica, we need to set the docs path on controller
-            await self._controller_handle.set_docs_path.remote(
-                self._deployment_id.app_name, docs_path
-            )
 
         # The reason we need to do this is because BackPressureError is a serve internal exception
         # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
