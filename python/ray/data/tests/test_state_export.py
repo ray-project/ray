@@ -1,11 +1,12 @@
-import os
-import ray
-import pytest
 import json
+import os
 from dataclasses import asdict
 
+import pytest
+
+import ray
+from ray.data._internal.metadata_exporter import Operator, Topology
 from ray.data._internal.stats import _get_or_create_stats_actor
-from ray.data._internal.metadata_exporter import Topology, Operator
 from ray.tests.conftest import _ray_start
 
 STUB_JOB_ID = "stub_job_id"
