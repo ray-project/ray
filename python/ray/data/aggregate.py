@@ -247,10 +247,6 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 class Count(AggregateFnV2):
     """Defines count aggregation.
 
-    Counts the number of items in each group. If an `on` column is specified,
-    it counts non-null values in that column (or all values if `ignore_nulls=False`).
-    If `on` is not specified, it counts the total number of rows in the group.
-
     Usage:
         Counting all rows per group:
         `ds.groupby("group_key").aggregate(Count())`
@@ -302,9 +298,6 @@ class Count(AggregateFnV2):
 class Sum(AggregateFnV2):
     """Defines sum aggregation.
 
-    Calculates the sum of values in the specified `on` column for each group.
-    The `on` column must be specified and should contain numerical data.
-
     Usage:
         `ds.groupby("group_key").aggregate(Sum(on="value_col"))`
 
@@ -341,10 +334,6 @@ class Sum(AggregateFnV2):
 @PublicAPI
 class Min(AggregateFnV2):
     """Defines min aggregation.
-
-    Finds the minimum value in the specified `on` column for each group.
-    The `on` column must be specified and should contain comparable data types
-    (e.g., numerical, string, datetime).
 
     Usage:
         `ds.groupby("group_key").aggregate(Min(on="value_col"))`
@@ -384,10 +373,6 @@ class Min(AggregateFnV2):
 class Max(AggregateFnV2):
     """Defines max aggregation.
 
-    Finds the maximum value in the specified `on` column for each group.
-    The `on` column must be specified and should contain comparable data types
-    (e.g., numerical, string, datetime).
-
     Usage:
         `ds.groupby("group_key").aggregate(Max(on="value_col"))`
 
@@ -426,9 +411,6 @@ class Max(AggregateFnV2):
 @PublicAPI
 class Mean(AggregateFnV2):
     """Defines mean (average) aggregation.
-
-    Calculates the mean of values in the specified `on` column for each group.
-    The `on` column must be specified and should contain numerical data.
 
     Usage:
         `ds.groupby("group_key").aggregate(Mean(on="value_col"))`
@@ -491,9 +473,6 @@ class Mean(AggregateFnV2):
 @PublicAPI
 class Std(AggregateFnV2):
     """Defines standard deviation aggregation.
-
-    Calculates the standard deviation of values in the specified `on` column for
-    each group. If the `on` column is not specified, it will result in an error.
 
     Uses Welford's online algorithm for numerical stability. This method computes
     the standard deviation in a single pass. Results may differ slightly from
@@ -583,10 +562,6 @@ class Std(AggregateFnV2):
 class AbsMax(AggregateFnV2):
     """Defines absolute max aggregation.
 
-    Calculates the maximum of the absolute values in the specified `on` column
-    for each group. The `on` column must be specified and should contain
-    numerical data.
-
     Example:
         `ds.groupby("group_key").aggregate(AbsMax(on="value_col"))`
 
@@ -633,9 +608,6 @@ class AbsMax(AggregateFnV2):
 @PublicAPI
 class Quantile(AggregateFnV2):
     """Defines Quantile aggregation.
-
-    Calculates the specified quantile `q` for the values in the `on` column
-    for each group. The `on` column must be specified.
 
     Example:
         To calculate the median (0.5 quantile):
@@ -736,13 +708,6 @@ class Quantile(AggregateFnV2):
 @PublicAPI
 class Unique(AggregateFnV2):
     """Defines unique aggregation.
-
-    Collects all unique values from the specified `on` column for each group.
-    If the `on` column is not specified, it may lead to errors or unexpected
-    behavior as it typically operates on a specific column's values.
-
-    The result for each group will be a list of unique items. The order of items
-    in the list is not guaranteed.
 
     Usage:
         `ds.groupby("group_key").aggregate(Unique(on="value_col"))`
