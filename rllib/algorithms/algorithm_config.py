@@ -23,6 +23,7 @@ from packaging import version
 
 import ray
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
@@ -86,9 +87,10 @@ Space = gym.Space
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.connectors.connector_v2 import ConnectorV2
     from ray.rllib.core.learner import Learner
+    from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
     from ray.rllib.core.rl_module.rl_module import RLModule
     from ray.rllib.utils.typing import EpisodeType
 
@@ -358,6 +360,7 @@ class AlgorithmConfig(_Config):
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
         self.sampler_perf_stats_ema_coef = None
+        self._is_online = True
 
         # `self.learners()`
         self.num_learners = 0
@@ -999,7 +1002,12 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env=None, spaces=None, device=None):
+    def build_env_to_module_connector(
+        self,
+        env=None,
+        spaces=None,
+        device=None,
+    ) -> ConnectorV2:
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1015,8 +1023,6 @@ class AlgorithmConfig(_Config):
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
             val_ = self._env_to_module_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1088,7 +1094,7 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_module_to_env_connector(self, env=None, spaces=None):
+    def build_module_to_env_connector(self, env=None, spaces=None) -> ConnectorV2:
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
@@ -1105,8 +1111,6 @@ class AlgorithmConfig(_Config):
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
             val_ = self._module_to_env_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1192,7 +1196,7 @@ class AlgorithmConfig(_Config):
         input_observation_space,
         input_action_space,
         device=None,
-    ):
+    ) -> ConnectorV2:
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1213,8 +1217,6 @@ class AlgorithmConfig(_Config):
                 input_action_space,
                 # device,  # TODO (sven): Also pass device into custom builder.
             )
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -2671,6 +2673,7 @@ class AlgorithmConfig(_Config):
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
         offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
         num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
         custom_resources_per_offline_eval_runner: Optional[
             Dict[str, Any]
         ] = NotProvided,
@@ -2813,6 +2816,10 @@ class AlgorithmConfig(_Config):
                 their `learner_only` flag set to True.
             num_cpus_per_offline_eval_runner: Number of CPUs to allocate per
                 OfflineEvaluationRunner.
+            num_gpus_per_offline_eval_runner: Number of GPUs to allocate per
+                OfflineEvaluationRunner. This can be fractional. This is usually needed only if
+                your (custom) loss function itself requires a GPU (i.e., it contains GPU-
+                intensive computations), or model inference is unusually expensive.
             custom_resources_per_eval_runner: Any custom Ray resources to allocate per
                 OfflineEvaluationRunner.
             offline_evaluation_timeout_s: The timeout in seconds for calling `run()` on remote
@@ -2945,6 +2952,8 @@ class AlgorithmConfig(_Config):
             )
         if num_cpus_per_offline_eval_runner is not NotProvided:
             self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if num_gpus_per_offline_eval_runner is not NotProvided:
+            self.num_gpus_per_offline_eval_runner = num_gpus_per_offline_eval_runner
         if custom_resources_per_offline_eval_runner is not NotProvided:
             self.custom_resources_per_offline_eval_runner = (
                 custom_resources_per_offline_eval_runner
@@ -5157,9 +5166,13 @@ class AlgorithmConfig(_Config):
         # action and observation spaces. Note, we require here the spaces,
         # i.e. a user cannot provide an environment instead because we do
         # not want to create the environment to receive spaces.
-        if self.is_offline and (
-            not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
-            and (self.action_space is None or self.observation_space is None)
+        if (
+            self.is_offline
+            and not self.is_online
+            and (
+                not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
+                and (self.action_space is None or self.observation_space is None)
+            )
         ):
             self._value_error(
                 "If no evaluation should be run, `action_space` and "
@@ -5227,6 +5240,14 @@ class AlgorithmConfig(_Config):
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
             )
+
+    @property
+    def is_online(self) -> bool:
+        """Defines if this config is for online RL.
+
+        Note, a config can be for on- and offline training at the same time.
+        """
+        return self._is_online
 
     @property
     def is_offline(self) -> bool:
@@ -6045,6 +6066,7 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
         self,
         *,
         differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
+        **kwargs,
     ) -> "DifferentiableAlgorithmConfig":
         """Sets the configurations for differentiable learners.
 
@@ -6053,6 +6075,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 defining the `DifferentiableLearner` classes used for the nested updates in
                 `Algorithm`'s learner.
         """
+        super().learners(**kwargs)
+
         if differentiable_learner_configs is not NotProvided:
             self.differentiable_learner_configs = differentiable_learner_configs
 
@@ -6092,8 +6116,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 "one instance is not a `DifferentiableLearnerConfig`."
             )
 
-    def get_default_learner_class(self):
-        """Returns the Learner class to use for this algorithm.
+    def get_default_learner_class(self) -> Union[Type["TorchMetaLearner"], str]:
+        """Returns the `MetaLearner` class to use for this algorithm.
 
         Override this method in the sub-class to return the `MetaLearner`.
 
@@ -6101,9 +6125,31 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             The `MetaLearner` class to use for this algorithm either as a class
             type or as a string. (e.g. "ray.rllib.core.learner.torch.torch_meta_learner.TorchMetaLearner")
         """
-        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+        return NotImplemented
 
-        return TorchMetaLearner
+    def get_differentiable_learner_classes(
+        self,
+    ) -> List[Union[Type["DifferentiableLearner"], str]]:
+        """Returns the `DifferentiableLearner` classes to use for this algorithm.
+
+        Override this method in the sub-class to return the `DifferentiableLearner`.
+
+        Returns:
+            The `DifferentiableLearner` class to use for this algorithm either as a class
+            type or as a string. (e.g.
+            "ray.rllib.core.learner.torch.torch_meta_learner.TorchDifferentiableLearner").
+        """
+        return NotImplemented
+
+    def get_differentiable_learner_configs(self) -> List[DifferentiableLearnerConfig]:
+        """Returns the `DifferentiableLearnerConfigs` for all `DifferentiableLearner`s.
+
+        Override this method in the sub-class to return the `DifferentiableLearnerConfig`s.
+
+        Returns:
+            The `DifferentiableLearnerConfig` instances to use for this algorithm.
+        """
+        return self.differentiable_learner_configs
 
 
 class TorchCompileWhatToCompile(str, Enum):

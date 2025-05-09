@@ -83,21 +83,15 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def enable_external_redis():
-    import os
-
+def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def redis_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
 def redis_sentinel_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
 
 
@@ -680,16 +674,17 @@ def get_metric_check_condition(
     metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
+
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A list of MetricSamplePattern. The fields that
-      aren't `None` will be matched.
+        metrics_to_check: A list of MetricSamplePattern. The fields that
+            aren't `None` will be matched.
+        export_addr: Optional address to export metrics to.
 
     Returns:
-      A function that returns True if all the metrics are emitted.
-
+        A function that returns True if all the metrics are emitted.
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -1700,7 +1695,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster, whitelist=None):
+def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1711,8 +1706,6 @@ def check_local_files_gced(cluster, whitelist=None):
             # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
             items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-            if whitelist and set(items).issubset(whitelist):
-                continue
             if len(items) > 0:
                 print(f"runtime_env files not GC'd from subdir '{subdir}': {items}")
                 return False
