@@ -174,8 +174,12 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
-            reduce_per_index_on_merge: If True, when merging Stats objects, we reduce incoming values per index such that the new value at index `n` will be the reduced values of all incoming values at index `n`.
-                If False, when reducing `n` Stats, the first `n` merged values will be the reduced values of all incoming values at index `0`, the next `n` merged values will be the reduced values of all incoming values at index `1`, etc.
+            reduce_per_index_on_merge: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
                 If None, the default behavior is False.
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
