@@ -18,7 +18,6 @@ from ray_release.config import (
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
-    RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
 )
 from ray_release.template import load_test_cluster_compute, get_working_dir
