@@ -129,7 +129,7 @@ class ClientCallImpl : public ClientCall {
   /// The stats handle tracking this RPC.
   std::shared_ptr<StatsHandle> stats_handle_;
 
-  bool record_num_request_failures_;
+  bool record_stats_;
 
   /// The response reader.
   std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
@@ -217,8 +217,8 @@ class ClientCallManager {
         num_threads_(num_threads),
         record_stats_(record_stats),
         shutdown_(false),
+        rr_index_(std::rand() % num_threads_),
         call_timeout_ms_(call_timeout_ms) {
-    rr_index_ = std::rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
