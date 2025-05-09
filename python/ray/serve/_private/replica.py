@@ -1171,6 +1171,10 @@ class UserCallableWrapper:
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
 
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+
         # Will be populated in `initialize_callable`.
         self._callable = None
 
@@ -1352,6 +1356,29 @@ class UserCallableWrapper:
     def user_callable(self) -> Optional[Callable]:
         return self._callable
 
+    async def _initialize_asgi_callable(self) -> None:
+        self._callable: ASGIAppReplicaWrapper
+
+        app: Starlette = self._callable.app
+        docs_path = self._callable.docs_path
+        if self._callable._using_builder_func and docs_path:
+            # since the builder function is run in replica, we need to set the docs path on controller
+            await self._controller_handle.set_docs_path.remote(
+                self._deployment_id.app_name, docs_path
+            )
+
+        # The reason we need to do this is because BackPressureError is a serve internal exception
+        # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
+        # With same reasoning, we are not handling TimeoutError because it's a generic exception
+        # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
+        def handle_exception(_: Request, exc: Exception):
+            return self.handle_exception(exc)
+
+        for exc in self.service_unavailable_exceptions:
+            app.add_exception_handler(exc, handle_exception)
+
+        await self._callable._run_asgi_lifespan_startup()
+
     @_run_on_user_code_event_loop
     async def initialize_callable(self) -> Optional[ASGIApp]:
         """Initialize the user callable.
@@ -1390,18 +1417,7 @@ class UserCallableWrapper:
             )
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
-                app: Starlette = self._callable.app
-                # The reason we need to do this is because BackPressureError is a serve internal exception
-                # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-                # With same reasoning, we are not handling TimeoutError because it's a generic exception
-                # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
-                def handle_exception(_: Request, exc: Exception):
-                    return self.handle_exception(exc)
-
-                for exc in self.service_unavailable_exceptions:
-                    app.add_exception_handler(exc, handle_exception)
-
-                await self._callable._run_asgi_lifespan_startup()
+                await self._initialize_asgi_callable()
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
 

@@ -768,8 +768,8 @@ def test_fastapi_docs_path(
     )
 
 
-def asgi_builder():
-    app = FastAPI()
+def fastapi_builder():
+    app = FastAPI(docs_url="/custom-docs")
 
     @app.get("/")
     def f1():
@@ -802,8 +802,8 @@ def asgi_builder():
     return app
 
 
-def test_ingress_with_asgiapp_routes_outside_deployment(serve_instance):
-    app = asgi_builder()
+def test_ingress_with_fastapi_routes_outside_deployment(serve_instance):
+    app = fastapi_builder()
 
     @serve.deployment
     @serve.ingress(app)
@@ -821,9 +821,13 @@ def test_ingress_with_asgiapp_routes_outside_deployment(serve_instance):
     assert requests.get("http://localhost:8000/error").status_code == 500
     assert requests.get("http://localhost:8000/error").json() == {"error": "fake-error"}
 
+    # get the docs path from the controller
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path == "/custom-docs"
 
-def test_ingress_asgiapp_with_no_deployment_class(serve_instance):
-    app = asgi_builder()
+
+def test_ingress_with_fastapi_with_no_deployment_class(serve_instance):
+    app = fastapi_builder()
 
     ingress_deployment = serve.deployment(serve.ingress(app)())
     assert ingress_deployment.name == "ASGIIngressDeployment"
@@ -833,9 +837,13 @@ def test_ingress_asgiapp_with_no_deployment_class(serve_instance):
     assert requests.get("http://localhost:8000/error").status_code == 500
     assert requests.get("http://localhost:8000/error").json() == {"error": "fake-error"}
 
+    # get the docs path from the controller
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path == "/custom-docs"
 
-def test_ingress_with_asgi_builder_function(serve_instance):
-    ingress_deployment = serve.deployment(serve.ingress(asgi_builder)())
+
+def test_ingress_with_fastapi_builder_function(serve_instance):
+    ingress_deployment = serve.deployment(serve.ingress(fastapi_builder)())
     serve.run(ingress_deployment.bind())
 
     resp = requests.get("http://localhost:8000/")
@@ -850,10 +858,13 @@ def test_ingress_with_asgi_builder_function(serve_instance):
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path == "/custom-docs"
 
-def test_ingress_asgiapp_builder_with_deployment_class(serve_instance):
+
+def test_ingress_with_fastapi_builder_with_deployment_class(serve_instance):
     @serve.deployment
-    @serve.ingress(asgi_builder)
+    @serve.ingress(fastapi_builder)
     class ASGIIngress:
         def __init__(self):
             pass
@@ -870,9 +881,13 @@ def test_ingress_asgiapp_builder_with_deployment_class(serve_instance):
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
+    # get the docs path from the controller
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path == "/custom-docs"
 
-def test_ingress_asgiapp_with_native_deployment(serve_instance):
-    app = asgi_builder()
+
+def test_ingress_with_fastapi_with_native_deployment(serve_instance):
+    app = fastapi_builder()
 
     class ASGIIngress:
         def __call__(self):
@@ -883,6 +898,127 @@ def test_ingress_asgiapp_with_native_deployment(serve_instance):
     assert "Classes passed to @serve.ingress may not have __call__ method." in str(
         e.value
     )
+
+
+def starlette_builder():
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route, Router
+
+    # Define route handlers
+    async def homepage(request):
+        return JSONResponse("hello")
+
+    async def f2(request):
+        return JSONResponse("hello f2")
+
+    async def error(request):
+        raise ValueError("some error")
+
+    # Create a router for additional routes
+    router = Router(
+        [
+            Route("/f2", f2),
+            Route("/error", error),
+        ]
+    )
+
+    # Create a middleware for adding headers
+    class CustomHeaderMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            response = await call_next(request)
+            response.headers["X-Custom-Middleware"] = "fake-middleware"
+            return response
+
+    # Custom exception handler for ValueError
+    def handle_value_error(request, exc):
+        return JSONResponse(status_code=500, content={"error": "fake-error"})
+
+    exception_handlers = {ValueError: handle_value_error}
+
+    # Configure routes for the main app
+    routes = [
+        Route("/", homepage),
+    ]
+
+    # Create the Starlette app with middleware and exception handlers
+    app = Starlette(
+        routes=routes,
+        middleware=[Middleware(CustomHeaderMiddleware)],
+        exception_handlers=exception_handlers,
+    )
+
+    # Mount the router to the main app
+    app.mount("/", router)
+
+    return app
+
+
+def test_ingress_with_starlette_app_with_no_deployment_class(serve_instance):
+    ingress_deployment = serve.deployment(serve.ingress(starlette_builder())())
+    serve.run(ingress_deployment.bind())
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == "hello"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/f2")
+    assert resp.json() == "hello f2"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/error")
+    assert resp.status_code == 500
+    assert resp.json() == {"error": "fake-error"}
+
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path is None
+
+
+def test_ingress_with_starlette_builder_with_no_deployment_class(serve_instance):
+    ingress_deployment = serve.deployment(serve.ingress(starlette_builder)())
+    serve.run(ingress_deployment.bind())
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == "hello"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/f2")
+    assert resp.json() == "hello f2"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/error")
+    assert resp.status_code == 500
+    assert resp.json() == {"error": "fake-error"}
+
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path is None
+
+
+def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
+    @serve.deployment
+    @serve.ingress(starlette_builder)
+    class ASGIIngress:
+        def __init__(self):
+            pass
+
+    serve.run(ASGIIngress.bind())
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == "hello"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/f2")
+    assert resp.json() == "hello f2"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/error")
+    assert resp.status_code == 500
+    assert resp.json() == {"error": "fake-error"}
+
+    docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
+    assert docs_path is None
 
 
 if __name__ == "__main__":
