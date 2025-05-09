@@ -109,7 +109,7 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (record_stats_ && !status.ok()) {
-      stats::STATS_grpc_client_req_failures.Record(1.0, stats_handle_->event_name);
+      stats::STATS_grpc_client_req_failed.Record(1.0, stats_handle_->event_name);
     }
     if (callback_ != nullptr) {
       // This should be only called once.

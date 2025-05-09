@@ -74,7 +74,7 @@ DECLARE_stats(grpc_server_req_succeeded);
 DECLARE_stats(grpc_server_req_failed);
 
 /// GRPC Client Failures
-DECLARE_stats(grpc_client_req_failures);
+DECLARE_stats(grpc_client_req_failed);
 
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
