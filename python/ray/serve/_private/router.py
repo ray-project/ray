@@ -7,7 +7,7 @@ import weakref
 from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop
 from collections import defaultdict
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from contextlib import contextmanager
 from functools import lru_cache, partial
 from typing import Any, Coroutine, DefaultDict, Dict, List, Optional, Tuple, Union
@@ -331,6 +331,7 @@ class Router(ABC):
     def assign_request(
         self,
         request_meta: RequestMetadata,
+        on_request_scheduled: Optional[Callable] = None,
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
@@ -522,7 +523,9 @@ class AsyncioRouter:
             )
 
     async def schedule_and_send_request(
-        self, pr: PendingRequest
+        self,
+        pr: PendingRequest,
+        on_request_scheduled: Optional[Callable] = None,
     ) -> Tuple[ReplicaResult, ReplicaID]:
         """Choose a replica for the request and send it.
 
@@ -544,6 +547,8 @@ class AsyncioRouter:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
                 if queue_info.accepted:
+                    if on_request_scheduled:
+                        on_request_scheduled(pr, r.replica_id, result)
                     return result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
@@ -582,11 +587,12 @@ class AsyncioRouter:
     async def assign_request(
         self,
         request_meta: RequestMetadata,
+        on_request_scheduled: Optional[Callable] = None,
         *request_args,
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
-
+        # print(f"in assign_request {on_request_scheduled=}")
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
@@ -620,6 +626,7 @@ class AsyncioRouter:
                         kwargs=request_kwargs,
                         metadata=request_meta,
                     ),
+                    on_request_scheduled,
                 )
 
                 # Keep track of requests that have been sent out to replicas
@@ -696,6 +703,7 @@ class SingletonThreadRouter(Router):
     def assign_request(
         self,
         request_meta: RequestMetadata,
+        on_request_scheduled: Optional[Callable] = None,
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
@@ -737,7 +745,7 @@ class SingletonThreadRouter(Router):
 
         task = self._asyncio_loop.create_task(
             self._asyncio_router.assign_request(
-                request_meta, *request_args, **request_kwargs
+                request_meta, on_request_scheduled, *request_args, **request_kwargs
             )
         )
         # Schedule the actual request assignment coroutine on the asyncio loop thread.

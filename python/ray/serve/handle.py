@@ -221,7 +221,13 @@ class _DeploymentHandleBase:
             }
         )
 
-        return self._router.assign_request(metadata, *args, **kwargs), metadata
+        # print(f"in _remote {self.handle_options.on_request_scheduled=}")
+        return (
+            self._router.assign_request(
+                metadata, self.handle_options.on_request_scheduled, *args, **kwargs
+            ),
+            metadata,
+        )
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -694,6 +700,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         replica_scheduler: Union[str, Callable, DEFAULT] = DEFAULT.VALUE,
+        on_request_scheduled: Union[Callable, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -724,6 +731,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
             replica_scheduler=replica_scheduler,
+            on_request_scheduled=on_request_scheduled,
         )
 
     def remote(
