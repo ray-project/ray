@@ -768,6 +768,123 @@ def test_fastapi_docs_path(
     )
 
 
+def asgi_builder():
+    app = FastAPI()
+
+    @app.get("/")
+    def f1():
+        return "hello"
+
+    router = APIRouter()
+
+    @router.get("/f2")
+    def f2():
+        return "hello f2"
+
+    @router.get("/error")
+    def error():
+        raise ValueError("some error")
+
+    app.include_router(router)
+
+    # add a middleware
+    @app.middleware("http")
+    async def add_process_time_header(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Custom-Middleware"] = "fake-middleware"
+        return response
+
+    # custom exception handler
+    @app.exception_handler(ValueError)
+    async def custom_exception_handler(request: Request, exc: ValueError):
+        return JSONResponse(status_code=500, content={"error": "fake-error"})
+
+    return app
+
+
+def test_ingress_with_asgiapp_routes_outside_deployment(serve_instance):
+    app = asgi_builder()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class ASGIIngress:
+        @app.get("/class_route")
+        def class_route(self):
+            return "hello class route"
+
+    serve.run(ASGIIngress.bind())
+    assert requests.get("http://localhost:8000/").json() == "hello"
+    assert requests.get("http://localhost:8000/f2").json() == "hello f2"
+    assert (
+        requests.get("http://localhost:8000/class_route").json() == "hello class route"
+    )
+    assert requests.get("http://localhost:8000/error").status_code == 500
+    assert requests.get("http://localhost:8000/error").json() == {"error": "fake-error"}
+
+
+def test_ingress_asgiapp_with_no_deployment_class(serve_instance):
+    app = asgi_builder()
+
+    ingress_deployment = serve.deployment(serve.ingress(app)())
+    assert ingress_deployment.name == "ASGIIngressDeployment"
+    serve.run(ingress_deployment.bind())
+    assert requests.get("http://localhost:8000/").json() == "hello"
+    assert requests.get("http://localhost:8000/f2").json() == "hello f2"
+    assert requests.get("http://localhost:8000/error").status_code == 500
+    assert requests.get("http://localhost:8000/error").json() == {"error": "fake-error"}
+
+
+def test_ingress_with_asgi_builder_function(serve_instance):
+    ingress_deployment = serve.deployment(serve.ingress(asgi_builder)())
+    serve.run(ingress_deployment.bind())
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == "hello"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/f2")
+    assert resp.json() == "hello f2"
+    assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
+
+    resp = requests.get("http://localhost:8000/error")
+    assert resp.status_code == 500
+    assert resp.json() == {"error": "fake-error"}
+
+
+def test_ingress_asgiapp_builder_with_deployment_class(serve_instance):
+    @serve.deployment
+    @serve.ingress(asgi_builder)
+    class ASGIIngress:
+        def __init__(self):
+            pass
+
+    serve.run(ASGIIngress.bind())
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == "hello"
+
+    resp = requests.get("http://localhost:8000/f2")
+    assert resp.json() == "hello f2"
+
+    resp = requests.get("http://localhost:8000/error")
+    assert resp.status_code == 500
+    assert resp.json() == {"error": "fake-error"}
+
+
+def test_ingress_asgiapp_with_native_deployment(serve_instance):
+    app = asgi_builder()
+
+    class ASGIIngress:
+        def __call__(self):
+            pass
+
+    with pytest.raises(ValueError) as e:
+        serve.ingress(app)(ASGIIngress)
+    assert "Classes passed to @serve.ingress may not have __call__ method." in str(
+        e.value
+    )
+
+
 if __name__ == "__main__":
     import sys
 

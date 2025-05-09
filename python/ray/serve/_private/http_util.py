@@ -7,7 +7,7 @@ import socket
 from collections import deque
 from dataclasses import dataclass
 from packaging import version
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
 
 import starlette
 import uvicorn
@@ -466,8 +466,11 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app: ASGIApp):
-        self._asgi_app = app
+    def __init__(self, app_or_callable: Union[ASGIApp, Callable]):
+        if inspect.isfunction(app_or_callable):
+            self._asgi_app = app_or_callable()
+        else:
+            self._asgi_app = app_or_callable
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
