@@ -290,9 +290,6 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                if self.vllm_use_v1:
-                    raise ValueError("Guided decoding is only supported with vLLM v0")
-
                 guided_decoding = vllm.sampling_params.GuidedDecodingParams(
                     **self._maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
