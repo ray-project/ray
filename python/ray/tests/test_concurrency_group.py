@@ -9,7 +9,7 @@ import pytest
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, SignalActor
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -249,28 +249,47 @@ def test_multiple_threads_in_same_group(ray_start_regular_shared):
 
     @ray.remote
     class Actor:
-        def __init__(self):
-            self.data = 0
+        def __init__(self, signal: SignalActor, max_concurrency: int):
             self._thread_local_data = threading.local()
+            self.signal = signal
+            self.thread_id_to_data = {}
+            self.max_concurrency = max_concurrency
 
-        def set_thread_local(self, value: Any) -> int:
+        def set_thread_local(self, value: int) -> int:
             # If the thread-local data were garbage collected after the previous
             # task on the same thread finished, `self.data` would be incremented
             # more than once for the same thread.
-            if not hasattr(self._thread_local_data, "value"):
-                self._thread_local_data.value = self.data
-                self.data += 1
-            assert self._thread_local_data.value <= self.data
+            assert not hasattr(self._thread_local_data, "value")
+            self._thread_local_data.value = value
+            self.thread_id_to_data[threading.current_thread().ident] = value
+            ray.get(self.signal.wait.remote())
 
-        def get_data(self) -> int:
-            return self.data
+        def check_thread_local_data(self) -> bool:
+            assert len(self.thread_id_to_data) == self.max_concurrency
+            assert hasattr(self._thread_local_data, "value")
+            assert (
+                self._thread_local_data.value
+                == self.thread_id_to_data[threading.current_thread().ident]
+            )
+            ray.get(self.signal.wait.remote())
 
     max_concurrency = 5
-    a = Actor.options(max_concurrency=max_concurrency).remote()
-    for _ in range(200):
-        for i in range(max_concurrency):
-            ray.get(a.set_thread_local.remote(i))
-    assert ray.get(a.get_data.remote()) == max_concurrency
+    signal = SignalActor.remote()
+    a = Actor.options(max_concurrency=max_concurrency).remote(signal, max_concurrency)
+
+    refs = []
+    for i in range(max_concurrency):
+        refs.append(a.set_thread_local.remote(i))
+
+    ray.get(signal.send.remote())
+    ray.get(refs)
+
+    refs = []
+    for _ in range(max_concurrency):
+        refs.append(a.check_thread_local_data.remote())
+
+    ray.get(signal.send.remote())
+    ray.get(refs)
 
 
 def test_invalid_concurrency_group():
