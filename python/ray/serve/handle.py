@@ -3,7 +3,7 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
@@ -172,6 +172,24 @@ class _DeploymentHandleBase:
 
         if not self.is_initialized:
             self._init()
+
+        print(
+            f"in _options {self._router._asyncio_router._replica_scheduler=} {new_handle_options.replica_scheduler=}"
+        )
+        if not isinstance(
+            self._router._asyncio_router._replica_scheduler,
+            new_handle_options.replica_scheduler,
+        ):
+            print("recreating router")
+            self._router = self._create_router(
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
+                handle_options=self.init_options,
+                replica_scheduler_class=new_handle_options.replica_scheduler,
+            )
+        print(
+            f"in _options after {self._router._asyncio_router._replica_scheduler=} {new_handle_options.replica_scheduler=}"
+        )
 
         return DeploymentHandle(
             self.deployment_name,
@@ -675,6 +693,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        replica_scheduler: Union[str, Callable, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -704,6 +723,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            replica_scheduler=replica_scheduler,
         )
 
     def remote(
@@ -736,6 +756,8 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
+        if self._router:
+            print(f"in remote {self._router._asyncio_router._replica_scheduler=}")
 
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:

@@ -175,6 +175,7 @@ def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
+    replica_scheduler_class: Optional[ReplicaScheduler] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -182,12 +183,14 @@ def create_router(
     actor_id = get_current_actor_id()
 
     controller_handle = _get_global_client()._controller
-    deployment_config = ray.get(
-        controller_handle.get_deployment_config.remote(deployment_id)
-    )
+    if not replica_scheduler_class:
+        deployment_config = ray.get(
+            controller_handle.get_deployment_config.remote(deployment_id)
+        )
+        replica_scheduler_class = deployment_config.get_replica_scheduler_class()
+
     is_inside_ray_client_context = inside_ray_client_context()
 
-    replica_scheduler_class = deployment_config.get_replica_scheduler_class()
     # print(f"create_router: {replica_scheduler_class=} {deployment_config=}")
     replica_scheduler = create_scheduler(
         actor_id,
