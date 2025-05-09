@@ -65,7 +65,7 @@ def _check_working_dir_files(
             "working directory before running 'uv run', or by using the 'working_dir' "
             "parameter of the runtime_environment."
         )
-    
+
 
 def _get_uv_run_cmdline() -> Optional[List[str]]:
     """
@@ -80,7 +80,11 @@ def _get_uv_run_cmdline() -> Optional[List[str]]:
     for parent in parents:
         try:
             cmdline = parent.cmdline()
-            if len(cmdline) > 1 and os.path.basename(cmdline[0]) == "uv" and cmdline[1] == "run":
+            if (
+                len(cmdline) > 1
+                and os.path.basename(cmdline[0]) == "uv"
+                and cmdline[1] == "run"
+            ):
                 return cmdline
         except psutil.NoSuchProcess:
             continue
@@ -144,6 +148,7 @@ if __name__ == "__main__":
     # If the env variable is set, add one more level of subprocess indirection
     if os.environ.get("RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION") == "1":
         import subprocess
+
         env = os.environ.copy()
         env.pop("RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION")
         subprocess.check_call([sys.executable] + sys.argv, env=env)

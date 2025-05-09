@@ -279,7 +279,9 @@ def test_uv_run_runtime_env_hook(with_uv):
             "py_executable": f"{uv} run --no-project",
             "working_dir": os.getcwd(),
         },
-        subprocess_kwargs={"env": {**os.environ, "RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION": "1"}}
+        subprocess_kwargs={
+            "env": {**os.environ, "RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION": "1"}
+        },
     )
 
 
