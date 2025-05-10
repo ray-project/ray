@@ -215,6 +215,7 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
+    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
