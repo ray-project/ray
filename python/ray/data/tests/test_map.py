@@ -1925,6 +1925,47 @@ def test_map_op_backpressure_configured_properly():
     assert list(range(5))[:-1] == vals
 
 
+def test_map_names():
+    """To test different UDF format such that the operator
+    has the correct representation.
+
+    The actual name is handled by
+    AbstractUDFMap._get_operator_name()
+    """
+
+    ds = ray.data.range(5)
+
+    r = ds.map(lambda x: {"id": str(x["id"])}).__repr__()
+    assert r.startswith("Map(<lambda>)"), r
+
+    class C:
+        def __call__(self, x):
+            return x
+
+    r = ds.map(C, concurrency=4).__repr__()
+    assert r.startswith("Map(C)"), r
+
+    # Simple and partial functions
+    def func(x, y):
+        return x
+
+    r = ds.map(func, fn_args=[0]).__repr__()
+    assert r.startswith("Map(func)")
+
+    from functools import partial
+
+    r = ds.map(partial(func, y=1)).__repr__()
+    assert r.startswith("Map(func)"), r
+
+    # Preprocessor
+    from ray.data.preprocessors import OneHotEncoder
+
+    ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
+    enc = OneHotEncoder(columns=["item"])
+    r = enc.fit_transform(ds).__repr__()
+    assert r.startswith("OneHotEncoder"), r
+
+
 if __name__ == "__main__":
     import sys
 
