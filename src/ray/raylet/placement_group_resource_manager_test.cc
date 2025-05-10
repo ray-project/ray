@@ -42,7 +42,8 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   void SetUp() {
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
-      return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      return gcs_client_->Nodes().GetCached(NodeID::FromBinary(node_id.Binary())) !=
+             nullptr;
     };
     EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
         .WillRepeatedly(::testing::Return(&node_info_));

@@ -135,7 +135,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
-        return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+        return gcs_client.Nodes().GetCached(NodeID::FromBinary(node_id.Binary())) !=
+               nullptr;
       });
 
   return scheduler;
