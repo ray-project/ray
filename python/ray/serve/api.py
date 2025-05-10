@@ -27,6 +27,7 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.local_testing_mode import make_local_deployment_handle
 from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -264,6 +265,7 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+    replica_scheduler: Default[Union[str, ReplicaScheduler, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -323,6 +325,13 @@ def deployment(
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
             This cannot be set together with placement_group_bundles.
+        logging_config: Logging config options for the deployment. If provided,
+            the config will be used to set up Serve logger.
+        replica_scheduler: The replica scheduler to use for this deployment.
+            This can be a string or a class. All the deployment handle created
+            for this deployment will use the scheduling policy defined by the
+            replica scheduler. Default to Serve's
+            PowerOfTwoChoicesReplicaScheduler.
 
     Returns:
         `Deployment`
@@ -377,6 +386,7 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
+    # print(f"in deployment {replica_scheduler=}")
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -390,6 +400,9 @@ def deployment(
         logging_config=logging_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
+
+    if replica_scheduler is not DEFAULT.VALUE:
+        deployment_config.replica_scheduler = replica_scheduler
 
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(
