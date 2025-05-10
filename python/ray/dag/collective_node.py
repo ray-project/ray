@@ -8,7 +8,7 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.constants import COLLECTIVE_OPERATION_KEY
+from ray.dag.constants import NCCL_OPERATION_KEY
 from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
@@ -179,7 +179,7 @@ class CollectiveOutputNode(ClassMethodNode):
         self._input_node = method_args[0]
         # Parse the collective operation.
         self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
-            COLLECTIVE_OPERATION_KEY, None
+            NCCL_OPERATION_KEY, None
         )
         if self._collective_op is None:
             raise ValueError("Expected a collective operation")

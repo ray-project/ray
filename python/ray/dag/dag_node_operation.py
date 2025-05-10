@@ -79,8 +79,8 @@ class _DAGOperationGraphNode:
         self.actor_handle = actor_handle
         # The NCCL operation (type) of the task. It can be a NCCL read, write, or
         # collective operation.
-        self.nccl_op_type = nccl_op_type
-        self.nccl_op = nccl_op
+        self.nccl_op_type: Optional[_NcclOpType] = nccl_op_type
+        self.nccl_op: Optional[_NcclOperation] = nccl_op
         # The in_edges and out_edges are dicts of ints to strings. Each int (the key)
         # is an integer `task_idx`, which can be used to index into `idx_to_task` to
         # get the corresponding task. The string (the value) is the visualization

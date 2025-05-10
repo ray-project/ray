@@ -23,7 +23,7 @@ import ray
 import ray.exceptions
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
-    P2P_OPERATION_KEY,
+    NCCL_OPERATION_KEY,
     BIND_INDEX_KEY,
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
     RAY_CGRAPH_ENABLE_TORCH_PROFILING,
@@ -1107,7 +1107,7 @@ class CompiledDAG:
             method_args=(node,),
             other_args_to_resolve={
                 PARENT_CLASS_NODE_KEY: send_actor_handle,
-                P2P_OPERATION_KEY: _P2POperation(),
+                NCCL_OPERATION_KEY: _P2POperation(),
                 BIND_INDEX_KEY: node._get_bind_index(),
             },
         )
@@ -1159,7 +1159,7 @@ class CompiledDAG:
                 method_args=(send_node,),
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: recv_actor_handle,
-                    P2P_OPERATION_KEY: send_node.nccl_op,
+                    NCCL_OPERATION_KEY: send_node.nccl_op,
                     BIND_INDEX_KEY: node._get_bind_index(),
                 },
             )

@@ -6,10 +6,8 @@ PREV_CLASS_METHOD_CALL_KEY = "prev_class_method_call"
 BIND_INDEX_KEY = "bind_index"
 IS_CLASS_METHOD_OUTPUT_KEY = "is_class_method_output"
 
-# Reserved keys used to handle NCCL P2P operations in Ray DAG building.
-P2P_OPERATION_KEY = "p2p_operation"
-# Reserved keys used to handle NCCL collective operations in Ray DAG building.
-COLLECTIVE_OPERATION_KEY = "collective_operation"
+# Reserved key to handle NCCL operations in Ray DAG building.
+NCCL_OPERATION_KEY = "nccl_operation"
 
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
 DAGNODE_TYPE_KEY = "__dag_node_type__"

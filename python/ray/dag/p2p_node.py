@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Tuple
 from ray.dag import ClassMethodNode, DAGNode
-from ray.dag.constants import P2P_OPERATION_KEY
+from ray.dag.constants import NCCL_OPERATION_KEY
 from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelInterface
 from ray.experimental.util.types import P2POp
@@ -91,7 +91,9 @@ class _P2PNode(ClassMethodNode):
         )
 
         # Parse the P2P operation.
-        self._p2p_op: _P2POperation = other_args_to_resolve.get(P2P_OPERATION_KEY, None)
+        self._p2p_op: _P2POperation = other_args_to_resolve.get(
+            NCCL_OPERATION_KEY, None
+        )
         if self._p2p_op is None:
             raise ValueError("Expected a P2P operation")
 

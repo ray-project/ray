@@ -13,7 +13,7 @@ class _NcclOperation(ABC):
         self.task_idxs: List[int] = []
         # Indices of tasks that are ready with a zero in-degree.
         self.ready_task_idxs: Set[int] = set()
-        # Whether all the taskss have been added to the execution schedule.
+        # Whether all the tasks have been added to the execution schedule.
         self.scheduled: bool = False
 
     @property
