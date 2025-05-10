@@ -44,12 +44,8 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, application)",
@@ -65,7 +61,7 @@
           "query": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, application)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -79,12 +75,8 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",{global_filters}}}, deployment)",
@@ -100,7 +92,7 @@
           "query": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",{global_filters}}}, deployment)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -114,12 +106,8 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",deployment=~\"$Deployment\",{global_filters}}}, replica)",
@@ -135,7 +123,7 @@
           "query": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",deployment=~\"$Deployment\",{global_filters}}}, replica)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -149,12 +137,8 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, route)",
@@ -170,7 +154,7 @@
           "query": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, route)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -198,7 +182,7 @@
           "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 2,
