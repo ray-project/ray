@@ -110,6 +110,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,
+            op_name=self.name,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
             target_max_block_size=self.actual_target_max_block_size,
         )

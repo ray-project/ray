@@ -79,6 +79,7 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
+            op_name=self.name,
             target_max_block_size=self.actual_target_max_block_size,
         )
 
