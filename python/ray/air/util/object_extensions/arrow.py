@@ -10,17 +10,6 @@ from ray._private.serialization import pickle_dumps
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
-MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
-
-PYARROW_VERSION = get_pyarrow_version()
-
-
-def _object_extension_type_allowed() -> bool:
-    return (
-        PYARROW_VERSION is not None
-        and PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
-    )
-
 
 # Please see https://arrow.apache.org/docs/python/extending_types.html for more info
 @PublicAPI(stability="alpha")
@@ -89,7 +78,7 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
     """Array class for ArrowPythonObjectType"""
 
     def from_objects(
-        objects: typing.Union[np.ndarray, typing.Iterable[typing.Any]]
+        objects: typing.Union[np.ndarray, typing.Iterable[typing.Any]],
     ) -> "ArrowPythonObjectArray":
         if isinstance(objects, np.ndarray):
             objects = objects.tolist()

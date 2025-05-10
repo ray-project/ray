@@ -1881,9 +1881,6 @@ def test_groupby_map_groups_extra_args(
     assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
 
 
-_NEED_UNWRAP_ARROW_SCALAR = get_pyarrow_version() <= parse_version("9.0.0")
-
-
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
 def test_groupby_map_groups_multicolumn(
@@ -1902,8 +1899,6 @@ def test_groupby_map_groups_multicolumn(
         num_parts
     )
 
-    should_unwrap_pa_scalars = ds_format == "pyarrow" and _NEED_UNWRAP_ARROW_SCALAR
-
     def _map_group(df):
         # NOTE: Since we're grouping by A and B, these columns will be bearing
         #       the same values.
@@ -1911,8 +1906,8 @@ def test_groupby_map_groups_multicolumn(
         b = df["B"][0]
         return {
             # NOTE: PA 9.0 requires explicit unwrapping into Python objects
-            "A": [a.as_py() if should_unwrap_pa_scalars else a],
-            "B": [b.as_py() if should_unwrap_pa_scalars else b],
+            "A": [a],
+            "B": [b],
             "count": [len(df["A"])],
         }
 
@@ -1956,8 +1951,6 @@ def test_groupby_map_groups_multicolumn_with_nan(
         ]
     ).repartition(num_parts)
 
-    should_unwrap_pa_scalars = ds_format == "pyarrow" and _NEED_UNWRAP_ARROW_SCALAR
-
     def _map_group(df):
         # NOTE: Since we're grouping by A and B, these columns will be bearing
         #       the same values
@@ -1965,8 +1958,8 @@ def test_groupby_map_groups_multicolumn_with_nan(
         b = df["B"][0]
         return {
             # NOTE: PA 9.0 requires explicit unwrapping into Python objects
-            "A": [a.as_py() if should_unwrap_pa_scalars else a],
-            "B": [b.as_py() if should_unwrap_pa_scalars else b],
+            "A": [a],
+            "B": [b],
             "count": [len(df["A"])],
         }
 
