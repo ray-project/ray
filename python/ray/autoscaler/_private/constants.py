@@ -88,6 +88,9 @@ AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = env_integer(
 # Port that autoscaler prometheus metrics will be exported to
 AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
 
+# The minimum number of nodes to launch concurrently.
+AUTOSCALER_UPSCALING_INITIAL_NUM_NODES = 5
+
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 # Max number of retries to create an EC2 node (retry different subnet)
