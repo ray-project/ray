@@ -14,8 +14,8 @@
 
 #include "ray/stats/metric.h"
 
-#include "opencensus/stats/internal/aggregation_window.h"
-#include "opencensus/stats/internal/set_aggregation_window.h"
+#include <memory>
+
 #include "opencensus/stats/measure_registry.h"
 
 namespace ray {
@@ -108,7 +108,7 @@ const std::regex &Metric::GetMetricNameRegex() {
   return name_regex;
 }
 
-void Metric::Record(double value, const TagsType &tags) {
+void Metric::Record(double value, TagsType tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
@@ -120,33 +120,40 @@ void Metric::Record(double value, const TagsType &tags) {
         opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
 
     if (registered_measure.IsValid()) {
-      measure_.reset(new MeasureDouble(registered_measure));
+      measure_ = std::make_unique<MeasureDouble>(MeasureDouble(registered_measure));
     } else {
-      measure_.reset(
-          new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
+      measure_ = std::make_unique<MeasureDouble>(
+          MeasureDouble::Register(name_, description_, unit_));
     }
     RegisterView();
   }
 
   // Do record.
-  TagsType combined_tags(tags);
+  TagsType combined_tags(std::move(tags));
   combined_tags.insert(std::end(combined_tags),
                        std::begin(StatsConfig::instance().GetGlobalTags()),
                        std::end(StatsConfig::instance().GetGlobalTags()));
-  opencensus::stats::Record({{*measure_, value}}, combined_tags);
+  opencensus::stats::Record({{*measure_, value}}, std::move(combined_tags));
 }
 
-void Metric::Record(double value,
-                    const std::unordered_map<std::string, std::string> &tags) {
+template <typename StringType>
+void Metric::Record(double value, std::unordered_map<StringType, std::string> tags) {
   TagsType tags_pair_vec;
-  std::for_each(
-      tags.begin(),
-      tags.end(),
-      [&tags_pair_vec](std::pair<std::string, std::string> tag) {
-        return tags_pair_vec.push_back({TagKeyType::Register(tag.first), tag.second});
-      });
+  tags_pair_vec.reserve(tags.size());
+  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &&tag) {
+    return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
+                                      std::move(tag.second));
+  });
   Record(value, tags_pair_vec);
 }
+
+// Limits to only use these two template specializations.
+template <>
+void Metric::Record<std::string_view>(
+    double value, std::unordered_map<std::string_view, std::string> tags);
+template <>
+void Metric::Record<std::string>(double value,
+                                 std::unordered_map<std::string, std::string> tags);
 
 Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
