@@ -533,6 +533,23 @@ class RuntimeContext(object):
             ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 
+    def get_dashboard_url(self) -> Optional[str]:
+        """
+        Get the dashboard URL of the ray cluster.
+
+        This URL can be used to access the Ray Dashboard web UI. It refers
+        to the same URL that is printed when `ray.init()` connects or starts
+        a cluster.
+
+        Returns:
+            The dashboard URL string if the dashboard is running and enabled for the cluster,
+            otherwise an empty string.
+        """
+
+        url = getattr(self.worker, "_dashboard_url", None)
+
+        return url if url else ""
+
 
 _runtime_context = None
 _runtime_context_lock = threading.Lock()

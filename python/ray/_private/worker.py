@@ -1916,6 +1916,7 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
+    global_worker._dashboard_url = dashboard_url
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
