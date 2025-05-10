@@ -172,9 +172,9 @@ class DAGNode(DAGNodeBase):
         try:
             device = Device(device)
         except ValueError:
+            valid_devices = ", ".join(f"'{d.value}'" for d in Device)
             raise ValueError(
-                f"Invalid device '{device}'. "
-                "Valid options are: 'default', 'cpu', 'gpu', 'cuda'."
+                f"Invalid device '{device}'. Valid options are: {valid_devices}."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(
