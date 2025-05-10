@@ -310,6 +310,11 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
     if (num_pending > 0) {
       auto pending_req = state->add_pending_resource_requests();
       pending_req->set_count(num_pending);
+      auto breakdown = pending_req->mutable_breakdown();
+      breakdown->set_num_ready_requests_queued(demand.num_ready_requests_queued());
+      breakdown->set_num_infeasible_requests_queued(
+          demand.num_infeasible_requests_queued());
+      breakdown->set_backlog_size(demand.backlog_size());
       auto req = pending_req->mutable_request();
       req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
     }
