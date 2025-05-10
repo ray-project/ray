@@ -249,6 +249,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
       request,
       [this, worker_id, node_id, owner_address](
           const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
+        RAY_CHECK(in_flight_requests_.erase(worker_id) > 0);
         if (!status.ok()) {
           RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
               << "Failed to get object location update. This should only happen if the "
@@ -257,10 +258,6 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
           owner_client_pool_->Disconnect(worker_id);
           return;
         }
-        auto in_flight_request_it = in_flight_requests_.find(worker_id);
-        RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
-        in_flight_requests_.erase(in_flight_request_it);
-
         SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
       });
 }
