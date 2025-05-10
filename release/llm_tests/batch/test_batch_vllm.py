@@ -51,8 +51,12 @@ def test_chat_template_with_vllm():
 @pytest.mark.parametrize(
     "tp_size,pp_size,concurrency,vllm_use_v1",
     [
+        (1, 1, 2, True),  # TP=2, concurrency=2, vLLM v1
+        (1, 1, 2, False),  # TP=2, concurrency=2, vLLM v0
         (2, 1, 2, True),  # TP=2, concurrency=2, vLLM v1
         (1, 2, 2, False),  # PP=2, concurrency=2, vLLM v0
+        (2, 1, 1, True),  # TP=2, concurrency=1, vLLM v1
+        (1, 2, 1, False),  # PP=2, concurrency=1, vLLM v0
     ],
 )
 def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
@@ -182,6 +186,10 @@ def test_vllm_llama_lora():
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60),
         # Qwen2.5 VL model with TP=2, PP=1, concurrency=2
         ("Qwen/Qwen2.5-VL-3B-Instruct", 2, 1, 2, 60),
+        # Qwen2.5 VL model with TP=1, PP=1, concurrency=2
+        ("Qwen/Qwen2.5-VL-3B-Instruct", 1, 1, 2, 60),
+        # Qwen2.5 VL model with TP=1, PP=1, concurrency=1
+        ("Qwen/Qwen2.5-VL-3B-Instruct", 1, 1, 1, 60),
     ],
 )
 @pytest.mark.parametrize("vllm_use_v1", [True, False])
