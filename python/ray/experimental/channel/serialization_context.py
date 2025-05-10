@@ -120,9 +120,53 @@ class _SerializationContext:
             tensor = tensor.to("cpu")
 
         # Numpy does not have an equivalent dtype for all torch dtypes, so
-        # instead of casting directly to numpy, we first use a view with a
-        # common dtype and then view as numpy array.
-        return (tensor.view(torch.uint8).numpy(), tensor.dtype, tensor_device_type)
+        # instead of casting directly to numpy:
+        # 1) for non-scalar tensors, we first use a view with a common dtype (uint8)
+        #    and then view as numpy array.
+        # 2) for scalar tensors, we cannot use a uint8 view when the size differs,
+        #    so we upcast based on the dtype for a lossless conversion.
+        if tensor.dim() > 0:
+            return (tensor.view(torch.uint8).numpy(), tensor.dtype, tensor_device_type)
+        else:
+            assert tensor.dim() == 0
+            if tensor.dtype in [
+                torch.float16,
+                torch.bfloat16,
+                torch.float32,
+                torch.float64,
+            ]:
+                return (
+                    tensor.to(torch.float64).numpy(),
+                    tensor.dtype,
+                    tensor_device_type,
+                )
+            elif tensor.dtype in [
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.bool,
+            ]:
+                return (
+                    tensor.to(torch.int64).numpy(),
+                    tensor.dtype,
+                    tensor_device_type,
+                )
+            elif tensor.dtype in [
+                torch.uint8,
+                torch.uint16,
+                torch.uint32,
+                torch.uint64,
+            ]:
+                return (
+                    tensor.to(torch.uint64).numpy(),
+                    tensor.dtype,
+                    tensor_device_type,
+                )
+            else:
+                raise ValueError(
+                    f"Serializing scalar tensor of dtype {tensor.dtype} is not supported."
+                )
 
     def deserialize_tensor(
         self,
@@ -166,10 +210,17 @@ class _SerializationContext:
         if target_device_type == "cuda":
 
             def convert_numpy_to_tensor(np_array):
-                # It does zero-copy convert np_array inside shared memroy to
-                # a tensor. Since we move data to GPU immediately, it is safe.
-                cpu_tensor = torch.from_numpy(np_array).view(dtype)
-                return cpu_tensor.to(device=target_device_type)
+                if np_array.ndim == 0:
+                    # For scalar tensors, cast back to the original dtype.
+                    return torch.tensor(
+                        np_array, device=target_device_type, dtype=dtype
+                    )
+                else:
+                    # For non-scalar tensors, view as the original dtype.
+                    # It does zero-copy convert np_array inside shared memory to
+                    # a tensor. Since we move data to GPU immediately, it is safe.
+                    cpu_tensor = torch.from_numpy(np_array).view(dtype)
+                    return cpu_tensor.to(device=target_device_type)
 
             global _TORCH_WARNING_FILTER_ACTIVATE
             # filtering warning messages would be the bottleneck for
@@ -194,4 +245,9 @@ class _SerializationContext:
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
-        return torch.tensor(np_array, device=target_device_type).view(dtype)
+        if np_array.ndim == 0:
+            # For scalar tensors, cast back to the original dtype.
+            return torch.tensor(np_array, device=target_device_type, dtype=dtype)
+        else:
+            # For non-scalar tensors, view as the original dtype.
+            return torch.tensor(np_array, device=target_device_type).view(dtype)
