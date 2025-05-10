@@ -436,7 +436,6 @@ class KubeRayProvider(ICloudInstanceProvider):
                 worker_to_delete_set.add(worker)
                 if worker in node_set:
                     worker_groups_with_pending_deletes.add(node_type)
-                    break
 
         worker_groups_with_finished_deletes = (
             worker_groups_with_deletes - worker_groups_with_pending_deletes
