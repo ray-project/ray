@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <vector>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/actor_creator.h"
