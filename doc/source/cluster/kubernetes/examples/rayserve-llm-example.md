@@ -9,19 +9,11 @@ This guide provides a step-by-step walkthrough for deploying a Large Language Mo
 In this example, model weights are downloaded from Hugging Face. In order to properly finish this guide, you must fulfill the following requirements:
 * A [Hugging Face Account](https://huggingface.co/) and a Hugging Face [Access Token](https://huggingface.co/settings/tokens) with read access to gated repos.
 * In your Ray Serve configuration, set the `HUGGING_FACE_HUB_TOKEN` environment variable to this token to enable model downloads.
+* Any supported GPU. You can refer [here](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/k8s-cluster-setup.html#kuberay-k8s-setup) for more information
 
 ## Install the KubeRay Operator
 
 Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](kuberay-operator-deploy). The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
-
-
-## Creating a Namespace for Ray Clusters
-
-Create a Kubernetes Namespace for serving Ray Serve Applications:
-
-```sh
-kubectl create namespace ray-serve
-```
 
 ## Create a Kubernetes Secret containing your Hugging Face access token
 
@@ -37,16 +29,12 @@ Additionally, instead of passing the HF Access Token directly as an environment 
     hf_token: <your-hf-access-token-value>
 ```
 
-```sh
-kubectl apply -f hf-token-secret.yaml -n ray-serve
-```
-
 ## Deploy a RayService
 
 Create a Ray Service Custom Resource:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
 ```
 
 In this step, a custom Ray Serve Application is setup to serve the `Qwen/Qwen2.5-7B-Instruct` Model, creating an OpenAI-Compatible Server. You can look up the complete configuration for this example on our [GitHub Repository](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml). You can inspect and modify the Serve Config to learn more about the Serve deployment:
@@ -76,7 +64,7 @@ In this step, a custom Ray Serve Application is setup to serve the `Qwen/Qwen2.5
 
 Wait for the RayService resource to become healthy. You can check its status by running the following command:
 ```sh
- kubectl get rayservice ray-serve-llm -o yaml
+$ kubectl get rayservice ray-serve-llm -o yaml
 ```
 
 The result should be something like this:
@@ -97,27 +85,26 @@ status:
 
 To send requests to the Ray Serve Deployment, port-forward 8000 port from the Serve application Service:
 ```sh
-  kubectl port-forward svc/ray-commotion-llm-serve-svc 8000
+$ kubectl port-forward svc/ray-commotion-llm-serve-svc 8000
 ```
 
 Keep in mind this Kubernetes Service comes up only after Ray Serve applications are running and ready. This process takes a few minutes after all the pods in the Ray Cluster are up and running.
 
 ```sh
-  curl --location 'https://ray-serve.models.gocommotion.com/v1/chat/completions' \
-  --header 'Content-Type: application/json' \
-  --data '{
-      "model": "qwen2.5-7b-instruct",
-      "messages": [
-          {
-              "role": "system", 
-              "content": "You are a helpful assistant."
-          },
-          {
-              "role": "user", 
-              "content": "Provide steps to serve an LLM using Ray Serve."
-          }
-      ]
-  }'
+$ curl --location 'https://ray-serve.models.gocommotion.com/v1/chat/completions' --header 'Content-Type: application/json' 
+    --data '{
+        "model": "qwen2.5-7b-instruct",
+        "messages": [
+            {
+                "role": "system", 
+                "content": "You are a helpful assistant."
+            },
+            {
+                "role": "user", 
+                "content": "Provide steps to serve an LLM using Ray Serve."
+            }
+        ]
+    }'
 ```
 
 The output should be in the following format:
