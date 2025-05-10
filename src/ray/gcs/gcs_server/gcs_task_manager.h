@@ -67,9 +67,9 @@ class TaskEventsGcPolicyInterface {
 
 class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
  public:
-  size_t MaxPriority() const { return 3; }
+  size_t MaxPriority() const override { return 3; }
 
-  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const {
+  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const override {
     if (IsTaskFinished(task_events)) {
       return 0;
     }
@@ -425,7 +425,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     void EvictTaskEvent();
 
     /// Remove information of a task attempt from the storage.
-    void RemoveTaskAttempt(std::shared_ptr<TaskEventLocator> loc);
+    void RemoveTaskAttempt(const std::shared_ptr<TaskEventLocator> &loc);
 
     /// Test only functions.
     std::shared_ptr<TaskEventLocator> GetTaskEventLocator(
