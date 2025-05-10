@@ -1202,6 +1202,52 @@ class TestPlacementGroupScaling:
         assert to_launch == {}
         assert not rem
 
+    def test_skip_placed_bundles(self):
+        # test that we do not launch new nodes for bundles that are already placed.
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(
+            provider,
+            TYPES_A,
+            10,
+            head_node_type="p2.8xlarge",
+            upscaling_speed=1,
+        )
+
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
+        # At this point our cluster has 1 p2.8xlarge instances (8 GPUs) and is
+        # fully idle.
+        nodes = provider.non_terminated_nodes({})
+
+        resource_demands = [{"GPU": 1}] * 4
+        pending_placement_groups = [
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.SPREAD,
+                bundles=[
+                    Bundle(unit_resources={"GPU": 2}, node_id=b"node_1"),
+                    Bundle(unit_resources={"GPU": 2}, node_id=b"node_1"),
+                    Bundle(unit_resources={"GPU": 2}),
+                    Bundle(unit_resources={"GPU": 2}),
+                ],
+            ),
+        ]
+        # The 2 bundles that have node_id=b"node_1" should not be counted
+        # towards the number of GPUs needed to launch new nodes.
+        # The remaining 2 bundles should be packed onto the existing node and
+        # not require any new nodes.
+        to_launch, rem = scheduler.get_nodes_to_launch(
+            nodes,
+            {},
+            resource_demands,
+            {},
+            pending_placement_groups,
+            {},
+            [],
+            EMPTY_AVAILABILITY_SUMMARY,
+        )
+        assert to_launch == {}
+        assert not rem
+
 
 def test_get_concurrent_resource_demand_to_launch():
     node_types = copy.deepcopy(TYPES_A)
