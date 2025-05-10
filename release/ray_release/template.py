@@ -36,29 +36,9 @@ def get_test_environment():
     return _test_env
 
 
-def set_test_env_var(key: str, value: str):
-    test_env = get_test_environment()
-    test_env[key] = value
-
-
 def get_test_env_var(key: str, default: Optional[str] = None):
     test_env = get_test_environment()
     return test_env.get(key, default)
-
-
-def get_wheels_sanity_check(commit: Optional[str] = None):
-    if not commit:
-        cmd = (
-            "python -c 'import ray; print("
-            '"No commit sanity check available, but this is the '
-            "Ray wheel commit:\", ray.__commit__)'"
-        )
-    else:
-        cmd = (
-            f"python -c 'import ray; "
-            f'assert ray.__commit__ == "{commit}", ray.__commit__\''
-        )
-    return cmd
 
 
 def load_and_render_yaml_template(
@@ -99,14 +79,6 @@ def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) ->
     if test_definition_root:
         return os.path.join(test_definition_root, working_dir)
     return bazel_runfile("release", working_dir)
-
-
-def get_cluster_env_path(
-    test: "Test", test_definition_root: Optional[str] = None
-) -> str:
-    working_dir = get_working_dir(test, test_definition_root)
-    cluster_env_file = test["cluster"]["cluster_env"]
-    return os.path.join(working_dir, cluster_env_file)
 
 
 def load_test_cluster_compute(
