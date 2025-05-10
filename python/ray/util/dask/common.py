@@ -5,7 +5,7 @@ import uuid
 
 import ray
 
-from dask.base import quote
+from dask.core import quote
 from dask.core import get as get_sync
 from dask.utils import apply
 
