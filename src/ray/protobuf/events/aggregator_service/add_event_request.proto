@@ -14,25 +14,26 @@
 
 syntax = "proto3";
 
-import "src/ray/protobuf/runtime_env_common.proto";
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/events/base.proto";
 
 package ray.rpc.events;
 
-// Message containing the definition information of an actor task.
-// The message is expected to be emitted once per task attempt.
-message ActorTaskDefinitionEvent {
-  // task_id and task_attempt forms the unique identifier for a task.
-  bytes task_id = 1;
-  int32 task_attempt = 2;
+message TaskEventsMetadata {
+  // A list of task attempts that were dropped on the worker.
+  // We only drop task attempts if task state update is lost on the worker
+  // due to too many events being generated.
+  repeated TaskAttempt dropped_task_attempts = 2;
+}
 
-  // The actor task definition information.
-  FunctionDescriptor actor_func = 3;
-  map<string, string> required_resources = 5;
-  RuntimeEnvInfo runtime_env_info = 6;
+message RayEventsData {
+  // Events to be added to the event aggregator.
+  repeated RayEvent events = 1;
+  // Metadata about the events.
+  TaskEventsMetadata task_events_metadata = 2;
+}
 
-  // The correlation ids of the task that can be used to correlate the task with
-  // other events.
-  bytes job_id = 7;
-  map<string, bytes> ref_ids = 8;
+message AddEventRequest {
+  // Event data to be added to the event aggregator.
+  RayEventsData events_data = 1;
 }

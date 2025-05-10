@@ -14,6 +14,7 @@
 
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
 import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
@@ -28,7 +29,7 @@ message TaskExecutionEvent {
 
   // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
   // Value is the timestamp when status changes to the target status indicated by the key.
-  map<int32, timestamp> task_state_ns = 3;
+  map<int32, google.protobuf.Timestamp> task_state = 3;
   UserErrorInfo user_error_info = 4;
   RayErrorInfo ray_error_info = 5;
 
