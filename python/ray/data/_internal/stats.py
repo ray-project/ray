@@ -1028,9 +1028,9 @@ class DatasetStatsSummary:
 
         Args:
             already_printed: Set of operator IDs that have already had its stats printed
-            out.
+               out.
             include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest operator.
+               log stats of the latest operator.
             add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
