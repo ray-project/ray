@@ -6,7 +6,7 @@ from ray.includes.metric cimport (
     CSum,
     CMetric,
 )
-from ray.includes.common cimport move
+from libcpp.utility cimport move
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
