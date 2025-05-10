@@ -19,7 +19,11 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import setproctitle
+try:
+    from ray._private.setproctitle import setproctitle
+except ImportError:
+    # Fall back to system setproctitle if our private copy is unavailable
+    import setproctitle
 
 logger = logging.getLogger(__name__)
 

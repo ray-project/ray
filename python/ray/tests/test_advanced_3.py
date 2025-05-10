@@ -17,7 +17,11 @@ import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
 
-import setproctitle
+try:
+    from ray._private.setproctitle import setproctitle
+except ImportError:
+    # Fall back to system setproctitle if our private copy is unavailable
+    import setproctitle
 
 logger = logging.getLogger(__name__)
 

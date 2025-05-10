@@ -27,7 +27,11 @@ from ray.util.state import list_actors
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
-import setproctitle  # noqa
+try:
+    from ray._private.setproctitle import setproctitle  # noqa
+except ImportError:
+    # Fall back to system setproctitle if our private copy is unavailable
+    import setproctitle  # noqa
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
