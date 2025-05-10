@@ -45,8 +45,8 @@ class RpcFailureManager {
 
     if (!RayConfig::instance().testing_rpc_failure().empty()) {
       for (const auto &item :
-           absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ",")) {
-        std::vector<std::string> parts = absl::StrSplit(item, "=");
+           absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ',')) {
+        std::vector<std::string> parts = absl::StrSplit(item, '=');
         RAY_CHECK_EQ(parts.size(), 2UL);
         failable_methods_.emplace(parts[0], std::atoi(parts[1].c_str()));
       }
@@ -55,6 +55,13 @@ class RpcFailureManager {
       auto seed = rd();
       RAY_LOG(INFO) << "Setting RpcFailureManager seed to " << seed;
       gen_.seed(seed);
+
+      if (RayConfig::instance().testing_rpc_failure_deterministic() == "request") {
+        deterministic_request_failure_ = true;
+      } else if (RayConfig::instance().testing_rpc_failure_deterministic() ==
+                 "response") {
+        deterministic_response_failure_ = true;
+      }
     }
   }
 
@@ -69,6 +76,12 @@ class RpcFailureManager {
     uint64_t &num_remaining_failures = iter->second;
     if (num_remaining_failures == 0) {
       return RpcFailure::None;
+    }
+
+    if (deterministic_request_failure_ || deterministic_response_failure_) {
+      // 100% chance
+      num_remaining_failures--;
+      return deterministic_request_failure_ ? RpcFailure::Request : RpcFailure::Response;
     }
 
     std::uniform_int_distribution<int> dist(0, 3);
@@ -92,6 +105,8 @@ class RpcFailureManager {
   std::mt19937 gen_;
   // call name -> # remaining failures
   absl::flat_hash_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
+  bool deterministic_request_failure_ = false;
+  bool deterministic_response_failure_ = false;
 };
 
 auto &rpc_failure_manager = []() -> RpcFailureManager & {

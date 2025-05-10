@@ -557,33 +557,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
             *client_call_manager_,
-            /*core_worker_unavailable_timeout_callback=*/[this, addr]() {
-              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
-              const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
-              const rpc::GcsNodeInfo *node_info =
-                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
-              if (node_info != nullptr && node_info->state() == rpc::GcsNodeInfo::DEAD) {
-                RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-                    << "Disconnect core worker client since its node is dead";
-                core_worker_client_pool_->Disconnect(worker_id);
-                return;
-              }
-
-              raylet::RayletClient raylet_client(
-                  rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                                     node_info->node_manager_port(),
-                                                     *client_call_manager_));
-              raylet_client.IsLocalWorkerDead(
-                  worker_id,
-                  [this, worker_id](const Status &status,
-                                    rpc::IsLocalWorkerDeadReply &&reply) {
-                    if (status.ok() && reply.is_dead()) {
-                      RAY_LOG(INFO).WithField(worker_id)
-                          << "Disconnect core worker client since it is dead";
-                      core_worker_client_pool_->Disconnect(worker_id);
-                    }
-                  });
-            });
+            rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                gcs_client_.get(),
+                core_worker_client_pool_.get(),
+                client_call_manager_.get(),
+                addr));
       });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(

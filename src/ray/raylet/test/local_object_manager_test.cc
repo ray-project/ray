@@ -336,7 +336,6 @@ class LocalObjectManagerTestWithMinSpillingSize {
             gcs_client_,
             subscriber_.get(),
             &client_pool,
-            /*max_object_report_batch_size=*/20000,
             [](const ObjectID &object_id, const rpc::ErrorType &error_type) {})),
         manager(
             manager_node_id_,

@@ -22,6 +22,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -34,6 +35,14 @@ class CoreWorkerClientPool {
   /// Creates a CoreWorkerClientPool by a given connection function.
   explicit CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
       : core_worker_client_factory_(std::move(client_factory)){};
+
+  /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
+  /// core worker and node manager.
+  static std::function<void()> GetDefaultUnavailableTimeoutCallback(
+      gcs::GcsClient *gcs_client,
+      rpc::CoreWorkerClientPool *worker_client_pool,
+      rpc::ClientCallManager *client_call_manager,
+      const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
