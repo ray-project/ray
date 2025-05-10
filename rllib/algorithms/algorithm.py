@@ -159,7 +159,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.runners.runner_group import RunnerGroup
 from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
@@ -484,7 +483,7 @@ class Algorithm(Checkpointable, Trainable):
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
-        self.metrics = MetricsLogger()
+        self.metrics = MetricsLogger(root=True)
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -1139,9 +1138,8 @@ class Algorithm(Checkpointable, Trainable):
         # Evaluate with fixed duration.
         self._evaluate_offline_with_fixed_duration()
         # Reduce the evaluation results.
-        eval_results = self.metrics.reduce(
-            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
-            return_stats_obj=False,
+        eval_results = self.metrics.peek(
+            ("EVALUATION_RESULTS", "OFFLINE_EVAL_RUNNER_RESULTS"), default={}
         )
 
         # Trigger `on_evaluate_offline_end` callback.
@@ -1292,9 +1290,11 @@ class Algorithm(Checkpointable, Trainable):
             eval_results = {}
 
         if self.config.enable_env_runner_and_connector_v2:
-            eval_results = self.metrics.reduce(
-                key=EVALUATION_RESULTS, return_stats_obj=False
-            )
+            eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
+            if log_once("no_eval_results") and not eval_results:
+                logger.warning(
+                    "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
+                )
         else:
             eval_results = {ENV_RUNNER_RESULTS: eval_results}
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
@@ -3382,9 +3382,9 @@ class Algorithm(Checkpointable, Trainable):
                 key=AGGREGATOR_ACTOR_RESULTS,
             )
 
-        # Only here (at the end of the iteration), reduce the results into a single
-        # result dict.
-        return self.metrics.reduce(), train_iter_ctx
+        # Only here (at the end of the iteration), compile the results into a single result dict.
+        # Calling compile here reduces the metrics into single values and adds throughputs to the results where applicable.
+        return self.metrics.compile(), train_iter_ctx
 
     def _run_one_offline_evaluation(self):
         """Runs offline evaluation step via `self.offline_evaluate()` and handling runner
@@ -3606,26 +3606,7 @@ class Algorithm(Checkpointable, Trainable):
                 ),
             }
 
-        # Compile all throughput stats.
-        throughputs = {}
-
-        def _reduce(p, s):
-            if isinstance(s, Stats):
-                ret = s.peek()
-                _throughput = s.peek(throughput=True)
-                if _throughput is not None:
-                    _curr = throughputs
-                    for k in p[:-1]:
-                        _curr = _curr.setdefault(k, {})
-                    _curr[p[-1] + "_throughput"] = _throughput
-            else:
-                ret = s
-            return ret
-
-        # Resolve all `Stats` leafs by peeking (get their reduced values).
-        all_results = tree.map_structure_with_path(_reduce, results)
-        deep_update(all_results, throughputs, new_keys_allowed=True)
-        return all_results
+        return results
 
     def __repr__(self):
         if self.config.enable_rl_module_and_learner:
@@ -4466,6 +4447,7 @@ class TrainIterCtx:
         min_t = self.algo.config.min_time_s_per_iteration
         min_sample_ts = self.algo.config.min_sample_timesteps_per_iteration
         min_train_ts = self.algo.config.min_train_timesteps_per_iteration
+
         # Repeat if not enough time has passed or if not enough
         # env|train timesteps have been processed (or these min
         # values are not provided by the user).

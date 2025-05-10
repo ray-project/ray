@@ -931,7 +931,7 @@ class IMPALA(Algorithm):
 
         # With a training step done, try to bring any aggregators back to life
         # if necessary.
-        # Aggregation workers are stateless, so we do not need to restore any
+        # AggregatorActor are stateless, so we do not need to restore any
         # state here.
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
