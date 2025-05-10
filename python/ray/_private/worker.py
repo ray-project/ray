@@ -593,6 +593,10 @@ class Worker:
         logging_config = pickle.loads(job_config.serialized_py_logging_config)
         return logging_config
 
+    @property
+    def node_labels(self):
+        return self.node._get_node_labels()
+
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
         ray._private.state.update_worker_debugger_port(worker_id, port)
