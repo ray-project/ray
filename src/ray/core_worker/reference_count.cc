@@ -1451,7 +1451,7 @@ std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     // data.
     RAY_LOG(DEBUG).WithField(object_id)
         << "Object not in reference table, locality data not available";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // The size of this object.
@@ -1461,7 +1461,7 @@ std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     RAY_LOG(DEBUG).WithField(object_id)
         << "Reference [" << it->second.call_site
         << "] for object has an unknown object size, locality data not available";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // The locations of this object.
@@ -1470,6 +1470,12 @@ std::optional<LocalityData> ReferenceCounter::GetLocalityData(
   // - If we don't own this object, this will contain a snapshot of the object locations
   //   at future resolution time.
   auto node_ids = it->second.locations;
+  // Add location of the primary copy since the object must be there.
+  // If in-memory, it will be in locations. If spilled it won't be in locations, so it has
+  // to be added here.
+  if (it->second.pinned_at_raylet_id.has_value()) {
+    node_ids.emplace(it->second.pinned_at_raylet_id.value());
+  }
 
   // We should only reach here if we have valid locality data to return.
   std::optional<LocalityData> locality_data(
