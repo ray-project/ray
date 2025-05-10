@@ -574,8 +574,12 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Get information of all nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node2_id));
+  ASSERT_TRUE(gcs_client_->Nodes().GetCached(node1_id) != nullptr);
+  ASSERT_TRUE(gcs_client_->Nodes().GetCached(node2_id) != nullptr);
+
+  ASSERT_TRUE(gcs_client_->Nodes().GetSync(node1_id) != std::nullopt);
+  ASSERT_TRUE(gcs_client_->Nodes().GetSync(node2_id) != std::nullopt);
+
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 }
 

@@ -560,7 +560,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
               const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
               const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
               const rpc::GcsNodeInfo *node_info =
-                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+                  gcs_client_->Nodes().GetCached(node_id, /*filter_dead_nodes=*/false);
               if (node_info != nullptr && node_info->state() == rpc::GcsNodeInfo::DEAD) {
                 RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                     << "Disconnect core worker client since its node is dead";
@@ -609,7 +609,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       /*callback_service*/ &io_service_);
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
-    auto node = gcs_client_->Nodes().Get(node_id);
+    auto node = gcs_client_->Nodes().GetCached(node_id);
     return node != nullptr;
   };
   reference_counter_ = std::make_shared<ReferenceCounter>(
@@ -690,7 +690,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // to the raylet.
   auto raylet_channel_client_factory =
       [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-        auto node_info = gcs_client_->Nodes().Get(node_id);
+        auto node_info = gcs_client_->Nodes().GetCached(node_id);
         RAY_CHECK(node_info) << "No GCS info for node " << node_id;
         auto grpc_client =
             rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
@@ -811,7 +811,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     std::optional<rpc::Address> addr;
-    if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
+    if (auto node_info = gcs_client_->Nodes().GetCached(node_id)) {
       rpc::Address address;
       address.set_raylet_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
@@ -4256,7 +4256,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
-  if (gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true) == nullptr) {
+  if (gcs_client_->Nodes().GetCached(node_id, /*filter_dead_nodes=*/true) == nullptr) {
     RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;

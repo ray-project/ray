@@ -106,7 +106,8 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // policy.
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
-      return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      return gcs_client_->Nodes().GetCached(NodeID::FromBinary(node_id.Binary())) !=
+             nullptr;
     };
     node_name = NodeID::FromRandom().Binary();
     node_info.set_node_id(node_name);

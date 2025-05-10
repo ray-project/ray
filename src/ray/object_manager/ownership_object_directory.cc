@@ -461,8 +461,8 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
 
 void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  auto node_info = gcs_client_->Nodes().Get(connection_info.node_id);
-  if (node_info) {
+  auto node_info = gcs_client_->Nodes().GetCached(connection_info.node_id);
+  if (node_info != nullptr) {
     NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
     RAY_CHECK(result_node_id == connection_info.node_id);
     connection_info.ip = node_info->node_manager_address();
