@@ -4,7 +4,17 @@ from enum import Enum
 from ray.util.annotations import PublicAPI
 
 
-class _CollectiveOp:
+class _NcclOpType:
+    pass
+
+
+@PublicAPI
+class P2POp(_NcclOpType, Enum):
+    SEND = 0
+    RECV = 1
+
+
+class _CollectiveOp(_NcclOpType):
     pass
 
 

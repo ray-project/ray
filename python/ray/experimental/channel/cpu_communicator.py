@@ -48,9 +48,9 @@ class CPUCommBarrier:
 
             if self.num_actors_seen[op_id] == self.num_actors:
                 # Apply the collective operation across all gathered tensors
+                self.condition.notify_all()
                 data = self._apply_op(op, self.collective_data[op_id])
                 self.collective_data[op_id] = data
-                self.condition.notify_all()
             else:
                 await self.condition.wait_for(
                     lambda: self.num_actors_seen[op_id] == self.num_actors
@@ -107,8 +107,8 @@ class CPUCommunicator(Communicator):
         self._rank = None
 
     def send(self, tensor: "torch.Tensor", peer_rank: int):
-        # p2p operations are done via a shared memory channel, initialized in
-        # `create_channel` of `TorchTensorType`
+        # P2P operations are done via a shared memory channel, initialized in
+        # `create_channel` of `TorchTensorType`.
         pass
 
     def recv(
@@ -118,7 +118,8 @@ class CPUCommunicator(Communicator):
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ):
-        # See the comment on `send`
+        # P2P operations are done via a shared memory channel, initialized in
+        # `create_channel` of `TorchTensorType`.
         pass
 
     def allgather(
@@ -198,4 +199,7 @@ class CPUCommunicator(Communicator):
         raise NotImplementedError
 
     def send_stream(self):
+        raise NotImplementedError
+
+    def coll_stream(self):
         raise NotImplementedError

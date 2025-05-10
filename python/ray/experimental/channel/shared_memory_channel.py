@@ -433,12 +433,22 @@ class Channel(ChannelInterface):
             # )
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
+        from ray.dag.dag_operation_future import GPUFuture
+
         self.ensure_registered_as_writer()
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
         # -1 means no timeout (block indefinitely)
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
+
+        if isinstance(value, GPUFuture):
+            logger.warning(
+                "Blocking the CPU to resolve a GPU future when sending across actors "
+                "via a shared memory channel"
+            )
+            # Block the CPU to resolve the GPU future.
+            value = value.wait(blocking=True)
 
         if not isinstance(value, SerializedObject):
             try:
