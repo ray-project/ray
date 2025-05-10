@@ -4279,7 +4279,7 @@
   python: "3.11"
   group: ray-examples
   team: ml
-  working_dir: ray_examples/entity-recognition-with-llms  # release/
+  working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
 
   cluster:
     byod:
