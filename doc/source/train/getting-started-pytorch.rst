@@ -47,6 +47,7 @@ Compare a PyTorch training script with and without Ray Train.
         .. testcode::
             :skipif: True
 
+            import multiprocessing
             import os
             import tempfile
 
@@ -70,7 +71,7 @@ Compare a PyTorch training script with and without Ray Train.
             # Data
             transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
             train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
-            train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
+            train_loader = DataLoader(train_data, batch_size=128, shuffle=True, multiprocessing_context=multiprocessing.context.ForkServerContext())
 
             # Training
             for epoch in range(10):
@@ -95,6 +96,7 @@ Compare a PyTorch training script with and without Ray Train.
         .. code-block:: python
             :emphasize-lines: 12, 14, 21, 55-58, 59, 63, 66-68, 72-73, 76
 
+            import multiprocessing
             import os
             import tempfile
 
@@ -124,7 +126,7 @@ Compare a PyTorch training script with and without Ray Train.
                 transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
                 data_dir = os.path.join(tempfile.gettempdir(), "data")
                 train_data = FashionMNIST(root=data_dir, train=True, download=True, transform=transform)
-                train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
+                train_loader = DataLoader(train_data, batch_size=128, shuffle=True, multiprocessing_context=multiprocessing.context.ForkServerContext())
                 # [2] Prepare dataloader.
                 train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
@@ -237,7 +239,7 @@ See :ref:`data-ingest-torch`.
 
          dataset = ...
 
-         data_loader = DataLoader(dataset, batch_size=worker_batch_size, shuffle=True)
+         data_loader = DataLoader(dataset, batch_size=worker_batch_size, shuffle=True, multiprocessing_context=multiprocessing.context.ForkServerContext())
     +    data_loader = ray.train.torch.prepare_data_loader(data_loader)
 
          for epoch in range(10):
@@ -272,6 +274,14 @@ See :ref:`data-ingest-torch`.
     provides performant streaming data ingestion for large scale datasets.
 
     See :ref:`data-ingest-torch` for more details.
+
+.. note::
+    When using PyTorch DataLoader multiprocessing with Ray Train, you should set the
+    ``multiprocessing_context`` to ``multiprocessing.context.ForkServerContext()`` as
+    shown in the example above. This is because Ray Train configures the global logger with
+    Ray-specific context like ``get_actor_id()``, which, when inherited by Torch Dataloader
+    subprocesses using ``fork``, can cause hangs during logging since these subprocesses
+    aren't Ray actors.
 
 Report checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
