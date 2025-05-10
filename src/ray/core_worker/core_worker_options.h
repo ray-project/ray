@@ -72,7 +72,9 @@ struct CoreWorkerOptions {
       bool retry_exception,
       // The max number of unconsumed objects where a generator
       // can run without a pause.
-      int64_t generator_backpressure_num_objects)>;
+      int64_t generator_backpressure_num_objects,
+      // The CPU affinity mask for the accelerator devices.
+      const std::string &accelerator_cpu_mask)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -109,7 +111,8 @@ struct CoreWorkerOptions {
         assigned_worker_port(std::nullopt),
         assigned_raylet_id(std::nullopt),
         debug_source(""),
-        enable_resource_isolation(false) {
+        enable_resource_isolation(false),
+        accelerator_cpu_mask("") {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -232,6 +235,8 @@ struct CoreWorkerOptions {
   // If true, core worker enables resource isolation through cgroupv2 by reserving
   // resources for ray system processes.
   bool enable_resource_isolation = false;
+  // CPU affinity mask for the accelerator devices.
+  std::string accelerator_cpu_mask;
 };
 }  // namespace core
 }  // namespace ray
