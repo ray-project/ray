@@ -750,7 +750,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
     int64_t object_size = -1;
-    /// If this object is owned by us and stored in plasma, this contains all
+    /// If this object is owned by us and stored in plasma or spill, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
     /// The object's owner's address, if we know it. If this process is the
@@ -758,7 +758,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
     std::optional<rpc::Address> owner_address;
-    /// If this object is owned by us and stored in plasma, and reference
+    /// If this object is owned by us and stored in plasma or spill, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
     std::optional<NodeID> pinned_at_raylet_id;

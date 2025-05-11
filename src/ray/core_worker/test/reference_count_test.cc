@@ -2668,7 +2668,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
   ASSERT_FALSE(pinned_at.IsNil());
-  ASSERT_TRUE(rc->GetObjectLocations(id)->empty());
+  ASSERT_EQ(rc->GetObjectLocations(id)->size(), 1);
 
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));

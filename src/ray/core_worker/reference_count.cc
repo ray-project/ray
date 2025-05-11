@@ -781,6 +781,10 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
+  if (!it->second.pinned_at_raylet_id.has_value()) {
+    return;
+  }
+  RAY_CHECK_GT(it->second.locations.erase(*it->second.pinned_at_raylet_id), 0);
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     it->second.spilled = false;
@@ -860,6 +864,9 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
           << "Updating primary location for object to node " << raylet_id
           << ", but it already has a primary location " << *it->second.pinned_at_raylet_id
           << ". This should only happen during reconstruction";
+      // For a new node to be the primary, the object must be gone from the primary node
+      // it was at before. We ignore removals from obod for primary so must remove here.
+      RemoveObjectLocationInternal(it, *it->second.pinned_at_raylet_id);
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
@@ -1367,7 +1374,11 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
            "object is already evicted.";
     return false;
   }
-  RemoveObjectLocationInternal(it, node_id);
+  // If spilled at pinned location, obod will send removal update. Should ignore it and
+  // rely on pinned_at_raylet_id changes for primary.
+  if (it->second.pinned_at_raylet_id != node_id) {
+    RemoveObjectLocationInternal(it, node_id);
+  }
   return true;
 }
 
@@ -1464,22 +1475,14 @@ std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     return std::nullopt;
   }
 
-  // The locations of this object.
+  // Sends over the locations of this object.
   // - If we own this object, this will contain the complete up-to-date set of object
   //   locations.
   // - If we don't own this object, this will contain a snapshot of the object locations
   //   at future resolution time.
-  auto node_ids = it->second.locations;
-  // Add location of the primary copy since the object must be there.
-  // If in-memory, it will be in locations. If spilled it won't be in locations, so it has
-  // to be added here.
-  if (it->second.pinned_at_raylet_id.has_value()) {
-    node_ids.emplace(it->second.pinned_at_raylet_id.value());
-  }
-
   // We should only reach here if we have valid locality data to return.
   std::optional<LocalityData> locality_data(
-      {static_cast<uint64_t>(object_size), std::move(node_ids)});
+      {static_cast<uint64_t>(object_size), it->second.locations});
   return locality_data;
 }
 
@@ -1556,22 +1559,24 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
-  const auto &locations = it->second.locations;
-  auto object_size = it->second.object_size;
-  const auto &spilled_url = it->second.spilled_url;
-  const auto &spilled_node_id = it->second.spilled_node_id;
-  const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
-  const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-  RAY_LOG(DEBUG).WithField(object_id)
-      << "Published message for object, " << locations.size()
-      << " locations, spilled url: [" << spilled_url
-      << "], spilled node ID: " << spilled_node_id << ", and object size: " << object_size
-      << ", and primary node ID: " << primary_node_id << ", pending creation? "
-      << it->second.pending_creation;
+  if (RayLog ::IsLevelEnabled(RayLogLevel::DEBUG)) {
+    const auto &locations = it->second.locations;
+    auto object_size = it->second.object_size;
+    const auto &spilled_url = it->second.spilled_url;
+    const auto &spilled_node_id = it->second.spilled_node_id;
+    const auto &primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Published message for object, " << locations.size()
+        << " locations, spilled url: [" << spilled_url
+        << "], spilled node ID: " << spilled_node_id
+        << ", and object size: " << object_size
+        << ", and primary node ID: " << primary_node_id << ", pending creation? "
+        << it->second.pending_creation;
+  }
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-  auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
+  auto *object_locations_msg = pub_message.mutable_worker_object_locations_message();
   FillObjectInformationInternal(it, object_locations_msg);
 
   object_info_publisher_->Publish(std::move(pub_message));
@@ -1604,7 +1609,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   }
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
-  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
+  const auto &primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation);
   object_info->set_did_spill(it->second.did_spill);
