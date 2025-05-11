@@ -83,11 +83,11 @@ bool StatsConfig::IsInitialized() const { return is_initialized_; }
 /// Metric
 ///
 using MeasureDouble = opencensus::stats::Measure<double>;
-Metric::Metric(std::string name,
+Metric::Metric(const std::string &name,
                std::string description,
                std::string unit,
                const std::vector<std::string> &tag_keys)
-    : name_(std::move(name)),
+    : name_(name),
       description_(std::move(description)),
       unit_(std::move(unit)),
       measure_(nullptr),

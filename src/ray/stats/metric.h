@@ -104,7 +104,7 @@ class StatsConfig final {
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
  public:
-  Metric(std::string name,
+  Metric(const std::string &name,
          std::string description,
          std::string unit,
          const std::vector<std::string> &tag_keys = {});
