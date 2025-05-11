@@ -14,10 +14,12 @@ COPY . .
 RUN <<EOF
 #!/bin/bash
 
-ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
+set -exo pipefail
+
+# ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 # We manually install tfx-bsl here. Adding the library via data- or
 # test-requirements.txt files causes unresolvable dependency conflicts with pandas.
 
-pip install tfx-bsl==1.14.0 crc32c==2.3
+pip install tfx-bsl==1.14.0 crc32c==2.3 'pyarrow==14.*'
 
 EOF
