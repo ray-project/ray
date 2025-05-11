@@ -22,13 +22,13 @@
 #include <regex>
 #include <tuple>
 #include <unordered_map>
-#include <utility>  // std::pair
+#include <utility>
 
-#include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/util/logging.h"
+
 namespace ray {
 
 namespace stats {
@@ -104,9 +104,9 @@ class StatsConfig final {
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
  public:
-  Metric(const std::string &name,
-         const std::string &description,
-         const std::string &unit,
+  Metric(std::string name,
+         std::string description,
+         std::string unit,
          const std::vector<std::string> &tag_keys = {});
 
   virtual ~Metric();
@@ -131,8 +131,8 @@ class Metric {
   ///
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
-  template <typename StringType>
-  void Record(double value, std::unordered_map<StringType, std::string> tags);
+  void Record(double value, std::unordered_map<std::string_view, std::string> tags);
+  void Record(double value, std::unordered_map<std::string, std::string> tags);
 
  protected:
   virtual void RegisterView() = 0;
@@ -284,6 +284,7 @@ void RegisterViewWithTagList(const std::string &name,
 inline std::vector<opencensus::tags::TagKey> convert_tags(
     const std::vector<std::string> &names) {
   std::vector<opencensus::tags::TagKey> ret;
+  ret.reserve(names.size());
   for (auto &n : names) {
     ret.push_back(TagKeyType::Register(n));
   }

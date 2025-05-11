@@ -83,13 +83,13 @@ bool StatsConfig::IsInitialized() const { return is_initialized_; }
 /// Metric
 ///
 using MeasureDouble = opencensus::stats::Measure<double>;
-Metric::Metric(const std::string &name,
-               const std::string &description,
-               const std::string &unit,
+Metric::Metric(std::string name,
+               std::string description,
+               std::string unit,
                const std::vector<std::string> &tag_keys)
-    : name_(name),
-      description_(description),
-      unit_(unit),
+    : name_(std::move(name)),
+      description_(std::move(description)),
+      unit_(std::move(unit)),
       measure_(nullptr),
       name_regex_(GetMetricNameRegex()) {
   RAY_CHECK_WITH_DISPLAY(
@@ -136,24 +136,25 @@ void Metric::Record(double value, TagsType tags) {
   opencensus::stats::Record({{*measure_, value}}, std::move(combined_tags));
 }
 
-template <typename StringType>
-void Metric::Record(double value, std::unordered_map<StringType, std::string> tags) {
+void Metric::Record(double value, std::unordered_map<std::string_view, std::string> tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
-  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &&tag) {
+  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
     return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
                                       std::move(tag.second));
   });
-  Record(value, tags_pair_vec);
+  Record(value, std::move(tags_pair_vec));
 }
 
-// Limits to only use these two template specializations.
-template <>
-void Metric::Record<std::string_view>(
-    double value, std::unordered_map<std::string_view, std::string> tags);
-template <>
-void Metric::Record<std::string>(double value,
-                                 std::unordered_map<std::string, std::string> tags);
+void Metric::Record(double value, std::unordered_map<std::string, std::string> tags) {
+  TagsType tags_pair_vec;
+  tags_pair_vec.reserve(tags.size());
+  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
+    return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
+                                      std::move(tag.second));
+  });
+  Record(value, std::move(tags_pair_vec));
+}
 
 Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
