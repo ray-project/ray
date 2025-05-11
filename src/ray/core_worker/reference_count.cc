@@ -784,7 +784,7 @@ void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
   if (!it->second.pinned_at_raylet_id.has_value()) {
     return;
   }
-  RAY_CHECK_GT(it->second.locations.erase(*it->second.pinned_at_raylet_id), 0);
+  RAY_CHECK_GT(it->second.locations.erase(*it->second.pinned_at_raylet_id), 0ul);
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     it->second.spilled = false;
