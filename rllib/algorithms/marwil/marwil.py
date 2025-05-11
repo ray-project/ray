@@ -166,7 +166,7 @@ class MARWILConfig(AlgorithmConfig):
         }
 
         super().__init__(algo_class=algo_class or MARWIL)
-
+        self._is_online = False
         # fmt: off
         # __sphinx_doc_begin__
         # MARWIL specific settings:

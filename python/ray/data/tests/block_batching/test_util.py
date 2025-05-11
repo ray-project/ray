@@ -1,5 +1,6 @@
 import logging
 import random
+import sys
 import time
 from os import urandom
 
@@ -7,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-import sys
 
 import ray
 from ray.data._internal.block_batching.interfaces import Batch
@@ -20,7 +20,6 @@ from ray.data._internal.block_batching.util import (
     resolve_block_refs,
 )
 from ray.data._internal.util import make_async_gen
-
 
 logger = logging.getLogger(__file__)
 

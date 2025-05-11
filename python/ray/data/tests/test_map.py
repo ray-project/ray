@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import logging
 import math
 import os
 import threading
@@ -27,6 +28,20 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
+
+
+def test_specifying_num_cpus_and_num_gpus_logs_warning(
+    shutdown_only, propagate_logs, caplog
+):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    with caplog.at_level(logging.WARNING):
+        ray.data.range(1).map(lambda x: x, num_cpus=1, num_gpus=1).take(1)
+
+        assert (
+            "Specifying both num_cpus and num_gpus for map tasks is experimental"
+            in caplog.text
+        ), caplog.text
 
 
 def test_basic_actors(shutdown_only):
@@ -1350,9 +1365,15 @@ def test_map_batches_block_bundling_auto(
 
     # Blocks should be bundled up to the batch size.
     ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
-    assert ds1._plan.initial_num_blocks() == math.ceil(
-        num_blocks / max(batch_size // block_size, 1)
+
+    num_expected_blocks = math.ceil(
+        # If batch_size > block_size, then multiple blocks will be clumped
+        # together to make sure there are at least batch_size rows
+        num_blocks
+        / max(math.ceil(batch_size / block_size), 1)
     )
+
+    assert ds1._plan.initial_num_blocks() == num_expected_blocks
 
     # Blocks should not be bundled up when batch_size is not specified.
     ds2 = ds.map_batches(lambda x: x).materialize()
@@ -1364,9 +1385,9 @@ def test_map_batches_block_bundling_auto(
     [
         ([1, 2], 3, 1),
         ([2, 2, 1], 3, 2),
-        ([1, 2, 3, 4], 4, 3),
+        ([1, 2, 3, 4], 4, 2),
         ([3, 1, 1, 3], 4, 2),
-        ([2, 4, 1, 8], 4, 4),
+        ([2, 4, 1, 8], 4, 2),
         ([1, 1, 1, 1], 4, 1),
         ([1, 0, 3, 2], 4, 2),
         ([4, 4, 4, 4], 4, 4),
@@ -1408,10 +1429,11 @@ def test_map_batches_block_bundling_skewed_auto(
     # Confirm that we have the expected number of initial blocks.
     assert ds._plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
+
     curr = 0
     num_out_blocks = 0
     for block_size in block_sizes:
-        if curr > 0 and curr + block_size > batch_size:
+        if curr >= batch_size:
             num_out_blocks += 1
             curr = 0
         curr += block_size

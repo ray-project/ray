@@ -373,7 +373,7 @@ class ExecutionPlan:
         elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
             schema = self._logical_plan.dag.aggregate_output_metadata().schema
 
-        elif fetch_if_missing or self.is_read_only():
+        elif fetch_if_missing:
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
 
@@ -586,15 +586,6 @@ class ExecutionPlan:
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return all(isinstance(op, Read) for op in self._logical_plan.sources())
-
-    def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        contains only a Read op. By default, the last operator of
-        the LogicalPlan is used."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-
-        return root_op.is_read_op()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
