@@ -425,7 +425,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     void EvictTaskEvent();
 
     /// Remove information of a task attempt from the storage.
-    void RemoveTaskAttempt(const std::shared_ptr<TaskEventLocator> &loc);
+    void RemoveTaskAttempt(std::shared_ptr<TaskEventLocator> loc);
 
     /// Test only functions.
     std::shared_ptr<TaskEventLocator> GetTaskEventLocator(

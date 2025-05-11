@@ -301,7 +301,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
-    const std::shared_ptr<TaskEventLocator> &loc) {
+    std::shared_ptr<TaskEventLocator> loc) {
   const auto &to_remove = loc->GetTaskEventsMutable();
 
   const auto job_id = JobID::FromBinary(to_remove.job_id());
