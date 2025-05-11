@@ -11,5 +11,5 @@ worker_node_types:
     - name: worker_node
       instance_type: g6.12xlarge
       min_workers: 0
-      max_workers: 1
+      max_workers: 10
       use_spot: false

@@ -51,11 +51,13 @@ def test_chat_template_with_vllm():
 @pytest.mark.parametrize(
     "tp_size,pp_size,concurrency,vllm_use_v1",
     [
-        (1, 1, 2, True),  # TP=2, concurrency=2, vLLM v1
+        (1, 1, 1, True),  # TP=1, concurrency=1, vLLM v1
+        (2, 1, 1, True),  # TP=2, concurrency=1, vLLM v1
+        (1, 1, 2, True),  # TP=1, concurrency=2, vLLM v1
         # (1, 1, 2, False),  # TP=2, concurrency=2, vLLM v0
         (2, 1, 2, True),  # TP=2, concurrency=2, vLLM v1
+        (1, 2, 1, True),  # PP=2, concurrency=1, vLLM v1
         (1, 2, 2, True),  # PP=2, concurrency=2, vLLM v1
-        (2, 1, 1, True),  # TP=2, concurrency=1, vLLM v1
         # (1, 2, 1, False),  # PP=2, concurrency=1, vLLM v0
     ],
 )
