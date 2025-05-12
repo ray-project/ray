@@ -355,9 +355,104 @@ This command generates two files: an LLM config file, saved in `model_config/`, 
 Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the
 future.
 
-Read and check how the generated model config looks like. Refer to
-`vLLMEngine Config <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_.
-to further customize.
+After reading and reviewing the generated model config, refer to
+the vLLM engine configuration `docs <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_
+for further customization.
+
+Enable logging
+---------------------
+Ray enables LLM service-level logging by default, and makes these statistics available using Grafana and Prometheus. Instructions are available at :ref:`collect-metrics`.
+
+These higher-level metrics track request and token behavior across deployed models. For example, with Prometheus metric names inline:
+
+* Token Volumes: `ray_rayllm_tokens_input`
+
+  * Total input and generated tokens (last hour, 24 hours, and 7 days)
+  * Ratio of input to generated tokens
+
+* Tokens per Request: `ray_rayllm_requests_started`
+
+  * Average total tokens per request (overall and per model)
+
+* Peak and Aggregate Stats: `ray_rayllm_tokens_generated`
+
+  * Peak tokens per second (per model, per day)
+  * Per-model request and token gauges over the past week
+
+For visualization, Ray ships with a Serve LLM-specific dashboard which is automatically available in Grafana. Example below:
+
+.. image:: images/serve_llm_dashboard.png
+
+If enabled, all engine metrics (this currently implies vLLM) are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. For example:
+
+* Token Throughput: `ray_vllm:request_prompt_tokens_sum` `ray_vllm:generation_tokens_total`)=
+* Latency Metrics: `ray_vllm:time_per_output_token_seconds_bucket`, `time_to_first_token_seconds_sum`
+
+  * Time per output token (P50, P90, P95, P99, Mean)
+  * Time to first token (TTFT)
+  * End-to-end request latency
+
+* Cache Utilization: `ray_vllm:gpu_cache_usage_perc`
+* Token Distribution: `ray_vllm:request_prompt_tokens_bucket`
+
+  * Heatmaps of prompt and generation lengths
+  * Max generation tokens per request
+
+To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
+
+.. tab-set::
+
+    .. tab-item:: Python
+        :sync: builder
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_app
+
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                log_engine_metrics=True
+            )
+
+            app = build_openai_app({"llm_configs": [llm_config]})
+            serve.run(app, blocking=True)
+
+    .. tab-item:: YAML
+        :sync: bind
+
+        .. code-block:: yaml
+
+            # config.yaml
+            applications:
+            - args:
+                llm_configs:
+                    log_engine_metrics: true
+                    - model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+            import_path: ray.serve.llm:build_openai_app
+            name: llm_app
+            route_prefix: "/"
+
 
 Advanced Usage Patterns
 -----------------------
