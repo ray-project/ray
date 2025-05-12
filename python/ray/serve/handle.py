@@ -173,14 +173,14 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # if not self._router.same_scheduler_class(new_handle_options.replica_scheduler):
-        #     print("recreating router")
-        #     self._router = self._create_router(
-        #         handle_id=self.handle_id,
-        #         deployment_id=self.deployment_id,
-        #         handle_options=self.init_options,
-        #         # replica_scheduler_class=new_handle_options.replica_scheduler,
-        #     )
+        if not self._router.same_scheduler_class(new_handle_options.replica_scheduler):
+            # print("recreating router")
+            self._router = self._create_router(
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
+                handle_options=self.init_options,
+                replica_scheduler_class=new_handle_options.replica_scheduler,
+            )
 
         return DeploymentHandle(
             self.deployment_name,
