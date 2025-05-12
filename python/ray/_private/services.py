@@ -785,7 +785,9 @@ def create_redis_client(redis_address, password=None, username=None):
     """Create a Redis client.
 
     Args:
-        The IP address, port, username, and password of the Redis server.
+        redis_address: The IP address and port of the Redis server.
+        password: The password for Redis authentication.
+        username: The username for Redis authentication.
 
     Returns:
         A Redis client.

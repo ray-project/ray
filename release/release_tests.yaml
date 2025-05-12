@@ -4269,3 +4269,32 @@
     timeout: 3600
     script: >
       pytest -sv test_batch_sglang.py
+
+#######################
+# Ray examples tests
+#######################
+
+- name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir

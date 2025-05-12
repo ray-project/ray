@@ -1,5 +1,6 @@
 import abc
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,8 +24,18 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
+from ray.data.collate_fn import (
+    ArrowBatchCollateFn,
+    CollateFn,
+    DefaultCollateFn,
+    NumpyBatchCollateFn,
+    PandasBatchCollateFn,
+    TensorBatchReturnType,
+    TensorBatchType,
+    is_tensor_batch_type,
+)
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -242,7 +253,9 @@ class DataIterator(abc.ABC):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: str = "auto",
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], "CollatedData"]] = None,
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -301,17 +314,28 @@ class DataIterator(abc.ABC):
                 Dataset is passed to Ray Train and ``collate_fn`` is not provided.
                 Otherwise, defaults to CPU. You can't use this parameter with
                 ``collate_fn``.
-            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of ``collate_fn``.
-                This is useful for further processing the data after it has been
-                batched. Potential use cases include collating along a dimension other
-                than the first, padding sequences of various lengths, or generally
-                handling batches of different length tensors. If not provided, the
-                default collate function is used which simply converts the batch of
-                numpy arrays to a batch of PyTorch tensors. This API is still
-                experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. If not provided, `iter_torch_batches` automatically
+                converts batches to `torch.Tensor`s and moves them to the device
+                assigned to the current worker. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                   Note that you should use util function `arrow_batch_to_tensors` to
+                   convert the pyarrow.Table to a dictionary of non-contiguous tensor
+                   batches.
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output can be any type. If the output is a `TensorBatchType`, it will be
+                automatically moved to the current worker's device. For other types,
+                you must handle device transfer manually in your training loop.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -327,9 +351,6 @@ class DataIterator(abc.ABC):
             An iterable over Torch Tensor batches.
         """
 
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
         from ray.train.torch import get_device
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
@@ -344,40 +365,74 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device()
 
-        if collate_fn is None:
-            # The default collate_fn handles formatting and Tensor creation.
-            # Here, we set device=None to defer host to device data transfer
-            # to the subsequent finalize_fn.
-            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-                return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch,
-                    dtypes=dtypes,
-                    device=None,
-                )
+        from ray.air._internal.torch_utils import (
+            move_tensors_to_device,
+        )
 
-            # The default finalize_fn handles the host to device data transfer.
-            # This is executed in a 1-thread pool separately from collate_fn
-            # to allow independent parallelism of these steps.
-            def finalize_fn(batch: Union["torch.Tensor", Dict[str, "torch.Tensor"]]):
-                if device is not None:
-                    if isinstance(batch, dict):
-                        for k, t in batch.items():
-                            batch[k] = t.to(device=device)
-                    else:
-                        batch = batch.to(device=device)
+        # The default finalize_fn handles the host to device data transfer.
+        # This is executed in a 1-thread pool separately from collate_fn
+        # to allow independent parallelism of these steps.
+        def default_finalize_fn(
+            batch: TensorBatchType,
+        ) -> Union[TensorBatchReturnType, Any]:
+            """Default finalize function for moving PyTorch tensors to device. If
+            batch is of type `TensorBatchType`, it will be automatically moved to the
+            current worker's device. For other types, you must handle device transfer
+            manually in your training loop.
+
+            Args:
+                batch: Input batch to move to device.
+
+            Returns:
+                Batch with tensors moved to the target device.
+                - If input is TensorBatchType, returns tensors moved to device
+                - Otherwise returns the same type as input without moving tensors
+                to device.
+            """
+            if is_tensor_batch_type(batch):
+                return move_tensors_to_device(batch, device=device)
+            else:
                 return batch
 
+        if collate_fn is None:
+            # The default collate_fn handles formatting and Tensor creation.
+            # Here, we defer host to device data transfer to the subsequent
+            # finalize_fn.
+            collate_fn = DefaultCollateFn(
+                dtypes=dtypes,
+                device=device,
+            )
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, ArrowBatchCollateFn):
+            # The ArrowBatchCollateFn handles formatting and Tensor creation.
+            # Here, we defer host to device data transfer to the subsequent
+            # finalize_fn.
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, NumpyBatchCollateFn):
+            batch_format = "numpy"
+        elif isinstance(collate_fn, PandasBatchCollateFn):
+            batch_format = "pandas"
+        elif callable(collate_fn):
+            batch_format = "numpy"
+            warnings.warn(
+                "Passing a function to `iter_torch_batches(collate_fn)` is "
+                "deprecated in Ray 2.47. Please switch to using a callable class that "
+                "inherits from `ArrowBatchCollateFn`, `NumpyBatchCollateFn`, or "
+                "`PandasBatchCollateFn`.",
+                RayDeprecationWarning,
+            )
         else:
-            finalize_fn = None
+            raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
         return self.iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
+            batch_format=batch_format,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=finalize_fn,
+            _finalize_fn=default_finalize_fn,
         )
 
     def iter_tf_batches(
