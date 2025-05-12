@@ -4,9 +4,32 @@ import logging
 import os
 import sys
 from typing import TYPE_CHECKING
+import re
+from pathlib import Path
 
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
+
+
+def _load_module(so_path_dir: str, mod_name: str):
+    import importlib.util
+
+    for file in os.listdir(so_path_dir):
+        full_path = os.path.join(so_path_dir, file)
+        try:
+            if full_path.endswith(".so"):
+                # Try to load the module
+                spec = importlib.util.spec_from_file_location(mod_name, full_path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod
+            elif os.path.isdir(full_path):
+                init_path = os.path.join(full_path, "__init__.py")
+                spec = importlib.util.spec_from_file_location(mod_name, init_path)
+                mod = importlib.util.module_from_spec(spec)
+                return mod
+        except Exception as e:
+            print(f"Error loading package {full_path}: {e}")
 
 
 def _configure_system():
@@ -55,20 +78,17 @@ def _configure_system():
     # but ensure we restore path and properly isolate the imports
     original_sys_path = sys.path.copy()
     sys.path.insert(0, thirdparty_files)
-
     try:
-        # Import for Ray internal usage
-        import setproctitle
-        import colorama
         import psutil
-
-        # Save the modules in Ray's private namespace
-        sys.modules["ray._private.setproctitle"] = setproctitle
-        sys.modules["ray._private.colorama"] = colorama
-        sys.modules["ray._private.psutil"] = psutil
     finally:
-        # Restore original sys.path to avoid affecting user imports
         sys.path = original_sys_path
+
+    sys.modules["ray._private.colorama"] = _load_module(
+        os.path.join(thirdparty_files, "colorama"), "colorama"
+    )
+    sys.modules["ray._private.setproctitle"] = _load_module(
+        thirdparty_files, "setproctitle"
+    )
 
     if (
         platform.system() == "Linux"

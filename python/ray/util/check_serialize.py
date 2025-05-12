@@ -8,10 +8,7 @@ import ray  # noqa: F401
 import ray.cloudpickle as cp
 from ray.util.annotations import DeveloperAPI
 
-try:
-    from ray._private.colorama import colorama
-except ImportError:
-    import colorama
+from ray._private import colorama
 
 
 @contextmanager

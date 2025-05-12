@@ -58,10 +58,8 @@ from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
-try:
-    from ray._private.colorama import colorama
-except ImportError:
-    import colorama
+from ray._private import colorama
+
 
 logger = logging.getLogger(__name__)
 

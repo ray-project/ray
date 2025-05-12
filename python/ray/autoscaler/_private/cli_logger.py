@@ -18,10 +18,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
 
-try:
-    from ray._private.colorama import colorama
-except ImportError:
-    import colorama
+
+from ray._private import colorama
+
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401

@@ -18,10 +18,7 @@ from ray._private.ray_constants import (
 )
 from ray.util.debug import log_once
 
-try:
-    from ray._private.colorama import colorama
-except ImportError:
-    import colorama
+from ray._private import colorama
 
 
 def setup_logger(
