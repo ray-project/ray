@@ -368,6 +368,22 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
         gt=0,
     )
+    request_scheduling_stats_period_s: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Frequency at which the controller will record scheduling stats "
+            "replicas. Uses a default if null."
+        ),
+        gt=0,
+    )
+    request_scheduling_stats_timeout_s: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Timeout that the controller will wait for a response "
+            "from the replica's record scheduling stats. Uses a default if null."
+        ),
+        gt=0,
+    )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
@@ -482,6 +498,8 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         graceful_shutdown_timeout_s=info.deployment_config.graceful_shutdown_timeout_s,
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
+        request_scheduling_stats_period_s=info.deployment_config.request_scheduling_stats_period_s,
+        request_scheduling_stats_timeout_s=info.deployment_config.request_scheduling_stats_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
     )
 

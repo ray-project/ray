@@ -242,6 +242,9 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
+        self._scheduling_stats: Dict[str, Any] = {}
+        self._record_scheduling_stats_ref: Optional[ObjectRef] = None
+        self._last_record_scheduling_stats_time: float = 0.0
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -342,6 +345,14 @@ class ActorReplicaWrapper:
     @property
     def health_check_timeout_s(self) -> float:
         return self.deployment_config.health_check_timeout_s
+
+    @property
+    def request_scheduling_stats_period_s(self) -> float:
+        return self.deployment_config.request_scheduling_stats_period_s
+
+    @property
+    def request_scheduling_stats_timeout_s(self) -> float:
+        return self.deployment_config.request_scheduling_stats_timeout_s
 
     @property
     def pid(self) -> Optional[int]:
@@ -829,6 +840,32 @@ class ActorReplicaWrapper:
         randomized_period = self.health_check_period_s * random.uniform(0.9, 1.1)
         return time_since_last > randomized_period
 
+    def _should_record_scheduling_stats(self) -> bool:
+        """Determines if a new record scheduling stats should be kicked off.
+
+        A record scheduling stats will be started if:
+            1) There is not already an active record scheduling stats.
+            2) It has been more than request_scheduling_stats_period_s since
+               the previous record scheduling stats was *started*.
+
+        This assumes that self._record_scheduling_stats_ref is reset to `None`
+        when an active record scheduling stats succeeds or fails (due to
+        returning or timeout).
+        """
+        if self._record_scheduling_stats_ref is not None:
+            # There's already an active record scheduling stats.
+            return False
+
+        # If there's no active record scheduling stats, kick off another and
+        # reset the timer if it's been long enough since the last record
+        # scheduling stats. Add some randomness to avoid synchronizing across
+        # all replicas.
+        time_since_last = time.time() - self._last_record_scheduling_stats_time
+        randomized_period = self.request_scheduling_stats_period_s * random.uniform(
+            0.9, 1.1
+        )
+        return time_since_last > randomized_period
+
     def check_health(self) -> bool:
         """Check if the actor is healthy.
 
@@ -883,6 +920,41 @@ class ActorReplicaWrapper:
 
         return self._healthy
 
+    def get_scheduling_stats(self) -> Dict[str, Any]:
+        """Get the scheduling stats for the replica."""
+        if self._record_scheduling_stats_ref is None:
+            # There's no active record scheduling stats.
+            pass
+        elif check_obj_ref_ready_nowait(self._record_scheduling_stats_ref):
+            # Object ref is ready, ray.get it to check for exceptions.
+            try:
+                self._scheduling_stats = ray.get(self._record_scheduling_stats_ref)
+            except Exception:
+                logger.exception(
+                    "Exception when trying to get scheduling stats:\n"
+                    + traceback.format_exc()
+                )
+            self._record_scheduling_stats_ref = None
+        elif (
+            time.time() - self._last_record_scheduling_stats_time
+            > self.request_scheduling_stats_timeout_s
+        ):
+            # Record scheduling stats hasn't returned and the timeout is up, retrying.
+            logger.warning(
+                "Didn't receive scheduling stats response for replica "
+                f"{self._replica_id} after "
+                f"{self.request_scheduling_stats_timeout_s}s, retrying."
+            )
+            self._record_scheduling_stats_ref = None
+
+        if self._should_record_scheduling_stats():
+            self._last_record_scheduling_stats_time = time.time()
+            self._record_scheduling_stats_ref = (
+                self._actor_handle.record_scheduling_stats.remote()
+            )
+
+        return self._scheduling_stats
+
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
         try:
@@ -934,9 +1006,14 @@ class DeploymentReplica:
         """Record the multiplexed model ids for this replica."""
         self._multiplexed_model_ids = multiplexed_model_ids
 
-    def record_scheduling_stats(self, scheduling_stats: Dict[str, Any]):
-        """Record the multiplexed model ids for this replica."""
-        self._scheduling_stats = scheduling_stats
+    def record_scheduling_stats(self, scheduling_stats: Optional[Dict[str, Any]]):
+        """Record the scheduling stats for this replica.
+
+        Recording scheduling_stats as an empty dictionary is valid. But skip
+        update if the scheduling_stats is None.
+        """
+        if scheduling_stats is not None:
+            self._scheduling_stats = scheduling_stats
 
     @property
     def multiplexed_model_ids(self) -> List[str]:
@@ -1085,6 +1162,13 @@ class DeploymentReplica:
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def get_scheduling_stats(self) -> Optional[Dict[str, Any]]:
+        """Get the latest response from the scheduling stats on the replica.
+
+        Returns None if the replica is still calculating the stats.
+        """
+        return self._actor.get_scheduling_stats()
 
     def update_state(self, state: ReplicaState) -> None:
         """Updates state in actor details."""
@@ -2122,6 +2206,8 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
+                scheduling_stats = replica.get_scheduling_stats()
+                replica.record_scheduling_stats(scheduling_stats)
             else:
                 logger.warning(
                     f"Replica {replica.replica_id} failed health check, stopping it."
