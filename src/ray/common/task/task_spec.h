@@ -333,6 +333,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ArgByRef(size_t arg_index) const;
 
+  bool HasArgRef(size_t arg_index) const;
+
   ObjectID ArgId(size_t arg_index) const;
 
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;

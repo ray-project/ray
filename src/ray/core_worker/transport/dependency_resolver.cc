@@ -40,7 +40,7 @@ void InlineDependencies(
         if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // clearing the reference and replacing it with the raw value.
-          mutable_arg->clear_object_ref();
+          mutable_arg->set_is_inlined(true);
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());

@@ -393,6 +393,9 @@ class ActorMethod:
                             obj_id in worker.in_actor_object_store
                         ), worker.in_actor_object_store
                         tensors = worker.in_actor_object_store[obj_id]
+                        print(
+                            f"send: tensors={tensors}, obj_id={obj_id}, dst_rank={dst_rank}"
+                        )
                         for tensor in tensors:
                             dist.send(tensor, dst_rank)
 
@@ -402,6 +405,9 @@ class ActorMethod:
 
                         worker = ray._private.worker.global_worker
                         tensors = []
+                        print(
+                            f"recv: tensor_meta={tensor_meta}, obj_id={obj_id}, src_rank={src_rank}"
+                        )
                         for meta in tensor_meta:
                             shape, dtype = meta
                             tensor = torch.zeros(shape, dtype=dtype)

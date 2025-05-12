@@ -253,13 +253,14 @@ class SerializationContext:
                     object_ref
                 )
 
-    def _deserialize_pickle5_data(self, data):
+    def _deserialize_pickle5_data(self, data, object_id=None):
         # TODO(swang): self.get_outer_object_ref() is set to ObjectID::Nil.
         worker = ray._private.worker.global_worker
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        for obj_ref, tensors in worker.in_actor_object_store.items():
+        if object_id in worker.in_actor_object_store:
+            tensors = worker.in_actor_object_store[object_id]
             ctx.reset_out_of_band_tensors(tensors)
 
         try:
@@ -275,11 +276,11 @@ class SerializationContext:
             ctx.reset_out_of_band_tensors([])
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata_fields):
+    def _deserialize_msgpack_data(self, data, metadata_fields, object_id=None):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data)
+            python_objects = self._deserialize_pickle5_data(pickle5_data, object_id)
         else:
             python_objects = []
 
@@ -324,7 +325,9 @@ class SerializationContext:
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
-                return self._deserialize_msgpack_data(data, metadata_fields)
+                return self._deserialize_msgpack_data(
+                    data, metadata_fields, object_ref.hex()
+                )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:

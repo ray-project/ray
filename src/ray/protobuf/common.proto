@@ -689,6 +689,8 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
+  // Inline or not.
+  bool is_inlined = 5;
 }
 
 message ReturnObject {

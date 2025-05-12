@@ -268,11 +268,19 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
+  return message_->args(arg_index).has_object_ref() &&
+         !message_->args(arg_index).is_inlined();
+}
+
+bool TaskSpecification::HasArgRef(size_t arg_index) const {
   return message_->args(arg_index).has_object_ref();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  if (HasArgRef(arg_index)) {
+    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  }
+  return ObjectID::Nil();
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
@@ -509,6 +517,11 @@ std::string TaskSpecification::DebugString() const {
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
          << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
          << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
+
+  // store object id in task spec
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    stream << ", arg_id=" << ArgId(i).Hex();
+  }
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
