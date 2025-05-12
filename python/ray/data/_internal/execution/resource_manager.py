@@ -469,9 +469,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._reservation_satisfies_min_requirement[op] = True
             else:
                 self._reservation_satisfies_min_requirement[op] = False
-                reserved_for_tasks = ExecutionResources(
-                    0, 0, min_resource_usage.object_store_memory
-                )
                 if index == 0:
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
