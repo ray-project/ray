@@ -325,6 +325,15 @@ For more details, see the following sections for each framework:
     Instatiating the Dataset outside of the ``train_loop_per_worker`` and passing it in via global scope
     can cause errors due to the Dataset not being serializable.
 
+.. note::
+    
+    When using PyTorch DataLoader multiprocessing with Ray Train, you should
+    set the ``multiprocessing_context`` to ``multiprocessing.context.ForkServerContext()``
+    i.e. ``data_loader = DataLoader(dataset, multiprocessing_context=multiprocessing.context.ForkServerContext(), ...)``.
+    This is because Ray Train configures the global logger with Ray-specific context
+    like ``get_actor_id()``, which, when inherited by Torch Dataloader subprocesses
+    using ``fork``, can cause hangs during logging since these subprocesses aren't Ray actors.
+
 .. _train-datasets-split:
 
 Splitting datasets
