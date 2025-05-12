@@ -3,6 +3,7 @@ import random
 from typing import (
     List,
     Optional,
+    Set,
 )
 
 from ray.serve._private.constants import (
@@ -50,9 +51,9 @@ class PowerOfTwoChoicesReplicaScheduler(
 
     async def choose_replicas(
         self,
-        available_replicas: List[RunningReplica],
+        replicas_ranks: List[Set[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[RunningReplica]:
+    ) -> List[Set[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
          (at most) two random available replicas.
 
@@ -82,4 +83,4 @@ class PowerOfTwoChoicesReplicaScheduler(
             list(candidate_replica_ids),
             k=min(2, len(candidate_replica_ids)),
         )
-        return [self._replicas[chosen_id] for chosen_id in chosen_ids]
+        return [{self._replicas[chosen_id] for chosen_id in chosen_ids}]

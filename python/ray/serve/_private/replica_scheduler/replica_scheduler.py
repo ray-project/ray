@@ -139,6 +139,29 @@ class LocalityScheduleMixin:
         # print(f"locality decision {candidate_replica_ids=}")
         return candidate_replica_ids
 
+    def rank_replicas(
+        self,
+        replicas: Set[RunningReplica],
+    ) -> List[Set[RunningReplica]]:
+        """Rank the replicas based on the locality preference.
+
+        Rank 0 is the set of replicas that are on the same node.
+        Rank 1 is the set of replicas that are on the same availability zone.
+        Rank 2 is the set of all other replicas.
+        """
+        ranked_replicas = [set() for _ in range(3)]
+        for replica in replicas:
+            if replica.replica_id in self._colocated_replica_ids[LocalityScope.NODE]:
+                ranked_replicas[0].add(replica)
+            elif (
+                replica.replica_id
+                in self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
+            ):
+                ranked_replicas[1].add(replica)
+            else:
+                ranked_replicas[2].add(replica)
+        return ranked_replicas
+
 
 class MultiplexScheduleMixin:
     def __init__(self, *args, **kwargs):
@@ -250,6 +273,34 @@ class MultiplexScheduleMixin:
 
         pending_request.scheduling_context.should_backoff = True
         return candidate_replica_ids
+
+    def rank_replicas(
+        self,
+        replicas: Set[RunningReplica],
+        multiplexed_model_id: str,
+    ) -> List[Set[RunningReplica]]:
+        """Rank the replicas based on the multiplexed model ID.
+
+        Rank 0 is the set of replicas that have the multiplexed model ID.
+        Rank 1 is the set of replicas that have the fewest multiplexed models.
+        Rank 2 is the set of all other replicas.
+        """
+        replica_ids_with_multiplexed_model = (
+            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
+        )
+        replica_ids_with_fewest_multiplexed_models = (
+            self._get_replica_ids_with_fewest_multiplexed_models()
+        )
+
+        ranked_replicas = [set() for _ in range(3)]
+        for replica in replicas:
+            if replica.replica_id in replica_ids_with_multiplexed_model:
+                ranked_replicas[0].add(replica)
+            elif replica.replica_id in replica_ids_with_fewest_multiplexed_models:
+                ranked_replicas[1].add(replica)
+            else:
+                ranked_replicas[2].add(replica)
+        return ranked_replicas
 
 
 class ReplicaScheduler(ABC):
@@ -756,11 +807,13 @@ class ReplicaScheduler(ABC):
                     )
 
                 chosen_replicas = await self.choose_replicas(
-                    available_replicas=list(self._replicas.values()),
+                    replicas_ranks=[set(self._replicas.values())],
                     pending_request=pending_request,
                 )
                 if chosen_replicas:
-                    yield chosen_replicas
+                    for replicas in chosen_replicas:
+                        if replicas:
+                            yield list(replicas)
 
                 # We have a slight unintended behavior when enabled locality routing
                 # for both node and AZ. The intention is to try same node first,
@@ -924,7 +977,7 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def choose_replicas(
         self,
-        available_replicas: List[RunningReplica],
+        replicas_ranks: List[Set[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[RunningReplica]:
+    ) -> List[Set[RunningReplica]]:
         pass
