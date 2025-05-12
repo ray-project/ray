@@ -634,7 +634,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, actor_addr1, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 0);
   ASSERT_EQ(num_clients_connected_, 1);
 
   // Create 3 tasks for the actor.
@@ -649,7 +648,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_TRUE(
       worker_client_->ReplyPushTask(task1_first_attempt.GetTaskAttempt(), Status::OK()));
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 0);
 
   // Submit 2 tasks.
   ASSERT_TRUE(submitter_.SubmitTask(task2_first_attempt).ok());
@@ -667,7 +665,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
       actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 0);
   // We haven't called the RPC callback yet, mimicking the situation
   // where they might be delayed by gRPC or the network.
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
@@ -693,7 +690,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   actor_addr2.set_worker_id(WorkerID::FromRandom().Binary());
   submitter_.ConnectActor(actor_id, actor_addr2, 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 4);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 2);
 
   // The task reply of the first attempt of task2 is now received.
   // Since the first attempt is already failed, it will not
@@ -709,7 +705,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // Still have RPC callbacks for the first attempt of task3 and second attempts of task2
   // and task3.
   ASSERT_EQ(worker_client_->callbacks.size(), 3);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 2);
 
   EXPECT_CALL(*task_finisher_,
               CompletePendingTask(task2_second_attempt.TaskId(), _, _, _))
@@ -725,7 +720,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
       worker_client_->ReplyPushTask(task3_second_attempt.GetTaskAttempt(), Status::OK()));
   // Still have RPC callbacks for the first attempt of task3.
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 0);
 
   // The task reply of the first attempt of task3 is now received.
   // Since the first attempt is already failed, it will not
@@ -739,7 +733,6 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(task3_first_attempt.GetTaskAttempt(),
                                             Status::IOError("")));
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_EQ(submitter_.NumInflightTasks(actor_id), 0);
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {

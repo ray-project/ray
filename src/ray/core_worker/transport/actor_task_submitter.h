@@ -249,9 +249,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
-  /// Return the number of inflight actor tasks for the given actor id.
-  size_t NumInflightTasks(const ActorID &actor_id) const;
-
  private:
   struct PendingTaskWaitingForDeathInfo {
     int64_t deadline_ms;
