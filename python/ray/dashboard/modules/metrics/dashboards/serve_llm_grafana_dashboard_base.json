@@ -65,9 +65,9 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_rayllm_tokens_input_total, model_id)",
+        "definition": "label_values(ray_serve_llm_tokens_input_total, model_id)",
         "query": {
-          "query": "label_values(ray_rayllm_tokens_input_total, model_id)"
+          "query": "label_values(ray_serve_llm_tokens_input_total, model_id)"
         },
         "refresh": 1,
         "includeAll": true,
@@ -84,9 +84,9 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_rayllm_tokens_input_total, WorkerId)",
+        "definition": "label_values(ray_serve_llm_tokens_input_total, WorkerId)",
         "query": {
-          "query": "label_values(ray_rayllm_tokens_input_total, WorkerId)"
+          "query": "label_values(ray_serve_llm_tokens_input_total, WorkerId)"
         },
         "refresh": 1,
         "allValue": ".*",
