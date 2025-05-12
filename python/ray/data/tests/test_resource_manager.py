@@ -492,19 +492,26 @@ class TestReservationOpResourceAllocator:
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
         allocator.update_usages()
-
-        # Cluster resources are only sufficient for reserving o2's min resource requirement.
-        # But we'll still make sure reserving the min resource requirement for all ops,
-        # with _reservation_satisfies_min_requirement` marked False for the remaining ops.
-        for op in [o2, o3, o4, o5]:
-            assert allocator._op_reserved[op] == incremental_usage, op
-        assert allocator._reservation_satisfies_min_requirement[o2]
-        for op in [o3, o4, o5]:
-            assert not allocator._reservation_satisfies_min_requirement[op], op
-
-        # The remaining should be 0.
-        assert allocator._total_shared == ExecutionResources.zero()
-        for op in [o2, o3, o4, o5]:
+        # incremental_usage should be reserved for o2.
+        assert allocator._op_reserved[o2] == incremental_usage
+        # Remaining resources are CPU = 7 - 3 = 4, object_store_memory = 800 - 500 = 300.
+        # We have enough CPUs for o3's incremental_usage, but not enough
+        # object_store_memory. We'll still reserve the incremental_usage by
+        # oversubscribing object_store_memory.
+        assert allocator._op_reserved[o3] == incremental_usage
+        # Now the remaining resources are CPU = 4 - 3 = 1,
+        # object_store_memory = 300 - 500 = -200.
+        # We don't oversubscribing CPUs, we'll only reserve
+        # incremental_usage.object_store_memory.
+        assert allocator._op_reserved[o4] == ExecutionResources(
+            0, 0, incremental_usage.object_store_memory
+        )
+        # Same for o5
+        assert allocator._op_reserved[o5] == ExecutionResources(
+            0, 0, incremental_usage.object_store_memory
+        )
+        assert allocator._total_shared == ExecutionResources(1, 0, 0)
+        for op in [o2, o3, o4]:
             assert allocator._reserved_for_op_outputs[op] == 50
 
     @patch(

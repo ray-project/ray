@@ -465,7 +465,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             # Check if the remaining resources are enough for the minimum resource
             # requirement (reserved_for_tasks + reserved_for_outputs).
-            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(remaining):
+            # Note, we ignore object_store_memory, because the task can still run
+            # when object_store_memory is insufficient, in which case objects will be
+            # spilled to the disk.
+            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
+                remaining, ignore_object_store_memory=True
+            ):
                 self._reservation_satisfies_min_requirement[op] = True
             else:
                 self._reservation_satisfies_min_requirement[op] = False
