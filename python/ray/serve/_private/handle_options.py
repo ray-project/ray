@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Callable, Optional
+from typing import Callable
 
 import ray
 from ray._common.utils import import_attr
@@ -56,7 +56,6 @@ class DynamicHandleOptionsBase(ABC):
     multiplexed_model_id: str = ""
     stream: bool = False
     replica_scheduler: Callable = PowerOfTwoChoicesReplicaScheduler
-    on_request_scheduled: Optional[Callable] = None
 
     @abstractmethod
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptionsBase":

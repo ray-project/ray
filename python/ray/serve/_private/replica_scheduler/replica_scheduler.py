@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
@@ -1020,4 +1021,12 @@ class ReplicaScheduler(ABC):
         replicas_ranks: List[Set[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[Set[RunningReplica]]:
+        pass
+
+    def on_request_scheduled(self, replica_id: ReplicaID, result: ReplicaResult):
+        """Called when a request is scheduled to a replica.
+
+        This is used as a callback to update the state of the scheduler after
+        a response is generated.
+        """
         pass
