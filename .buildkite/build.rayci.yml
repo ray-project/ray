@@ -126,6 +126,6 @@ steps:
   - label: ":tapioca: Generate indexes"
     instance_type: small
     commands:
-      - bash .buildkite/generate_indexes.sh nightly
+      - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
       - forge

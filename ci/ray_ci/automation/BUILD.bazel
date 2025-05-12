@@ -122,6 +122,9 @@ py_test(
         "ci_unit",
         "team:ci",
     ],
+    data = [
+        "@registry_x86_64//:file",
+    ],
     deps = [
         ci_require("pytest"),
         ci_require("docker"),

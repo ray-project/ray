@@ -2,6 +2,13 @@ from unittest import mock
 import sys
 from datetime import datetime, timezone
 import pytest
+import requests
+import subprocess
+import tempfile
+import runfiles
+import platform
+import time
+import shutil
 
 from ci.ray_ci.automation.docker_tags_lib import (
     _get_docker_auth_token,
@@ -17,6 +24,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     list_image_tags,
     get_ray_commit,
     check_image_ray_commit,
+    generate_index,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -627,6 +635,88 @@ def test_check_image_ray_commit_failure(
         check_image_ray_commit(
             prefix="test", ray_type=ray_type, expected_commit=expected_commit[::-1]
         )
+
+
+def _registry_binary():
+    r = runfiles.Create()
+    system = platform.system()
+    if system != "Linux" or platform.processor() != "x86_64":
+        raise ValueError(f"Unsupported platform: {system}")
+    return r.Rlocation("registry_x86_64/registry")
+
+
+def _start_local_registry():
+    """Start local registry at localhost:5678 for testing."""
+
+    temp_dir = tempfile.mkdtemp()
+    config_content = f"""
+version: 0.1
+storage:
+    filesystem:
+        rootdirectory: {temp_dir}
+http:
+    addr: :5678
+    """
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml") as config_file:
+        config_file.write(config_content)
+        config_file.flush()
+
+        proc = subprocess.Popen(
+            [
+                _registry_binary(),
+                "serve",
+                config_file.name,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(10):  # Wait for 10 seconds for registry to start
+            try:
+                response = requests.get("http://localhost:5678/v2/")
+                if response.status_code == 200:
+                    return proc, temp_dir
+            except requests.exceptions.ConnectionError:
+                pass
+            time.sleep(1)
+
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        raise RuntimeError(
+            f"Registry failed to start. stdout: {stdout}, stderr: {stderr}"
+        )
+
+
+def test_generate_index():
+    proc, temp_dir = _start_local_registry()
+    try:
+        test_image1 = "localhost:5678/test-image:1.0"
+        test_image2 = "localhost:5678/test-image:2.0"
+
+        # Pull and retag alpine images to be pushed to local registry
+        subprocess.run(["docker", "pull", "alpine:3.16"], check=True)
+        subprocess.run(["docker", "pull", "alpine:3.17"], check=True)
+        subprocess.run(["docker", "tag", "alpine:3.16", test_image1], check=True)
+        subprocess.run(["docker", "tag", "alpine:3.17", test_image2], check=True)
+
+        subprocess.run(["docker", "push", test_image1], check=True)
+        subprocess.run(["docker", "push", test_image2], check=True)
+
+        # Generate index
+        index_name = "localhost:5678/test-index:latest"
+        generate_index(index_name=index_name, tags=[test_image1, test_image2])
+
+        # Verify index was created with 2 image manifests
+        response = requests.get("http://localhost:5678/v2/test-index/manifests/latest")
+        assert response.status_code == 200
+        assert "manifests" in response.json()
+        assert len(response.json()["manifests"]) == 2
+
+    finally:
+        proc.kill()
+        proc.wait()
+        shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":
