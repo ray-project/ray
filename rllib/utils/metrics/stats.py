@@ -2,6 +2,7 @@ from collections import defaultdict, deque
 import copy
 import time
 import threading
+import heapq
 from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -145,6 +146,7 @@ class Stats:
         self,
         init_value: Optional[Any] = None,
         reduce: Optional[str] = "mean",
+        percentiles: Optional[List[int]] = None,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -161,6 +163,9 @@ class Stats:
                 `window`). Note that if both `reduce` and `window` are None, the user of
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
+            percentiles: If reduce is "percentiles", we compute the percentiles of the
+                values list given by `percentiles`. Defaults to [0.5, 0.75, 0.9, 0.95,
+                0.99].
             window: An optional window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
@@ -197,8 +202,10 @@ class Stats:
                 to the given value.
         """
         # Thus far, we only support mean, max, min, and sum.
-        if reduce not in [None, "mean", "min", "max", "sum"]:
-            raise ValueError("`reduce` must be one of `mean|min|max|sum` or None!")
+        if reduce not in [None, "mean", "min", "max", "sum", "percentiles"]:
+            raise ValueError(
+                "`reduce` must be one of `mean|min|max|sum|percentiles` or None!"
+            )
         # One or both window and ema_coeff must be None.
         if window is not None and ema_coeff is not None:
             raise ValueError("Only one of `window` or `ema_coeff` can be specified!")
@@ -207,6 +214,28 @@ class Stats:
             raise ValueError(
                 "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
             )
+
+        if reduce == "percentiles":
+            if window in (None, float("inf")):
+                raise ValueError(
+                    "A window must be specified when reduce is 'percentiles'!"
+                )
+            if percentiles is None:
+                percentiles = [0.5, 0.75, 0.9, 0.95, 0.99]
+            else:
+                if not isinstance(percentiles, list):
+                    raise ValueError("`percentiles` must be a list!")
+                if not all(isinstance(p, (int, float)) for p in percentiles):
+                    raise ValueError("`percentiles` must contain only ints or floats!")
+                if not all(0 <= p <= 100 for p in percentiles):
+                    raise ValueError(
+                        "`percentiles` must contain only values between 0 and 100!"
+                    )
+        elif percentiles is not None:
+            raise ValueError(
+                "`percentiles` must be None when `reduce` is not 'percentiles'!"
+            )
+
         # If `window` is explicitly set to inf, `clear_on_reduce` must be True.
         # Otherwise, we risk a memory leak.
         if window == float("inf") and not clear_on_reduce:
@@ -367,6 +396,8 @@ class Stats:
                 )
                 or (self._reduce_method is not None and torch.is_tensor(reduced))
             )
+            and self._reduce_method
+            != "percentiles"  # Reducing percentiles does not require a history
         ):
             self._hist.append(reduced)
 
@@ -551,29 +582,35 @@ class Stats:
         tmp_values = []
         # Loop from index=-1 backward to index=start until our new_values list has
         # at least a len of `win`.
-        for i in range(1, max(map(len, [self, *others])) + 1):
-            # Per index, loop through all involved stats, including `self` and add
-            # to `tmp_values`.
-            for stats in [self, *others]:
-                if len(stats) < i:
-                    continue
-                tmp_values.append(stats.values[-i])
+        if self._reduce_method == "percentiles":
+            # Use heapq to sort values (assumes that the values are already sorted)
+            # and then pick the correct percentiles
+            merged = list(heapq.merge(*[stats._hist for stats in [self, *others]]))
+            self._set_values(merged)
+        else:
+            for i in range(1, max(map(len, [self, *others])) + 1):
+                # Per index, loop through all involved stats, including `self` and add
+                # to `tmp_values`.
+                for stats in [self, *others]:
+                    if len(stats) < i:
+                        continue
+                    tmp_values.append(stats.values[-i])
 
-            # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
-            # TODO (sven) : explain why all this
-            if self._ema_coeff is not None:
-                new_values.extend([np.nanmean(tmp_values)] * len(tmp_values))
-            elif self._reduce_method in [None, "sum"]:
-                new_values.extend(tmp_values)
-            else:
-                new_values.extend(
-                    [self._reduced_values(values=tmp_values)[0]] * len(tmp_values)
-                )
-            tmp_values.clear()
-            if len(new_values) >= win:
-                break
+                # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
+                # TODO (sven) : explain why all this
+                if self._ema_coeff is not None:
+                    new_values.extend([np.nanmean(tmp_values)] * len(tmp_values))
+                elif self._reduce_method in [None, "sum"]:
+                    new_values.extend(tmp_values)
+                else:
+                    new_values.extend(
+                        [self._reduced_values(values=tmp_values)[0]] * len(tmp_values)
+                    )
+                tmp_values.clear()
+                if len(new_values) >= win:
+                    break
 
-        self._set_values(list(reversed(new_values)))
+            self._set_values(list(reversed(new_values)))
 
     @staticmethod
     def _numpy_if_necessary(values):
@@ -637,6 +674,7 @@ class Stats:
         return {
             "values": self.values,
             "reduce": self._reduce_method,
+            "percentiles": self._percentiles,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
@@ -649,6 +687,7 @@ class Stats:
         stats = Stats(
             state["values"],
             reduce=state["reduce"],
+            percentiles=state["percentiles"],
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
@@ -680,6 +719,7 @@ class Stats:
         stats = Stats(
             init_value=init_value,
             reduce=other._reduce_method,
+            percentiles=other._percentiles,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
@@ -715,6 +755,11 @@ class Stats:
 
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
+            return values, values
+
+        if self._reduce_method == "percentiles":
+            # Sort values
+            values.sort()
             return values, values
 
         # Special case: Internal values list is empty -> return NaN or 0.0 for sum.
