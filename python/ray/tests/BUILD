@@ -62,6 +62,8 @@ py_test_module_list(
         "test_kill_raylet_signal_log.py",
         "test_metrics_agent.py",
         "test_metrics_head.py",
+        "test_multiprocessing.py",
+        "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_protobuf_compatibility.py",
     ],
@@ -346,6 +348,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_label_scheduling.py",
         "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
@@ -763,7 +766,6 @@ py_test_module_list(
     files = [
         "test_failure_4.py",
         "test_iter.py",
-        "test_multiprocessing.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
@@ -1146,8 +1148,6 @@ py_test(
     ],
 )
 
-# TODO(ekl) we can't currently support tagging these as flaky since there's
-# no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
     size = "large",
     env = {

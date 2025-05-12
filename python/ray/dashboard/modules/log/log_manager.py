@@ -201,18 +201,19 @@ class LogsManager:
         suffix: str,
         timeout: int,
     ):
-        """
-        Resolve actor log file
-            Args:
-                actor_id: The actor id.
-                get_actor_fn: The function to get actor information.
-                suffix: The suffix of the log file.
-                timeout: Timeout in seconds.
-            Returns:
-                The log file name and node id.
+        """Resolve actor log file.
 
-            Raises:
-                ValueError if actor data is not found or get_actor_fn is not provided.
+        Args:
+            actor_id: The actor id.
+            get_actor_fn: The function to get actor information.
+            suffix: The suffix of the log file.
+            timeout: Timeout in seconds.
+
+        Returns:
+            The log file name and node id.
+
+        Raises:
+            ValueError: If actor data is not found or get_actor_fn is not provided.
         """
         if get_actor_fn is None:
             raise ValueError("get_actor_fn needs to be specified for actor_id")
@@ -249,13 +250,12 @@ class LogsManager:
     async def _resolve_task_filename(
         self, task_id: str, attempt_number: int, suffix: str, timeout: int
     ):
-        """
-        Resolve log file for a task.
+        """Resolve log file for a task.
 
         Args:
             task_id: The task id.
             attempt_number: The attempt number.
-            suffix: The suffix of the log file, e.g. out or err
+            suffix: The suffix of the log file, e.g. out or err.
             timeout: Timeout in seconds.
 
         Returns:
@@ -263,9 +263,8 @@ class LogsManager:
             corresponding task log in the file.
 
         Raises:
-            FileNotFoundError if the log file is not found.
-            ValueError if the suffix is not out or err.
-
+            FileNotFoundError: If the log file is not found.
+            ValueError: If the suffix is not out or err.
         """
         log_filename = None
         node_id = None

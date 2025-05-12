@@ -175,8 +175,7 @@ class RuntimeEnvAgent:
         self,
         runtime_env_dir,
         logging_params,
-        gcs_address: str,
-        cluster_id_hex: str,
+        gcs_client: GcsClient,
         temp_dir,
         address,
         runtime_env_agent_port,
@@ -204,7 +203,7 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
+        self._gcs_client = gcs_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._uv_plugin = UvPlugin(self._runtime_env_dir)
@@ -357,18 +356,19 @@ class RuntimeEnvAgent:
             setup_timeout_seconds,
             runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
-            """
-            Create runtime env with retry times. This function won't raise exceptions.
+            """Create runtime env with retry times. This function won't raise exceptions.
 
             Args:
                 runtime_env: The instance of RuntimeEnv class.
                 setup_timeout_seconds: The timeout of runtime environment creation for
-                each attempt.
+                    each attempt.
+                runtime_env_config: The configuration for the runtime environment.
 
             Returns:
-                a tuple which contains result (bool), runtime env context (str), error
-                message(str).
-
+                Tuple[bool, str, str]: A tuple containing:
+                    - result (bool): Whether the creation was successful
+                    - runtime_env_context (str): The serialized context if successful, None otherwise
+                    - error_message (str): Error message if failed, None otherwise
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
