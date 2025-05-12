@@ -236,6 +236,8 @@ class Stats:
                 "`percentiles` must be None when `reduce` is not 'percentiles'!"
             )
 
+        self._percentiles = percentiles
+
         # If `window` is explicitly set to inf, `clear_on_reduce` must be True.
         # Otherwise, we risk a memory leak.
         if window == float("inf") and not clear_on_reduce:
@@ -585,7 +587,8 @@ class Stats:
         if self._reduce_method == "percentiles":
             # Use heapq to sort values (assumes that the values are already sorted)
             # and then pick the correct percentiles
-            merged = list(heapq.merge(*[stats._hist for stats in [self, *others]]))
+            lists_to_merge = [list(self.values), *[list(o.values) for o in others]]
+            merged = list(heapq.merge(*lists_to_merge))
             self._set_values(merged)
         else:
             for i in range(1, max(map(len, [self, *others])) + 1):
@@ -759,6 +762,7 @@ class Stats:
 
         if self._reduce_method == "percentiles":
             # Sort values
+            values = list(values)
             values.sort()
             return values, values
 
