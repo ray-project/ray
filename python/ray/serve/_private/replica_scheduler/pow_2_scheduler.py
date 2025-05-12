@@ -13,6 +13,7 @@ from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
 )
 from ray.serve._private.replica_scheduler.replica_scheduler import (
+    FIFOMixin,
     LocalityScheduleMixin,
     MultiplexScheduleMixin,
     ReplicaScheduler,
@@ -25,7 +26,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class PowerOfTwoChoicesReplicaScheduler(
-    MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
+    FIFOMixin, MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
 

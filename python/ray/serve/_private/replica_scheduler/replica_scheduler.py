@@ -303,6 +303,20 @@ class MultiplexScheduleMixin:
         return ranked_replicas
 
 
+class FIFOMixin:
+    """Mixin for FIFO scheduling.
+
+    This mixin is used to schedule requests in FIFO order and only respecting
+    the multiplexed model id. ReplicaScheduler's default behavior is
+    out-of-order scheduling and match expectly the internal request id of
+    the request.
+    """
+
+    @property
+    def fifo_scheduling(self) -> bool:
+        return True
+
+
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
@@ -409,7 +423,10 @@ class ReplicaScheduler(ABC):
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
-        self.fifo_scheduling = True
+
+    @property
+    def fifo_scheduling(self) -> bool:
+        return False
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -701,7 +718,7 @@ class ReplicaScheduler(ABC):
     def pending_request_matched(
         self, pending_request: PendingRequest, request_metadata: RequestMetadata
     ) -> bool:
-        if not self.fifo_scheduling:
+        if self.fifo_scheduling:
             return (
                 not pending_request.future.done()
                 and pending_request.metadata.multiplexed_model_id
@@ -742,7 +759,7 @@ class ReplicaScheduler(ABC):
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
-        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
+        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self.pending_request_matched=}")
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
