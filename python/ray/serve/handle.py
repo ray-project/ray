@@ -173,23 +173,14 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        print(
-            f"in _options {self._router._asyncio_router._replica_scheduler=} {new_handle_options.replica_scheduler=}"
-        )
-        if not isinstance(
-            self._router._asyncio_router._replica_scheduler,
-            new_handle_options.replica_scheduler,
-        ):
-            print("recreating router")
-            self._router = self._create_router(
-                handle_id=self.handle_id,
-                deployment_id=self.deployment_id,
-                handle_options=self.init_options,
-                replica_scheduler_class=new_handle_options.replica_scheduler,
-            )
-        print(
-            f"in _options after {self._router._asyncio_router._replica_scheduler=} {new_handle_options.replica_scheduler=}"
-        )
+        # if not self._router.same_scheduler_class(new_handle_options.replica_scheduler):
+        #     print("recreating router")
+        #     self._router = self._create_router(
+        #         handle_id=self.handle_id,
+        #         deployment_id=self.deployment_id,
+        #         handle_options=self.init_options,
+        #         # replica_scheduler_class=new_handle_options.replica_scheduler,
+        #     )
 
         return DeploymentHandle(
             self.deployment_name,
@@ -764,9 +755,6 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        if self._router:
-            print(f"in remote {self._router._asyncio_router._replica_scheduler=}")
-
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator

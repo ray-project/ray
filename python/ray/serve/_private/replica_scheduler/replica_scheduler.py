@@ -716,6 +716,77 @@ class ReplicaScheduler(ABC):
 
         return None
 
+    async def choose_replicas_with_backoff(
+        self,
+        pending_request: Optional[PendingRequest] = None,
+    ) -> AsyncGenerator[List[RunningReplica], None]:
+        """Generator that repeatedly chooses available replicas.
+
+        In the first iteration, only replicas colocated on the same node as this router
+        will be considered. If those are occupied, the full set of replicas will be
+        considered on subsequent iterations.
+
+        For multiplexing, this will first attempt to choose replicas that have the
+        requested model ID for a configured timeout. If no replicas with the matching
+        model ID are available after that timeout, it will fall back to the regular
+        procedure.
+
+        After each iteration, there will be an increasing backoff sleep time (dictated
+        by `self.backoff_sequence_s`). The caller should exit the generator to reset the
+        backoff sleep time.
+        """
+        entered_backoff = False
+        try:
+            backoff_index = 0
+
+            while True:
+                # If no replicas are available, wait until `update_replicas` is called.
+                while len(self._replicas) == 0:
+                    logger.info(
+                        "No replicas are currently available for "
+                        f"{self._deployment_id}.",
+                        extra={"log_to_stderr": False},
+                    )
+                    self._replicas_updated_event.clear()
+                    await self._replicas_updated_event.wait()
+                    logger.info(
+                        f"New replicas are available for {self._deployment_id}, "
+                        "attempting to schedule queued requests.",
+                        extra={"log_to_stderr": False},
+                    )
+
+                chosen_replicas = await self.choose_replicas(
+                    available_replicas=list(self._replicas.values()),
+                    pending_request=pending_request,
+                )
+                if chosen_replicas:
+                    yield chosen_replicas
+
+                # We have a slight unintended behavior when enabled locality routing
+                # for both node and AZ. The intention is to try same node first,
+                # then try same AZ if node fails, then try everything else until a
+                # replica is found. These sequence should only help to reduce the
+                # latency of the request. No backoff and sleep should be applied, until
+                # we have fall into the case trying on all available replicas.
+                if not pending_request.scheduling_context.should_backoff:
+                    continue
+
+                if not entered_backoff:
+                    entered_backoff = True
+                    self.num_scheduling_tasks_in_backoff += 1
+                    self.num_scheduling_tasks_in_backoff_gauge.set(
+                        self.num_scheduling_tasks_in_backoff
+                    )
+
+                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+        finally:
+            if entered_backoff:
+                self.num_scheduling_tasks_in_backoff -= 1
+                self.num_scheduling_tasks_in_backoff_gauge.set(
+                    self.num_scheduling_tasks_in_backoff
+                )
+
     async def fulfill_pending_requests(self):
         """Repeatedly tries to fulfill a pending request with an available replica.
 
@@ -731,7 +802,9 @@ class ReplicaScheduler(ABC):
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_schedule()
                 request_metadata = pending_request.metadata if pending_request else None
-                async for candidates in self.choose_replicas(pending_request):
+                async for candidates in self.choose_replicas_with_backoff(
+                    pending_request
+                ):
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
                     # if we need to continue this scheduling task.
@@ -851,6 +924,7 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def choose_replicas(
         self,
+        available_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
-    ) -> AsyncGenerator[List[RunningReplica], None]:
+    ) -> List[RunningReplica]:
         pass

@@ -341,6 +341,9 @@ class Router(ABC):
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
+    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
+        return True
+
 
 class AsyncioRouter:
     def __init__(
@@ -657,6 +660,9 @@ class AsyncioRouter:
     async def shutdown(self):
         await self._metrics_manager.shutdown()
 
+    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
+        return isinstance(self._replica_scheduler, replica_scheduler)
+
 
 class SingletonThreadRouter(Router):
     """Wrapper class that runs an AsyncioRouter on a separate thread.
@@ -760,6 +766,9 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
+
+    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
+        return self._asyncio_router.same_scheduler_class(replica_scheduler)
 
 
 class SharedRouterLongPollClient:

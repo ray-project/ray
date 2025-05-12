@@ -1,8 +1,6 @@
-import asyncio
 import logging
 import random
 from typing import (
-    AsyncGenerator,
     List,
     Optional,
 )
@@ -52,88 +50,36 @@ class PowerOfTwoChoicesReplicaScheduler(
 
     async def choose_replicas(
         self,
+        available_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
-    ) -> AsyncGenerator[List[RunningReplica], None]:
-        """Generator that repeatedly chooses (at most) two random available replicas.
-
-        In the first iteration, only replicas colocated on the same node as this router
-        will be considered. If those are occupied, the full set of replicas will be
-        considered on subsequent iterations.
+    ) -> List[RunningReplica]:
+        """One iteration of the power of two choices procedure that chooses
+         (at most) two random available replicas.
 
         For multiplexing, this will first attempt to choose replicas that have the
         requested model ID for a configured timeout. If no replicas with the matching
         model ID are available after that timeout, it will fall back to the regular
         procedure.
-
-        After each iteration, there will be an increasing backoff sleep time (dictated
-        by `self.backoff_sequence_s`). The caller should exit the generator to reset the
-        backoff sleep time.
         """
-        entered_backoff = False
-        try:
-            backoff_index = 0
+        if (
+            pending_request is not None
+            and pending_request.metadata.multiplexed_model_id
+        ):
+            # Get candidates for multiplexed model ID.
+            candidate_replica_ids = self.apply_multiplex_scheduling(
+                pending_request=pending_request,
+            )
+        else:
+            # Get candidates for locality preference.
+            candidate_replica_ids = self.apply_locality_scheduling(
+                pending_request=pending_request,
+            )
 
-            while True:
-                # If no replicas are available, wait until `update_replicas` is called.
-                while len(self._replicas) == 0:
-                    logger.info(
-                        "No replicas are currently available for "
-                        f"{self._deployment_id}.",
-                        extra={"log_to_stderr": False},
-                    )
-                    self._replicas_updated_event.clear()
-                    await self._replicas_updated_event.wait()
-                    logger.info(
-                        f"New replicas are available for {self._deployment_id}, "
-                        "attempting to schedule queued requests.",
-                        extra={"log_to_stderr": False},
-                    )
+        if not candidate_replica_ids:
+            return []
 
-                if (
-                    pending_request is not None
-                    and pending_request.metadata.multiplexed_model_id
-                ):
-                    # Get candidates for multiplexed model ID.
-                    candidate_replica_ids = self.apply_multiplex_scheduling(
-                        pending_request=pending_request,
-                    )
-                    # print(f"after calling apply_multiplex_scheduling {pending_request=} {candidate_replica_ids=}")
-                else:
-                    # Get candidates for locality preference.
-                    candidate_replica_ids = self.apply_locality_scheduling(
-                        pending_request=pending_request,
-                    )
-
-                # print(f"in choose_replicas {candidate_replica_ids=}")
-                if candidate_replica_ids:
-                    chosen_ids = random.sample(
-                        list(candidate_replica_ids),
-                        k=min(2, len(candidate_replica_ids)),
-                    )
-                    # print(f"in candidate_replica_ids loop {chosen_ids=}")
-                    yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-
-                # We have a slight unintended behavior when enabled locality routing
-                # for both node and AZ. The intention is to try same node first,
-                # then try same AZ if node fails, then try everything else until a
-                # replica is found. These sequence should only help to reduce the
-                # latency of the request. No backoff and sleep should be applied, until
-                # we have fall into the case trying on all available replicas.
-                if not pending_request.scheduling_context.should_backoff:
-                    continue
-
-                if not entered_backoff:
-                    entered_backoff = True
-                    self.num_scheduling_tasks_in_backoff += 1
-                    self.num_scheduling_tasks_in_backoff_gauge.set(
-                        self.num_scheduling_tasks_in_backoff
-                    )
-
-                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
-        finally:
-            if entered_backoff:
-                self.num_scheduling_tasks_in_backoff -= 1
-                self.num_scheduling_tasks_in_backoff_gauge.set(
-                    self.num_scheduling_tasks_in_backoff
-                )
+        chosen_ids = random.sample(
+            list(candidate_replica_ids),
+            k=min(2, len(candidate_replica_ids)),
+        )
+        return [self._replicas[chosen_id] for chosen_id in chosen_ids]
