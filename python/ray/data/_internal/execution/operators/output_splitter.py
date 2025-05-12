@@ -1,13 +1,16 @@
 import math
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     NodeIdStr,
     PhysicalOperator,
     RefBundle,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -17,7 +20,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-class OutputSplitter(PhysicalOperator):
+class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
     The output bundles of this operator will have a `bundle.output_split_idx` attr
@@ -181,7 +184,7 @@ class OutputSplitter(PhysicalOperator):
                 self._metrics.on_output_queued(target_bundle)
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
-                    if self._get_location(target_bundle) == preferred_loc:
+                    if preferred_loc in self._get_locations(target_bundle):
                         self._locality_hits += 1
                     else:
                         self._locality_misses += 1
@@ -201,7 +204,7 @@ class OutputSplitter(PhysicalOperator):
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
-                if self._get_location(bundle) == preferred_loc:
+                if preferred_loc in self._get_locations(bundle):
                     self._buffer.remove(bundle)
                     self._metrics.on_input_dequeued(bundle)
                     return bundle
@@ -246,15 +249,18 @@ class OutputSplitter(PhysicalOperator):
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
         return output
 
-    def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
-        """Ask Ray for the node id of the given bundle.
+    @staticmethod
+    def _get_locations(bundle: RefBundle) -> Collection[NodeIdStr]:
+        """Fetches list of node ids holding the objects of the given bundle.
 
-        This method may be overriden for testing.
+        This method may be overridden for testing.
 
         Returns:
-            A node id associated with the bundle, or None if unknown.
+            A list of node ids where the objects in the bundle are located
         """
-        return bundle.get_cached_location()
+        preferred_locations = bundle.get_preferred_object_locations()
+
+        return preferred_locations.keys()
 
     def implements_accurate_memory_accounting(self) -> bool:
         return True

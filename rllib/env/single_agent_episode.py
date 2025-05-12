@@ -608,7 +608,8 @@ class SingleAgentEpisode:
         Args:
             other: The other `SingleAgentEpisode` to be concatenated to this one.
 
-        Returns: A `SingleAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `SingleAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         assert other.id_ == self.id_

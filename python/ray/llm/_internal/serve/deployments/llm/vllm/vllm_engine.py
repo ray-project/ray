@@ -5,6 +5,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKI
 
 import ray
 import re
+from concurrent.futures.thread import ThreadPoolExecutor
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -27,8 +28,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
     VLLMGenerationRequest,
+    VLLMEmbeddingRequest,
     VLLMSamplingParams,
 )
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
@@ -49,12 +52,10 @@ from ray.llm._internal.serve.configs.server_models import (
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
     RAYLLM_GUIDED_DECODING_BACKEND,
-    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     MIN_NUM_TOPLOGPROBS_ALLOWED,
     MAX_NUM_TOPLOGPROBS_ALLOWED,
 )
 from ray.llm._internal.utils import try_import
-from ray.llm._internal.serve.deployments.utils.batcher import LLMRawResponsesBatcher
 
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 
@@ -62,7 +63,7 @@ if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput
+    from vllm.outputs import RequestOutput, PoolingRequestOutput
     from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 vllm = try_import("vllm")
@@ -207,6 +208,11 @@ class VLLMEngine(LLMEngine):
         # Also need local instance of the tokenizer to manage prompt formatting.
         self._tokenizer = None
 
+        self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
+        self._atokenize = vllm.utils.make_async(
+            self._tokenize, executor=self._tokenizer_executor
+        )
+
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         """Run the node initializer.
@@ -216,6 +222,12 @@ class VLLMEngine(LLMEngine):
         It's a static method so it can be overridden for testing.
         """
         return await initialize_node_util(llm_config)
+
+    def _tokenize(
+        self, prompt_text: str, add_special_tokens: bool = False
+    ) -> List[int]:
+        encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
+        return encoded.input_ids
 
     async def start(self):
         """Start the vLLM engine.
@@ -506,8 +518,11 @@ class VLLMEngine(LLMEngine):
         else:
             prompt_text = prompt.prompt
 
+        prompt_token_ids = await self._atokenize(prompt_text)
+
         request_params = {
             "prompt": prompt_text,
+            "prompt_token_ids": prompt_token_ids,
             "request_id": request_id,
             "sampling_params": VLLMSamplingParams.from_prompt(prompt),
             "disk_multiplex_config": disk_lora_model,
@@ -519,30 +534,7 @@ class VLLMEngine(LLMEngine):
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
 
-    def _get_batch_interval_ms(self, stream: bool = True) -> int:
-        """Calculate the batching interval for responses."""
-        stream_batching_interval_ms = self.llm_config.experimental_configs.get(
-            "stream_batching_interval_ms"
-        )
-        if stream_batching_interval_ms is None:
-            stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
-        return stream_batching_interval_ms if stream else None
-
     async def generate(
-        self,
-        request: GenerationRequest,
-    ) -> AsyncGenerator[LLMRawResponse, None]:
-        # TODO (genesu): Responses batching logics should be common to all
-        #  engines and belongs to the LLMServer level instead of the engine
-        #  level here. Refactor the entire batching logics up.
-        response_stream = LLMRawResponsesBatcher(
-            self._generate(request),
-            interval_ms=self._get_batch_interval_ms(request.stream),
-        )
-        async for response in response_stream.stream():
-            yield response
-
-    async def _generate(
         self, request: GenerationRequest
     ) -> AsyncGenerator[LLMRawResponse, None]:
         """Generate an LLMRawResponse stream
@@ -563,12 +555,21 @@ class VLLMEngine(LLMEngine):
             logger.info(
                 f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
             )
-        # Construct a results generator from vLLM
-        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
-            prompt=vllm.inputs.TextPrompt(
+
+        if request.prompt_token_ids is not None:
+            prompt = vllm.inputs.TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=request.multi_modal_data,
+            )
+        else:
+            prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multi_modal_data,
-            ),
+            )
+
+        # Construct a results generator from vLLM
+        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
+            prompt=prompt,
             sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
@@ -705,6 +706,50 @@ class VLLMEngine(LLMEngine):
             raise InputTooLong(
                 len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
+
+    async def embed(
+        self, vllm_embedding_request: VLLMEmbeddingRequest
+    ) -> Tuple[List[List[float]], int]:
+        """Return (embeddings, num_prompt_tokens)"""
+
+        num_prompts = len(vllm_embedding_request.prompt)
+        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+            logger.info(
+                f"Encoding request {vllm_embedding_request.request_id} started. "
+                f"Num prompts: {num_prompts}"
+            )
+
+        generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
+
+        prompts = vllm_embedding_request.prompt
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        for i, prompt in enumerate(prompts):
+            request_id = f"{vllm_embedding_request.request_id}-{i}"
+            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+                prompt=vllm.inputs.TextPrompt(
+                    prompt=prompt,
+                ),
+                pooling_params=vllm.pooling_params.PoolingParams(),
+                request_id=request_id,
+                lora_request=vllm_embedding_request.lora_request,  # type: ignore
+            )
+            generators.append(gen)
+
+        embedding_data = []
+        total_prompt_tokens = 0
+
+        for gen in generators:
+            async for result in gen:
+                embedding = result.outputs.embedding
+                if vllm_embedding_request.encoding_format == "base64":
+                    embedding = floats_to_base64(embedding)
+
+                embedding_data.append(embedding)
+                total_prompt_tokens += len(result.prompt_token_ids)
+
+        return embedding_data, total_prompt_tokens
 
     async def check_health(self) -> bool:
         if not hasattr(self.engine, "check_health"):
