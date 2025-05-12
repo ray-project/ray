@@ -221,7 +221,10 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         )
 
         tensors = arrow_batch_to_tensors(
-            batch, dtypes=self.dtypes, combine_chunks=self.device == "cpu"
+            batch,
+            dtypes=self.dtypes,
+            combine_chunks=self.device == "cpu",
+            pin_memory=self.device == "cpu",
         )
         return tensors["image"], tensors["label"]
 

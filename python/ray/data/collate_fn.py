@@ -213,6 +213,13 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         # However, for CPU transfer, we need to combine the chunked arrays first
         # before converting to numpy format and then to Tensors.
         combine_chunks = self.device.type == "cpu"
+
+        # If the device is CPU, we don't need to pin the memory.
+        pin_memory = self.device.type != "cpu"
+
         return arrow_batch_to_tensors(
-            batch, dtypes=self.dtypes, combine_chunks=combine_chunks
+            batch,
+            dtypes=self.dtypes,
+            combine_chunks=combine_chunks,
+            pin_memory=pin_memory,
         )
