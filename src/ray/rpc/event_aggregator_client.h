@@ -52,7 +52,7 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
                             const int port,
                             ClientCallManager &client_call_manager) {
     RAY_LOG(INFO) << "Initiating the event aggregator client with address: " << address
-                  << " port:" << port;
+                  << " port: " << port;
     grpc_client_ = std::make_unique<GrpcClient<EventAggregatorService>>(
         address, port, client_call_manager);
   };
