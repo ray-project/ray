@@ -264,6 +264,8 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    request_scheduling_stats_period_s: Default[float] = DEFAULT.VALUE,
+    request_scheduling_stats_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
     replica_scheduler: Default[Union[str, ReplicaScheduler, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
@@ -317,6 +319,14 @@ def deployment(
             method in your deployment that raises an exception when unhealthy.
         health_check_timeout_s: Duration in seconds, that replicas wait for a health
             check method to return before considering it as failed. Defaults to 30s.
+        request_scheduling_stats_period_s: Duration between record scheduling stats
+            calls for the replica. Defaults to 10s. The health check is by default a
+            no-op Actor call to the replica, but you can define your own request
+            scheduling stats using the "record_scheduling_stats" method in your
+            deployment.
+        request_scheduling_stats_timeout_s: Duration in seconds, that replicas wait for
+            a request scheduling stats method to return before considering it as failed.
+            Defaults to 30s.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
             no more work to be done before shutting down. Defaults to 2s.
         graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
@@ -397,6 +407,8 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
+        request_scheduling_stats_period_s=request_scheduling_stats_period_s,
+        request_scheduling_stats_timeout_s=request_scheduling_stats_timeout_s,
         logging_config=logging_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)

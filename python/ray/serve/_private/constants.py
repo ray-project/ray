@@ -417,3 +417,12 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
 DEFAULT_REPLICA_SCHEDULER = (
     "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler"
 )
+
+# The default request scheduling period to use if none is specified.
+DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S = 10
+
+# The default request scheduling timeout to use if none is specified.
+DEFAULT_REQUEST_SCHEDULING_STATS_TIMEOUT_S = 30
+
+# Name of deployment request scheduling stats method implemented by user.
+REQUEST_SCHEDULING_STATS_METHOD = "record_scheduling_stats"

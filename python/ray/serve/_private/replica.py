@@ -57,6 +57,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
+    REQUEST_SCHEDULING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -841,6 +842,13 @@ class ReplicaBase(ABC):
             self._healthy = False
             raise e from None
 
+    async def record_scheduling_stats(self) -> Dict[str, Any]:
+        try:
+            return await self._user_callable_wrapper.call_user_record_scheduling_stats()
+        except Exception as e:
+            logger.warning("Replica record scheduling stats failed.")
+            raise e from None
+
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
@@ -986,6 +994,9 @@ class ReplicaActor:
 
     async def check_health(self):
         await self._replica_impl.check_health()
+
+    async def record_scheduling_stats(self) -> Dict[str, Any]:
+        await self._replica_impl.record_scheduling_stats()
 
     async def reconfigure(
         self, deployment_config
@@ -1404,6 +1415,9 @@ class UserCallableWrapper:
                 await self._callable._run_asgi_lifespan_startup()
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
+        self._user_record_scheduling_stats = getattr(
+            self._callable, REQUEST_SCHEDULING_STATS_METHOD, None
+        )
 
         logger.info(
             "Finished initializing replica.",
@@ -1435,9 +1449,22 @@ class UserCallableWrapper:
 
         return None
 
+    async def call_user_record_scheduling_stats(self) -> Dict[str, Any]:
+        self._raise_if_not_initialized("call_user_record_scheduling_stats")
+
+        if self._user_record_scheduling_stats is not None:
+            return await self._call_user_record_scheduling_stats()
+
+        return {}
+
     @_run_on_user_code_event_loop
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
+
+    @_run_on_user_code_event_loop
+    async def _call_user_record_scheduling_stats(self) -> Dict[str, Any]:
+        result, _ = await self._call_func_or_gen(self._user_record_scheduling_stats)
+        return result
 
     @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):
