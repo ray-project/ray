@@ -20,6 +20,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NodeMetrics,
     OpRuntimeMetrics,
 )
+from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
 from ray.data.context import DataContext
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+UNKNOWN = "unknown"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -58,7 +60,7 @@ class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
-        self._value: float = 0
+        self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
@@ -72,7 +74,7 @@ class Timer:
             self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
-        self._value += value
+        self._total += value
         if value < self._min:
             self._min = value
         if value > self._max:
@@ -80,7 +82,7 @@ class Timer:
         self._total_count += 1
 
     def get(self) -> float:
-        return self._value
+        return self._total
 
     def min(self) -> float:
         return self._min
@@ -89,7 +91,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count if self._total_count else float("inf")
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -165,6 +167,9 @@ class _StatsActor:
         # Cache of calls to ray.nodes() to prevent unnecessary network calls
         self._ray_nodes_cache: Dict[str, str] = {}
 
+        # Initialize the metadata exporter
+        self._metadata_exporter = get_dataset_metadata_exporter()
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -177,11 +182,6 @@ class _StatsActor:
             description="""Bytes spilled by dataset operators.
                 DataContext.enable_get_object_locations_for_metrics
                 must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
-        self.allocated_bytes = Gauge(
-            "data_allocated_bytes",
-            description="Bytes allocated by dataset operators",
             tag_keys=op_tags_keys,
         )
         self.freed_bytes = Gauge(
@@ -478,14 +478,21 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(
+        self,
+        job_id: str,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
             "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
-            "start_time": time.time(),
+            "start_time": start_time,
             "end_time": None,
             "operators": {
                 operator: {
@@ -497,6 +504,16 @@ class _StatsActor:
                 for operator in operator_tags
             },
         }
+        if self._metadata_exporter is not None:
+            from ray.data._internal.metadata_exporter import DatasetMetadata
+
+            dataset_metadata = DatasetMetadata(
+                job_id=job_id,
+                topology=topology,
+                dataset_id=dataset_tag,
+                start_time=start_time,
+            )
+            self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -765,11 +782,24 @@ class _StatsManager:
 
     # Other methods
 
-    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+    def register_dataset_to_stats_actor(
+        self,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        """Register a dataset with the stats actor.
+
+        Args:
+            dataset_tag: Tag for the dataset
+            operator_tags: List of operator tags
+            topology: Optional Topology representing the DAG structure to export
+        """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
+            topology,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:
@@ -993,9 +1023,9 @@ class DatasetStatsSummary:
 
         Args:
             already_printed: Set of operator IDs that have already had its stats printed
-            out.
+               out.
             include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest operator.
+               log stats of the latest operator.
             add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.

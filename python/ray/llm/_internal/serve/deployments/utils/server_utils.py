@@ -1,6 +1,8 @@
 from fastapi import HTTPException, status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
 import traceback
+import base64
+import struct
 
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
@@ -15,7 +17,7 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
 from ray.llm._internal.serve.observability.logging import get_logger
 import asyncio
 from functools import partial
-from typing import Awaitable, Callable, TypeVar
+from typing import Awaitable, Callable, TypeVar, List
 
 logger = get_logger(__name__)
 
@@ -125,7 +127,10 @@ def get_response_for_error(
 
 def get_serve_request_id() -> str:
     """Get request id from serve request context."""
-    return serve.context._serve_request_context.get().request_id
+    context = serve.context._serve_request_context.get()
+    if context is not None:
+        return context.request_id
+    return ""
 
 
 def get_model_request_id(model: str):
@@ -135,3 +140,10 @@ def get_model_request_id(model: str):
 def replace_prefix(model: str) -> str:
     """Replace -- with / in model name to handle slashes within the URL path segment"""
     return model.replace("--", "/")
+
+
+def floats_to_base64(float_list: List[float]) -> str:
+    """Encode a list of floats as base64 as needed for the embedding API response."""
+    binary = struct.pack(f"{len(float_list)}f", *float_list)
+    encoded = base64.b64encode(binary).decode("utf-8")
+    return encoded

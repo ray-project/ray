@@ -4,6 +4,7 @@ from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 import torch
 
@@ -187,12 +188,43 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
-        # When collate_fn is specified, check that`_finalize_fn`
-        # is not used in `DataIterator.iter_batches()`.
+        # Check that _finalize_fn is always used in `DataIterator.iter_batches()`.
         iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
         assert all(
-            kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
+            kwargs["_finalize_fn"] is not None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
+
+
+@pytest.fixture(params=["regular", "chunked"])
+def null_array_table(request):
+    """Fixture that returns a PyArrow table with either a regular or chunked null array."""
+    if request.param == "regular":
+        # Regular array
+        return pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+    else:
+        # Chunked array
+        return pa.table(
+            {
+                "fruit_apple": pa.chunked_array(
+                    [
+                        pa.array([None], type=pa.null()),
+                        pa.array([None, None], type=pa.null()),
+                    ]
+                )
+            }
+        )
+
+
+def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
+    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
+    ds = ray.data.from_arrow(null_array_table)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch, dict)
+        assert "fruit_apple" in batch
+        assert isinstance(batch["fruit_apple"], torch.Tensor)
+        assert torch.isnan(batch["fruit_apple"]).all()
+        assert batch["fruit_apple"].shape == (3,)
 
 
 def test_iterator_to_materialized_dataset(ray_start_regular_shared):

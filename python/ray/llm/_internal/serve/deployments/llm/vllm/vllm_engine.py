@@ -4,6 +4,8 @@ import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
+import re
+from concurrent.futures.thread import ThreadPoolExecutor
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -20,15 +22,16 @@ from ray.llm._internal.serve.configs.error_handling import (
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
-    VLLMEngineStats,
     VLLMEngineStatTracker,
     usage_counters,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
     VLLMGenerationRequest,
+    VLLMEmbeddingRequest,
     VLLMSamplingParams,
 )
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
@@ -36,7 +39,9 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
     initialize_node as initialize_node_util,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    BatchedLLMRawResponse,
+    Prompt,
+    GenerationRequest,
+    DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
     LogProb,
@@ -47,27 +52,31 @@ from ray.llm._internal.serve.configs.server_models import (
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
     RAYLLM_GUIDED_DECODING_BACKEND,
-    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     MIN_NUM_TOPLOGPROBS_ALLOWED,
     MAX_NUM_TOPLOGPROBS_ALLOWED,
 )
 from ray.llm._internal.utils import try_import
 
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+
 if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput
+    from vllm.outputs import RequestOutput, PoolingRequestOutput
     from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
 
-
 time_in_queue_histogram = metrics.Histogram(
     "vllm_engine_stats_time_in_queue_ms",
     "Time a request spends in the queue first forward pass not included (ms).",
     boundaries=LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
+)
+
+V1_TOO_LONG_PATTERN = re.compile(
+    r".* (\d+).* is longer than the maximum model length of (\d+).*"
 )
 
 
@@ -87,6 +96,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
         **{
             "model": model,
             "distributed_executor_backend": "ray",
+            "guided_decoding_backend": RAYLLM_GUIDED_DECODING_BACKEND,
             "disable_log_stats": False,
             **engine_config.get_initialization_kwargs(),
         }
@@ -124,93 +134,6 @@ def _clear_current_platform_cache():
     if hasattr(current_platform.get_device_capability, "cache_clear"):
         logger.info("Clearing the current platform cache ...")
         current_platform.get_device_capability.cache_clear()
-
-
-class BatchLLMRawResponses:
-    """This class batches multiple LLMRawResponses from a generator into a
-    single response, at some time interval.
-
-    Args:
-        generator: the async generator that this class pulls LLMRawResponses
-            from.
-        interval_ms: the interval at which this class yields the current batch.
-            If None, this class will batch all responses from the generator
-            together and yield the entire batch once.
-    """
-
-    def __init__(
-        self,
-        generator: AsyncGenerator[LLMRawResponse, None],
-        interval_ms: Optional[float] = MODEL_RESPONSE_BATCH_TIMEOUT_MS,
-    ):
-        self.generator = generator
-        self.queue: asyncio.Queue = asyncio.Queue()
-
-        if interval_ms is None:
-            self.interval_s = None
-        else:
-            self.interval_s = interval_ms / 1000
-
-        self.done_event: asyncio.Event = asyncio.Event()
-
-        # We are okay with this task getting cancelled (to propagate cancellations)
-        self.read_task = asyncio.create_task(self.read())
-
-    async def stream(self) -> AsyncGenerator[BatchedLLMRawResponse, None]:
-        """Drain from the queue every interval_ms and yield the merged results"""
-        try:
-            while True:
-                # Wait for the interval or until we finish, whichever is faster.
-                # We use an event to avoid asyncio.wait_for cancelling the real task on timeout.
-                try:
-                    if self.interval_s is None:
-                        await self.done_event.wait()
-                    else:
-                        await asyncio.wait_for(
-                            self.done_event.wait(), timeout=self.interval_s
-                        )
-                except asyncio.TimeoutError:
-                    pass
-
-                # Get all elements from the queue
-                results, is_done = self.check_done_and_drain()
-
-                # If there are results, merge and yield them
-                if results:
-                    output: BatchedLLMRawResponse = BatchedLLMRawResponse.merge_stream(*results)  # type: ignore
-                    yield output
-
-                # If the read task is done, exit the stream task
-                if is_done:
-                    # Raise exception, if any
-                    self.read_task.result()
-                    break
-        finally:
-            # If the stream task is done, make sure to exit the read task
-            if not self.read_task.done():
-                self.read_task.cancel()
-
-    def check_done_and_drain(self):
-        results = self.drain_queue()
-        return results, self.read_task.done()
-
-    async def read(self):
-        """Read from the generator and put into the queue in a tight loop"""
-        try:
-            async for x in self.generator:
-                self.queue.put_nowait(x)
-        finally:
-            self.done_event.set()
-
-    def drain_queue(self):
-        """Drain all results currently in the queue"""
-        results = []
-        try:
-            while True:
-                results.append(self.queue.get_nowait())
-        except asyncio.QueueEmpty:
-            pass
-        return results
 
 
 class _EngineBackgroundProcess:
@@ -261,7 +184,7 @@ class _EngineBackgroundProcess:
         return self._error
 
 
-class VLLMEngine:
+class VLLMEngine(LLMEngine):
     def __init__(
         self,
         llm_config: LLMConfig,
@@ -271,6 +194,8 @@ class VLLMEngine:
         Args:
             llm_config: The llm configuration for this engine
         """
+        super().__init__(llm_config)
+
         if vllm is None:
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
@@ -288,6 +213,16 @@ class VLLMEngine:
         self.engine = None
         self.vllm_config: "VllmConfig" = None
 
+        # Chat template content format (openai or string)
+        self._resolved_content_format = None
+        # Also need local instance of the tokenizer to manage prompt formatting.
+        self._tokenizer = None
+
+        self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
+        self._atokenize = vllm.utils.make_async(
+            self._tokenize, executor=self._tokenizer_executor
+        )
+
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         """Run the node initializer.
@@ -298,20 +233,40 @@ class VLLMEngine:
         """
         return await initialize_node_util(llm_config)
 
+    def _tokenize(
+        self, prompt_text: str, add_special_tokens: bool = False
+    ) -> List[int]:
+        encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
+        return encoded.input_ids
+
     async def start(self):
         """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
+        from vllm.entrypoints.chat_utils import resolve_chat_template_content_format
+
         if self.running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
             return
 
-        # Get the scaling options
         self.engine = await self._start_engine()
         self.running = True
         self.model_config = await self.engine.get_model_config()
+
+        self._tokenizer = await self.engine.get_tokenizer()
+        self._resolved_content_format = resolve_chat_template_content_format(
+            # Use HF to get the chat template so set it to None here.
+            chat_template=None,
+            # Default to None, change when it's needed.
+            # vLLM does not have a high level API to support all of this.
+            tools=None,
+            # Let vLLM decide the content format.
+            given_format="auto",
+            tokenizer=self._tokenizer,
+            trust_remote_code=self.model_config.trust_remote_code,
+        )
 
         logger.info("Started vLLM engine.")
 
@@ -544,25 +499,63 @@ class VLLMEngine:
             stat_loggers={"ray": additional_metrics_logger} # Add this line
         )
 
-    async def generate(
+    async def prepare_request(
         self,
-        vllm_engine_request: VLLMGenerationRequest,
+        request_id: str,
+        prompt: Prompt,
         stream: bool,
-    ) -> AsyncGenerator[LLMRawResponse, None]:
-        batch_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS if stream else None
-        if vllm_engine_request.serve_request_context:
-            ray.serve.context._serve_request_context.set(
-                vllm_engine_request.serve_request_context
-            )
-        response_stream = BatchLLMRawResponses(
-            self._generate(vllm_engine_request),
-            interval_ms=batch_interval_ms,
+        disk_lora_model: Optional[DiskMultiplexConfig] = None,
+    ) -> GenerationRequest:
+        from vllm.entrypoints.chat_utils import (
+            parse_chat_messages_futures,
+            apply_hf_chat_template,
         )
-        async for response in response_stream.stream():
-            yield response
 
-    async def _generate(
-        self, vllm_generation_request: VLLMGenerationRequest
+        model_config = self.model_config
+        mm_data = None
+
+        if isinstance(prompt.prompt, list):
+            messages = [m.model_dump() for m in prompt.prompt]
+            conversation, mm_futures = parse_chat_messages_futures(
+                messages=messages,
+                model_config=model_config,
+                tokenizer=self._tokenizer,
+                content_format=self._resolved_content_format,
+            )
+            mm_data = await mm_futures
+
+            prompt_text = apply_hf_chat_template(
+                tokenizer=self._tokenizer,
+                conversation=conversation,
+                chat_template=None,
+                tools=None,
+                trust_remote_code=model_config.trust_remote_code,
+                tokenize=False,
+                # **kwargs for tokenizer.apply_chat_template
+                add_generation_prompt=True,
+                continue_final_message=False,
+            )
+        else:
+            prompt_text = prompt.prompt
+
+        prompt_token_ids = await self._atokenize(prompt_text)
+
+        request_params = {
+            "prompt": prompt_text,
+            "prompt_token_ids": prompt_token_ids,
+            "request_id": request_id,
+            "sampling_params": VLLMSamplingParams.from_prompt(prompt),
+            "disk_multiplex_config": disk_lora_model,
+            "stream": stream,
+        }
+        if mm_data:
+            request_params["multi_modal_data"] = mm_data
+
+        vllm_request = VLLMGenerationRequest(**request_params)
+        return vllm_request
+
+    async def generate(
+        self, request: GenerationRequest
     ) -> AsyncGenerator[LLMRawResponse, None]:
         """Generate an LLMRawResponse stream
 
@@ -580,20 +573,26 @@ class VLLMEngine:
         """
         if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
             logger.info(
-                f"Request {vllm_generation_request.request_id} started. "
-                f"Prompt: {vllm_generation_request.prompt}"
+                f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
             )
+
+        if request.prompt_token_ids is not None:
+            prompt = vllm.inputs.TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=request.multi_modal_data,
+            )
+        else:
+            prompt = vllm.inputs.TextPrompt(
+                prompt=request.prompt,
+                multi_modal_data=request.multi_modal_data,
+            )
+
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
-            prompt=vllm.inputs.TextPrompt(
-                prompt=vllm_generation_request.prompt,
-                multi_modal_data=vllm_generation_request.multi_modal_data,
-            ),
-            sampling_params=self._parse_sampling_params(
-                vllm_generation_request.sampling_params
-            ),
-            request_id=vllm_generation_request.request_id,
-            lora_request=vllm_generation_request.lora_request,  # type: ignore
+            prompt=prompt,
+            sampling_params=self._parse_sampling_params(request.sampling_params),
+            request_id=request.request_id,
+            lora_request=request.lora_request,  # type: ignore
         )
 
         # Loop over the results
@@ -627,7 +626,7 @@ class VLLMEngine:
                 log_probs, log_probs_idx = self._extract_logprobs(
                     output,
                     log_probs_idx,
-                    vllm_generation_request.sampling_params.top_logprobs,
+                    request.sampling_params.top_logprobs,
                 )
                 yield LLMRawResponse(
                     generated_text=text_output,
@@ -664,7 +663,7 @@ class VLLMEngine:
                     generated_tokens_s = all_tokens_collected / generation_time
 
                 logger.info(
-                    f"Request {vllm_generation_request.request_id} finished ({finish_reason}). "
+                    f"Request {request.request_id} finished ({finish_reason}). "
                     f"Total time: {total_request_time}s, "
                     f"Queue time: {queue_time}, "
                     f"Generation+async time: {generation_time_str}, "
@@ -675,7 +674,7 @@ class VLLMEngine:
                 )
             else:
                 logger.warning(
-                    f"Request {vllm_generation_request.request_id} "
+                    f"Request {request.request_id} "
                     "finished without any output. "
                     f"Input tokens: {num_input_tokens}."
                 )
@@ -684,12 +683,17 @@ class VLLMEngine:
             if len(error_args) == 3 and "Input too long." == error_args[0]:
                 _, input_length, max_input_length = error_args
                 raise InputTooLong(input_length, max_input_length).exception from None
+            elif len(error_args) == 1 and V1_TOO_LONG_PATTERN.match(error_args[0]):
+                parsed_error = V1_TOO_LONG_PATTERN.match(error_args[0])
+                raise InputTooLong(
+                    int(parsed_error[1]), int(parsed_error[2])
+                ).exception from None
             else:
                 raise e from None
         finally:
             # Ensure that we cancel on the engine once we have exited the streaming
             # phase
-            await self.engine.abort(vllm_generation_request.request_id)
+            await self.engine.abort(request.request_id)
 
     def _get_prompt_limit(self) -> int:
         """Helper to get the prompt limit from scheduler config
@@ -715,6 +719,7 @@ class VLLMEngine:
         if (
             finish_reason
             and finish_reason == FinishReason.LENGTH
+            and hasattr(request_output.metrics, "first_token_time")
             and request_output.metrics.first_token_time is None
         ):
             # This means that the prompt was too long and we did not generate anything.
@@ -722,21 +727,59 @@ class VLLMEngine:
                 len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
 
-    async def check_health(self):
+    async def embed(
+        self, vllm_embedding_request: VLLMEmbeddingRequest
+    ) -> Tuple[List[List[float]], int]:
+        """Return (embeddings, num_prompt_tokens)"""
+
+        num_prompts = len(vllm_embedding_request.prompt)
+        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+            logger.info(
+                f"Encoding request {vllm_embedding_request.request_id} started. "
+                f"Num prompts: {num_prompts}"
+            )
+
+        generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
+
+        prompts = vllm_embedding_request.prompt
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        for i, prompt in enumerate(prompts):
+            request_id = f"{vllm_embedding_request.request_id}-{i}"
+            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+                prompt=vllm.inputs.TextPrompt(
+                    prompt=prompt,
+                ),
+                pooling_params=vllm.pooling_params.PoolingParams(),
+                request_id=request_id,
+                lora_request=vllm_embedding_request.lora_request,  # type: ignore
+            )
+            generators.append(gen)
+
+        embedding_data = []
+        total_prompt_tokens = 0
+
+        for gen in generators:
+            async for result in gen:
+                embedding = result.outputs.embedding
+                if vllm_embedding_request.encoding_format == "base64":
+                    embedding = floats_to_base64(embedding)
+
+                embedding_data.append(embedding)
+                total_prompt_tokens += len(result.prompt_token_ids)
+
+        return embedding_data, total_prompt_tokens
+
+    async def check_health(self) -> bool:
         if not hasattr(self.engine, "check_health"):
-            return
+            return False
 
         try:
             return await asyncio.wait_for(self.engine.check_health(), timeout=15)
         except BaseException as e:
             logger.exception("Healthcheck failed. The replica will be restarted")
             raise e from None
-
-    def stats(self) -> VLLMEngineStats:
-        return self._stats.to_stats()
-
-    def shutdown(self, shutdown_pg: bool = True):
-        raise NotImplementedError()
 
     @staticmethod
     def _collect_usage_metrics(sampling_params: VLLMSamplingParams) -> None:

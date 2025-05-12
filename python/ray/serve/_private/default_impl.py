@@ -1,6 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 import ray
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -15,8 +16,12 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
+    CONTROLLER_MAX_CONCURRENCY,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -241,3 +246,21 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         )
 
     return handle.options(stream=not info.app_is_cross_language)
+
+
+def get_controller_impl():
+    from ray.serve._private.controller import ServeController
+
+    controller_impl = ray.remote(
+        name=SERVE_CONTROLLER_NAME,
+        namespace=SERVE_NAMESPACE,
+        num_cpus=0,
+        lifetime="detached",
+        max_restarts=-1,
+        max_task_retries=-1,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+    )(ServeController)
+
+    return controller_impl
