@@ -304,7 +304,8 @@ NodeManager::NodeManager(
       config.resource_config.GetResourceMap(),
       /*is_node_available_fn*/
       [this](scheduling::NodeID node_id) {
-        return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+        return gcs_client_->Nodes().GetCached(NodeID::FromBinary(node_id.Binary())) !=
+               nullptr;
       },
       /*get_used_object_store_memory*/
       [this]() {
@@ -328,7 +329,7 @@ NodeManager::NodeManager(
       config.labels);
 
   auto get_node_info_func = [this](const NodeID &node_id) {
-    return gcs_client_->Nodes().Get(node_id);
+    return gcs_client_->Nodes().GetCached(node_id);
   };
   auto announce_infeasible_task = [this](const RayTask &task) {
     PublishInfeasibleTaskError(task);
@@ -414,7 +415,7 @@ NodeManager::NodeManager(
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
     const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
+  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().GetCached(node_id);
   RAY_CHECK(node_info) << "No GCS info for node " << node_id;
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
       rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),

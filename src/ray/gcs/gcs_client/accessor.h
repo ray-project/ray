@@ -400,9 +400,17 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to look up in local cache.
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
-  virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeInfo *
-      Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
+  /// dead, this optional object is empty.
+  virtual const rpc::GcsNodeInfo *GetCached(const NodeID &node_id,
+                                            bool filter_dead_nodes = true) const;
+
+  /// Get node information by making a request to the GCS.
+  /// \param node_id The ID of node.
+  /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
+  /// \return The item returned by GCS. If the item to read doesn't exist or the node is
+  /// dead, this optional object is empty.
+  virtual std::optional<rpc::GcsNodeInfo> GetSync(const NodeID &node_id,
+                                                  bool filter_dead_nodes = true) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.

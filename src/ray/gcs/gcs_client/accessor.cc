@@ -674,9 +674,11 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
   });
 }
 
-const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
-                                              bool filter_dead_nodes) const {
+const rpc::GcsNodeInfo *NodeInfoAccessor::GetCached(const NodeID &node_id,
+                                                    bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
+  // Make sure the client has subscribed.
+  RAY_CHECK(node_change_callback_ != nullptr);
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
     if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
@@ -685,6 +687,27 @@ const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
     return &entry->second;
   }
   return nullptr;
+}
+
+std::optional<rpc::GcsNodeInfo> NodeInfoAccessor::GetSync(const NodeID &node_id,
+                                                          bool filter_dead_nodes) const {
+  RAY_CHECK(!node_id.IsNil());
+  rpc::GetAllNodeInfoRequest request;
+  request.mutable_filters()->set_node_id(node_id.Binary());
+  if (filter_dead_nodes) {
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::ALIVE);
+  }
+  rpc::GetAllNodeInfoReply reply;
+  auto status = client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply);
+  std::optional<rpc::GcsNodeInfo> node_info_opt;
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to get node info from GCS, status = " << status;
+    return node_info_opt;
+  }
+  if (reply.node_info_list().size() > 0) {
+    node_info_opt.emplace(std::move(reply.mutable_node_info_list()->at(0)));
+  }
+  return node_info_opt;
 }
 
 const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
