@@ -610,9 +610,69 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
+    def test_scale_down_multiple_pods_of_node_type(self):
+        """
+        Test the case where multiple pods of the same node type are scaled
+        down on one autoscaler iteration. This test verifies that the provider
+        properly handles multiple pod deletions and counting workers_to_delete.
+        """
+        # Setup provider with multiple worker pods in podlist.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        self.mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        self.provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            k8s_api_client=self.mock_client,
+        )
+
+        # Identify all pods in the target group
+        small_group = "small-group"
+        pod_names = []
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+
+        # Terminate all pods in the group
+        self.provider._sync_with_api_server()
+        cur_instance_ids = set(self.provider.instances.keys())
+        pods_to_terminate = [name for name in pod_names if name in cur_instance_ids]
+
+        assert (
+            len(pods_to_terminate) > 1
+        ), "Expected multiple pods to terminate in the target group."
+
+        self.provider.terminate(ids=pods_to_terminate, request_id="term-2")
+
+        # Check the patches applied to the RayCluster resource
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 0,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": pods_to_terminate,
+                },
+            },
+        ]
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        sys.exit(pytest.main(["-sv", "-vv", __file__]))
