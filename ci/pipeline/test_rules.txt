@@ -227,7 +227,6 @@ setup_hooks.sh
 .pre-commit-config.yaml
 .isort.cfg
 .prettierrc.toml
-build.sh
 .fossa.yml
 # pass
 ;
