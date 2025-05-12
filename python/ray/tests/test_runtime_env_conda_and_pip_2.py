@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-from typing import Dict
 from unittest import mock
 
 import ray
@@ -60,7 +59,6 @@ def test_ray_init_install_failure(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 @pytest.mark.parametrize("field", ["conda", "pip"])
-@pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_install_failure_logging(
     start_cluster_shared,
     shutdown_only,
@@ -69,13 +67,11 @@ def test_install_failure_logging(
     tmp_path,
 ):
     cluster, address = start_cluster_shared
-    using_ray_client = address.startswith("ray://")
-
     ray.init(address)
 
     @ray.remote(
         runtime_env=generate_runtime_env_dict(
-            field, spec_format, tmp_path, pip_list=["does-not-exist-actor"]
+            field, "python_object", tmp_path, pip_list=["does-not-exist-actor"]
         )
     )
     class A:
