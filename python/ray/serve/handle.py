@@ -3,7 +3,7 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
@@ -174,18 +174,14 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # Beginning of injected code
-        new_replica_scheduler_cls = kwargs.get("replica_scheduler")
-        print(f"DeploymentHandle: _options: new_replica_scheduler_cls: {new_replica_scheduler_cls}")
-        if new_replica_scheduler_cls is not DEFAULT.VALUE and new_replica_scheduler_cls is not None:
-            print(f"DeploymentHandle: _options: creating new router with replica_scheduler: {new_replica_scheduler_cls}")
+        if not self._router.same_scheduler_class(new_handle_options.replica_scheduler):
+            # print("recreating router")
             self._router = self._create_router(
                 handle_id=self.handle_id,
                 deployment_id=self.deployment_id,
                 handle_options=self.init_options,
-                replica_scheduler=new_replica_scheduler_cls,
+                replica_scheduler_class=new_handle_options.replica_scheduler,
             )
-        # End of injected code
 
         return DeploymentHandle(
             self.deployment_name,
@@ -217,7 +213,10 @@ class _DeploymentHandleBase:
             }
         )
 
-        return self._router.assign_request(metadata, *args, **kwargs), metadata
+        return (
+            self._router.assign_request(metadata, *args, **kwargs),
+            metadata,
+        )
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -689,7 +688,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        replica_scheduler = None
+        replica_scheduler: Union[str, Callable, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -720,7 +719,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
-            replica_scheduler=replica_scheduler
+            replica_scheduler=replica_scheduler,
         )
 
     def remote(
@@ -753,7 +752,6 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-
         future, request_metadata = self._remote(args, kwargs)
         print(f"[remote] future: {future}, request_metadata: {request_metadata}, self.handle_options.stream: {self.handle_options.stream}")
         if self.handle_options.stream:

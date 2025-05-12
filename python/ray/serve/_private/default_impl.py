@@ -29,7 +29,8 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler, ReplicaScheduler
+from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
@@ -146,15 +147,13 @@ def create_scheduler(
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
     is_inside_ray_client_context: bool,
-    replica_scheduler: Optional[ReplicaScheduler] = None
+    replica_scheduler_class: ReplicaScheduler = PowerOfTwoChoicesReplicaScheduler,
 ):
     # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
     node_id, availability_zone = _get_node_id_and_az()
+    # print(f"in create_scheduler {replica_scheduler_class=}")
 
-    if replica_scheduler is None:
-        replica_scheduler = PowerOfTwoChoicesReplicaScheduler
-
-    replica_scheduler_instance = replica_scheduler(
+    replica_scheduler = replica_scheduler_class(
         deployment_id=deployment_id,
         handle_source=handle_options._source,
         self_node_id=node_id,
@@ -169,14 +168,14 @@ def create_scheduler(
         prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
         self_availability_zone=availability_zone,
     )
-    return replica_scheduler_instance
+    return replica_scheduler
 
 
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
-    replica_scheduler: Optional[ReplicaScheduler] = None
+    replica_scheduler_class: Optional[ReplicaScheduler] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -184,27 +183,21 @@ def create_router(
     actor_id = get_current_actor_id()
 
     controller_handle = _get_global_client()._controller
+    if not replica_scheduler_class:
+        deployment_config = ray.get(
+            controller_handle.get_deployment_config.remote(deployment_id)
+        )
+        replica_scheduler_class = deployment_config.get_replica_scheduler_class()
+
     is_inside_ray_client_context = inside_ray_client_context()
 
-    # Beginning of injected code to get the replica scheduler from the deployment config
-    # print(f"create_router: controller_handle: {controller_handle}")
-    # cfg_bytes_ref = controller_handle.get_deployment_config.remote(deployment_id)
-    # print(f"create_router: cfg_bytes_ref: {cfg_bytes_ref}")
-    # cfg_bytes = ray.get(cfg_bytes_ref)
-    # print(f"create_router: cfg_bytes: {cfg_bytes}")
-    # from ray.serve._private.config import DeploymentConfig
-    # cfg = DeploymentConfig.from_proto_bytes(cfg_bytes)
-    # print(f"create_router: cfg: {cfg}")
-    # replica_scheduler = cfg.get_replica_scheduler()
-    # End of injected code to get the replica scheduler from the deployment config
-
-    
-    replica_scheduler_instance = create_scheduler(
+    # print(f"create_router: {replica_scheduler_class=} {deployment_config=}")
+    replica_scheduler = create_scheduler(
         actor_id,
         deployment_id,
         handle_options,
         is_inside_ray_client_context,
-        replica_scheduler
+        replica_scheduler_class,
     )
 
     return SingletonThreadRouter(

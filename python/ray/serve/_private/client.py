@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
-    MultiplexedReplicaInfo,
+    ReplicaSchedulingInfo,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -480,14 +480,14 @@ class ServeControllerClient:
         return handle
 
     @_ensure_connected
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed replica information for replica.
+    def record_replica_scheduling_info(self, info: ReplicaSchedulingInfo):
+        """Record replica scheduling information for a replica.
 
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: ReplicaSchedulingInfo including deployment name, replica tag,
+                multiplex model ids, and scheduling stats.
         """
-        self._controller.record_multiplexed_replica_info.remote(info)
+        self._controller.record_replica_scheduling_info.remote(info)
 
     @_ensure_connected
     def update_global_logging_config(self, logging_config: LoggingConfig):
