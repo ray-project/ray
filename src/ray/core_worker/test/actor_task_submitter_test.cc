@@ -15,8 +15,8 @@
 #include "ray/core_worker/transport/actor_task_submitter.h"
 
 #include <memory>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/actor_creator.h"
