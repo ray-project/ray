@@ -10,6 +10,7 @@ from ray.train.v2._internal.callbacks.metrics import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
+    TrainControllerState,
     TrainControllerStateType,
 )
 from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
@@ -27,18 +28,12 @@ class MockGauge:
     def set(self, value: float, tags: dict):
         self._values[frozenset(tags.items())] = value
 
-    def get(self, tags: dict):
-        return self._values.get(frozenset(tags.items()))
 
-
-class MockTrainControllerState:
-    def __init__(self, state_type):
-        self._state_type = state_type
-
-
-def mock_on_report(self, value: float):
-    """Mock function to set the value of the train_report_total_blocked_time"""
-    self._metrics_tracker.record(WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S, value)
+@pytest.fixture
+def mock_gauge(monkeypatch):
+    """Fixture that replaces ray.util.metrics.Gauge with MockGauge."""
+    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
+    return MockGauge
 
 
 def mock_time_monotonic(monkeypatch, time_values: list[float]):
@@ -55,9 +50,19 @@ def mock_time_monotonic(monkeypatch, time_values: list[float]):
     )
 
 
-def test_time_metric(monkeypatch):
-    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
+def mock_start_end_time(monkeypatch, time_values: list[tuple[float, float]]):
+    """Mock the time_monotonic function to return the start and end times.
 
+    This assumes that time_monotonic is called in the order of the start and end times.
+    """
+    all_times = []
+    for start, end in time_values:
+        all_times.append(start)
+        all_times.append(end)
+    mock_time_monotonic(monkeypatch, all_times)
+
+
+def test_time_metric(monkeypatch, mock_gauge):
     base_tags = {"run_name": "test_run"}
     metric = TimeMetric(
         name="test_time",
@@ -78,9 +83,7 @@ def test_time_metric(monkeypatch):
     assert metric.get_value() == 0.0
 
 
-def test_enum_metric(monkeypatch):
-    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
-
+def test_enum_metric(monkeypatch, mock_gauge):
     class TestEnum(enum.Enum):
         A = "A"
         B = "B"
@@ -117,9 +120,12 @@ def test_enum_metric(monkeypatch):
     assert metric.get_value(TestEnum.C) == 0
 
 
-def test_worker_metrics_callback(monkeypatch):
-    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
-    mock_time_monotonic(monkeypatch, [0.0, 1.0, 10.0, 12.0])
+def test_worker_metrics_callback(monkeypatch, mock_gauge):
+    t1 = 0.0
+    t2 = 1.0
+    t3 = 10.0
+    t4 = 12.0
+    mock_start_end_time(monkeypatch, [(t1, t2), (t3, t4)])
 
     mock_train_context = MagicMock()
     mock_train_context.get_world_rank.return_value = 1
@@ -139,20 +145,29 @@ def test_worker_metrics_callback(monkeypatch):
     with callback.on_report():
         pass
     assert (
-        callback._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].get_value() == 1.0
+        callback._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].get_value()
+        == t2 - t1
     )
 
     # Check if the gauges is updated with the correct metrics
     with callback.on_report():
         pass
+    assert callback._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].get_value() == (
+        t2 - t1
+    ) + (t4 - t3)
+
+    callback.before_shutdown()
     assert (
-        callback._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].get_value() == 3.0
+        callback._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].get_value() == 0.0
     )
 
 
-def test_controller_metrics_callback(monkeypatch):
-    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
-    mock_time_monotonic(monkeypatch, [0.0, 1.0, 10.0, 12.0])
+def test_controller_metrics_callback(monkeypatch, mock_gauge):
+    t1 = 0.0
+    t2 = 1.0
+    t3 = 10.0
+    t4 = 12.0
+    mock_start_end_time(monkeypatch, [(t1, t2), (t3, t4)])
 
     mock_train_context = MagicMock()
     mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
@@ -172,7 +187,7 @@ def test_controller_metrics_callback(monkeypatch):
         pass
     assert (
         callback._metrics[ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S].get_value()
-        == 1.0
+        == t2 - t1
     )
     assert (
         callback._metrics[
@@ -186,20 +201,30 @@ def test_controller_metrics_callback(monkeypatch):
         pass
     assert (
         callback._metrics[ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S].get_value()
-        == 1.0
+        == t2 - t1
     )
     assert (
         callback._metrics[
             ControllerMetrics.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S
         ].get_value()
-        == 2.0
+        == t4 - t3
+    )
+
+    callback.before_controller_shutdown()
+    assert (
+        callback._metrics[ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S].get_value()
+        == 0.0
+    )
+    assert (
+        callback._metrics[
+            ControllerMetrics.WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S
+        ].get_value()
+        == 0.0
     )
 
 
-def test_controller_state_metrics(monkeypatch):
+def test_controller_state_metrics(monkeypatch, mock_gauge):
     """Test controller state transition metrics."""
-    monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
-
     mock_train_context = MagicMock()
     mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
     monkeypatch.setattr(
@@ -223,8 +248,8 @@ def test_controller_state_metrics(monkeypatch):
 
     # Test state transition
 
-    previous_state = MockTrainControllerState(TrainControllerStateType.INITIALIZING)
-    current_state = MockTrainControllerState(TrainControllerStateType.RUNNING)
+    previous_state = TrainControllerState(TrainControllerStateType.INITIALIZING)
+    current_state = TrainControllerState(TrainControllerStateType.RUNNING)
     callback.after_controller_state_update(previous_state, current_state)
 
     # Verify state counts
@@ -242,8 +267,8 @@ def test_controller_state_metrics(monkeypatch):
     )
 
     # Test another state transition
-    previous_state = MockTrainControllerState(TrainControllerStateType.RUNNING)
-    current_state = MockTrainControllerState(TrainControllerStateType.FINISHED)
+    previous_state = TrainControllerState(TrainControllerStateType.RUNNING)
+    current_state = TrainControllerState(TrainControllerStateType.FINISHED)
     callback.after_controller_state_update(previous_state, current_state)
 
     # Verify updated state counts

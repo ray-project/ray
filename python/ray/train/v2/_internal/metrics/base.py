@@ -93,12 +93,15 @@ class TimeMetric(Metric):
         return self._current_value
 
     def reset(self):
+        self._current_value = self._default
         self._gauge.set(self._default, self._base_tags)
-        self._current_value = 0.0
 
 
 class EnumMetric(Metric, Generic[E]):
     """A metric for tracking enum values."""
+
+    DEFAULT_VALUE = 0
+    RECORDED_VALUE = 1
 
     def __init__(
         self,
@@ -111,7 +114,7 @@ class EnumMetric(Metric, Generic[E]):
         self._current_value: Optional[E] = None
         super().__init__(
             name=name,
-            default=0,
+            default=self.DEFAULT_VALUE,
             description=description,
             base_tags=base_tags,
         )
@@ -129,10 +132,10 @@ class EnumMetric(Metric, Generic[E]):
 
         if self._current_value is not None:
             previous_tags = self._get_tags(self._current_value)
-            self._gauge.set(0, previous_tags)
+            self._gauge.set(self._default, previous_tags)
 
         current_tags = self._get_tags(enum_value)
-        self._gauge.set(1, current_tags)
+        self._gauge.set(self.RECORDED_VALUE, current_tags)
 
         self._current_value = enum_value
 
