@@ -21,6 +21,11 @@ METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
 
 def train_fn_per_worker(config):
     factory: BenchmarkFactory = config["factory"]
+    ray.train.report(
+        {
+            "dataset_creation_time": factory.dataset_creation_time,
+        }
+    )
 
     if factory.benchmark_config.task == "recsys":
         from recsys.torchrec_runner import TorchRecRunner
