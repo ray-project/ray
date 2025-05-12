@@ -101,7 +101,11 @@ class FiberState {
     return true;
   }
 
-  explicit FiberState(int max_concurrency)
+  explicit FiberState(
+      int max_concurrency,
+      // TODO(kevin85421): The language-specific callback function that
+      // initializes threads. It's not currently used in the async mode.
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {

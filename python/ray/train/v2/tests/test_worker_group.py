@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.exceptions import RayActorError
+from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -27,6 +28,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.config import RunConfig
+from ray.train.v2.tests.util import DummyObjectRefWrapper
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -49,7 +51,7 @@ def _default_inactive_worker_group(**kwargs):
 def _default_worker_group_context(**kwargs):
     default_config = {
         "run_attempt_id": "test_run_attempt_id",
-        "train_fn": lambda: None,
+        "train_fn_ref": DummyObjectRefWrapper(lambda: None),
         "num_workers": 4,
         "resources_per_worker": {"CPU": 1},
     }
@@ -75,6 +77,42 @@ def test_worker_group_create():
     worker_group.shutdown()
     with pytest.raises(ValueError, match="Worker group is not active"):
         worker_group.get_workers()
+
+
+@pytest.mark.parametrize(
+    "runtime_env",
+    [{"env_vars": {"DUMMY_VAR": "abcd"}}, RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"})],
+)
+def test_worker_group_create_with_runtime_env(runtime_env):
+    """Test WorkerGroup.create() factory method with a custom runtime environment."""
+    train_run_context = TrainRunContext(
+        run_config=RunConfig(worker_runtime_env=runtime_env)
+    )
+
+    worker_group_context = _default_worker_group_context()
+
+    worker_group = WorkerGroup.create(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+    )
+
+    env_vars = worker_group.execute(lambda: os.environ.get("DUMMY_VAR"))
+    assert env_vars == ["abcd"] * worker_group_context.num_workers
+
+    worker_group.shutdown()
+
+
+def test_env_var_propagation(monkeypatch):
+    """Ray Train should automatically propagate some environment variables
+    from the driver to the workers."""
+    test_env_var = list(ENV_VARS_TO_PROPAGATE)[0]
+    monkeypatch.setenv(test_env_var, "1")
+    wg = _default_inactive_worker_group()
+    wg._start()
+    env_vars = wg.execute(lambda: os.environ.get(test_env_var))
+    wg.shutdown()
+
+    assert env_vars == ["1"] * 4
 
 
 def test_actor_start_failure():
@@ -127,11 +165,8 @@ def test_start_timeout(monkeypatch):
 
 
 def test_poll_status_running():
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="test_run_attempt_id",
-        train_fn=lambda: time.sleep(60),
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=DummyObjectRefWrapper(lambda: time.sleep(60)),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
@@ -144,11 +179,8 @@ def test_poll_status_running():
 
 
 def test_poll_status_finished():
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="test_run_attempt_id",
-        train_fn=lambda: "done",
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=DummyObjectRefWrapper(lambda: "done"),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
@@ -180,11 +212,8 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
 
         monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
 
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="test_run_attempt_id",
-        train_fn=train_fn,
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=DummyObjectRefWrapper(train_fn),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
@@ -401,19 +430,6 @@ def test_flush_worker_result_queue(queue_backlog_length):
     assert status.finished
 
     wg.shutdown()
-
-
-def test_env_var_propagation(monkeypatch):
-    """Ray Train should automatically propagate some environment variables
-    from the driver to the workers."""
-    test_env_var = list(ENV_VARS_TO_PROPAGATE)[0]
-    monkeypatch.setenv(test_env_var, "1")
-    wg = _default_inactive_worker_group()
-    wg._start()
-    env_vars = wg.execute(lambda: os.environ.get(test_env_var))
-    wg.shutdown()
-
-    assert env_vars == ["1"] * 4
 
 
 def test_worker_group_callback():

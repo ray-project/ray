@@ -17,6 +17,9 @@ from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
 )
+from ray.core.generated.export_dataset_metadata_pb2 import (
+    ExportDatasetMetadata,
+)
 from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
@@ -27,6 +30,7 @@ ExportEventDataType = Union[
     ExportSubmissionJobEventData,
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
+    ExportDatasetMetadata,
 ]
 
 
@@ -38,6 +42,7 @@ class EventLogType(Enum):
     Attributes:
         TRAIN_STATE: Export events related to training state, supporting train run and attempt events.
         SUBMISSION_JOB: Export events related to job submissions.
+        DATASET_METADATA: Export events related to dataset metadata.
     """
 
     TRAIN_STATE = (
@@ -45,6 +50,7 @@ class EventLogType(Enum):
         {ExportTrainRunEventData, ExportTrainRunAttemptEventData},
     )
     SUBMISSION_JOB = ("EXPORT_SUBMISSION_JOB", {ExportSubmissionJobEventData})
+    DATASET_METADATA = ("EXPORT_DATASET_METADATA", {ExportDatasetMetadata})
 
     def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
         """Initialize an EventLogType enum value.
@@ -110,6 +116,9 @@ class ExportEventLoggerAdapter:
         elif isinstance(event_data, ExportTrainRunAttemptEventData):
             event.train_run_attempt_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
+        elif isinstance(event_data, ExportDatasetMetadata):
+            event.dataset_metadata.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_DATASET_METADATA
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if not self.log_type.supports_event_type(event_data):

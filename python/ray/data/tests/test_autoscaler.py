@@ -5,6 +5,10 @@ import pytest
 
 from ray.data import ExecutionResources
 from ray.data._internal.execution.autoscaler.default_autoscaler import DefaultAutoscaler
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
+from ray.data._internal.execution.streaming_executor_state import OpState
 
 
 def test_actor_pool_scaling():
@@ -29,13 +33,14 @@ def test_actor_pool_scaling():
     )
 
     op = MagicMock(
+        spec=InternalQueueOperatorMixin,
         completed=MagicMock(return_value=False),
         _inputs_complete=False,
+        input_dependencies=[MagicMock()],
         internal_queue_size=MagicMock(return_value=1),
     )
-    op_state = MagicMock(num_queued=MagicMock(return_value=10))
-    op_scheduling_status = MagicMock(under_resource_limits=True)
-    op_state._scheduling_status = op_scheduling_status
+    op_state = OpState(op, inqueues=[MagicMock(__len__=MagicMock(return_value=10))])
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     @contextmanager
     def patch(mock, attr, value, is_method=True):
@@ -81,13 +86,13 @@ def test_actor_pool_scaling():
     # the op has no more inputs.
     with patch(op, "completed", True):
         assert_should_scale_up(False)
-    with patch(op, "_inputs_complete", True, is_method=False):
+    with patch(op_state.input_queues[0], "__len__", 0):
         with patch(op, "internal_queue_size", 0):
             assert_should_scale_up(False)
 
     # Shouldn't scale up since the op doesn't have enough resources.
     with patch(
-        op_scheduling_status,
+        op_state._scheduling_status,
         "under_resource_limits",
         False,
         is_method=False,
@@ -96,7 +101,7 @@ def test_actor_pool_scaling():
 
     # Shouldn't scale up since the op has enough free slots for
     # the existing inputs.
-    with patch(op_state, "num_queued", 5):
+    with patch(op_state, "total_enqueued_input_bundles", 5):
         assert_should_scale_up(False)
 
     # === Test scaling down ===
@@ -106,6 +111,7 @@ def test_actor_pool_scaling():
             autoscaler._actor_pool_should_scale_down(
                 actor_pool=actor_pool,
                 op=op,
+                op_state=op_state,
             )
             == expected
         )
@@ -131,7 +137,8 @@ def test_actor_pool_scaling():
     # the op has no more inputs.
     with patch(op, "completed", True):
         assert_should_scale_down(True)
-    with patch(op, "_inputs_complete", True, is_method=False):
+
+    with patch(op_state.input_queues[0], "__len__", 0):
         with patch(op, "internal_queue_size", 0):
             assert_should_scale_down(True)
 
@@ -146,7 +153,7 @@ def test_cluster_scaling():
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state1 = MagicMock(
-        num_queued=MagicMock(return_value=0),
+        _pending_dispatch_input_bundles_count=MagicMock(return_value=0),
         _scheduling_status=MagicMock(
             runnable=False,
         ),
@@ -159,7 +166,7 @@ def test_cluster_scaling():
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state2 = MagicMock(
-        num_queued=MagicMock(return_value=1),
+        _pending_dispatch_input_bundles_count=MagicMock(return_value=1),
         _scheduling_status=MagicMock(
             runnable=False,
         ),

@@ -94,6 +94,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1304,6 +1305,9 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
+    enable_resource_isolation: bool = False,
+    system_reserved_cpu: Optional[float] = None,
+    system_reserved_memory: Optional[int] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1375,11 +1379,8 @@ def init(
         labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-            By default, this is 30%
-            (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
-            of available system memory capped by
-            the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-            but can be set higher.
+            By default, this is 30% of available system memory capped by
+            the shm size and 200G but can be set higher.
         local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
@@ -1416,6 +1417,25 @@ def init(
             be used as the object store fallback directory as well.
         storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
             be removed in a future version of Ray.
+        enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
+            memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
+            must be enabled with read and write permissions for the raylet. Cgroup memory and
+            cpu controllers must also be enabled.
+        system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
+            fractional i.e. 0.5 means half a cpu core.
+            By default, the min of 20% and 1 core will be reserved.
+            Must be >= 0.5 cores and < total number of available cores.
+            Cannot be less than 0.5 cores.
+            This option only works if enable_resource_isolation is True.
+        system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
+            By default, the min of 10% and 25GB plus object_store_memory will be reserved.
+            Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
+            This option only works if enable_resource_isolation is True.
+        _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
+            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
+            The raylet must have read/write permissions to this path.
+            Cgroup memory and cpu controllers be enabled for this cgroup.
+            This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1476,7 +1496,9 @@ def init(
         )
         logging_config._apply()
 
-    # Parse the hidden options:
+    # Parse the hidden options
+    _cgroup_path: str = kwargs.pop("_cgroup_path", None)
+
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
@@ -1504,6 +1526,13 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
+
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=_cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
 
     # terminate any signal before connecting driver
     def sigterm_handler(signum, frame):
@@ -1742,6 +1771,7 @@ def init(
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
+            resource_isolation_config=resource_isolation_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -2346,7 +2376,6 @@ def connect(
             fetch_cluster_id_if_nil=False,
         )
     )
-    worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2385,8 +2414,7 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                gcs_publisher=worker.gcs_publisher,
-                num_retries=1,
+                gcs_client=worker.gcs_client,
             )
 
     driver_name = ""
@@ -2447,7 +2475,7 @@ def connect(
         )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
-        job_config.set_runtime_env(runtime_env)
+        job_config.set_runtime_env(runtime_env, validate=True)
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
@@ -3368,6 +3396,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
+    label_selector: Dict[str, str] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3523,6 +3552,10 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
+        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+                which this actor can be scheduled on. The label selector consist of key-value pairs,
+                where the keys are label names and the value are expressions consisting of an operator
+                with label values or just a value to indicate equality.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.

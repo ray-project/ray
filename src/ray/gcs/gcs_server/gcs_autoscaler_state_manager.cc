@@ -21,7 +21,7 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -572,8 +572,16 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
       (*raylet_client)
           ->CancelTasksWithResourceShapes(
               infeasible_shapes,
-              [node_id](const Status, const rpc::CancelTasksWithResourceShapesReply) {
-                RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+              [node_id](const Status &status,
+                        const rpc::CancelTasksWithResourceShapesReply &) {
+                if (status.ok()) {
+                  RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+                } else {
+                  // Autoscaler will eventually retry the infeasible task cancellation
+                  RAY_LOG(WARNING)
+                      << "Failed to cancel infeasible requests on node " << node_id
+                      << ". RPC failed with status: " << status.ToString();
+                }
               });
     } else {
       RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id

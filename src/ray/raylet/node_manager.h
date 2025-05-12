@@ -110,8 +110,6 @@ struct NodeManagerConfig {
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
-  // The minimum object size that can be spilled by each spill operation.
-  int64_t min_spilling_size;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
   // If true, core worker enables resource isolation by adding itself into appropriate
@@ -264,7 +262,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
   /// \param data The data of the worker that died.
-  void HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data);
+  void HandleUnexpectedWorkerFailure(const WorkerID &worker_id);
 
   /// Handler for the addition of a new node.
   ///
@@ -316,8 +314,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param worker The worker that finished the task.
   /// \return Whether the worker should be returned to the idle pool. This is
-  /// only false for direct actor creation calls, which should never be
-  /// returned to idle.
+  /// only false for actor creation calls, which should never be returned to idle.
   bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
 
   /// Handle a worker finishing an assigned actor creation task.
@@ -353,13 +350,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
                                  const TaskID &current_task_id);
 
-  /// Handle a direct call task that is blocked. Note that this callback may
+  /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
   void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Handle a direct call task that is unblocked. Note that this callback may
+  /// Handle a task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
   ///
@@ -506,12 +503,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessWaitRequestMessage(const std::shared_ptr<ClientConnection> &client,
                                  const uint8_t *message_data);
 
-  /// Process client message of WaitForDirectActorCallArgsRequest
+  /// Process client message of WaitForActorCallArgsRequest
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessWaitForDirectActorCallArgsRequestMessage(
+  void ProcessWaitForActorCallArgsRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of PushErrorRequest
@@ -766,10 +763,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
-  /// If Node Manager already knows this (worker, node) is dead, return true.
-  /// Otherwise returns false.
-  bool IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const;
-
   /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
   /// channel is registered.
   std::shared_ptr<raylet::RayletClient> CreateRayletClient(
@@ -845,7 +838,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
-  /// Map of workers leased out to direct call clients.
+  /// Map of workers leased out to clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Optional extra information about why the task failed.

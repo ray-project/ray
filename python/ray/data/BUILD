@@ -171,7 +171,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_arrow_block.py"],
     tags = [
         "data_non_parallel",
@@ -301,6 +301,21 @@ py_test(
     size = "enormous",
     srcs = ["tests/test_all_to_all.py"],
     tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_join",
+    size = "medium",
+    srcs = ["tests/test_join.py"],
+    tags = [
+        "data_non_parallel",
         "exclusive",
         "team:data",
     ],
@@ -479,6 +494,20 @@ py_test(
 )
 
 py_test(
+    name = "test_logging_dataset",
+    size = "small",
+    srcs = ["tests/test_logging_dataset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_logging",
     size = "small",
     srcs = ["tests/test_logging.py"],
@@ -566,6 +595,20 @@ py_test(
     name = "test_path_util",
     size = "small",
     srcs = ["tests/test_path_util.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_task_pool_map_operator",
+    size = "small",
+    srcs = ["tests/test_task_pool_map_operator.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -680,6 +723,20 @@ py_test(
     name = "test_exceptions",
     size = "small",
     srcs = ["tests/test_exceptions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_operator_fusion",
+    size = "medium",
+    srcs = ["tests/test_operator_fusion.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -976,6 +1033,20 @@ py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ref_bundle",
+    size = "small",
+    srcs = ["tests/test_ref_bundle.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1298,6 +1369,20 @@ py_test(
     name = "test_daft",
     size = "small",
     srcs = ["tests/test_daft.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_state_export",
+    size = "small",
+    srcs = ["tests/test_state_export.py"],
     tags = [
         "exclusive",
         "team:data",

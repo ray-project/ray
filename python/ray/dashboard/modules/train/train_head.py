@@ -149,7 +149,7 @@ class TrainHead(SubprocessModule):
 
     async def _get_jobs(self, job_ids: List[str]) -> Dict[str, "JobDetails"]:
         return await find_jobs_by_job_ids(
-            self.gcs_aio_client,
+            self.gcs_client,
             self._job_info_client,
             job_ids,
         )
@@ -306,7 +306,7 @@ class TrainHead(SubprocessModule):
                     reverse=True,
                 )
                 job_details = await find_jobs_by_job_ids(
-                    self.gcs_aio_client,
+                    self.gcs_client,
                     self._job_info_client,
                     [run.job_id for run in train_runs_with_details],
                 )
@@ -333,7 +333,7 @@ class TrainHead(SubprocessModule):
     async def _get_actor_infos(self, actor_ids: List[str]):
         if self._node_head_http_session is None:
             self._node_head_http_session = get_http_session_to_module(
-                "NodeHead", self._config.socket_dir
+                "NodeHead", self._config.socket_dir, self._config.session_name
             )
         actor_ids_qs_str = ",".join(actor_ids)
         url = f"http://localhost/logical/actors?ids={actor_ids_qs_str}&nocache=1"
@@ -430,7 +430,7 @@ class TrainHead(SubprocessModule):
     async def run(self):
         await super().run()
         if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
+            self._job_info_client = JobInfoStorageClient(self.gcs_client)
 
         gcs_channel = self.aiogrpc_gcs_channel
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(

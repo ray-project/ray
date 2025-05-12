@@ -219,6 +219,12 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
 
     serve.run(BlockOnSecondChunk.bind())
 
+    # Wait for the server to start by doing health check.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/-/healthz").status_code == 200,
+        timeout=10,
+    )
+
     r = requests.get("http://localhost:8000", stream=True)
     iterator = r.iter_content(chunk_size=None, decode_unicode=True)
 
@@ -374,6 +380,44 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     assert initial_response.result() == 1
     for i in range(2, 12):
         assert h.remote().result() == i
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5",
+        },
+    ],
+    indirect=True,
+)
+def test_timeout_error_in_child_deployment_of_fastapi(ray_instance, shutdown_serve):
+    """Test that timeout error in child deployment returns 408 with FastAPI ingress."""
+    app = FastAPI()
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Child:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "ok"
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        @app.get("/")
+        async def root(self):
+            return await self.child.remote()
+
+    serve.run(Parent.bind(Child.bind()))
+
+    r = requests.get("http://localhost:8000/")
+    assert r.status_code == 408
+
+    ray.get(signal.send.remote())
 
 
 if __name__ == "__main__":
