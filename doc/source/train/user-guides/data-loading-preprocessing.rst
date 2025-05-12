@@ -326,13 +326,12 @@ For more details, see the following sections for each framework:
     can cause errors due to the Dataset not being serializable.
 
 .. note::
-    
-    When using PyTorch DataLoader multiprocessing with Ray Train, you should
-    set the ``multiprocessing_context`` to ``multiprocessing.context.ForkServerContext()``
-    i.e. ``data_loader = DataLoader(dataset, multiprocessing_context=multiprocessing.context.ForkServerContext(), ...)``.
-    This is because Ray Train configures the global logger with Ray-specific context
-    like ``get_actor_id()``, which, when inherited by Torch Dataloader subprocesses
-    using ``fork``, can cause hangs during logging since these subprocesses aren't Ray actors.
+
+    When using PyTorch DataLoader with more than 1 worker, you should set the
+    process start method to be `forkserver` or `spawn` i.e.
+    ``data_loader = DataLoader(dataset, multiprocessing_context=multiprocessing.get_context("forkserver"), num_workers=2...)``.
+    :ref:`Forking Ray Actors and Tasks is an anti-pattern <forking-ray-processes-antipattern>` that
+    can lead to unexpected issues such as deadlocks.
 
 .. _train-datasets-split:
 
