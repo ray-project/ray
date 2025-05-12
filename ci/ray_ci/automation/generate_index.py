@@ -1,5 +1,4 @@
 import click
-import sys
 
 from ci.ray_ci.automation.docker_tags_lib import list_image_tags, generate_index
 from ci.ray_ci.docker_container import (

@@ -694,9 +694,6 @@ def test_generate_index():
         test_image1 = "localhost:5678/test-image:1.0"
         test_image2 = "localhost:5678/test-image:2.0"
 
-        # Pull and retag alpine images to be pushed to local registry
-        subprocess.run(["docker", "pull", "alpine:3.16"], check=True)
-        subprocess.run(["docker", "pull", "alpine:3.17"], check=True)
         subprocess.run(["docker", "tag", "alpine:3.16", test_image1], check=True)
         subprocess.run(["docker", "tag", "alpine:3.17", test_image2], check=True)
 
@@ -704,11 +701,14 @@ def test_generate_index():
         subprocess.run(["docker", "push", test_image2], check=True)
 
         # Generate index
-        index_name = "localhost:5678/test-index:latest"
+        index_repo = "test-index"
+        index_name = f"localhost:5678/{index_repo}:latest"
         generate_index(index_name=index_name, tags=[test_image1, test_image2])
 
         # Verify index was created with 2 image manifests
-        response = requests.get("http://localhost:5678/v2/test-index/manifests/latest")
+        response = requests.get(
+            f"http://localhost:5678/v2/{index_repo}/manifests/latest"
+        )
         assert response.status_code == 200
         assert "manifests" in response.json()
         assert len(response.json()["manifests"]) == 2
