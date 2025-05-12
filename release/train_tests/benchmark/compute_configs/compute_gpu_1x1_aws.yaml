@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-advanced_configurations_json:
+flags:
     enable_ray_container_cgroup_isolation: false
 
 head_node_type:
