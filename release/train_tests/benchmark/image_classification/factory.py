@@ -224,7 +224,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             batch,
             dtypes=self.dtypes,
             combine_chunks=self.device == "cpu",
-            pin_memory=self.device == "cpu",
+            pin_memory=self.device != "cpu",
         )
         return tensors["image"], tensors["label"]
 
