@@ -58,12 +58,10 @@ def _configure_system():
 
     try:
         # Import for Ray internal usage
-        import psutil
         import setproctitle
         import colorama
 
         # Save the modules in Ray's private namespace
-        sys.modules["ray._private.psutil"] = psutil
         sys.modules["ray._private.setproctitle"] = setproctitle
         sys.modules["ray._private.colorama"] = colorama
     finally:
