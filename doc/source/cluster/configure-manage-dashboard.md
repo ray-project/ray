@@ -46,7 +46,7 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 When you start a remote Ray cluster with the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>`, or manual configuration, the Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. You need an additional setup to access the Ray Dashboard from outside the head node.
 
 :::{danger}
-For security purpose, do not expose Ray Dashboard publicly without proper authentication in place.
+For security purposes, do not expose Ray Dashboard publicly without proper authentication in place.
 :::
 
 ::::{tab-set}
