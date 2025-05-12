@@ -249,7 +249,7 @@ class ResourceManager:
                 budget = self._op_resource_allocator._op_budgets[op]
                 usage_str += f", budget=(cpu={budget.cpu:.1f}"
                 usage_str += f",gpu={budget.gpu:.1f}"
-                usage_str += f",obj_store={budget.object_store_memory}"
+                usage_str += f",obj_store={budget.object_store_memory_str()}"
                 # Remaining memory budget for producing new task outputs.
                 reserved_for_output = memory_string(
                     self._op_resource_allocator._output_budgets.get(op, 0)
@@ -523,10 +523,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         for next_op in self._get_downstream_eligible_ops(op):
             if next_op.num_active_tasks() == 0:
                 return True
-            # if not self._reservation_satisfies_min_requirement[next_op]:
-            #     # Case 1: the downstream operator hasn't reserved the minimum resources
-            #     # to run at least one task.
-            #     return True
             # Case 2: the downstream operator has reserved the minimum resources, but
             # the resources are preempted by non-Data tasks or actors.
             # We don't have a good way to detect this case, so we'll unblock
