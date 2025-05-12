@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from threading import RLock
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 
@@ -32,52 +32,17 @@ class Node:
             parent: The parent node of this node
         """
         self.text: str = text
-        self.parent: Optional[Node] = parent  # The parent node of this node
-        self.edge_label_to_child: Dict[
-            str, Node
-        ] = {}  # Maps first character to child node
-        self.tenant_to_last_access_time: Dict[
-            str, float
-        ] = (
-            {}
-        )  # For each tenant that has inserted text matching this node, maps tenant to the last access timestamp (in seconds)
+        self.parent: Optional[Node] = parent
+
+        # Maps first character to child node
+        self.edge_label_to_child: Dict[str, Node] = {}
+        # For each tenant that has inserted text matching this node, track its last access timestamp (in seconds)
+        self.tenant_to_last_access_time: Dict[str, float] = {}
         # Doubly linked list pointers for LRU tracking per tenant
-        self.tenant_to_older_node: Dict[
-            str, Optional[Node]
-        ] = {}  # Points to the less recently used node (toward tail for eviction)
-        self.tenant_to_newer_node: Dict[
-            str, Optional[Node]
-        ] = {}  # Points to the more recently used node (toward head for retention)
-
-
-class TimestampedNode:
-    """
-    Wrapper class for storing nodes in a min-heap, ordered by timestamp.
-    Used for efficient LRU eviction of nodes.
-    """
-
-    def __init__(self, node: Node, time_sec: float) -> None:
-        """
-        Initialize a heap node for efficient LRU eviction of nodes.
-
-        Args:
-            node: The prefix tree node this heap node refers to
-            time_sec: The timestamp this heap uses to order nodes
-        """
-        self.node = node
-        self.time_sec = time_sec
-
-    def __lt__(self, other: TimestampedNode) -> bool:
-        """
-        Compare heap nodes based on timestamp.
-
-        Args:
-            other: Another TimestampedNode to compare with
-
-        Returns:
-            True if this node's timestamp is earlier than the other's
-        """
-        return self.time_sec < other.time_sec
+        # Points to the less recently used node (toward tail)
+        self.tenant_to_older_node: Dict[str, Optional[Node]] = {}
+        # Points to the more recently used node (toward head)
+        self.tenant_to_newer_node: Dict[str, Optional[Node]] = {}
 
 
 class PrefixTree:
@@ -111,26 +76,21 @@ class PrefixTree:
 
         PrefixTree instance variables:
             self.tenant_to_char_count = {"tenant_1": 10, "tenant_2": 14}
-            self.tenant_to_nodes = {"tenant_1": {root, Node("hello"), Node("world")}, "tenant_2": {root, Node("hello"), Node("th"), Node("ere"), Node("omas")}}
+            self.tenant_to_lru_tail = {"tenant_1": Node("world"), "tenant_2": Node("ere")}
     """
 
     def __init__(self) -> None:
         """Initialize an empty prefix tree."""
         self.lock: RLock = RLock()
-        self.root: Node = Node()
-        self.tenant_to_char_count: Dict[
-            str, int
-        ] = (
-            {}
-        )  # Tracks total character count per tenant. Used by the replica scheduler to determine which tenant to evict, and by how much.
-        self.tenant_to_nodes: Dict[
-            str, Set[Node]
-        ] = (
-            {}
-        )  # Maps tenant to set of nodes. Used for O(1) testing if a node belongs to a tenant. The keys are the active tenants in the tree.
 
-        # LRU tracking - head is the most recently used node, tail is the least recently used
-        self.tenant_to_lru_head: Dict[str, Optional[Node]] = {}
+        # Root is always the head of the LRU list for each tenant.
+        self.root: Node = Node()
+
+        # Tracks total character count per tenant. Can be used by the replica scheduler to determine which tenant to evict, and by how much.
+        # Also uses the keys to track the active tenants in the tree.
+        self.tenant_to_char_count: Dict[str, int] = {}
+
+        # LRU tracking - root is always the head, tail is the least recently used.
         self.tenant_to_lru_tail: Dict[str, Optional[Node]] = {}
 
     @staticmethod
@@ -147,18 +107,18 @@ class PrefixTree:
         """
         return len(os.path.commonprefix([a, b]))
 
-    def _reset(self) -> None:
+    def _get_lru_chain(self, tenant: str) -> List[Node]:
         """
-        Reset the tree to an empty state.
-
+        Get the LRU chain for a given tenant by traversing from the root to the oldest node.
         Note: This method is intended to be used only in tests.
         """
         with self.lock:
-            self.root = Node()
-            self.tenant_to_char_count = {}
-            self.tenant_to_nodes = {}
-            self.tenant_to_lru_head = {}
-            self.tenant_to_lru_tail = {}
+            nodes = []
+            current_node = self.root
+            while current_node:
+                nodes.append(current_node)
+                current_node = current_node.tenant_to_older_node.get(tenant)
+            return nodes
 
     def _add_tenant(self, tenant: str) -> None:
         """
@@ -170,63 +130,78 @@ class PrefixTree:
             tenant: Tenant to add
         """
         with self.lock:
-            if tenant in self.tenant_to_nodes:
+            if tenant in self.tenant_to_char_count:
                 logger.warning(f"Tenant '{tenant}' already exists. No action taken.")
                 return
 
             self.tenant_to_char_count[tenant] = 0
-            self.tenant_to_nodes[tenant] = set()
-            self.tenant_to_lru_head[tenant] = None
-            self.tenant_to_lru_tail[tenant] = None
+            self.tenant_to_lru_tail[tenant] = self.root
 
-    def _move_node_to_head(self, node: Node, tenant: str) -> None:
+            # Initialize the root node as the head of the LRU list for this tenant
+            self.root.tenant_to_newer_node[tenant] = None
+            self.root.tenant_to_older_node[tenant] = None
+
+    def _insert_node_into_linked_list(
+        self,
+        node: Node,
+        newer_neighbor: Optional[Node],
+        older_neighbor: Optional[Node],
+        tenant: str,
+    ) -> None:
         """
-        Move a node to the head of the tenant's LRU list.
-
-        Args:
-            node: Node to move
-            tenant: Tenant that owns the node
+        Insert a node into the LRU list between two neighbors. Updates the neighbors' pointers and the tail pointer, if that changes.
         """
-        # If this is the first node, initialize the LRU list
-        if self.tenant_to_lru_head.get(tenant) is None:
-            self.tenant_to_lru_head[tenant] = node
-            self.tenant_to_lru_tail[tenant] = node
-            node.tenant_to_older_node[tenant] = None
-            node.tenant_to_newer_node[tenant] = None
-            return
+        with self.lock:
+            if tenant not in self.tenant_to_char_count:
+                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                return
 
-        # If node is already the head, nothing to do
-        if node == self.tenant_to_lru_head[tenant]:
-            return
+            # Skip if node is the root
+            if node == self.root:
+                return
 
-        # If node is already in the list, remove it
-        if tenant in node.tenant_to_older_node or tenant in node.tenant_to_newer_node:
-            # Connect older and newer nodes directly (skip this node)
-            older = node.tenant_to_older_node.get(
-                tenant
-            )  # Less recently used (toward tail)
-            newer = node.tenant_to_newer_node.get(
-                tenant
-            )  # More recently used (toward head)
+            node.tenant_to_newer_node[tenant] = newer_neighbor
+            node.tenant_to_older_node[tenant] = older_neighbor
 
-            if older:
-                older.tenant_to_newer_node[tenant] = newer
+            if newer_neighbor:
+                newer_neighbor.tenant_to_older_node[tenant] = node
 
-            if newer:
-                newer.tenant_to_older_node[tenant] = older
+            if older_neighbor:
+                older_neighbor.tenant_to_newer_node[tenant] = node
 
-            # If this is the tail, update tail pointer
-            if node == self.tenant_to_lru_tail[tenant]:
-                self.tenant_to_lru_tail[tenant] = newer
+            if self.tenant_to_lru_tail[tenant] == newer_neighbor:
+                self.tenant_to_lru_tail[tenant] = node
 
-        # Place at head of list
-        current_head = self.tenant_to_lru_head[tenant]
-        node.tenant_to_newer_node[tenant] = None  # Head has no newer node
-        node.tenant_to_older_node[
-            tenant
-        ] = current_head  # Old head becomes older than new head
-        current_head.tenant_to_newer_node[tenant] = node  # Connect old head to new head
-        self.tenant_to_lru_head[tenant] = node  # Update head pointer
+    def _remove_node_from_linked_list(self, node: Node, tenant: str) -> None:
+        """
+        Remove a node from the LRU list. Updates the neighbors' pointers and the tail pointer, if that changes.
+        """
+        with self.lock:
+            if tenant not in self.tenant_to_char_count:
+                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                return
+
+            # Skip if node is the root
+            if node == self.root:
+                return
+
+            # Connect older and newer neighbors
+            older_neighbor = node.tenant_to_older_node.get(tenant)
+            newer_neighbor = node.tenant_to_newer_node.get(tenant)
+
+            if older_neighbor:
+                older_neighbor.tenant_to_newer_node[tenant] = newer_neighbor
+
+            if newer_neighbor:
+                newer_neighbor.tenant_to_older_node[tenant] = older_neighbor
+
+            # Update tail pointer if necessary
+            if self.tenant_to_lru_tail[tenant] == node:
+                self.tenant_to_lru_tail[tenant] = newer_neighbor
+
+            # Remove node from list
+            node.tenant_to_newer_node.pop(tenant, None)
+            node.tenant_to_older_node.pop(tenant, None)
 
     def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
         """
@@ -240,7 +215,7 @@ class PrefixTree:
             Number of characters removed (0 if preconditions not met)
         """
         with self.lock:
-            if tenant not in self.tenant_to_nodes:
+            if tenant not in self.tenant_to_char_count:
                 logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
             if tenant not in node.tenant_to_last_access_time:
@@ -248,39 +223,12 @@ class PrefixTree:
                     f"Tenant '{tenant}' does not have node '{node.text}'. No action taken."
                 )
                 return 0
-            if node not in self.tenant_to_nodes[tenant]:
-                logger.warning(
-                    f"Node '{node.text}' does not belong to tenant '{tenant}'. No action taken."
-                )
-                return 0
 
             removed_chars_len: int = len(node.text)
             self.tenant_to_char_count[tenant] -= removed_chars_len
-            self.tenant_to_nodes[tenant].remove(node)
             node.tenant_to_last_access_time.pop(tenant, None)
 
-            # Remove from LRU list
-            older = node.tenant_to_older_node.get(
-                tenant
-            )  # Less recently used (toward tail)
-            newer = node.tenant_to_newer_node.get(
-                tenant
-            )  # More recently used (toward head)
-
-            if older:
-                older.tenant_to_newer_node[tenant] = newer
-
-            if newer:
-                newer.tenant_to_older_node[tenant] = older
-
-            # Update head/tail pointers if necessary
-            if node == self.tenant_to_lru_head[tenant]:
-                self.tenant_to_lru_head[tenant] = older  # Older becomes new head
-            if node == self.tenant_to_lru_tail[tenant]:
-                self.tenant_to_lru_tail[tenant] = newer  # Newer becomes new tail
-
-            node.tenant_to_older_node.pop(tenant, None)
-            node.tenant_to_newer_node.pop(tenant, None)
+            self._remove_node_from_linked_list(node, tenant)
 
             # Clean up empty nodes
             if not node.tenant_to_last_access_time and node.parent:
@@ -291,21 +239,20 @@ class PrefixTree:
 
             return removed_chars_len
 
-    def insert(self, text: str, tenant: str, time_sec: float) -> None:
+    def insert(self, text: str, tenant: str, time_s: float) -> None:
         """
         Insert text into tree for a specific tenant.
 
-        If the tenant doesn't exist, it will be automatically added.
+        If the tenant doesn't already exist in the tree, it will be automatically added.
 
         Args:
             text: Text to insert
             tenant: Tenant
-            time_sec: Current timestamp in seconds
+            time_s: Current timestamp in seconds
 
         Loop structure:
-            1. At the start of each iteration, curr_node is a node we potentially update.
-                e.g. Update node.tenant_to_last_access_time[tenant], self.tenant_to_char_count,
-                self.tenant_to_nodes
+            1. We update the current node at the start of each iteration of the while loop.
+            This includes updating tenant_to_char_count and tenant_to_last_access_time, and moving the node to the front of the LRU list.
             2. Each iteration then either:
                 a. Breaks (if we've processed the entire string).
                 b. Processes the next segment of text by:
@@ -315,22 +262,26 @@ class PrefixTree:
                         b. If they fully match, traverse into the child node.
         """
         with self.lock:
-            if tenant not in self.tenant_to_nodes:
+            if tenant not in self.tenant_to_char_count:
                 self._add_tenant(tenant)
 
             curr_node: Node = self.root
             i: int = 0
-
             while i <= len(text):
                 # Invariant at beginning of each iteration: assume curr_node has not been visited by tenant yet.
                 # Update tenant info for current node.
                 if tenant not in curr_node.tenant_to_last_access_time:
                     self.tenant_to_char_count[tenant] += len(curr_node.text)
-                    self.tenant_to_nodes[tenant].add(curr_node)
 
-                curr_node.tenant_to_last_access_time[tenant] = time_sec
-                self._move_node_to_head(curr_node, tenant)
-
+                curr_node.tenant_to_last_access_time[tenant] = time_s
+                if curr_node != self.root:
+                    self._remove_node_from_linked_list(curr_node, tenant)
+                    self._insert_node_into_linked_list(
+                        curr_node,
+                        self.root,
+                        self.root.tenant_to_older_node.get(tenant),
+                        tenant,
+                    )
                 if i == len(text):
                     break
 
@@ -342,13 +293,16 @@ class PrefixTree:
                     # e.g. curr_node.edge_label_to_child = {}, curr_text = "hello" -> curr_node.edge_label_to_child = {"h": Node("hello")}
                     new_node: Node = Node(text=curr_text, parent=curr_node)
                     curr_node.edge_label_to_child[first_char] = new_node
+                    # Add the node to the back of the LRU list; it will be moved to the front in the next iteration.
+                    self._insert_node_into_linked_list(
+                        new_node, self.tenant_to_lru_tail[tenant], None, tenant
+                    )
 
                 # Match found, check if we need to split
                 matched_node: Node = curr_node.edge_label_to_child[first_char]
                 shared_count: int = self._shared_prefix_count(
                     matched_node.text, curr_text
                 )
-
                 if shared_count < len(matched_node.text):
                     # Partial match, split node at matched point
                     # Example:
@@ -360,6 +314,8 @@ class PrefixTree:
                     ### curr_node.edge_label_to_child = {"h": Node("hello", edge_label_to_child = {"w": Node("world")})}
                     ### parent_node = Node("hello"), matched_node = Node("world")
                     ### Copy matched_node.tenant_to_last_access_time to parent_node.tenant_to_last_access_time
+                    ### Insert parent_node into the back of the LRU list; it will be moved to the front in the next iteration. (for the current tenant)
+                    ### Insert parent_node between matched_node and matched_node's newer neighbor (for all other tenants)
                     ### (new) curr_text = "there", (new) curr_node = parent_node
                     ### Continue adding "there" to tree in next iteration
 
@@ -372,13 +328,19 @@ class PrefixTree:
                     new_parent.tenant_to_last_access_time = (
                         matched_node.tenant_to_last_access_time.copy()
                     )
+                    # Insert new_parent into the back of the LRU list; it will be moved to the front in the next iteration. (for the current tenant)
+                    self._insert_node_into_linked_list(
+                        new_parent, self.tenant_to_lru_tail[tenant], None, tenant
+                    )
+                    # Insert new_parent between matched_node and matched_node's newer neighbor (for all other tenants)
                     for existing_tenant in new_parent.tenant_to_last_access_time:
-                        self.tenant_to_nodes[existing_tenant].add(new_parent)
-                        # Initialize LRU list pointers
-                        new_parent.tenant_to_older_node[existing_tenant] = None
-                        new_parent.tenant_to_newer_node[existing_tenant] = None
-                        # Move to head of LRU list for each tenant
-                        self._move_node_to_head(new_parent, existing_tenant)
+                        if existing_tenant != tenant:
+                            self._insert_node_into_linked_list(
+                                new_parent,
+                                matched_node.tenant_to_newer_node.get(existing_tenant),
+                                matched_node,
+                                existing_tenant,
+                            )
 
                     # Update existing matched node
                     matched_node.text = remaining_text
@@ -416,17 +378,19 @@ class PrefixTree:
             A tenant is unable to be returned by prefix_match until it has inserted text into the tree, even if _add_tenant is called.
             The replica scheduler is responsible for inserting text into new replicas; it should not only rely on prefix_match to select replicas.
         """
-        if available_tenants:
-            # Filter available_tenants to only include those in the tree
-            available_tenants = [
-                tenant for tenant in available_tenants if tenant in self.tenant_to_nodes
-            ]
-            if not available_tenants:
-                return "", None
-        else:
-            available_tenants = list(self.tenant_to_nodes.keys())
-
         with self.lock:
+            if available_tenants:
+                # Filter available_tenants to only include those in the tree
+                available_tenants = [
+                    tenant
+                    for tenant in available_tenants
+                    if tenant in self.tenant_to_char_count
+                ]
+                if not available_tenants:
+                    return "", None
+            else:
+                available_tenants = list(self.tenant_to_char_count.keys())
+
             curr_node: Node = self.root
             i: int = 0
             text_len: int = len(text)
@@ -481,17 +445,23 @@ class PrefixTree:
             Number of characters removed (0 if tenant doesn't exist)
         """
         with self.lock:
-            if tenant not in self.tenant_to_nodes:
+            if tenant not in self.tenant_to_char_count:
                 logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
 
             total_chars_removed: int = 0
-            for node in self.tenant_to_nodes[tenant].copy():
-                total_chars_removed += self._remove_tenant_single_node(tenant, node)
 
-            self.tenant_to_nodes.pop(tenant, None)
+            # Start from the tail and remove all nodes
+            current_tail = self.tenant_to_lru_tail.get(tenant)
+            while current_tail:
+                newer_neighbor = current_tail.tenant_to_newer_node.get(tenant)
+                total_chars_removed += self._remove_tenant_single_node(
+                    tenant, current_tail
+                )
+                current_tail = newer_neighbor
+
+            # Clean up tenant references
             self.tenant_to_char_count.pop(tenant, None)
-            self.tenant_to_lru_head.pop(tenant, None)
             self.tenant_to_lru_tail.pop(tenant, None)
 
             return total_chars_removed
@@ -510,16 +480,13 @@ class PrefixTree:
 
         Note:
             - All nodes with the same oldest access time are removed together to maintain tree integrity, even if only removing a subset of them satisfies the min_remove_size.
-            - This behavior is expected in the case when an input was split into multiple nodes by a different tenant (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 2)).
-              because "hello" and "world" were inserted as a package, and so should be removed as a package.
-            - However, if two inputs happen to be inserted at the same time (e.g. insert("helloworld", "tenant_1", 1) and insert("hellothere", "tenant_2", 1)),
-              then both "chains" will be removed by our method. This may not reflect the actual KV cache eviction policy.
             - For more predictable eviction, use unique timestamps for each insertion.
+            - The root node is never evicted as it serves as the permanent head of the LRU list.
         """
         with self.lock:
-            if tenant not in self.tenant_to_nodes or not self.tenant_to_nodes[tenant]:
+            if tenant not in self.tenant_to_char_count:
                 logger.warning(
-                    f"Cannot evict tenant '{tenant}': tenant does not exist or has no nodes. No action taken."
+                    f"Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
                 )
                 return 0
 
@@ -533,29 +500,28 @@ class PrefixTree:
             total_chars_removed: int = 0
 
             # Start removing from the tail (least recently used)
-            tail = self.tenant_to_lru_tail.get(tenant)
+            current_tail = self.tenant_to_lru_tail.get(tenant)
 
             # Continue until we've freed enough space or run out of nodes
-            while total_chars_removed < min_remove_size and tail:
+            while total_chars_removed < min_remove_size and current_tail:
+                # Stop if we've reached the root - the root is never evicted
+                if current_tail == self.root:
+                    break
+
                 # Get the current timestamp to remove all nodes with this timestamp
-                current_timestamp = tail.tenant_to_last_access_time[tenant]
-                nodes_with_same_timestamp = []
+                current_timestamp = current_tail.tenant_to_last_access_time[tenant]
 
                 # Collect all nodes with the same timestamp (guaranteed to be contiguous in our LRU list)
-                current = tail
                 while (
-                    current
-                    and current.tenant_to_last_access_time[tenant] == current_timestamp
+                    current_tail != self.root  # Never include the root
+                    and current_tail.tenant_to_last_access_time[tenant]
+                    == current_timestamp
                 ):
-                    nodes_with_same_timestamp.append(current)
-                    current = current.tenant_to_newer_node.get(tenant)
-
-                # Set the new tail to continue from for the next iteration (if needed)
-                tail = current
-
-                # Remove all collected nodes with the same timestamp
-                for node in nodes_with_same_timestamp:
-                    total_chars_removed += self._remove_tenant_single_node(tenant, node)
+                    newer_neighbor = current_tail.tenant_to_newer_node.get(tenant)
+                    total_chars_removed += self._remove_tenant_single_node(
+                        tenant, current_tail
+                    )
+                    current_tail = newer_neighbor
 
             return total_chars_removed
 
@@ -579,17 +545,9 @@ class PrefixTree:
 
 @ray.remote
 class PrefixTreeActor(PrefixTree):
-    def _to_dict(self) -> Dict[str, Any]:
+    def getattr(self, attribute: str) -> Any:
         """
-        Convert tree to dictionary for serialization.
-
-        Returns:
-            Dictionary representation of the tree
-
+        Get an attribute of the PrefixTree.
         Note: This method is intended to be used only in tests.
         """
-        return {
-            "root": self.root,
-            "tenant_to_char_count": self.tenant_to_char_count,
-            "tenant_to_nodes": self.tenant_to_nodes,
-        }
+        return getattr(self, attribute)
