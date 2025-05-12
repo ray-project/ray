@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type
 
 import torch
 
@@ -103,6 +103,8 @@ class MockNcclGroupSet:
         actors: List["ray.actor.ActorHandle"],
         custom_nccl_group: Optional[Communicator] = None,
         use_communication_streams: bool = False,
+        accelerator_module_name: Optional[str] = None,
+        accelerator_communicator_cls: Optional[Type[Communicator]] = None,
     ) -> str:
         group_id = str(uuid.uuid4())
         self.ids_to_actors_and_custom_comms[group_id] = (
