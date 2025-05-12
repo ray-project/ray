@@ -1023,7 +1023,12 @@ class ReplicaScheduler(ABC):
     ) -> List[Set[RunningReplica]]:
         pass
 
-    def on_request_scheduled(self, replica_id: ReplicaID, result: ReplicaResult):
+    def on_request_scheduled(
+        self,
+        pending_request: PendingRequest,
+        replica_id: ReplicaID,
+        result: ReplicaResult,
+    ):
         """Called when a request is scheduled to a replica.
 
         This is used as a callback to update the state of the scheduler after
