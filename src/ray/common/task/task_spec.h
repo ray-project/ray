@@ -515,6 +515,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
 
+  TaskAttempt GetTaskAttempt() const;
+
  private:
   void ComputeResources();
 
