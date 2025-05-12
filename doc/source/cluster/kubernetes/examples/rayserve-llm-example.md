@@ -81,12 +81,33 @@ status:
         status: RUNNING
 ```
 
+## Checking Out Ray-Dashboard
+
+Ray Services also serves a built-in Ray Dashboard, a web interface that provides metrics, charts, and other features that help Ray users to understand and debug Ray applications.
+
+To access the Ray Dashboard, port-forward 8625 port from the Head application Service using the following command:
+```sh
+$ kubectl port-forward svc/ray-commotion-llm-head-svc 8625
+```
+
+Once forwarded, navigate to the Serve tab on the Dashboard to review application status, deployments, routers, logs, and other relevant features.
+![LLM Serve Application](../images/ray-dashboard-llm-application.png)
+
+The Cluster tab provides detailed information about the Ray cluster components, including head and worker pods.
+![Ray Cluster](../images/ray-dashboard-llm-cluster.png)
+
+For monitoring application and cluster-level metrics, set up Prometheus and Grafana for dashboarding by referring to the official documentation:
+* [Prometheus and Grafana with KubeRay](https://docs.ray.io/en/latest/cluster/kubernetes/k8s-ecosystem/prometheus-grafana.html)
+* [Collecting and Monitoring Metrics in Ray](https://docs.ray.io/en/latest/cluster/metrics.html)
+
 ## Sending a Request
 
 To send requests to the Ray Serve Deployment, port-forward 8000 port from the Serve application Service:
 ```sh
 $ kubectl port-forward svc/ray-commotion-llm-serve-svc 8000
 ```
+
+Additionally, you can also port-forward 8000 port from the Head application Service to send requests to the serve application.
 
 Keep in mind this Kubernetes Service comes up only after Ray Serve applications are running and ready. This process takes a few minutes after all the pods in the Ray Cluster are up and running.
 
