@@ -29,7 +29,6 @@ class TorchConfig(DataLoaderConfig):
     torch_pin_memory: bool = True
     torch_non_blocking: bool = True
     torch_prefetch_factor: int = -1
-    torch_multiprocessing_context: str = "fork"
 
 
 class BenchmarkConfig(BaseModel):
