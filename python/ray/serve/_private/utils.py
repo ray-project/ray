@@ -566,7 +566,7 @@ def get_component_file_name(
 
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.
-    component_log_file_name = component_name
+    # component_log_file_name = component_name
     if component_type is not None:
         component_log_file_name = f"{component_type.value}_{component_name}"
         if component_type != ServeComponentType.REPLICA:
