@@ -18,7 +18,6 @@ from ray.util.check_open_ports import check_open_ports
 import requests
 
 import click
-import colorama
 import psutil
 import yaml
 
@@ -59,6 +58,10 @@ from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
+try:
+    from ray._private.colorama import colorama
+except ImportError:
+    import colorama
 
 logger = logging.getLogger(__name__)
 

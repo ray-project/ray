@@ -9,7 +9,10 @@ import time
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
-import colorama
+try:
+    from ray._private.colorama import colorama
+except ImportError:
+    import colorama
 
 import ray
 from ray._private.ray_constants import env_bool

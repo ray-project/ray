@@ -5,9 +5,13 @@ from typing import Any, Optional, Set, Tuple
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401
-import colorama
 import ray.cloudpickle as cp
 from ray.util.annotations import DeveloperAPI
+
+try:
+    from ray._private.colorama import colorama
+except ImportError:
+    import colorama
 
 
 @contextmanager

@@ -4,8 +4,6 @@ import sys
 from traceback import format_exception
 from typing import Optional, Union
 
-import colorama
-
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
 from ray._raylet import ActorID, TaskID, WorkerID
@@ -21,9 +19,11 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
     from ray._private.setproctitle import setproctitle
+    from ray._private.colorama import colorama
 except ImportError:
     # Fall back to system setproctitle if our private copy is unavailable
     import setproctitle
+    import colorama
 
 logger = logging.getLogger(__name__)
 

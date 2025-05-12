@@ -1,4 +1,3 @@
-import colorama
 from dataclasses import dataclass
 import logging
 import logging.handlers
@@ -18,6 +17,11 @@ from ray._private.ray_constants import (
     RAY_DEDUP_LOGS_SKIP_REGEX,
 )
 from ray.util.debug import log_once
+
+try:
+    from ray._private.colorama import colorama
+except ImportError:
+    import colorama
 
 
 def setup_logger(

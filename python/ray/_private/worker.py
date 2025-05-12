@@ -33,13 +33,15 @@ from typing import (
 )
 from urllib.parse import urlparse
 
-import colorama
 
 try:
     from ray._private.setproctitle import setproctitle
+    from ray._private.colorama import colorama
 except ImportError:
     # Fall back to system setproctitle if our private copy is unavailable
     import setproctitle
+    import colorama
+
 
 from typing import Literal, Protocol
 

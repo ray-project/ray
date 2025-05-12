@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from unittest.mock import Mock, MagicMock, patch
 
-import colorama
 import pytest
 
 import ray
@@ -52,6 +51,11 @@ from ray._private.test_utils import (
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray._private.worker import print_worker_logs
+
+try:
+    from ray._private.colorama import colorama
+except ImportError:
+    import colorama
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
