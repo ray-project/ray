@@ -60,10 +60,12 @@ def _configure_system():
         # Import for Ray internal usage
         import setproctitle
         import colorama
+        import psutil
 
         # Save the modules in Ray's private namespace
         sys.modules["ray._private.setproctitle"] = setproctitle
         sys.modules["ray._private.colorama"] = colorama
+        sys.modules["ray._private.psutil"] = psutil
     finally:
         # Restore original sys.path to avoid affecting user imports
         sys.path = original_sys_path
