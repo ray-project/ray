@@ -2796,6 +2796,192 @@ class Dataset:
         return self._aggregate_result(ret)
 
     @AllToAllAPI
+    @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
+    def percentile(
+        self,
+        q: Union[float, List[float]],
+        on: Optional[Union[str, List[str]]] = None,
+        interpolation: str = "linear",
+        ignore_nulls: bool = True,
+    ) -> Union[Any, Dict[str, Any]]:
+        """Compute the q-th percentile of one or more columns.
+        
+        Examples:
+            >>> import ray
+            >>> ray.data.range(100).percentile(50, "id")
+            49.5
+            >>> ray.data.range(100).percentile([25, 50, 75], "id")
+            [24.75, 49.5, 74.25]
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)
+            ... ]).percentile(50, ["A", "B"])
+            {'percentile(A, 50.0)': 49.5, 'percentile(B, 50.0)': 2450.0}
+            
+        Args:
+            q: The percentile or percentiles to compute, which must be between
+               0 and 100 inclusive.
+            on: A column name or a list of column names to aggregate.
+            interpolation: The interpolation method to use when the desired
+                percentile is between two data points. Options are:
+                - 'linear': Linear interpolation between values (default).
+                - 'lower': Return the lower value.
+                - 'higher': Return the higher value.
+                - 'nearest': Return the nearest value.
+                - 'midpoint': Return the average of the lower and higher values.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values are ignored when computing the percentile; if ``False``,
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
+                
+        Returns:
+            The percentile result.
+            
+            For different values of ``on`` and ``q``, the return varies:
+            
+            - ``on=None``: A dict containing the column-wise percentile(s) of
+              all columns.
+            - ``on="col"``, ``q=50``: A scalar representing the 50th percentile of
+              all items in column ``"col"``.
+            - ``on="col"``, ``q=[25, 50, 75]``: A list of scalars representing the
+              25th, 50th, and 75th percentiles of column ``"col"``.
+            - ``on=["col_1", "col_2"]``, ``q=50``: A dict containing the 50th
+              percentile of each specified column.
+            - ``on=["col_1", "col_2"]``, ``q=[25, 50, 75]``: A dict with keys
+              based on column name and q value, containing all requested percentiles
+              for all specified columns.
+            
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is
+            ``False`` and any value is null, then the output is ``None``.
+        """
+        from ray.data.aggregate import Percentile
+        
+        ret = self._aggregate_on(
+            Percentile,
+            on,
+            ignore_nulls=ignore_nulls,
+            q=q,
+            interpolation=interpolation,
+        )
+        return self._aggregate_result(ret)
+        
+    @AllToAllAPI
+    @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
+    def describe(
+        self,
+        on: Optional[Union[str, List[str]]] = None,
+        percentiles: Optional[List[float]] = None,
+        interpolation: str = "linear",
+        ignore_nulls: bool = True,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Generate descriptive statistics for the dataset.
+        
+        Compute summary statistics of numerical columns in the dataset, similar to
+        pandas' describe() method. This includes count, mean, standard deviation,
+        min, max, and percentiles.
+        
+        Examples:
+            >>> import ray
+            >>> ray.data.range(100).describe()
+            {'id': {'count': 100, 'mean': 49.5, 'std': 28.87, 'min': 0, 'max': 99, 
+                   '25%': 24.75, '50%': 49.5, '75%': 74.25}}
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)
+            ... ]).describe(["A"])
+            {'A': {'count': 100, 'mean': 49.5, 'std': 28.87, 'min': 0, 'max': 99, 
+                   '25%': 24.75, '50%': 49.5, '75%': 74.25}}
+            
+        Args:
+            on: A column name or a list of column names to compute statistics for.
+                If None, compute statistics for all columns.
+            percentiles: List of percentiles to include in the statistics. If None,
+                defaults to [25, 50, 75].
+            interpolation: The interpolation method to use for percentile calculation.
+                Options are 'linear' (default), 'lower', 'higher', 'nearest', 'midpoint'.
+            ignore_nulls: Whether to ignore null values when computing statistics.
+            
+        Returns:
+            A nested dictionary containing statistics for each column. The outer
+            dictionary keys are column names, and the inner dictionary keys are
+            statistic names ('count', 'mean', 'std', 'min', 'max', plus percentiles).
+        """
+        if percentiles is None:
+            percentiles = [25, 50, 75]
+            
+        # Ensure percentiles are within valid range
+        for p in percentiles:
+            if p < 0 or p > 100:
+                raise ValueError(f"Percentile {p} is out of range [0, 100]")
+        
+        # Convert column to list if it's a string
+        if isinstance(on, str):
+            columns = [on]
+        elif on is None:
+            # Default to all columns if none specified
+            schema = self.schema(fetch_if_missing=True)
+            if schema is None:
+                raise ValueError("Could not determine schema. Try specifying columns explicitly.")
+            columns = list(schema.names)
+        else:
+            columns = on
+            
+        # Prepare result container
+        result = {}
+        
+        # For each column, compute statistics
+        for col in columns:
+            # Count - we can use count() directly
+            count_result = self.count(col)
+            
+            # If column has no data, skip further calculations
+            if count_result == 0:
+                result[col] = {"count": 0}
+                continue
+                
+            # Mean
+            mean_result = self.mean(col, ignore_nulls=ignore_nulls)
+            
+            # Std
+            std_result = self.std(col, ignore_nulls=ignore_nulls)
+            
+            # Min and Max
+            min_result = self.min(col, ignore_nulls=ignore_nulls)
+            max_result = self.max(col, ignore_nulls=ignore_nulls)
+            
+            # Percentiles
+            percentile_results = self.percentile(
+                percentiles, 
+                col, 
+                interpolation=interpolation,
+                ignore_nulls=ignore_nulls
+            )
+            
+            # Format percentile results
+            if not isinstance(percentile_results, list):
+                percentile_results = [percentile_results]
+                
+            # Collect all statistics for this column
+            col_stats = {
+                "count": count_result,
+                "mean": mean_result,
+                "std": std_result,
+                "min": min_result,
+                "max": max_result,
+            }
+            
+            # Add percentiles to the statistics
+            for i, p in enumerate(percentiles):
+                col_stats[f"{p}%"] = percentile_results[i] if i < len(percentile_results) else None
+                
+            result[col] = col_stats
+            
+        return result
+
+    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def sort(
         self,

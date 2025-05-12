@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
 import numpy as np
 
@@ -530,6 +530,147 @@ class Quantile(AggregateFnV2):
         d1 = key(input_values[int(c)]) * (k - f)
 
         return round(d0 + d1, 5)
+
+
+@PublicAPI
+class Percentile(AggregateFnV2):
+    """Defines Percentile aggregation.
+    
+    Percentile is similar to Quantile but accepts values from 0-100 instead of 0-1,
+    and supports different interpolation methods.
+    """
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        q: Union[float, List[float]] = 50.0,
+        interpolation: str = "linear",
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        """Initialize a Percentile aggregation.
+
+        Args:
+            on: The column to compute percentiles on.
+            q: The percentile(s) to compute, between 0 and 100.
+            interpolation: The interpolation method to use when the desired
+                percentile is between two values. Options are:
+                - 'linear': Linear interpolation between values.
+                - 'lower': Return the lower value.
+                - 'higher': Return the higher value.
+                - 'nearest': Return the nearest value.
+                - 'midpoint': Return the average of the lower and higher values.
+            ignore_nulls: Whether to ignore null values.
+            alias_name: An optional display name for the aggregator.
+        """
+        self._qs = [q] if isinstance(q, (int, float)) else q
+        # Convert percentiles (0-100) to quantiles (0-1)
+        self._qs = [q / 100.0 for q in self._qs]
+        self._interpolation = interpolation
+
+        name = f"percentile({str(on)}, {q})"
+        if alias_name:
+            name = alias_name
+
+        super().__init__(
+            name,
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=list,
+        )
+
+    def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
+        if isinstance(current_accumulator, List) and isinstance(new, List):
+            current_accumulator.extend(new)
+            return current_accumulator
+
+        if isinstance(current_accumulator, List) and (not isinstance(new, List)):
+            if new is not None and new != "":
+                current_accumulator.append(new)
+            return current_accumulator
+
+        if isinstance(new, List) and (not isinstance(current_accumulator, List)):
+            if current_accumulator is not None and current_accumulator != "":
+                new.append(current_accumulator)
+            return new
+
+        ls = []
+
+        if current_accumulator is not None and current_accumulator != "":
+            ls.append(current_accumulator)
+
+        if new is not None and new != "":
+            ls.append(new)
+
+        return ls
+
+    def aggregate_block(self, block: Block) -> AggType:
+        block_acc = BlockAccessor.for_block(block)
+        ls = []
+
+        for row in block_acc.iter_rows(public_row_format=False):
+            ls.append(row.get(self._target_col_name))
+
+        return ls
+
+    def _finalize(self, accumulator: List[Any]) -> Optional[Union[Any, List[Any]]]:
+        if self._ignore_nulls:
+            accumulator = [v for v in accumulator if not is_null(v)]
+        else:
+            nulls = [v for v in accumulator if is_null(v)]
+            if len(nulls) > 0:
+                # NOTE: We return the null itself to preserve column type
+                return nulls[0]
+
+        if not accumulator:
+            return None
+
+        input_values = sorted(accumulator)
+        n = len(input_values)
+
+        # If there's only one element, return it for all percentiles
+        if n == 1:
+            if len(self._qs) == 1:
+                return input_values[0]
+            return [input_values[0]] * len(self._qs)
+
+        # Calculate percentiles
+        results = []
+        for q in self._qs:
+            # Array index for the percentile
+            idx = (n - 1) * q
+            idx_floor = math.floor(idx)
+            idx_ceil = math.ceil(idx)
+
+            # Get the values for interpolation
+            v0 = input_values[int(idx_floor)]
+            v1 = input_values[int(idx_ceil)]
+
+            # Exact match
+            if idx_floor == idx_ceil:
+                result = v0
+            else:
+                # Apply different interpolation methods
+                if self._interpolation == "lower":
+                    result = v0
+                elif self._interpolation == "higher":
+                    result = v1
+                elif self._interpolation == "nearest":
+                    result = v0 if (idx - idx_floor) < 0.5 else v1
+                elif self._interpolation == "midpoint":
+                    result = (v0 + v1) / 2
+                else:  # default is "linear"
+                    # Linear interpolation
+                    fraction = idx - idx_floor
+                    result = v0 * (1 - fraction) + v1 * fraction
+
+            results.append(result)
+
+        # If only one percentile was requested, return a scalar
+        if len(self._qs) == 1:
+            return results[0]
+        
+        return results
 
 
 @PublicAPI
