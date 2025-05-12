@@ -32,10 +32,6 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
-        return HIP_VISIBLE_DEVICES_ENV_VAR
-
-    @staticmethod
-    def get_visible_accelerator_ids_env_var() -> str:
         global HIP_VISIBLE_DEVICES_ENV_VAR
         hip_val = os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)
         cuda_val = os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)
@@ -125,9 +121,9 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
         if os.environ.get(NOSET_HIP_VISIBLE_DEVICES_ENV_VAR):
             return
 
-        os.environ[AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
-            ",".join([str(i) for i in visible_amd_devices])
-        )
+        os.environ[
+            AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join([str(i) for i in visible_amd_devices])
 
     @staticmethod
     def _get_amd_device_ids() -> List[str]:
