@@ -135,7 +135,7 @@ def test_torch_conversion(ray_start_regular_shared):
     #  `_collate_fn` (handles formatting and Tensor creation)
     # and `_finalize_fn` (handles host to device data transfer)
     # are used in `DataIterator.iter_batches()`.
-    iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+    iter_batches_calls_kwargs = [a.kwargs for a in it._iter_batches.call_args_list]
     assert all(
         callable(kwargs["_collate_fn"]) and callable(kwargs["_finalize_fn"])
         for kwargs in iter_batches_calls_kwargs
