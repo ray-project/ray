@@ -63,7 +63,6 @@ def test_install_failure_logging(
     start_cluster_shared,
     shutdown_only,
     field,
-    spec_format,
     tmp_path,
 ):
     cluster, address = start_cluster_shared
@@ -84,7 +83,7 @@ def test_install_failure_logging(
 
     @ray.remote(
         runtime_env=generate_runtime_env_dict(
-            field, spec_format, tmp_path, pip_list=["does-not-exist-task"]
+            field, "python_object", tmp_path, pip_list=["does-not-exist-task"]
         )
     )
     def f():
