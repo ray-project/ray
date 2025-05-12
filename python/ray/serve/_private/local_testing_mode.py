@@ -280,6 +280,7 @@ class LocalRouter(Router):
     def assign_request(
         self,
         request_meta: RequestMetadata,
+        on_request_scheduled: Optional[Callable] = None,
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[LocalReplicaResult]:
