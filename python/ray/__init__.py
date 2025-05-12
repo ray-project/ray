@@ -79,7 +79,9 @@ def _configure_system():
     original_sys_path = sys.path.copy()
     sys.path.insert(0, thirdparty_files)
     try:
-        import psutil
+        # TODO(zhaoch23): Cache the internal psutil. Remove this import if we
+        # decide to replace all import psutil with from ray._private import psutil.
+        import psutil  # noqa: F401
     finally:
         sys.path = original_sys_path
 
