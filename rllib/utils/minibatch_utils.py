@@ -4,6 +4,7 @@ from typing import Callable, List, Optional
 from ray.data import DataIterator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import DeviceType, EpisodeType
 
@@ -219,6 +220,18 @@ class MiniBatchRayDataIterator:
             for batch in self._epoch_iterator:
                 # Update the iteration counter.
                 iteration += 1
+
+                batch = unflatten_dict(batch)
+                batch = MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in batch.items()
+                    },
+                    env_steps=sum(
+                        len(next(iter(module_data.values())))
+                        for module_data in batch.values()
+                    ),
+                )
 
                 yield (batch)
 
