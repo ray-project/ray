@@ -1152,8 +1152,7 @@ class Learner(Checkpointable):
                 # This iterator holds a `ray.data.DataIterator` and manages it state.
                 self.iterator = MiniBatchRayDataIterator(
                     iterator=training_data.data_iterators[0],
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
+                    device=self.device,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     **kwargs,

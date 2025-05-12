@@ -5,7 +5,7 @@ from ray.data import DataIterator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import DeviceType, EpisodeType
 
 
 @DeveloperAPI
@@ -194,25 +194,20 @@ class MiniBatchRayDataIterator:
         self,
         *,
         iterator: DataIterator,
-        collate_fn: Callable,
-        finalize_fn: Callable,
+        device: DeviceType,
         minibatch_size: int,
         num_iters: Optional[int],
         **kwargs,
     ):
         # A `ray.data.DataIterator` that can iterate in different ways over the data.
         self._iterator = iterator
-        self._collate_fn = collate_fn
-        self._finalize_fn = finalize_fn
         # Note, in multi-learner settings the `return_state` is in `kwargs`.
         self._kwargs = {k: v for k, v in kwargs.items() if k != "return_state"}
 
         # Holds a batched_iterable over the dataset.
-        self._batched_iterable = self._iterator.iter_batches(
+        self._batched_iterable = self._iterator.torch_iter_batches(
             batch_size=minibatch_size,
-            _collate_fn=self._collate_fn,
-            _finalize_fn=self._finalize_fn,
-            **self._kwargs,
+            device=device**self._kwargs,
         )
         # Create an iterator that can be stopped and resumed during an epoch.
         self._epoch_iterator = iter(self._batched_iterable)
