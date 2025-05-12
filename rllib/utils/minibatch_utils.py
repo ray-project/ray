@@ -206,9 +206,10 @@ class MiniBatchRayDataIterator:
         self._kwargs = {k: v for k, v in kwargs.items() if k != "return_state"}
 
         # Holds a batched_iterable over the dataset.
-        self._batched_iterable = self._iterator.torch_iter_batches(
+        self._batched_iterable = self._iterator.iter_torch_batches(
             batch_size=minibatch_size,
-            device=device**self._kwargs,
+            device=device,
+            **self._kwargs,
         )
         # Create an iterator that can be stopped and resumed during an epoch.
         self._epoch_iterator = iter(self._batched_iterable)
