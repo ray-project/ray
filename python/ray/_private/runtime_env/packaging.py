@@ -497,7 +497,7 @@ def get_uri_for_file(file: str) -> str:
         URI (str)
 
     Raises:
-        ValueError if the file doesn't exist.
+        ValueError: If the file doesn't exist.
     """
     filepath = Path(file).absolute()
     if not filepath.exists() or not filepath.is_file():
@@ -532,7 +532,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         URI (str)
 
     Raises:
-        ValueError if the directory doesn't exist.
+        ValueError: If the directory doesn't exist.
     """
     if excludes is None:
         excludes = []

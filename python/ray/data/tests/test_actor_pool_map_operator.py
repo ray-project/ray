@@ -3,7 +3,7 @@ import collections
 import threading
 import unittest
 from typing import Any, Optional, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -397,44 +397,80 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_locality_manager_actor_ranking(self):
+    def test_locality_based_actor_ranking(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
-        bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
-        for i, b in enumerate(bundles):
-            fake_loc_map[b] = "node1"
-        pool._get_location = lambda b: fake_loc_map[b]
+        bundles = make_ref_bundles([[0] for _ in range(5)])
+
+        def _rank_actors(bundle):
+            actors = [actor1, actor2]
+            ranks = pool._rank_actors(actors, bundle)
+
+            assert len(ranks) == len(actors)
+
+            return list(zip(actors, ranks))
 
         # Setup an actor on each node.
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
-        # Actors on node1 should be preferred.
-        res1 = pool.pick_actor(bundles[0])
-        assert res1 == actor1
-        res2 = pool.pick_actor(bundles[1])
-        assert res2 == actor1
+        # Node1 is higher in priority
+        def _get_preferred_locs():
+            return {"node1": 1024, "node2": 512}
 
-        # Fallback to remote actors.
-        res3 = pool.pick_actor(bundles[2])
-        assert res3 == actor2
-        res4 = pool.pick_actor(bundles[3])
-        assert res4 == actor2
-        res5 = pool.pick_actor(bundles[4])
-        assert res5 is None
+        # Actors on node1 should be preferred
+        with patch.object(
+            bundles[0], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[0])
+            assert ranked_actors == [(actor1, (-1024, 0)), (actor2, (-512, 0))]
 
-    def test_locality_manager_busyness_ranking(self):
+            res1 = pool.pick_actor(bundles[0])
+            assert res1 == actor1
+
+        # Actors on node1 should be preferred still
+        with patch.object(
+            bundles[1], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[1])
+            assert ranked_actors == [(actor1, (-1024, 1)), (actor2, (-512, 0))]
+
+            res2 = pool.pick_actor(bundles[1])
+            assert res2 == actor1
+
+        # Fallback to remote actors
+        with patch.object(
+            bundles[2], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[2])
+            # NOTE: Actor 1 is at max requests in-flight hence excluded
+            assert ranked_actors == [(actor1, (-1024, 2)), (actor2, (-512, 0))]
+
+            res3 = pool.pick_actor(bundles[2])
+            assert res3 == actor2
+
+        # NOTE: Actor 2 is selected (since Actor 1 is at capacity)
+        with patch.object(
+            bundles[3], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            res4 = pool.pick_actor(bundles[3])
+            assert res4 == actor2
+
+        # NOTE: Actor 2 is at max requests in-flight, hence excluded
+        with patch.object(
+            bundles[4], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            res5 = pool.pick_actor(bundles[4])
+            assert res5 is None
+
+    def test_locality_based_actor_ranking_no_locations(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
         bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
         # Also test unknown location handling.
-        for i, b in enumerate(bundles):
-            fake_loc_map[b] = None
-        pool._get_location = lambda b: fake_loc_map[b]
+        pool._get_preferred_locations = lambda b: []
 
         # Setup two actors on the same node.
         actor1 = self._add_ready_actor(pool, node_id="node1")

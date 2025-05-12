@@ -370,7 +370,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_.get_executor()),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
+      client_call_manager_(
+          std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
@@ -1573,6 +1574,12 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
           {object_id},
           /*generator_id=*/ObjectID::Nil(),
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+            // RPC to the local raylet should never fail.
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
+                             << status.ToString();
+              return;
+            }
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
             if (!plasma_store_provider_->Release(object_id).ok()) {
@@ -1767,6 +1774,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         {object_id},
         generator_id,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // RPC to the local raylet should never fail.
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
+                           << status.ToString();
+            return;
+          }
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
           if (!plasma_store_provider_->Release(object_id).ok()) {
@@ -3579,7 +3592,13 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         generator_id,
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
-          if (!status.ok() || !reply.successes(0)) {
+          // RPC to the local raylet should never fail.
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
+                           << status.ToString();
+            return;
+          }
+          if (!reply.successes(0)) {
             RAY_LOG(INFO).WithField(return_id)
                 << "Failed to pin existing copy of the task return object. "
                    "This object may get evicted while there are still "
