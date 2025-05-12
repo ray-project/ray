@@ -6,7 +6,7 @@ This guide provides a step-by-step walkthrough for deploying a Large Language Mo
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
-Follow aws-eks-gpu-cluster.md or gcp-gke-gpu-cluster.md to create a Kubernetes cluster with 1 CPU node and 1 GPU node.
+Follow aws-eks-gpu-cluster.md or gcp-gke-gpu-cluster.md to create a Kubernetes cluster.
 
 ### Prerequisites
 In this example, model weights are downloaded from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. In order to properly finish this guide, you must fulfill the following requirements:
