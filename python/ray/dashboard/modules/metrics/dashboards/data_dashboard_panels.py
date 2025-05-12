@@ -433,25 +433,55 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=38,
-        title="Task Completion Time",
+        title="(p50) Task Completion Time",
         description="Time spent running all tasks to completion.",
         unit="ms",
         targets=[
             Target(
                 expr="histogram_quantile(0.50, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
-                legend="(P50) Completion Time: {{dataset}}, {{operator}}",
+                legend="(p50) Completion Time: {{dataset}}, {{operator}}",
             ),
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=39,
+        title="(p75) Task Completion Time",
+        description="Time spent running all tasks to completion.",
+        unit="ms",
+        targets=[
             Target(
                 expr="histogram_quantile(0.75, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
-                legend="(P75) Completion Time: {{dataset}}, {{operator}}",
+                legend="(p75) Completion Time: {{dataset}}, {{operator}}",
             ),
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=40,
+        title="(p90) Task Completion Time",
+        description="Time spent running all tasks to completion.",
+        unit="ms",
+        targets=[
             Target(
                 expr="histogram_quantile(0.9, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
-                legend="(P90) Completion Time: {{dataset}}, {{operator}}",
+                legend="(p90) Completion Time: {{dataset}}, {{operator}}",
             ),
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=41,
+        title="p(99) Task Completion Time",
+        description="Time spent running all tasks to completion.",
+        unit="ms",
+        targets=[
             Target(
                 expr="histogram_quantile(0.99, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
-                legend="(P99) Completion Time: {{dataset}}, {{operator}}",
+                legend="(p99) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
         fill=0,
