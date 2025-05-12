@@ -305,7 +305,7 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=37",
       },
       {
-        title: "Mean Task Completion Time",
+        title: "Task Completion Time",
         pathParams: "orgId=1&theme=light&panelId=38",
       },
     ],

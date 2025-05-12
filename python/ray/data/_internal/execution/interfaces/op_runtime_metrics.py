@@ -22,6 +22,8 @@ _IS_FIELD_METRIC_KEY = "__is_metric"
 # Metadata keys used to store information about a metric.
 _METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
 _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
+_METRIC_FIELD_METRICS_TYPE_KEY = "__metric_metrics_type"
+_METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
@@ -36,6 +38,12 @@ class MetricsGroup(Enum):
     OBJECT_STORE_MEMORY = "object_store_memory"
     MISC = "misc"
     ACTORS = "actors"
+
+
+class MetricsType(Enum):
+    Counter = (0,)
+    Gauge = (1,)
+    Histogram = 2
 
 
 @dataclass(frozen=True)
@@ -54,6 +62,8 @@ class MetricDefinition:
     name: str
     description: str
     metrics_group: str
+    metrics_type: MetricsType
+    metrics_args: Dict[str, Any]
     # TODO: Let's refactor this parameter so it isn't tightly coupled with a specific
     # operator type (MapOperator).
     map_only: bool = False
@@ -64,6 +74,8 @@ def metric_field(
     *,
     description: str,
     metrics_group: str,
+    metrics_type: MetricsType = MetricsType.Gauge,
+    metrics_args: Dict[str, Any] = None,
     map_only: bool = False,
     internal_only: bool = False,  # do not expose this metric to the user
     **field_kwargs,
@@ -75,6 +87,8 @@ def metric_field(
 
     metadata[_METRIC_FIELD_DESCRIPTION_KEY] = description
     metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
+    metadata[_METRIC_FIELD_METRICS_TYPE_KEY] = metrics_type
+    metadata[_METRIC_FIELD_METRICS_ARGS_KEY] = metrics_args or {}
     metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY] = map_only
 
     return field(metadata=metadata, **field_kwargs)
@@ -84,6 +98,8 @@ def metric_property(
     *,
     description: str,
     metrics_group: str,
+    metrics_type: MetricsType = MetricsType.Gauge,
+    metrics_args: Dict[str, Any] = None,
     map_only: bool = False,
     internal_only: bool = False,  # do not expose this metric to the user
 ):
@@ -94,6 +110,8 @@ def metric_property(
             name=func.__name__,
             description=description,
             metrics_group=metrics_group,
+            metrics_type=metrics_type,
+            metrics_args=(metrics_args or {}),
             map_only=map_only,
             internal_only=internal_only,
         )
@@ -136,6 +154,8 @@ class OpRuntimesMetricsMeta(type):
                     name=name,
                     description=value.metadata[_METRIC_FIELD_DESCRIPTION_KEY],
                     metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
+                    metrics_type=value.metadata[_METRIC_FIELD_METRICS_TYPE_KEY],
+                    metrics_args=value.metadata[_METRIC_FIELD_METRICS_ARGS_KEY],
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
@@ -338,10 +358,24 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent in task submission backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
-    mean_task_completion_time: float = metric_field(
+    histogram_buckets_s = [
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1,
+    ]
+    task_completion_time: float = metric_field(
         default=0,
-        description="Mean time spent running all tasks to completion.",
+        description="Time spent running all tasks to completion.",
         metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Histogram,
+        metrics_args={"boundaries": histogram_buckets_s},
     )
 
     # === Actor-related metrics ===
@@ -687,10 +721,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
-        self._op_task_duration_stats.add_duration(
-            time.perf_counter() - task_info.start_time
-        )
-        self.mean_task_completion_time = self._op_task_duration_stats.mean()
+        task_time_delta = time.perf_counter() - task_info.start_time
+        self._op_task_duration_stats.add_duration(task_time_delta)
+        self.task_completion_time = task_time_delta
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()

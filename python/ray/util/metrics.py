@@ -121,6 +121,13 @@ class Metric:
         self._validate_tags(final_tags)
         self._metric.record(value, tags=final_tags)
 
+    def inc_set_or_observe(
+        self,
+        value: Union[int, float],
+        tags: Optional[Dict[str, str]] = None,
+    ) -> None:
+        ...
+
     def _get_final_tags(self, tags):
         if not tags:
             return self._default_tags
@@ -211,6 +218,9 @@ class Counter(Metric):
 
         self._record(value, tags=tags)
 
+    def inc_set_or_observe(self, value, tags=None) -> None:
+        self.inc(value, tags)
+
 
 @DeveloperAPI
 class Histogram(Metric):
@@ -271,6 +281,9 @@ class Histogram(Metric):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
         self._record(value, tags)
+
+    def inc_set_or_observe(self, value, tags=None) -> None:
+        self.observe(value, tags)
 
     def __reduce__(self):
         deserializer = Histogram
@@ -334,6 +347,9 @@ class Gauge(Metric):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
         self._record(value, tags)
+
+    def inc_set_or_observe(self, value, tags=None):
+        self.set(value, tags)
 
     def __reduce__(self):
         deserializer = Gauge

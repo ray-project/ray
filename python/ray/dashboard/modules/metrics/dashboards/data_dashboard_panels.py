@@ -433,14 +433,26 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=38,
-        title="Mean Task Completion Time",
-        description="Mean time spent running all tasks to completion.",
+        title="Task Completion Time",
+        description="Time spent running all tasks to completion.",
         unit="ms",
         targets=[
             Target(
-                expr="sum(ray_data_task_completion_time{{{global_filters}}}) by (dataset, operator)",
-                legend="Completion Time: {{dataset}}, {{operator}}",
-            )
+                expr="histogram_quantile(0.50, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
+                legend="(P50) Completion Time: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="histogram_quantile(0.75, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
+                legend="(P75) Completion Time: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="histogram_quantile(0.9, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
+                legend="(P90) Completion Time: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="histogram_quantile(0.99, sum by (dataset, operator, le) (ray_data_task_completion_time_bucket{{{global_filters}}}))",
+                legend="(P99) Completion Time: {{dataset}}, {{operator}}",
+            ),
         ],
         fill=0,
         stack=True,
