@@ -66,8 +66,6 @@ class IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   virtual std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() = 0;
-  /// Get the sequence number of the task to send according to the protocol.
-  virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
   virtual bool Empty() = 0;
 };
 }  // namespace core
