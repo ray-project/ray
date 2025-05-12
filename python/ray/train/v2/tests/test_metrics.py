@@ -56,7 +56,6 @@ def mock_time_monotonic(monkeypatch, time_values: list[float]):
 
 
 def test_time_metric(monkeypatch):
-    """Test TimeMetric functionality."""
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     base_tags = {"run_name": "test_run"}
@@ -80,7 +79,6 @@ def test_time_metric(monkeypatch):
 
 
 def test_enum_metric(monkeypatch):
-    """Test EnumMetric functionality."""
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
 
     class TestEnum(enum.Enum):

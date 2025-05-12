@@ -145,10 +145,7 @@ class EnumMetric(Metric, Generic[E]):
         Returns:
             The value for the enum value
         """
-        if enum_value == self._current_value:
-            return 1
-        else:
-            return 0
+        return int(enum_value == self._current_value)
 
     def reset(self):
         if self._current_value is not None:
