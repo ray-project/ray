@@ -105,7 +105,7 @@ def main():
         ),
         datasets=factory.get_ray_datasets(),
     )
-    
+
     trainer.fit()
 
     end_time = time.perf_counter()
