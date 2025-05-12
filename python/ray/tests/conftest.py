@@ -462,6 +462,15 @@ def maybe_setup_external_redis(request):
         yield
 
 
+@pytest.fixture(scope="module")
+def maybe_setup_external_redis_shared(request):
+    if external_redis_test_enabled():
+        with _setup_redis(request):
+            yield
+    else:
+        yield
+
+
 @pytest.fixture
 def external_redis(request):
     with _setup_redis(request):
@@ -630,9 +639,9 @@ def ray_start_10_cpus(request, maybe_setup_external_redis):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
-    if cluster_not_supported_:
+    if kwargs.pop("skip_cluster", cluster_not_supported):
         pytest.skip("Cluster not supported")
+
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -647,6 +656,7 @@ def _ray_start_cluster(**kwargs):
         do_init = True
     init_kwargs.update(kwargs)
     namespace = init_kwargs.pop("namespace")
+
     cluster = Cluster()
     remote_nodes = []
     for i in range(num_nodes):
@@ -658,6 +668,7 @@ def _ray_start_cluster(**kwargs):
         if len(remote_nodes) == 1 and do_init:
             ray.init(address=cluster.address, namespace=namespace)
     yield cluster
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
@@ -673,6 +684,14 @@ def ray_start_cluster(request, maybe_setup_external_redis):
 
 @pytest.fixture
 def ray_start_cluster_enabled(request, maybe_setup_external_redis):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_cluster_enabled_shared(request, maybe_setup_external_redis_shared):
     param = getattr(request, "param", {})
     param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
@@ -837,16 +856,12 @@ def call_ray_stop_only():
     ray._private.utils.reset_ray_address()
 
 
-# Used to test both Ray Client and non-Ray Client codepaths.
-# Usage: In your test, call `ray.init(address)`.
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster_enabled, request):
+def _start_cluster(cluster, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
     if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
         pytest.skip("Skipping due to we don't have ray client in minimal.")
 
-    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -855,7 +870,20 @@ def start_cluster(ray_start_cluster_enabled, request):
     else:
         address = cluster.address
 
-    yield cluster, address
+    return cluster, address
+
+
+# Used to test both Ray Client and non-Ray Client codepaths.
+# Usage: In your test, call `ray.init(address)`.
+@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+def start_cluster(ray_start_cluster_enabled, request):
+    yield _start_cluster(ray_start_cluster_enabled, request)
+
+
+# Same as `start_cluster` but module-scoped.
+@pytest.fixture(scope="module", params=["ray_client", "no_ray_client"])
+def start_cluster_shared(ray_start_cluster_enabled_shared, request):
+    yield _start_cluster(ray_start_cluster_enabled_shared, request)
 
 
 @pytest.fixture(scope="function")
