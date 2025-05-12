@@ -643,6 +643,32 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
+def table_to_numpy_dict_chunked(
+    table: "pyarrow.Table",
+) -> Dict[str, List[np.ndarray]]:
+    """Convert a PyArrow table to a dictionary of lists of numpy arrays.
+
+    Args:
+        table: The PyArrow table to convert.
+
+    Returns:
+        A dictionary mapping column names to lists of numpy arrays. For chunked columns,
+        the list will contain multiple arrays (one per chunk). For non-chunked columns,
+        the list will contain a single array.
+    """
+
+    numpy_batch = {}
+    for col_name in table.column_names:
+        col = table[col_name]
+        if isinstance(col, pyarrow.ChunkedArray):
+            numpy_batch[col_name] = [
+                to_numpy(chunk, zero_copy_only=False) for chunk in col.chunks
+            ]
+        else:
+            numpy_batch[col_name] = [to_numpy(col, zero_copy_only=False)]
+    return numpy_batch
+
+
 def to_numpy(
     array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
     *,

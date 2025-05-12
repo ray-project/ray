@@ -791,7 +791,7 @@ class WorkerGroup:
         that should be propagated from the driver to worker processes.
 
         Args:
-            The custom runtime env dict passed in by the user.
+            custom_runtime_env: The custom runtime env dict passed in by the user.
 
         Returns:
             A copy of the custom runtime env dict updated with internal
