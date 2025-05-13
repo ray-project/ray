@@ -51,6 +51,10 @@ DEFAULT_ENABLE_PRINT_PATCH = "1"
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
 
+# Environment variables to enable/disable controller/worker structured logging.
+ENABLE_CONTROLLER_LOGGING_ENV_VAR = "RAY_TRAIN_ENABLE_CONTROLLER_LOGGING"
+ENABLE_WORKER_LOGGING_ENV_VAR = "RAY_TRAIN_ENABLE_WORKER_LOGGING"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -61,6 +65,8 @@ ENV_VARS_TO_PROPAGATE = {
     REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
     REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     ENABLE_PRINT_PATCH_ENV_VAR,
+    ENABLE_CONTROLLER_LOGGING_ENV_VAR,
+    ENABLE_WORKER_LOGGING_ENV_VAR,
 }
 
 

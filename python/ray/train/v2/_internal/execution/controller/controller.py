@@ -64,6 +64,8 @@ from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
+import ray._private.ray_constants as ray_constants
+
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +112,10 @@ class TrainController:
         callbacks: Optional[List[RayTrainCallback]] = None,
     ):
         self._train_run_context = train_run_context
-        configure_controller_logger(self._train_run_context)
+        if ray_constants.env_bool(
+            ray_constants.ENABLE_CONTROLLER_LOGGING_ENV_VAR, True
+        ):
+            configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy

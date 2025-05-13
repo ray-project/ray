@@ -8,6 +8,10 @@ import pytest
 import ray
 from ray.runtime_context import get_runtime_context
 from ray.train import RunConfig
+from ray.train.v2._internal.constants import (
+    ENABLE_CONTROLLER_LOGGING_ENV_VAR,
+    ENABLE_WORKER_LOGGING_ENV_VAR,
+)
 from ray.train.v2._internal.execution.context import TrainContext, TrainRunContext
 from ray.train.v2._internal.logging.logging import (
     configure_controller_logger,
@@ -22,7 +26,7 @@ def worker_logging_fixture():
     root_logger = logging.getLogger()
     original_handlers = root_logger.handlers[:]
     original_level = root_logger.level
-    # Save the current root logger settings
+    # Save the current train logger settings
     train_logger = logging.getLogger("ray.train")
     original_handlers = train_logger.handlers[:]
     original_level = train_logger.level
@@ -32,7 +36,7 @@ def worker_logging_fixture():
     # Rest the root logger back to its original state
     root_logger.handlers = original_handlers
     root_logger.setLevel(original_level)
-    # Rest the root logger back to its original state
+    # Rest the train logger back to its original state
     train_logger.handlers = original_handlers
     train_logger.setLevel(original_level)
     # Rest the print function back to its original state
@@ -100,12 +104,21 @@ def test_controller_sys_logged_to_file(controller_logging, context):
     train_logger = logging.getLogger("ray.train.spam")
     train_logger.info("ham")
 
-    log_path = os.path.join(
-        get_log_directory(), f"ray-train-sys-controller-{worker_id}.log"
-    )
-    with open(log_path, encoding="utf-8") as file:
-        log_contents = file.read()
+    log_contents = get_file_contents(f"ray-train-sys-controller-{worker_id}.log")
     assert "ham" in log_contents
+
+
+@pytest.mark.parametrize("context", [get_dummy_run_context()])
+def test_controller_sys_not_logged_to_file(controller_logging, context):
+    """
+    Test that system messages are not logged on Controller process when logging not configured.
+    """
+    worker_id = get_runtime_context().get_worker_id()
+    train_logger = logging.getLogger("ray.train.spam")
+    train_logger.info("ham")
+
+    with pytest.raises(FileNotFoundError):
+        get_file_contents(f"ray-train-sys-controller-{worker_id}.log")
 
 
 @pytest.mark.parametrize("context", [get_dummy_train_context()])
@@ -120,6 +133,19 @@ def test_worker_sys_logged_to_file(worker_logging, context):
 
     log_contents = get_file_contents(f"ray-train-sys-worker-{worker_id}.log")
     assert "ham" in log_contents
+
+
+@pytest.mark.parametrize("context", [get_dummy_train_context()])
+def test_worker_sys_logged_to_file(worker_logging, context):
+    """
+    Test that system messages are not logged on Worker process when logging not configured.
+    """
+    worker_id = get_runtime_context().get_worker_id()
+    train_logger = logging.getLogger("ray.train.spam")
+    train_logger.info("ham")
+
+    with pytest.raises(FileNotFoundError):
+        get_file_contents(f"ray-train-sys-worker-{worker_id}.log")
 
 
 @pytest.mark.parametrize("context", [get_dummy_train_context()])

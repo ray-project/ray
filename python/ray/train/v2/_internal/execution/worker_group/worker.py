@@ -29,6 +29,7 @@ from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.types import ObjectRef
+import ray._private.ray_constants as ray_constants
 
 from .thread_runner import ThreadRunner
 
@@ -207,7 +208,8 @@ class RayTrainWorker:
             checkpoint=checkpoint,
         )
         # Configure the train and root logger for the worker processes.
-        configure_worker_logger(context)
+        if ray_constants.env_bool(ray_constants.ENABLE_WORKER_LOGGING_ENV_VAR, True):
+            configure_worker_logger(context)
         patch_print_function()
         # Set the train context global variable for the worker.
         set_train_context(context)
