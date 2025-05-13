@@ -844,7 +844,12 @@ class ReplicaBase(ABC):
 
     async def record_scheduling_stats(self) -> Dict[str, Any]:
         try:
-            return await self._user_callable_wrapper.call_user_record_scheduling_stats()
+            f = self._user_callable_wrapper.call_user_record_scheduling_stats()
+            if f is not None:
+                scheduling_stats = await asyncio.wrap_future(f)
+                # print(f"in serve record_scheduling_stats!: {scheduling_stats}")
+                return scheduling_stats
+            return {}
         except Exception as e:
             logger.warning("Replica record scheduling stats failed.")
             raise e from None
@@ -996,7 +1001,7 @@ class ReplicaActor:
         await self._replica_impl.check_health()
 
     async def record_scheduling_stats(self) -> Dict[str, Any]:
-        await self._replica_impl.record_scheduling_stats()
+        return await self._replica_impl.record_scheduling_stats()
 
     async def reconfigure(
         self, deployment_config
@@ -1449,13 +1454,13 @@ class UserCallableWrapper:
 
         return None
 
-    async def call_user_record_scheduling_stats(self) -> Dict[str, Any]:
+    def call_user_record_scheduling_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_scheduling_stats")
 
         if self._user_record_scheduling_stats is not None:
-            return await self._call_user_record_scheduling_stats()
+            return self._call_user_record_scheduling_stats()
 
-        return {}
+        return None
 
     @_run_on_user_code_event_loop
     async def _call_user_health_check(self):
