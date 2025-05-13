@@ -13,7 +13,6 @@ beautifulsoup4==4.11.1
 boto3==1.26.76
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
-cryptography==42.0.5
 cython==0.29.37
 fastapi>=0.115.0
 feather-format==0.4.1
@@ -43,7 +42,6 @@ Pillow==10.3.0; platform_system != "Windows"
 proxy.py==2.4.3
 pydantic>=2.9.0
 pydot==1.4.2
-pyopenssl==24.2.1
 pygame==2.5.2
 Pygments==2.18.0
 pymongo==4.3.2
@@ -123,3 +121,5 @@ attrs>=22.2.0
 openapi-schema-validator>=0.6.3
 wheel>=0.45.1
 aiohttp>=3.11.16
+cryptography>=44.0.1
+pyopenssl>=25.0.0

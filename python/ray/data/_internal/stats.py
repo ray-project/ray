@@ -184,11 +184,6 @@ class _StatsActor:
                 must be set to True to report this metric""",
             tag_keys=op_tags_keys,
         )
-        self.allocated_bytes = Gauge(
-            "data_allocated_bytes",
-            description="Bytes allocated by dataset operators",
-            tag_keys=op_tags_keys,
-        )
         self.freed_bytes = Gauge(
             "data_freed_bytes",
             description="Bytes freed by dataset operators",
