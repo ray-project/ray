@@ -19,6 +19,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/map.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 
 namespace ray {
 
@@ -57,10 +59,10 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  explicit LabelSelector(
-      const google::protobuf::Map<std::string, std::string> &label_selector);
+  static StatusOr<LabelSelector> FromProto(
+      const google::protobuf::Map<std::string, std::string> &label_selector_dict);
 
-  void AddConstraint(const std::string &key, const std::string &value);
+  Status AddConstraint(const std::string &key, const std::string &value);
 
   void AddConstraint(LabelConstraint constraint) {
     constraints_.push_back(std::move(constraint));
@@ -68,7 +70,7 @@ class LabelSelector {
 
   const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
 
-  std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
+  StatusOr<std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
 
  private:
