@@ -378,10 +378,13 @@ cython==0.29.37
     # via
     #   -r python/requirements/test-requirements.txt
     #   gpy
-dask==2022.10.2 ; python_version < "3.12"
+dask==2024.8.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
+    #   dask-expr
     #   distributed
+dask-expr==1.1.10
+    # via dask
 databricks-sdk==0.52.0
     # via mlflow-skinny
 datasets==2.19.1
@@ -424,7 +427,7 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2022.10.2 ; python_version < "3.12"
+distributed==2024.8.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -587,7 +590,7 @@ getdaft==0.4.3
     # via -r python/requirements/ml/data-requirements.txt
 gitdb==4.0.11
     # via gitpython
-gitpython==3.1.40
+gitpython==3.1.44
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   mlflow-skinny
@@ -712,7 +715,7 @@ gymnasium==1.0.0
     #   pettingzoo
     #   shimmy
     #   supersuit
-h11==0.14.0
+h11==0.16.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpcore
@@ -731,7 +734,7 @@ holidays==0.39
     #   prophet
 hpbandster==0.7.4 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-requirements.txt
-httpcore==1.0.7
+httpcore==1.0.9
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpx
@@ -793,6 +796,7 @@ imagesize==1.4.1
 importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
+    #   dask
     #   jupyter-cache
     #   mlflow-skinny
     #   myst-nb
@@ -1010,6 +1014,7 @@ lz4==4.3.3
     # via
     #   -r python/requirements.txt
     #   clickhouse-connect
+    #   dask
 mako==1.3.0
     # via alembic
 markdown==3.5.1
@@ -1071,7 +1076,7 @@ mmh3==4.1.0
     # via pyiceberg
 mock==5.1.0
     # via pytest-shutil
-modin==0.22.2 ; python_version < "3.12"
+modin==0.32.0
     # via -r python/requirements/ml/data-requirements.txt
 monai==1.3.2
     # via mosaicml
@@ -1431,7 +1436,7 @@ packaging==23.0
     #   torchmetrics
     #   transformers
     #   utilsforecast
-pandas==1.5.3 ; python_version < "3.12"
+pandas==2.2.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
@@ -1439,6 +1444,7 @@ pandas==1.5.3 ; python_version < "3.12"
     #   ax-platform
     #   cmdstanpy
     #   dask
+    #   dask-expr
     #   datasets
     #   delta-sharing
     #   evaluate
@@ -1604,6 +1610,8 @@ py4j==0.10.9.7
 pyarrow==14.0.2
     # via
     #   -r python/requirements.txt
+    #   dask
+    #   dask-expr
     #   datasets
     #   delta-sharing
     #   deltalake
@@ -1616,6 +1624,7 @@ pyarrow==14.0.2
     #   triad
 pyarrow-hotfix==0.7
     # via
+    #   dask
     #   datasets
     #   deltalake
     #   hudi
@@ -2319,8 +2328,9 @@ torchvision==0.18.0
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.1
+tornado==6.4.2
     # via
+    #   -r python/requirements/test-requirements.txt
     #   bokeh
     #   distributed
     #   ipykernel
@@ -2331,7 +2341,7 @@ tornado==6.1
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
+tqdm==4.67.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2432,6 +2442,8 @@ typing-extensions==4.12.2
     #   tensorflow
     #   torch
     #   typer
+tzdata==2025.2
+    # via pandas
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 ujson==5.10.0
