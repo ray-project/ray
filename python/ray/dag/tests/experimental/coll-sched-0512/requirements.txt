@@ -2,4 +2,5 @@ cupy-cuda12x; sys_platform != 'darwin'
 fire
 ipykernel
 jupyter
+pytest
 torch
