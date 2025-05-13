@@ -39,8 +39,8 @@ sufficient for your needs in case of files with the large number of rows.
 
 .. _local_shuffle_buffer:
 
-Local shuffle when iterating over batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Local buffer shuffle
+~~~~~~~~~~~~~~~~~~~~
 
 To locally shuffle a subset of rows using iteration methods, such as :meth:`~ray.data.Dataset.iter_batches`,
 :meth:`~ray.data.Dataset.iter_torch_batches`, and :meth:`~ray.data.Dataset.iter_tf_batches`,
@@ -75,10 +75,18 @@ ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order
     time spent in other steps, decrease ``local_shuffle_buffer_size`` or turn off the local
     shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
 
-Shuffling block order
+Randomizing block order
 ~~~~~~~~~~~~~~~~~~~~~
 
-This option randomizes the order of blocks in a dataset. Blocks are the basic unit of data chunk that Ray Data stores in the object store. Applying this operation alone doesn't involve heavy computation and communication. However, it requires Ray Data to materialize all blocks in memory before applying the operation. Only use this option when your dataset is small enough to fit into the object store memory.
+:ref:`See Key Concepts <key-concepts>`
+
+This option randomizes the order of :ref:`blocks <data_key_concepts>` in a dataset. While applying this operation alone doesn't involve heavy computation
+and communication, it requires Ray Data to materialize all blocks in memory before actually randomizing their ordering in the queue for subsequent operation.
+
+.. note:: Ray Data doesn't guarantee any particular ordering of the blocks when blocks are read from different files (in parallel). Henceforth, this particular option
+    is primarily relevant in cases when blocks are yielded from relatively small set of very large files.
+
+.. note:: Only use this option when your dataset is small enough to fit into the object store memory.
 
 To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`.
 
