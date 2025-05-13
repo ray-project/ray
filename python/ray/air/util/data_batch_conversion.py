@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
+from ray.air.util import _lazy_import_pandas
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.util.annotations import Deprecated, DeveloperAPI
 
@@ -17,19 +18,6 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
-
-# Lazy import to avoid ray init failures without pandas installed and allow
-# dataset to import modules in this file.
-_pandas = None
-
-
-def _lazy_import_pandas():
-    global _pandas
-    if _pandas is None:
-        import pandas
-
-        _pandas = pandas
-    return _pandas
 
 
 @DeveloperAPI
