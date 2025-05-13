@@ -47,7 +47,7 @@ def test_ray_init_install_failure(
     else:
         # When not using Ray client, the error will be surfaced when a task/actor
         # is scheduled.
-        ray.init(runtime_env=bad_runtime_env)
+        ray.init(address, runtime_env=bad_runtime_env)
 
         @ray.remote
         def g():
