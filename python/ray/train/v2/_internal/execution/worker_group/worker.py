@@ -11,6 +11,7 @@ import ray._private.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
+from ray.train.v2._internal.constants import ENABLE_WORKER_LOGGING_ENV_VAR
 from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
@@ -208,7 +209,7 @@ class RayTrainWorker:
             checkpoint=checkpoint,
         )
         # Configure the train and root logger for the worker processes.
-        if ray_constants.env_bool(ray_constants.ENABLE_WORKER_LOGGING_ENV_VAR, True):
+        if ray_constants.env_bool(ENABLE_WORKER_LOGGING_ENV_VAR, True):
             configure_worker_logger(context)
         patch_print_function()
         # Set the train context global variable for the worker.

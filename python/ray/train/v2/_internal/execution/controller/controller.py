@@ -11,6 +11,7 @@ import ray._private.ray_constants as ray_constants
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    ENABLE_CONTROLLER_LOGGING_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
@@ -111,9 +112,7 @@ class TrainController:
         callbacks: Optional[List[RayTrainCallback]] = None,
     ):
         self._train_run_context = train_run_context
-        if ray_constants.env_bool(
-            ray_constants.ENABLE_CONTROLLER_LOGGING_ENV_VAR, True
-        ):
+        if ray_constants.env_bool(ENABLE_CONTROLLER_LOGGING_ENV_VAR, True):
             configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
