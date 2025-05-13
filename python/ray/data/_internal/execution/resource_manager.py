@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
+from ray.util.debug import log_once
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -484,11 +485,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
-                if index == 0:
+                if index == 0 and log_once(f"insufficient_resources_warn_{id(self)}"):
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
                     logger.warning(
-                        f"Cluster resource are not engough to run any task from {op}."
+                        f"Cluster resources are not engough to run any task from {op}."
                         " The job may hang forever unless the cluster scales up."
                     )
 
