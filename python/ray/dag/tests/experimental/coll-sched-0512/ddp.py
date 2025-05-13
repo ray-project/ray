@@ -22,30 +22,41 @@ class Actor:
     def compute(self, _):
         return torch.ones(1)
 
-    def update(self, _):
-        return
 
-
-def run_ddp():
+def run_ddp(num_actors: int = 2):
     ray.init()
 
-    actors = [Actor.remote() for _ in range(2)]
-    upds = []
+    actors = [Actor.remote() for _ in range(num_actors)]
+    outputs = []
     with InputNode() as inp:
         grads = [actor.compute.bind(inp) for actor in actors]
         grads_reduced = collective.allreduce.bind(grads)
-        upds.extend(
-            [actor.update.bind(grad) for actor, grad in zip(actors, grads_reduced)]
-        )
+        outputs.extend(grads_reduced)
         grads = [actor.compute.bind(grad) for actor, grad in zip(actors, grads)]
         grads_reduced = collective.allreduce.bind(grads)
-        upds.extend(
-            [actor.update.bind(grad) for actor, grad in zip(actors, grads_reduced)]
-        )
-        dag = MultiOutputNode(upds)
+        outputs.extend(grads_reduced)
+        dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
-    logger.info(compiled_dag.actor_to_execution_schedule)
+
+    actor_to_execution_schedule = list(
+        compiled_dag.actor_to_execution_schedule.values()
+    )
+    for i in range(num_actors):
+        logger.info(actor_to_execution_schedule[i])
+
+    expected_schedule = actor_to_execution_schedule[0]
+    equal_schedule = True
+    for schedule in actor_to_execution_schedule[1:]:
+        for op1, op2 in zip(expected_schedule, schedule):
+            if op1 != op2:
+                logger.error(f"op1: {op1}, op2: {op2}")
+                equal_schedule = False
+                break
+        if not equal_schedule:
+            break
+    if not equal_schedule:
+        logger.error("Actor schedules are not equal")
 
     ray.shutdown()
 
