@@ -8,10 +8,6 @@ import pytest
 import ray
 from ray.runtime_context import get_runtime_context
 from ray.train import RunConfig
-from ray.train.v2._internal.constants import (
-    ENABLE_CONTROLLER_LOGGING_ENV_VAR,
-    ENABLE_WORKER_LOGGING_ENV_VAR,
-)
 from ray.train.v2._internal.execution.context import TrainContext, TrainRunContext
 from ray.train.v2._internal.logging.logging import (
     configure_controller_logger,
@@ -136,7 +132,7 @@ def test_worker_sys_logged_to_file(worker_logging, context):
 
 
 @pytest.mark.parametrize("context", [get_dummy_train_context()])
-def test_worker_sys_logged_to_file(worker_logging, context):
+def test_worker_sys_not_logged_to_file(worker_logging, context):
     """
     Test that system messages are not logged on Worker process when logging not configured.
     """

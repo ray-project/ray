@@ -7,6 +7,7 @@ from typing import Callable, List, Optional
 
 import pandas as pd
 
+import ray._private.ray_constants as ray_constants
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -64,8 +65,6 @@ from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
-import ray._private.ray_constants as ray_constants
-
 
 logger = logging.getLogger(__name__)
 
