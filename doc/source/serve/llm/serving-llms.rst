@@ -355,7 +355,7 @@ This command generates two files: an LLM config file, saved in `model_config/`, 
 Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the
 future.
 
-After reading and reviewing the generated model config, refer to
+After reading and reviewing the generated model config, see
 the `vLLM engine configuration docs <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_
 for further customization.
 
@@ -365,7 +365,7 @@ Ray enables LLM service-level logging by default, and makes these statistics ava
 
 These higher-level metrics track request and token behavior across deployed models. For example: average total tokens per request, ratio of input tokens to generated tokens, and peak tokens per second.
 
-For visualization, Ray ships with a Serve LLM-specific dashboard which is automatically available in Grafana. Example below:
+For visualization, Ray ships with a Serve LLM-specific dashboard, which is automatically available in Grafana. Example below:
 
 .. image:: images/serve_llm_dashboard.png
 
