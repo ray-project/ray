@@ -17,6 +17,7 @@
 // could use a different definition of the RAY_CONFIG macro.
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
+#include <cstdint>
 
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
@@ -649,8 +650,9 @@ RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
 /// memory.
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 
-/// The maximum number of I/O worker that raylet starts.
-RAY_CONFIG(int, max_io_workers, 4)
+/// The maximum number of I/O workers that the raylet can start for each I/O type.
+/// Currently supported I/O types are spill and restore.
+RAY_CONFIG(int, max_io_workers_per_io_type, 4)
 
 /// Ray's object spilling fuses small objects into a single file before flushing them
 /// to optimize the performance.
