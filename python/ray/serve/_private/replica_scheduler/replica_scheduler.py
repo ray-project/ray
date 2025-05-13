@@ -847,14 +847,16 @@ class ReplicaScheduler(ABC):
                         extra={"log_to_stderr": False},
                     )
 
-                chosen_replicas = await self.choose_replicas(
-                    replicas_ranks=[set(self._replicas.values())],
+                replica_ranks = [list(self._replicas.values())]
+                chosen_replicas: List[
+                    List[RunningReplica]
+                ] = await self.choose_replicas(
+                    replicas_ranks=replica_ranks,
                     pending_request=pending_request,
                 )
-                if chosen_replicas:
-                    for replicas in chosen_replicas:
-                        if replicas:
-                            yield list(replicas)
+                for replicas in chosen_replicas:
+                    if replicas:
+                        yield replicas
 
                 # We have a slight unintended behavior when enabled locality routing
                 # for both node and AZ. The intention is to try same node first,
@@ -1018,9 +1020,9 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def choose_replicas(
         self,
-        replicas_ranks: List[Set[RunningReplica]],
+        replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[Set[RunningReplica]]:
+    ) -> List[List[RunningReplica]]:
         pass
 
     def on_request_scheduled(
