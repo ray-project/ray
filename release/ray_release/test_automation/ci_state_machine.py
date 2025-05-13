@@ -122,7 +122,13 @@ class CITestStateMachine(TestStateMachine):
         results: List[TestResult],
     ) -> float:
         """
-        Get the percentage of flaky tests in the test history
+        Get the percentage of flaky tests in the test history. The percentage is
+        computed as the number of transitions from failign to passing divided by the
+        total number of transitions.
+
+        We use the transition from failing to passing to indicates the amount of
+        random failures (versus passing to failing which indicates the amount of
+        success)
         """
         if not results:
             return 0.0
