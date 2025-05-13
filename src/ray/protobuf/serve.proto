@@ -142,6 +142,12 @@ message DeploymentConfig {
   // concatenation of the replica scheduler module and the replica scheduler name
   // if user passed a callable.
   string replica_scheduler = 16;
+
+  // Frequency at which the controller records scheduling stats for a replica.
+  double request_scheduling_stats_period_s = 17;
+
+  // Timeout after which a replica started a record scheduling stats without a response.
+  double request_scheduling_stats_timeout_s = 18;
 }
 
 // Deployment language.

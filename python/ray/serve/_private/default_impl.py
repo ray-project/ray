@@ -191,7 +191,6 @@ def create_router(
 
     is_inside_ray_client_context = inside_ray_client_context()
 
-    # print(f"create_router: {replica_scheduler_class=} {deployment_config=}")
     replica_scheduler = create_scheduler(
         actor_id,
         deployment_id,
