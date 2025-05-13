@@ -1147,7 +1147,7 @@ class ServeController:
         """Gets the controller's scale direction (for testing purposes)."""
 
         return self._target_capacity_direction
-    
+
 
 def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],
