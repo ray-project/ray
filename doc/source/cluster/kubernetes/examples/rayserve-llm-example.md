@@ -2,25 +2,26 @@
 
 # Serve a Large Language Model using Ray Serve LLM on Kubernetes
 
-This guide provides a step-by-step walkthrough for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from HuggingFace, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. For more information on Ray-Serve LLM, visit [here](https://docs.ray.io/en/latest/serve/llm/serving-llms.html).
+This guide provides a step-by-step walkthrough for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from HuggingFace, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. For more information on Ray-Serve LLM, visit [here](../../../serve/llm/serving-llms.rst).
+
+## Prerequisites
+
+In this example, model weights are downloaded from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. In order to properly finish this guide, you must fulfill the following requirements:
+* A [Hugging Face Account](https://huggingface.co/) and a Hugging Face [Access Token](https://huggingface.co/settings/tokens) with read access to gated repos.
+* In your Ray Serve configuration, set the `HUGGING_FACE_HUB_TOKEN` environment variable to this token to enable model downloads.
+* Any supported GPU. You can refer [here](../user-guides/k8s-cluster-setup.md) for more information
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
 Follow aws-eks-gpu-cluster.md or gcp-gke-gpu-cluster.md to create a Kubernetes cluster.
 
-### Prerequisites
-In this example, model weights are downloaded from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. In order to properly finish this guide, you must fulfill the following requirements:
-* A [Hugging Face Account](https://huggingface.co/) and a Hugging Face [Access Token](https://huggingface.co/settings/tokens) with read access to gated repos.
-* In your Ray Serve configuration, set the `HUGGING_FACE_HUB_TOKEN` environment variable to this token to enable model downloads.
-* Any supported GPU. You can refer [here](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/k8s-cluster-setup.html#kuberay-k8s-setup) for more information
-
 ## Step 2: Install the KubeRay Operator
 
-Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](kuberay-operator-deploy). The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
+Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
 
 ## Step 3: Create a Kubernetes Secret containing your Hugging Face access token
 
-Additionally, instead of passing the HF Access Token directly as an environment variable, you can also create a Kubernetes Secret containing your Hugging Face access token:
+Additionally, instead of passing the HF Access Token directly as an environment variable, you can also create a Kubernetes Secret containing your Hugging Face access token. Download the config yaml from [here](../../../serve/llm/serving-llms.rst), update the value for `hf_token` to your private access token in the Secret and then apply the config to your K8s cluster: 
 
 ```yaml
 apiVersion: v1
@@ -34,7 +35,7 @@ stringData:
 
 ## Step 4: Deploy a RayService
 
-Create a Ray Service Custom Resource:
+Create a RayService Custom Resource:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
@@ -160,5 +161,5 @@ The Cluster tab provides detailed information about the Ray cluster components, 
 ![Ray Cluster](../images/ray-dashboard-llm-cluster.png)
 
 For monitoring application and cluster-level metrics, set up Prometheus and Grafana for dashboarding by referring to the official documentation:
-* [Prometheus and Grafana with KubeRay](https://docs.ray.io/en/latest/cluster/kubernetes/k8s-ecosystem/prometheus-grafana.html)
-* [Collecting and Monitoring Metrics in Ray](https://docs.ray.io/en/latest/cluster/metrics.html)
+* [Prometheus and Grafana with KubeRay](../k8s-ecosystem/prometheus-grafana.md)
+* [Collecting and Monitoring Metrics in Ray](../../metrics.md)
