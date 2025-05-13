@@ -4,11 +4,30 @@ import logging
 import os
 import sys
 from typing import TYPE_CHECKING
-import re
-from pathlib import Path
+
 
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
+
+
+def _import_private_modules(package_name: str):
+    import importlib
+
+    # Cache the user's module
+    existing_module = sys.modules.get(package_name)
+
+    if existing_module is not None:
+        del sys.modules[package_name]  # Clear the cache
+
+    module = importlib.import_module(package_name)
+
+    sys.modules[f"ray._private.{package_name}"] = module
+
+    # Restore the user's module
+    if existing_module:
+        sys.modules[package_name] = existing_module
+    else:
+        del sys.modules[package_name]
 
 
 def _configure_system():
@@ -62,17 +81,8 @@ def _configure_system():
         # decide to replace all import psutil with from ray._private import psutil.
         import psutil  # noqa: F401
 
-        import setproctitle
-        import colorama
-
-        sys.modules["ray._private.setproctitle"] = setproctitle
-        sys.modules["ray._private.colorama"] = colorama
-
-        # Remove cached extensions to avoid conflicts with user's extensions
-        if "setproctitle" in sys.modules:
-            del sys.modules["setproctitle"]
-        if "colorama" in sys.modules:
-            del sys.modules["colorama"]
+        _import_private_modules("setproctitle")
+        _import_private_modules("colorama")
     finally:
         sys.path = original_sys_path
 
