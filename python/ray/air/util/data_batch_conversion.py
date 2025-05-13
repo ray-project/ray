@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
+from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -294,7 +295,6 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
 
     from ray.air.util.tensor_extensions.pandas import (
         TensorArray,
-        column_needs_tensor_extension,
     )
 
     # Try to convert any ndarray columns to TensorArray columns.
@@ -305,7 +305,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     # column names containing tensor columns, to make this an O(# of tensor columns)
     # check rather than the current O(# of columns) check.
     for col_name, col in df.items():
-        if column_needs_tensor_extension(col):
+        if _should_convert_to_tensor(col, col_name):
             try:
                 # Suppress Pandas warnings:
                 # https://github.com/ray-project/ray/issues/29270
