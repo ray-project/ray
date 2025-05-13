@@ -282,6 +282,13 @@ py_binary(
     name = "run_release_test",
     srcs = ["ray_release/scripts/run_release_test.py"],
     deps = [":ray_release"],
+    data = glob(
+        ["**/*.yaml"],
+        exclude = ["ray_release/**/*.yaml"],
+    ) + [
+        "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
+    ]
 )
 
 py_library(
