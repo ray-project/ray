@@ -485,7 +485,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
-                if index == 0 and log_once(f"insufficient_resources_warn_{id(self)}"):
+                # Add `id(self)` to the log_once key so that it will be logged once
+                # per execution.
+                if index == 0 and log_once(f"low_resource_warning_{id(self)}"):
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
                     logger.warning(
