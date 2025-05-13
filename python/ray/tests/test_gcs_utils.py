@@ -11,7 +11,7 @@ import redis
 from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
-    enable_external_redis,
+    external_redis_test_enabled,
     find_free_port,
     generate_system_config_map,
     async_wait_for_condition,
@@ -121,69 +121,67 @@ def test_kv_transient_network_error(shutdown_only, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_kv_basic_aio(ray_start_regular):
-    gcs_client = gcs_utils.GcsAioClient(
-        address=ray._private.worker.global_worker.gcs_client.address
-    )
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
-    assert await gcs_client.internal_kv_get(b"A", b"NS") is None
-    assert await gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
-    assert await gcs_client.internal_kv_get(b"A", b"NS") == b"B"
-    assert await gcs_client.internal_kv_put(b"A", b"C", False, b"NS") == 0
-    assert await gcs_client.internal_kv_get(b"A", b"NS") == b"B"
-    assert await gcs_client.internal_kv_put(b"A", b"C", True, b"NS") == 0
-    assert await gcs_client.internal_kv_get(b"A", b"NS") == b"C"
-    assert await gcs_client.internal_kv_put(b"AA", b"B", False, b"NS") == 1
-    assert await gcs_client.internal_kv_put(b"AB", b"B", False, b"NS") == 1
-    keys = await gcs_client.internal_kv_keys(b"A", b"NS")
+    assert await gcs_client.async_internal_kv_get(b"A", b"NS") is None
+    assert await gcs_client.async_internal_kv_put(b"A", b"B", False, b"NS") == 1
+    assert await gcs_client.async_internal_kv_get(b"A", b"NS") == b"B"
+    assert await gcs_client.async_internal_kv_put(b"A", b"C", False, b"NS") == 0
+    assert await gcs_client.async_internal_kv_get(b"A", b"NS") == b"B"
+    assert await gcs_client.async_internal_kv_put(b"A", b"C", True, b"NS") == 0
+    assert await gcs_client.async_internal_kv_get(b"A", b"NS") == b"C"
+    assert await gcs_client.async_internal_kv_put(b"AA", b"B", False, b"NS") == 1
+    assert await gcs_client.async_internal_kv_put(b"AB", b"B", False, b"NS") == 1
+    keys = await gcs_client.async_internal_kv_keys(b"A", b"NS")
     assert set(keys) == {b"A", b"AA", b"AB"}
-    assert await gcs_client.internal_kv_del(b"A", False, b"NS") == 1
-    keys = await gcs_client.internal_kv_keys(b"A", b"NS")
+    assert await gcs_client.async_internal_kv_del(b"A", False, b"NS") == 1
+    keys = await gcs_client.async_internal_kv_keys(b"A", b"NS")
     assert set(keys) == {b"AA", b"AB"}
-    assert await gcs_client.internal_kv_keys(b"A", b"NSS") == []
-    assert await gcs_client.internal_kv_del(b"A", True, b"NS") == 2
-    assert await gcs_client.internal_kv_keys(b"A", b"NS") == []
-    assert await gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
+    assert await gcs_client.async_internal_kv_keys(b"A", b"NSS") == []
+    assert await gcs_client.async_internal_kv_del(b"A", True, b"NS") == 2
+    assert await gcs_client.async_internal_kv_keys(b"A", b"NS") == []
+    assert await gcs_client.async_internal_kv_del(b"A", False, b"NSS") == 0
 
     # Test internal_kv_multi_get
-    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
-    assert await gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
-    assert await gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
-    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
+    assert await gcs_client.async_internal_kv_multi_get([b"A", b"B"], b"NS") == {}
+    assert await gcs_client.async_internal_kv_put(b"A", b"B", False, b"NS") == 1
+    assert await gcs_client.async_internal_kv_put(b"B", b"C", False, b"NS") == 1
+    assert await gcs_client.async_internal_kv_multi_get([b"A", b"B"], b"NS") == {
         b"A": b"B",
         b"B": b"C",
     }
 
     # Test internal_kv_multi_get where some keys don't exist
-    assert await gcs_client.internal_kv_multi_get([b"A", b"B", b"C"], b"NS") == {
+    assert await gcs_client.async_internal_kv_multi_get([b"A", b"B", b"C"], b"NS") == {
         b"A": b"B",
         b"B": b"C",
     }
 
-    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
+    assert await gcs_client.async_internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 @pytest.mark.asyncio
 async def test_kv_timeout_aio(ray_start_regular):
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsAioClient(address=gcs_address)
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     with stop_gcs_server():
         with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
-            await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
+            await gcs_client.async_internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
 
         with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
-            await gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
+            await gcs_client.async_internal_kv_get(b"A", b"NS", timeout=2)
 
         with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
-            await gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
+            await gcs_client.async_internal_kv_keys(b"A", b"NS", timeout=2)
 
         with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
-            await gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
+            await gcs_client.async_internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
 @pytest.mark.skipif(
-    not enable_external_redis(), reason="Only valid when start with an external redis"
+    not external_redis_test_enabled(),
+    reason="Only valid when start with an external redis",
 )
 def test_external_storage_namespace_isolation(shutdown_only):
     addr = ray.init(
@@ -235,18 +233,18 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     h = cluster.add_node(node_manager_port=find_free_port())
     n1 = cluster.add_node(node_manager_port=find_free_port())
     n2 = cluster.add_node(node_manager_port=find_free_port())
-    gcs_client = gcs_utils.GcsAioClient(address=cluster.address)
+    gcs_client = GcsClient(address=cluster.address)
     node_manager_addresses = [
         f"{n.raylet_ip_address}:{n.node_manager_port}" for n in [h, n1, n2]
     ]
 
-    ret = await gcs_client.check_alive(node_manager_addresses)
+    ret = await gcs_client.async_check_alive(node_manager_addresses)
     assert ret == [True, True, True]
 
     cluster.remove_node(n1)
 
     async def check(expect_liveness):
-        ret = await gcs_client.check_alive(node_manager_addresses)
+        ret = await gcs_client.async_check_alive(node_manager_addresses)
         return ret == expect_liveness
 
     await async_wait_for_condition(check, expect_liveness=[True, False, True])
@@ -255,7 +253,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n2_raylet_process.kill()
 
     # GCS hasn't marked it as dead yet.
-    ret = await gcs_client.check_alive(node_manager_addresses)
+    ret = await gcs_client.async_check_alive(node_manager_addresses)
     assert ret == [True, False, True]
 
     # GCS will notice node dead soon
@@ -263,20 +261,19 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
 
 
 @pytest.mark.asyncio
-async def test_gcs_aio_client_is_async(ray_start_regular):
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsAioClient(address=gcs_address)
+async def test_gcs_client_is_async(ray_start_regular):
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
-    await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
+    await gcs_client.async_internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
     async with asyncio_timeout(3):
         none, result = await asyncio.gather(
-            asyncio.sleep(2), gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
+            asyncio.sleep(2), gcs_client.async_internal_kv_get(b"A", b"NS", timeout=2)
         )
         assert result == b"B"
 
-    await gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
+    await gcs_client.async_internal_kv_keys(b"A", b"NS", timeout=2)
 
-    await gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
+    await gcs_client.async_internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
 @pytest.fixture(params=[True, False])
@@ -287,7 +284,8 @@ def redis_replicas(request, monkeypatch):
 
 
 @pytest.mark.skipif(
-    not enable_external_redis(), reason="Only valid when start with an external redis"
+    not external_redis_test_enabled(),
+    reason="Only valid when start with an external redis",
 )
 def test_redis_cleanup(redis_replicas, shutdown_only):
     addr = ray.init(

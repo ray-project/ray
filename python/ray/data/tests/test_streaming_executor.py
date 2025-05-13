@@ -1,21 +1,21 @@
+import os
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
-import os
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.execution_callback import (
+    EXECUTION_CALLBACKS_ENV_VAR,
     ExecutionCallback,
     add_execution_callback,
     get_execution_callbacks,
     remove_execution_callback,
-    EXECUTION_CALLBACKS_ENV_VAR,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -38,12 +38,12 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
+    _rank_operators,
     build_streaming_topology,
+    get_eligible_operators,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
-    get_eligible_operators,
-    _rank_operators,
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators.map_operator import MapRows
