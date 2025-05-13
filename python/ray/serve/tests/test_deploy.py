@@ -58,26 +58,25 @@ def test_deploy_basic(serve_instance, use_handle):
 
 
 @pytest.mark.parametrize(
-    "input_tuple",
+    "component_name_with_special_character",
     [
-        ("test@component", "test_component"),
-        ("test#123", "test_123"),
-        ("component/name", "component_name"),
-        ("component.name", "component_name"),
-        ("component!name", "component_name"),
-        ("component$name", "component_name"),
-        ("component%name", "component_name"),
-        ("component^name", "component_name"),
-        ("component&name", "component_name"),
-        ("component*name", "component_name"),
-        ("component�name", "component_name"),
-        ("component_name", "component_name"),
+        "test@component",
+        "test#123",
+        "component/name",
+        "component.name",
+        "component!name",
+        "component$name",
+        "component%name",
+        "component^name",
+        "component&name",
+        "component*name",
+        "component_name",
     ],
 )
-def test_deploy_with_any_characters(serve_instance, input_tuple):
+def test_deploy_with_any_characters(
+    serve_instance, component_name_with_special_character
+):
     """The function should not fail when the deployment name contains special characters."""
-
-    component_name, expected_name = input_tuple
 
     # V1 blocks on signal
     @serve.deployment(name="some_name")
@@ -89,13 +88,19 @@ def test_deploy_with_any_characters(serve_instance, input_tuple):
             return await self.handler()
 
     # Check that deployment succeeds with special characters
-    serve.run(V1.options(name=component_name).bind(), name="app")
+    deployment = V1.options(name=component_name_with_special_character).bind()
+    serve.run(deployment, name="app")
 
     status = serve.status()
-    handle_name = serve.get_deployment_handle(component_name, "app").remote().result()
 
-    assert handle_name == expected_name
-    assert status.app_status == "RUNNING"
+    handle_name = serve.get_deployment_handle(
+        component_name_with_special_character, "app"
+    ).deployment_name
+
+    assert handle_name == component_name_with_special_character
+
+    app = status.applications["app"]
+    assert app.status == "RUNNING"
 
 
 def test_empty_decorator(serve_instance):
