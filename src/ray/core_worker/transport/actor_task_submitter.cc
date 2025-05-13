@@ -271,7 +271,7 @@ void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
 }
 
 void ActorTaskSubmitter::FailInflightTasks(
-    const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
@@ -288,7 +288,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   RAY_LOG(DEBUG).WithField(actor_id).WithField(WorkerID::FromBinary(address.worker_id()))
       << "Connecting to actor";
 
-  absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+  absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
 
   {
@@ -372,7 +372,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
   RAY_LOG(DEBUG).WithField(actor_id) << "Disconnecting from actor, death context type="
                                      << gcs::GetActorDeathCauseString(death_cause);
 
-  absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+  absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
   std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
@@ -579,7 +579,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
-  request->set_sequence_number(queue.actor_submit_queue->GetSequenceNumber(task_spec));
+  request->set_sequence_number(task_spec.ActorCounter());
 
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
@@ -599,18 +599,19 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
-  queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
+  const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
+  queue.inflight_task_callbacks.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
+      [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
           auto &queue = it->second;
-          auto callback_it = queue.inflight_task_callbacks.find(task_id);
+          auto callback_it = queue.inflight_task_callbacks.find(task_attempt);
           if (callback_it == queue.inflight_task_callbacks.end()) {
-            RAY_LOG(DEBUG).WithField(task_id)
+            RAY_LOG(DEBUG).WithField(task_attempt.first)
                 << "The task has already been marked as failed. Ignore the reply.";
             return;
           }
