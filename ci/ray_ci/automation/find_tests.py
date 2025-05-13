@@ -3,6 +3,8 @@ import click
 from typing import List
 from enum import Enum
 
+import numpy
+
 from ci.ray_ci.utils import logger, ci_init
 from ray_release.test import Test
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
@@ -25,6 +27,7 @@ class TestStatistics:
             limit=test_history_length, use_async=True
         )
         stat._compute_flaky_percentage()
+        stat._compute_p75_duration()
 
         return stat
 
@@ -34,21 +37,33 @@ class TestStatistics:
         """
         return self.flaky_percentage
 
+    def get_p75_duration(self) -> float:
+        """
+        Get the p75 duration of the test
+        """
+        return self.p75_duration
+
     def __str__(self) -> str:
         """
         String representation of the TestStatistics object
         """
-        return f"Test: {self.test.get_name()}, Flaky Percentage: {self.flaky_percentage:.2f}"
+        return f"Test: {self.test.get_name()}, Flaky Percentage: {self.flaky_percentage:.2f}, P75 Duration: {(self.p75_duration/1000):.2f} s"
 
     def __init__(self, test: Test) -> None:
         self.test = test
         self.flaky_percentage = 0
+        self.p75_duration = 0.0
         self._result_histories = []
 
     def _compute_flaky_percentage(self) -> float:
         self.flaky_percentage = CITestStateMachine.get_flaky_percentage(
             self._result_histories
         )
+
+    def _compute_p75_duration(self) -> float:
+        durations = [result.duration_ms or 0 for result in self._result_histories]
+        if durations:
+            self.p75_duration = numpy.percentile(durations, 75)
 
 
 class OrderBy(str, Enum):
@@ -57,6 +72,7 @@ class OrderBy(str, Enum):
     """
 
     FLAKY_PERCENTAGE = "flaky_percentage"
+    P75_DURATION = "p75_duration"
 
 
 @click.command()
@@ -75,7 +91,7 @@ class OrderBy(str, Enum):
 @click.option(
     "--order-by",
     default=OrderBy.FLAKY_PERCENTAGE,
-    type=click.Choice([OrderBy.FLAKY_PERCENTAGE]),
+    type=click.Choice([OrderBy.FLAKY_PERCENTAGE, OrderBy.P75_DURATION]),
     help=(
         "Order either by the flaky percentage or some other metrics. The flaky "
         "percentage is computed in the same way as the CI test state machine does. "
@@ -98,7 +114,12 @@ def main(
     ]
     print(f"Analyzing {len(tests)} tests for team {team}")
     test_stats = asyncio.run(gen_test_stats(tests, test_history_length))
-    test_stats.sort(key=lambda x: x.get_flaky_percentage(), reverse=True)
+    test_stats.sort(
+        key=lambda x: x.get_flaky_percentage()
+        if order_by == OrderBy.FLAKY_PERCENTAGE
+        else x.get_p75_duration(),
+        reverse=True,
+    )
     print(f"Tests sorted by {order_by}:")
     for test_stat in test_stats:
         print(f"\t - {test_stat}")
