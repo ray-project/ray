@@ -498,7 +498,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
             remaining = remaining.subtract(op_total_reserved)
             remaining = remaining.max(ExecutionResources.zero())
-
         self._total_shared = remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
@@ -594,7 +593,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def update_usages(self):
         self._update_reservation()
-
         self._op_budgets.clear()
         eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:

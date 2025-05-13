@@ -117,10 +117,11 @@ class TaskPoolMapOperator(MapOperator):
 
     def current_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
-        return ExecutionResources(
+        task_pool_map_operator = ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
+        return task_pool_map_operator
 
     def pending_processor_usage(self) -> ExecutionResources:
         return ExecutionResources()

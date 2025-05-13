@@ -345,10 +345,11 @@ class ActorPoolMapOperator(MapOperator):
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.current_size()
-        return ExecutionResources(
+        actor_pool_map_operator = ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
+        return actor_pool_map_operator
 
     def pending_processor_usage(self) -> ExecutionResources:
         # Both pending and restarting actors count towards pending processor usage
