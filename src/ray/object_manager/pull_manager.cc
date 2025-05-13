@@ -565,11 +565,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
     max_timeout_object_id_ = object_id;
   }
 
-  num_tries_total_++;
-  if (request.num_retries > 0) {
-    // We've tried this object before.
-    num_retries_total_++;
-  }
+  num_retries_total_++;
 
   // Bound the retry time at 10 * 1024 seconds.
   request.num_retries = std::min(request.num_retries + 1, 10);
@@ -746,7 +742,6 @@ void PullManager::RecordMetrics() const {
   ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
   ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
   ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
-  ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
 
   ray::stats::STATS_pull_manager_num_object_pins.Record(num_succeeded_pins_total_,
                                                         "Success");

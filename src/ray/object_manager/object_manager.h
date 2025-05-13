@@ -414,11 +414,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// including when the object was last pushed to other object managers.
   absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
 
-  /// This is used as the callback identifier in Pull for
-  /// SubscribeObjectLocations. We only need one identifier because we never need to
-  /// subscribe multiple times to the same object during Pull.
-  UniqueID object_directory_pull_callback_id_ = UniqueID::FromRandom();
-
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
   absl::flat_hash_map<

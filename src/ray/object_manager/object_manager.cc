@@ -268,7 +268,7 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
     RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
+        object_id, ref.owner_address(), callback));
   }
 
   return request_id;
@@ -277,8 +277,7 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 void ObjectManager::CancelPull(uint64_t request_id) {
   const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
-    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id));
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(object_id));
   }
 }
 
