@@ -356,49 +356,24 @@ Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run
 future.
 
 After reading and reviewing the generated model config, refer to
-the vLLM engine configuration `docs <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_
+the `vLLM engine configuration docs <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_
 for further customization.
 
-Enable logging
+Observability
 ---------------------
-Ray enables LLM service-level logging by default, and makes these statistics available using Grafana and Prometheus. Instructions are available at :ref:`collect-metrics`.
+Ray enables LLM service-level logging by default, and makes these statistics available using Grafana and Prometheus. For more details on configuring Grafana and Prometheus, see :ref:`collect-metrics`.
 
-These higher-level metrics track request and token behavior across deployed models. For example, with Prometheus metric names inline:
-
-* Token Volumes: `ray_serve_llm_tokens_input`
-
-  * Total input and generated tokens (last hour, 24 hours, and 7 days)
-  * Ratio of input to generated tokens
-
-* Tokens per Request: `ray_serve_llm_requests_started`
-
-  * Average total tokens per request (overall and per model)
-
-* Peak and Aggregate Stats: `ray_serve_llm_tokens_generated`
-
-  * Peak tokens per second (per model, per day)
-  * Per-model request and token gauges over the past week
+These higher-level metrics track request and token behavior across deployed models. For example: average total tokens per request, ratio of input tokens to generated tokens, and peak tokens per second.
 
 For visualization, Ray ships with a Serve LLM-specific dashboard which is automatically available in Grafana. Example below:
 
 .. image:: images/serve_llm_dashboard.png
 
-If enabled, all engine metrics (this currently implies vLLM) are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. For example:
+Engine Metrics
+---------------------
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
 
-* Token Throughput: `ray_vllm:request_prompt_tokens_sum` `ray_vllm:generation_tokens_total`)
-* Latency Metrics: `ray_vllm:time_per_output_token_seconds_bucket`, `time_to_first_token_seconds_sum`
-
-  * Time per output token (P50, P90, P95, P99, Mean)
-  * Time to first token (TTFT)
-  * End-to-end request latency
-
-* Cache Utilization: `ray_vllm:gpu_cache_usage_perc`
-* Token Distribution: `ray_vllm:request_prompt_tokens_bucket`
-
-  * Heatmaps of prompt and generation lengths
-  * Max generation tokens per request
-
-Note that use of the vLLM V1 engine is required to enable engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
+Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
 
 .. tab-set::
 
