@@ -654,13 +654,12 @@ class Worker:
     def close(self):
         self._in_shutdown = True
         self.closed = True
-        if self.channel:
-            self.channel.close()
-
         self.data_client.close()
         self.log_client.close()
         self.server = None
-        self.channel = None
+        if self.channel:
+            self.channel.close()
+            self.channel = None
 
     def get_actor(
         self, name: str, namespace: Optional[str] = None

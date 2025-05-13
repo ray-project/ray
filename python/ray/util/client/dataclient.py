@@ -274,11 +274,6 @@ class DataClient:
                         self._process_response(response)
                     return
                 except grpc.RpcError as e:
-                    # The channel might have been closed intentionally during the
-                    # shutdown sequence.
-                    if self.client_worker._in_shutdown:
-                        return
-
                     reconnecting = self._can_reconnect(e)
                     if not reconnecting:
                         self._last_exception = e
