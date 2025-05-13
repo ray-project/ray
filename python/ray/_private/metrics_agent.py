@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 from collections import namedtuple, defaultdict
-from typing import List, Tuple, Any, Dict, Set
+from typing import List, Tuple, Any, Dict, Set, Union
 from enum import Enum
 
 from prometheus_client.core import (
@@ -171,10 +171,10 @@ class OpencensusProxyMetric:
     def data(self):
         return self._data
 
-    def is_last_value_aggregation_data(self):
-        """Check if the metric is a last value aggregation data."""
+    def is_distribution_aggregation_data(self):
+        """Check if the metric is a distribution aggreation metric."""
         return len(self._data) > 0 and isinstance(
-            next(iter(self._data.values())), LastValueAggregationData
+            next(iter(self._data.values())), DistributionAggregationData
         )
 
     def add_data(self, label_values: Tuple, data: Any):
@@ -504,6 +504,32 @@ class OpenCensusProxyCollector:
         except ValueError:
             return MetricCardinalityLevel.LEGACY
 
+    def _aggregate_metric_data(
+        self,
+        datas: List[
+            Union[LastValueAggregationData, CountAggregationData, SumAggregationData]
+        ],
+    ) -> Union[LastValueAggregationData, CountAggregationData, SumAggregationData]:
+        assert len(datas) > 0
+        sample = datas[0]
+        if isinstance(sample, LastValueAggregationData):
+            return LastValueAggregationData(
+                ValueDouble, sum([data.value for data in datas])
+            )
+        if isinstance(sample, CountAggregationData):
+            return CountAggregationData(sum([data.count_data for data in datas]))
+        if isinstance(sample, SumAggregationData):
+            return SumAggregationData(
+                ValueDouble, sum([data.sum_data for data in datas])
+            )
+
+        raise ValueError(
+            f"Unsupported aggregation type {type(sample)}. "
+            f"Supported types are {LastValueAggregationData}, "
+            f"{CountAggregationData}, {LastValueAggregationData}, {SumAggregationData}."
+            f"Got {datas}."
+        )
+
     def _aggregate_with_recommended_cardinality(
         self,
         per_worker_metrics: List[OpencensusProxyMetric],
@@ -548,9 +574,7 @@ class OpenCensusProxyCollector:
         for label_values, datas in label_value_to_data.items():
             aggregated_metric.add_data(
                 label_values,
-                LastValueAggregationData(
-                    ValueDouble, sum([data.value for data in datas])
-                ),
+                self._aggregate_metric_data(datas),
             )
 
         return [aggregated_metric]
@@ -577,7 +601,7 @@ class OpenCensusProxyCollector:
                 for metric in component.metrics.values():
                     if (
                         cardinality_level == MetricCardinalityLevel.RECOMMENDED
-                        and metric.is_last_value_aggregation_data()
+                        and not metric.is_distribution_aggregation_data()
                     ):
                         to_lower_cardinality[metric.name].append(metric)
                     else:
