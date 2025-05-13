@@ -30,6 +30,7 @@
 # - Added support for heterogeneously-shaped tensors.
 # - Miscellaneous small bug fixes and optimizations.
 
+import logging
 import numbers
 import os
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
@@ -751,12 +752,17 @@ class TensorArray(
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:
+
                 if len(values) == 0:
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
                 elif all(
-                    isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
-                    and not isinstance(v, str)
+                    (
+                        v is None or
+                        isinstance(v, (np.ndarray, TensorArrayElement)) or
+                        # NOTE: String is also a sequence
+                        (isinstance(v, Sequence) and not isinstance(v, str))
+                    )
                     for v in values
                 ):
                     values = [np.asarray(v) for v in values]
@@ -765,9 +771,8 @@ class TensorArray(
                     values = _create_possibly_ragged_ndarray(values)
                 else:
                     raise TypeError(
-                        "Expected a well-typed ndarray or an object-typed ndarray of "
-                        "ndarray pointers, but got an object-typed ndarray whose "
-                        f"subndarrays are of type {type(values[0])}."
+                        f"Failed to convert provided ndarray of dtype={values.dtype} to "
+                        f"a TensorArray: {str(values)[:1000]} (truncated)"
                     )
         elif isinstance(values, TensorArray):
             raise TypeError("Use the copy() method to create a copy of a TensorArray.")
@@ -776,7 +781,9 @@ class TensorArray(
                 "Expected a numpy.ndarray or sequence of numpy.ndarray, "
                 f"but received {values} of type {type(values).__name__} instead."
             )
+
         assert isinstance(values, np.ndarray)
+
         self._tensor = values
         self._is_variable_shaped = None
 
@@ -1430,22 +1437,3 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
-
-
-@PublicAPI(stability="beta")
-def column_needs_tensor_extension(s: pd.Series) -> bool:
-    """Return whether the provided pandas Series column needs a tensor extension
-    representation. This tensor extension representation provides more efficient slicing
-    and interop with ML frameworks.
-
-    Args:
-        s: The pandas Series column that may need to be represented using the tensor
-            extension.
-
-    Returns:
-        Whether the provided Series needs a tensor extension representation.
-    """
-    # NOTE: This is an O(1) check.
-    return (
-        s.dtype.type is np.object_ and not s.empty and isinstance(s.iloc[0], np.ndarray)
-    )
