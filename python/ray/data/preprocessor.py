@@ -261,13 +261,6 @@ class Preprocessor(abc.ABC):
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
     ) -> "Dataset":
-        if ds.__class__.__name__ == "StreamSplitDataIterator":
-            raise ValueError(
-                "Cannot transform a StreamSplitDataIterator. This error typically occurs "
-                "when trying to apply a preprocessor to a dataset shard inside a train worker. "
-                "Instead, you should apply the transform to the Ray Dataset before sharding "
-                "it across workers."
-            )
         transform_type = self._determine_transform_to_use()
 
         # Our user-facing batch format should only be pandas or NumPy, other

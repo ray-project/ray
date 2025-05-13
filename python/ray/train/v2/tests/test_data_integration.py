@@ -109,6 +109,26 @@ def test_dataset_setup_callback(ray_start_4_cpus):
     )
 
 
+def test_transform_on_split_iterator_raises(ray_start_4_cpus):
+    """Check that calling illegal method on a StreamSplitDataIterator shard raises AttributeError."""
+    ds = ray.data.range(10)
+
+    def train_fn():
+        ds_shard = ray.train.get_dataset_shard("train")
+        ds_shard.iter_batches()
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": ds},
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+    )
+
+    with pytest.raises(
+        AttributeError, match="Cannot call `iter_batches` on a StreamSplitDataIterator"
+    ):
+        trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 

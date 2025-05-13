@@ -73,6 +73,44 @@ class StreamSplitDataIterator(DataIterator):
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
 
+    def _raise_if_stream_split(self, method_name: str):
+        raise AttributeError(
+            f"Cannot call `{method_name}` on a StreamSplitDataIterator. This error "
+            "typically occurs when trying to apply an operation (e.g. preprocessor "
+            "transform, format conversion) to a dataset shard inside a train worker. "
+            "Instead, you should apply the operation to the Ray Dataset before splitting "
+            "or sharding it across workers."
+        )
+
+    def iter_batches(
+        self,
+        *args,
+        **kwargs,
+    ):
+        self._raise_if_stream_split("iter_batches")
+
+    def iter_rows(self, *args, **kwargs):
+        self._raise_if_stream_split("iter_rows")
+
+    def iter_torch_batches(self, *args, **kwargs):
+        self._raise_if_stream_split("iter_torch_batches")
+
+    def iter_tf_batches(
+        self,
+        *args,
+        **kwargs,
+    ):
+        self._raise_if_stream_split("iter_tf_batches")
+
+    def to_torch(self, *args, **kwargs):
+        self._raise_if_stream_split("to_torch")
+
+    def to_tf(self, *args, **kwargs):
+        self._raise_if_stream_split("to_tf")
+
+    def materialize(self):
+        self._raise_if_stream_split("materialize")
+
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
@@ -80,13 +118,13 @@ class StreamSplitDataIterator(DataIterator):
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
-            future: ObjectRef[
-                Optional[ObjectRef[Block]]
-            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+            future: ObjectRef[Optional[ObjectRef[Block]]] = (
+                self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+            )
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[ObjectRef[Block], BlockMetadata]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = (
+                    ray.get(future)
+                )
                 if not block_ref_and_md:
                     break
                 else:
