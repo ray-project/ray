@@ -476,6 +476,12 @@ ray::Status NodeManager::RegisterGcs() {
         if (checking) {
           return;
         }
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - last_liveness_check_time_)
+                .count() <
+            RayConfig::instance().raylet_liveness_self_check_interval_ms()) {
+          return;
+        }
         checking = true;
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
             // capture checking ptr here because vs17 fail to compile
@@ -1853,6 +1859,7 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_task_manager_->FillResourceUsage(*resources_data);
+  last_liveness_check_time_ = std::chrono::steady_clock::now();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

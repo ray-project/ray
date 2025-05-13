@@ -947,6 +947,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
+
+  std::chrono::steady_clock::time_point last_liveness_check_time_;
 };
 
 }  // namespace ray::raylet
