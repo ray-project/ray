@@ -595,7 +595,10 @@ class Worker:
 
     @property
     def node_labels(self):
-        return self.node._get_node_labels()
+        # Return labels for this node from GCS.
+        node_id = global_worker.core_worker.get_current_node_id()
+        node_info = services.get_node(self.node.gcs_address, node_id.hex())
+        return node_info["labels"]
 
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()

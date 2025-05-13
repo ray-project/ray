@@ -416,22 +416,35 @@ def test_async_actor_task_id(shutdown_only):
 
 
 def test_get_node_labels(ray_start_cluster):
-    labels = {"accelerator-type": "A100", "region": "us-west4", "market-type": "spot"}
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, labels=labels)
-    cluster.wait_for_nodes()
+    cluster.add_node(
+        resources={"worker1": 1},
+        num_cpus=1,
+        labels={
+            "accelerator-type": "A100",
+            "region": "us-west4",
+            "market-type": "spot",
+        },
+    )
     ray.init(address=cluster.address)
 
     @ray.remote
-    def get_node_labels():
-        return ray.get_runtime_context().get_node_labels()
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+        def get_node_labels(self):
+            return ray.get_runtime_context().get_node_labels()
 
     expected_node_labels = {
         "accelerator-type": "A100",
         "region": "us-west4",
         "market-type": "spot",
     }
-    node_labels = ray.get(get_node_labels.remote())
+
+    a = Actor.options(label_selector={"accelerator-type": "A100"}).remote()
+    node_labels = ray.get(a.get_node_labels.remote())
+    expected_node_labels["ray.io/node_id"] = ray.get(a.get_node_id.remote())
     assert expected_node_labels == node_labels
 
 
@@ -441,4 +454,4 @@ if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        sys.exit(pytest.main(["-sv", "-vv", __file__]))
