@@ -5,13 +5,13 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
 def _import_private_modules(package_name: str):
     import importlib
+    import sys
 
     # Cache the user's module
     existing_module = sys.modules.get(package_name)
@@ -71,6 +71,7 @@ def _configure_system():
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
     )
+    assert os.path.exists(thirdparty_files), f"thirdparty_files not found at {os.listdir(os.path.dirname(__file__))}"
 
     # Temporarily add thirdparty_files to sys.path to import the libraries,
     # but ensure we restore path and properly isolate the imports
