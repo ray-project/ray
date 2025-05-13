@@ -290,6 +290,11 @@
       compute: [tasks]
       scaling: [fixed_size]
     adjustments:
+      # Fixed-size actor test.
+      - with:
+          format: numpy
+          compute: actors
+          scaling: fixed_size
       # Autoscaling tests
       - with:
           format: numpy
