@@ -43,7 +43,6 @@ from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockType,
     CallableClass,
     DataBatch,
     UserDefinedFunction,
