@@ -486,6 +486,9 @@ class Worker:
         # Cache the job id from initialize_job_config() to optimize lookups.
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
+        # Cache the node labels set for this worker from the RayParams.
+        # Node labels are currently static so this value is constant once set.
+        self._cached_node_labels = None
         # Indicates whether the worker is connected to the Ray cluster.
         # It should be set to True in `connect` and False in `disconnect`.
         self._is_connected: bool = False
@@ -595,10 +598,12 @@ class Worker:
 
     @property
     def node_labels(self):
-        # Return labels for this node from GCS.
-        node_id = global_worker.core_worker.get_current_node_id()
-        node_info = services.get_node(self.node.gcs_address, node_id.hex())
-        return node_info["labels"]
+        if self._cached_node_labels is None:
+            # Retrieve labels for this worker's node from GCS.
+            node_id = global_worker.core_worker.get_current_node_id()
+            node_info = services.get_node(self.node.gcs_address, node_id.hex())
+            self._cached_node_labels = node_info["labels"]
+        return self._cached_node_labels
 
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
