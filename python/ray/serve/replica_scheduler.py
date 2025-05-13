@@ -3,6 +3,7 @@ from ray.serve._private.replica_scheduler.common import (  # noqa: F401
     PendingRequest,
 )
 from ray.serve._private.replica_scheduler.replica_scheduler import (  # noqa: F401
+    FIFOMixin,
     LocalityScheduleMixin,
     MultiplexScheduleMixin,
     ReplicaScheduler,

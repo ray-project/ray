@@ -421,6 +421,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
+    replica_scheduler: str = Field(
+        default=DEFAULT.VALUE,
+        description="The replica scheduler to use for this deployment.",
+    )
 
     @root_validator
     def validate_num_replicas_and_autoscaling_config(cls, values):
@@ -501,6 +505,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         request_scheduling_stats_period_s=info.deployment_config.request_scheduling_stats_period_s,
         request_scheduling_stats_timeout_s=info.deployment_config.request_scheduling_stats_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
+        replica_scheduler=info.deployment_config.replica_scheduler,
     )
 
     if info.deployment_config.autoscaling_config is not None:
