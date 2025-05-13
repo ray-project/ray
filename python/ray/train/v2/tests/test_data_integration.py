@@ -115,7 +115,7 @@ def test_transform_on_split_iterator_raises(ray_start_4_cpus):
 
     def train_fn():
         ds_shard = ray.train.get_dataset_shard("train")
-        ds_shard.iter_batches()
+        ds_shard.map_batches(lambda x: x)
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -124,7 +124,7 @@ def test_transform_on_split_iterator_raises(ray_start_4_cpus):
     )
 
     with pytest.raises(
-        AttributeError, match="Cannot call `iter_batches` on a StreamSplitDataIterator"
+        AttributeError, match="Cannot call `map_batches` on a "
     ):
         trainer.fit()
 
