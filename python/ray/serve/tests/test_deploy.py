@@ -79,7 +79,7 @@ def test_deploy_with_any_characters(
     """The function should not fail when the deployment name contains special characters."""
 
     # V1 blocks on signal
-    @serve.deployment(name="some_name")
+    @serve.deployment
     class V1:
         async def handler(self):
             return True
