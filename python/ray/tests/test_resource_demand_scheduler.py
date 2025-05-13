@@ -1218,28 +1218,27 @@ class TestPlacementGroupScaling:
         # fully idle.
         nodes = provider.non_terminated_nodes({})
 
-        resource_demands = [{"GPU": 1}] * 4
         pending_placement_groups = [
             PlacementGroupTableData(
                 state=PlacementGroupTableData.PENDING,
-                strategy=PlacementStrategy.SPREAD,
+                strategy=PlacementStrategy.PACK,
                 bundles=[
-                    Bundle(unit_resources={"GPU": 2}, node_id=b"node_1"),
-                    Bundle(unit_resources={"GPU": 2}, node_id=b"node_1"),
-                    Bundle(unit_resources={"GPU": 2}),
-                    Bundle(unit_resources={"GPU": 2}),
+                    Bundle(unit_resources={"GPU": 2}, node_id=nodes[0].encode()),
+                    Bundle(unit_resources={"GPU": 6}),
                 ],
             ),
         ]
-        # The 2 bundles that have node_id=b"node_1" should not be counted
+        # The bundle that has node_id should not be counted
         # towards the number of GPUs needed to launch new nodes.
-        # The remaining 2 bundles should be packed onto the existing node and
+        # The remaining bundle should be packed onto the existing node and
         # not require any new nodes.
         to_launch, rem = scheduler.get_nodes_to_launch(
             nodes,
             {},
-            resource_demands,
-            {},
+            [],
+            {  # 2 GPUs are already used by the first bundle.
+                provider.internal_ip(nodes[0]): {"GPU": 6}
+            },
             pending_placement_groups,
             {},
             [],
