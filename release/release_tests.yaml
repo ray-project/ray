@@ -4108,6 +4108,22 @@
     timeout: 1800
     script: python run.py
 
+- name: core_build_cache
+  group: core-build
+  working_dir: core
+  frequency: nightly
+  team: core
+  stable: false 
+  cluster:
+    byod:
+      post_build_script: byod_core_build_environment.sh
+    cluster_compute: core_build_compute.yaml
+  run:
+    timeout: 7200
+    script: python build_cache.py
+  variations:
+    - __suffix__: aws
+
 
 ##############
 # LLM Serve
