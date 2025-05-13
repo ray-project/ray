@@ -15,4 +15,5 @@ chmod +x bazel-remote
 sudo mv bazel-remote /usr/local/bin
 
 # Checkout the ray repo so we can build it
+mkdir -p /tmp/ray-checkout-cache
 git clone https://github.com/ray-project/ray.git /tmp/ray-checkout
