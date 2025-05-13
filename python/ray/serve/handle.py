@@ -142,7 +142,6 @@ class _DeploymentHandleBase:
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
             handle_options=init_options,
-            # replica_scheduler=replica_scheduler # Where do I get this from?
         )
         self.init_options = init_options
 
@@ -712,7 +711,6 @@ class DeploymentHandle(_DeploymentHandleBase):
                 "Modifying `_prefer_local_routing` with `options()` is "
                 "deprecated. Please use `init()` instead."
             )
-        print(f"DeploymentHandle: options: replica_scheduler: {replica_scheduler}")
 
         return self._options(
             method_name=method_name,
@@ -753,7 +751,6 @@ class DeploymentHandle(_DeploymentHandleBase):
                 remote method call.
         """
         future, request_metadata = self._remote(args, kwargs)
-        print(f"[remote] future: {future}, request_metadata: {request_metadata}, self.handle_options.stream: {self.handle_options.stream}")
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:

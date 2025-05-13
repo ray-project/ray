@@ -551,3 +551,8 @@ class PrefixTreeActor(PrefixTree):
         Note: This method is intended to be used only in tests.
         """
         return getattr(self, attribute)
+
+from ray import serve
+@serve.deployment
+class PrefixTreeDeployment(PrefixTree):
+    ...

@@ -1148,19 +1148,6 @@ class ServeController:
 
         return self._target_capacity_direction
     
-    from ray.serve._private.config import DeploymentConfig
-
-    def get_deployment_config(self, deployment_id: DeploymentID) -> bytes:
-        info = self.deployment_state_manager.get_deployment(deployment_id)
-        if info is None:
-            raise KeyError(f"Deployment `{deployment_id}` not found")
-
-        # Turn your DeploymentInfo back into its protobuf and then
-        # pluck out the nested DeploymentConfigProto bytes.
-        from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
-        proto: DeploymentInfoProto = info.to_proto()
-        return proto.deployment_config.SerializeToString()
-
 
 def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],

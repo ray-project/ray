@@ -534,14 +534,14 @@ class AsyncioRouter:
         request, so it's up to the caller to time out or cancel the request.
         """
         r = await self._replica_scheduler.choose_replica_for_request(pr)
-        await self._replica_scheduler.on_request_scheduled(pr, r)
+
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
         if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
             result, _ = await r.send_request(pr, with_rejection=False)
-            wrapped_result = await self._replica_scheduler.on_response_received(pr, r, result)
-            return wrapped_result, r.replica_id
+            return result, r.replica_id
+
         while True:
             result = None
             try:
@@ -549,8 +549,7 @@ class AsyncioRouter:
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
                 self._replica_scheduler.on_request_scheduled(pr, r.replica_id, result)
                 if queue_info.accepted:
-                    wrapped_result = await self._replica_scheduler.on_response_received(pr, r, result)
-                    return wrapped_result, r.replica_id
+                    return result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
@@ -641,6 +640,7 @@ class AsyncioRouter:
                         response_id,
                     )
                     replica_result.add_done_callback(callback)
+
                 return replica_result
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because

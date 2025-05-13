@@ -25,7 +25,7 @@ from ray.serve._private.replica_scheduler.replica_wrapper import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PowerOfTwoChoicesReplicaScheduler(
+class PrefixAwareReplicaSchedulerSimple(
     FIFOMixin, MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
@@ -49,10 +49,10 @@ class PowerOfTwoChoicesReplicaScheduler(
     started it (in order to maintain the FIFO order). The total number of tasks is
     capped at (2 * num_replicas).
     """
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         
-    #     print(f"!!!PowerOfTwoChoicesReplicaScheduler initialized!!!")
+        print(f"!!!PrefixAwareReplicaSchedulerSimple initialized!!!")
         
     async def choose_replicas(
         self,

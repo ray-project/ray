@@ -257,22 +257,7 @@ class LLMRouter:
             if base_model_id in self._default_serve_handles:
                 if model_id == base_model_id:
                     default_handle = self._default_serve_handles[model_id]
-
-                    # Beginning of injected code
-                    # Get the replica scheduler class from the llm_config if it exists
-                    from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
-                    llm_config = self._llm_configs[model_id]
-                    from ray._common.utils import import_attr
-                    replica_scheduler_cls = PowerOfTwoChoicesReplicaScheduler  # Default fallback
-                    if llm_config.replica_scheduler_cls_path:
-                        try:
-                            replica_scheduler_cls = import_attr(llm_config.replica_scheduler_cls_path)
-                        except Exception as e:
-                            print(f"[llm router.py] Error importing replica scheduler class: {e}. Using default.")
-                    
-                    configured_handle = default_handle.options(stream=True, replica_scheduler=replica_scheduler_cls)
-                    # End of injected code
-
+                    configured_handle = default_handle.options(stream=True)
                     self._configured_serve_handles[model_id] = configured_handle
                 else:
                     default_handle = self._default_serve_handles[base_model_id]
@@ -311,7 +296,6 @@ class LLMRouter:
 
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
-            # yield response, model_handle
 
     async def model(self, model_id: str) -> Optional[ModelData]:
         if model_id in self._llm_configs:
@@ -423,7 +407,6 @@ class LLMRouter:
         Returns:
             A response object with completions.
         """
-
         return await self._process_llm_request(body, is_chat=False)
 
     @fastapi_router_app.post("/v1/chat/completions")
@@ -434,7 +417,6 @@ class LLMRouter:
         Returns:
             A response object with completions.
         """
-
 
         return await self._process_llm_request(body, is_chat=True)
 

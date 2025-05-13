@@ -275,6 +275,7 @@ class PrefixAwareReplicaScheduler(
         *args,
         **kwargs,
     ):
+        print(f"!!!!!CREATED PREFIX AWARE SCHEDULER!!!!!!")
         super().__init__(*args, **kwargs)
 
         # Beginning of injected code

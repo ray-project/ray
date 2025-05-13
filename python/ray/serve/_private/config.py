@@ -17,9 +17,7 @@ from ray._private.pydantic_compat import (
     PositiveInt,
     root_validator,
     validator,
-    PrivateAttr,
 )
-from ray._common.utils import import_attr
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
@@ -32,7 +30,6 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S,
     DEFAULT_REQUEST_SCHEDULING_STATS_TIMEOUT_S,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
-    DEFAULT_REPLICA_SCHEDULER,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
@@ -134,6 +131,7 @@ class DeploymentConfig(BaseModel):
         user_configured_option_names: The names of options manually
             configured by the user.
     """
+
     num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
@@ -197,7 +195,6 @@ class DeploymentConfig(BaseModel):
         default=None,
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
-
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
@@ -272,6 +269,7 @@ class DeploymentConfig(BaseModel):
             replica_scheduler = (
                 f"{replica_scheduler.__module__}.{replica_scheduler.__name__}"
             )
+
         if not replica_scheduler:
             replica_scheduler = DEFAULT_REPLICA_SCHEDULER
 

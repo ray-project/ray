@@ -99,6 +99,7 @@ class ActorReplicaWrapper(ReplicaWrapper):
         self, pr: PendingRequest, with_rejection: bool
     ) -> Tuple[ActorReplicaResult, Optional[ReplicaQueueLengthInfo]]:
         obj_ref_gen = self._send_request_python(pr, with_rejection=with_rejection)
+
         if not with_rejection:
             return ActorReplicaResult(obj_ref_gen, pr.metadata), None
 

@@ -206,7 +206,7 @@ def create_router(
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        replica_scheduler=replica_scheduler_instance,
+        replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,

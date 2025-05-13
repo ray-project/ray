@@ -16,7 +16,6 @@ from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
-from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

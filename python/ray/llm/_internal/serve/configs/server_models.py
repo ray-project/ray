@@ -167,11 +167,6 @@ class LLMConfig(BaseModelExtended):
         extra="forbid",
     )
 
-    replica_scheduler_cls_path: Optional[str] = Field(
-        default="ray.serve._private.replica_scheduler.pow_2_scheduler.PowerOfTwoChoicesReplicaScheduler",
-        description="The path to the replica scheduler class to use for the model deployment.",
-    )
-
     runtime_env: Optional[Dict[str, Any]] = Field(
         None,
         description=(
