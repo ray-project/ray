@@ -289,6 +289,7 @@
       format: [numpy, pandas, pyarrow]
       compute: [tasks]
       scaling: [fixed_size]
+      map-batches-sleep-ms: 0
     adjustments:
       # Fixed-size actor test.
       - with:
@@ -300,6 +301,7 @@
           format: numpy
           compute: [actors, tasks]
           scaling: autoscaling
+          map-batches-sleep-ms: 1000
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -308,7 +310,7 @@
     timeout: 5400
     script: >
       python map_benchmark.py --api map_batches --batch-format {{format}}
-      --compute {{compute}} --sf 1000
+      --compute {{compute}} --sf 1000 --map-batches-sleep-ms {{map-batches-sleep-ms}}
 
 
 ########################
