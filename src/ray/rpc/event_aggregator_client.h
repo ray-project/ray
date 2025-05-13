@@ -64,6 +64,7 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
         request,
         callback,
         "EventAggregatorService.grpc_client.AddEvents",
+        // TODO(myan): Add timeout and retry logic.
         /*timeout_ms*/ -1);
   }
 

@@ -607,44 +607,11 @@ python_grpc_compile(
 )
 
 proto_library(
-    name = "add_event_request_proto",
-    srcs = ["events/aggregator_service/add_event_request.proto"],
-    deps = [
-        ":base_event_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "add_event_request_cc_proto",
-    deps = [":add_event_request_proto"],
-)
-
-python_grpc_compile(
-    name = "add_event_request_py_proto",
-    deps = [":add_event_request_proto"],
-)
-
-proto_library(
-    name = "add_event_reply_proto",
-    srcs = ["events/aggregator_service/add_event_reply.proto"],
-)
-
-cc_proto_library(
-    name = "add_event_reply_cc_proto",
-    deps = [":add_event_reply_proto"],
-)
-
-python_grpc_compile(
-    name = "add_event_reply_py_proto",
-    deps = [":add_event_reply_proto"],
-)
-
-proto_library(
     name = "event_aggregator_service_proto",
     srcs = ["events/aggregator_service/event_aggregator_service.proto"],
     deps = [
-        ":add_event_reply_proto",
-        ":add_event_request_proto",
+        ":base_event_proto",
+        ":common_proto",
     ],
 )
 

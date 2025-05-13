@@ -195,7 +195,7 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/event_aggregator_client.h"],
     deps = [
         ":grpc_client",
-        "//src/ray/common:status",
+         "//src/ray/util:logging",
         "//src/ray/protobuf:event_aggregator_service_cc_proto",
         "@com_github_grpc_grpc//:grpc++",
     ],
