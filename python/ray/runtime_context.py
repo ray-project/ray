@@ -543,7 +543,7 @@ class RuntimeContext(object):
         worker = self.worker
         worker.check_connected()
 
-        return worker.node_labels
+        return worker.current_node_labels
 
 
 _runtime_context = None
