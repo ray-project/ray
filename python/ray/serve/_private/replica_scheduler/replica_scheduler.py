@@ -140,7 +140,7 @@ class LocalityScheduleMixin:
         # print(f"locality decision {candidate_replica_ids=}")
         return candidate_replica_ids
 
-    def rank_replicas(
+    def rank_replicas_via_locality(
         self,
         replicas: Set[RunningReplica],
     ) -> List[Set[RunningReplica]]:
@@ -275,7 +275,7 @@ class MultiplexScheduleMixin:
         pending_request.scheduling_context.should_backoff = True
         return candidate_replica_ids
 
-    def rank_replicas(
+    def rank_replicas_via_multiplex(
         self,
         replicas: Set[RunningReplica],
         multiplexed_model_id: str,
