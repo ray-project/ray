@@ -1,5 +1,5 @@
 import math
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from ray.data import DataIterator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
