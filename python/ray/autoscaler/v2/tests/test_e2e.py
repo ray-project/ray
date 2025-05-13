@@ -396,6 +396,14 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         # avoid rescheduling the whole placement group.
         wait_for_condition(lambda: verify_nodes(3, 1))
 
+        # Verify that the R1 node is recreated and has a different NodeID.
+        assert any(
+            [
+                "R1" in n["Resources"] and node["NodeID"] != n["NodeID"]
+                for n in ray.nodes()
+            ]
+        ), "R1 node is not recreated."
+
     finally:
         ray.shutdown()
         cluster.shutdown()
