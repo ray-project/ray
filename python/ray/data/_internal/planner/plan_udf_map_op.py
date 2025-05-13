@@ -98,10 +98,6 @@ def plan_project_op(
 
     def fn(block: Block) -> Block:
         try:
-            if BlockAccessor.for_block(block).block_type() == BlockType.PANDAS:
-                # TODO (srinathk) PandasBlockAccessor combine method needs to handle
-                # None types correctly. Until then, convert to Arrow Table.
-                block = BlockAccessor.for_block(block).to_arrow()
             if not BlockAccessor.for_block(block).num_rows():
                 return block
             if columns:
