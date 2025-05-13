@@ -861,12 +861,8 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 ///  To use this, simply do
 ///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:reply_failure_prob,method2=max_num_failures:req_failure_prob:reply_failure_prob"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
-/// If you want the rpc to fail deterministically num_failures times on the sending the
-/// request, set this to "request". If you want the failure to happen on sending the
-/// response, set this to "response".
-RAY_CONFIG(std::string, testing_rpc_failure_deterministic, "")
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)

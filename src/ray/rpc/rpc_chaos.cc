@@ -31,7 +31,7 @@ namespace {
   RpcFailureManager is a simple chaos testing framework. Before starting ray, users
   should set up os environment to use this feature for testing purposes.
   To use this, simply do
-      export RAY_testing_rpc_failure="method1=3,method2=5"
+      export RAY_testing_rpc_failure="method1=3:0.25:0.5,method2=5:0.5:0.25"
    Key is the RPC call name and value is the max number of failures to inject.
 */
 class RpcFailureManager {
@@ -46,22 +46,23 @@ class RpcFailureManager {
     if (!RayConfig::instance().testing_rpc_failure().empty()) {
       for (const auto &item :
            absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ',')) {
-        std::vector<std::string> parts = absl::StrSplit(item, '=');
-        RAY_CHECK_EQ(parts.size(), 2UL);
-        failable_methods_.emplace(parts[0], std::atoi(parts[1].c_str()));
+        std::vector<std::string> equal_split = absl::StrSplit(item, '=');
+        RAY_CHECK_EQ(equal_split.size(), 2UL);
+        std::vector<std::string> colon_split = absl::StrSplit(equal_split[1], ':');
+        RAY_CHECK_EQ(colon_split.size(), 3UL);
+        auto [iter, _] = failable_methods_.emplace(
+            equal_split[0],
+            Failable{.num_failures = std::stoi(colon_split[0]),
+                     .req_failure_prob = std::stof(colon_split[1]),
+                     .resp_failure_prob = std::stof(colon_split[2])});
+        const auto &failable = iter->second;
+        RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 1.0);
       }
 
       std::random_device rd;
       auto seed = rd();
       RAY_LOG(INFO) << "Setting RpcFailureManager seed to " << seed;
       gen_.seed(seed);
-
-      if (RayConfig::instance().testing_rpc_failure_deterministic() == "request") {
-        deterministic_request_failure_ = true;
-      } else if (RayConfig::instance().testing_rpc_failure_deterministic() ==
-                 "response") {
-        deterministic_response_failure_ = true;
-      }
     }
   }
 
@@ -73,27 +74,19 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    uint64_t &num_remaining_failures = iter->second;
-    if (num_remaining_failures == 0) {
+    auto &failable = iter->second;
+    if (failable.num_failures == 0) {
       return RpcFailure::None;
     }
 
-    if (deterministic_request_failure_ || deterministic_response_failure_) {
-      // 100% chance
-      num_remaining_failures--;
-      return deterministic_request_failure_ ? RpcFailure::Request : RpcFailure::Response;
-    }
-
-    std::uniform_int_distribution<int> dist(0, 3);
-    const int random_number = dist(gen_);
-    if (random_number == 0) {
-      // 25% chance
-      num_remaining_failures--;
+    std::uniform_real_distribution<> dist(0.0, 1.0);
+    const double random_number = dist(gen_);
+    if (random_number <= failable.req_failure_prob) {
+      failable.num_failures--;
       return RpcFailure::Request;
     }
-    if (random_number == 1) {
-      // 25% chance
-      num_remaining_failures--;
+    if (random_number <= failable.req_failure_prob + failable.resp_failure_prob) {
+      failable.num_failures--;
       return RpcFailure::Response;
     }
     // 50% chance
@@ -103,10 +96,13 @@ class RpcFailureManager {
  private:
   absl::Mutex mu_;
   std::mt19937 gen_;
-  // call name -> # remaining failures
-  absl::flat_hash_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
-  bool deterministic_request_failure_ = false;
-  bool deterministic_response_failure_ = false;
+  struct Failable {
+    int num_failures;
+    double req_failure_prob;
+    double resp_failure_prob;
+  };
+  // call name -> (max_num_failures, req_failure_prob, resp_failure_prob)
+  absl::flat_hash_map<std::string, Failable> failable_methods_ ABSL_GUARDED_BY(&mu_);
 };
 
 auto &rpc_failure_manager = []() -> RpcFailureManager & {

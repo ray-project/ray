@@ -744,7 +744,7 @@ def test_transient_error_retry(monkeypatch, ray_start_cluster):
         # eventually succeed in the unstable network environment.
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=100",
+            "CoreWorkerService.grpc_client.PushTask=100:0.25:0.25",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -772,11 +772,8 @@ def test_update_object_location_batch_failure(
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1",
-        )
-        m.setenv(
-            "RAY_testing_rpc_failure_deterministic",
-            deterministic_failure,
+            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
+            + ("1.0:0" if deterministic_failure == "request" else "0:1.0"),
         )
         cluster = ray_start_cluster
         head_node_id = cluster.add_node(
