@@ -242,7 +242,8 @@ class DataIterator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_context(self) -> DataContext: ...
+    def get_context(self) -> DataContext:
+        ...
 
     @PublicAPI
     def iter_torch_batches(

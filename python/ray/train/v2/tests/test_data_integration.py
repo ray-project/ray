@@ -123,9 +123,7 @@ def test_transform_on_split_iterator_raises(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=1),
     )
 
-    with pytest.raises(
-        AttributeError, match="Cannot call `map_batches` on a "
-    ):
+    with pytest.raises(AttributeError, match="Cannot call `map_batches` on a "):
         trainer.fit()
 
 

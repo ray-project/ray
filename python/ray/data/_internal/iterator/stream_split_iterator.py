@@ -80,13 +80,13 @@ class StreamSplitDataIterator(DataIterator):
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
-            future: ObjectRef[Optional[ObjectRef[Block]]] = (
-                self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
-            )
+            future: ObjectRef[
+                Optional[ObjectRef[Block]]
+            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref_and_md: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = (
-                    ray.get(future)
-                )
+                block_ref_and_md: Optional[
+                    Tuple[ObjectRef[Block], BlockMetadata]
+                ] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
