@@ -1,12 +1,7 @@
 #!/usr/bin/env python
 import logging
 import sys
-
-try:
-    from ray._private.setproctitle import setproctitle
-except ImportError:
-    # Fall back to system setproctitle if our private copy is unavailable
-    import setproctitle
+from ray._private import setproctitle
 import abc
 import asyncio
 import aiohttp

@@ -11,27 +11,6 @@ log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
-def _load_module(so_path_dir: str, mod_name: str):
-    import importlib.util
-
-    for file in os.listdir(so_path_dir):
-        full_path = os.path.join(so_path_dir, file)
-        try:
-            if full_path.endswith(".so"):
-                # Try to load the module
-                spec = importlib.util.spec_from_file_location(mod_name, full_path)
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                return mod
-            elif os.path.isdir(full_path):
-                init_path = os.path.join(full_path, "__init__.py")
-                spec = importlib.util.spec_from_file_location(mod_name, init_path)
-                mod = importlib.util.module_from_spec(spec)
-                return mod
-        except Exception as e:
-            print(f"Error loading package {full_path}: {e}")
-
-
 def _configure_system():
     import os
     import platform
@@ -82,15 +61,20 @@ def _configure_system():
         # TODO(zhaoch23): Cache the internal psutil. Remove this import if we
         # decide to replace all import psutil with from ray._private import psutil.
         import psutil  # noqa: F401
+
+        import setproctitle
+        import colorama
+
+        sys.modules["ray._private.setproctitle"] = setproctitle
+        sys.modules["ray._private.colorama"] = colorama
+
+        # Remove cached extensions to avoid conflicts with user's extensions
+        if "setproctitle" in sys.modules:
+            del sys.modules["setproctitle"]
+        if "colorama" in sys.modules:
+            del sys.modules["colorama"]
     finally:
         sys.path = original_sys_path
-
-    sys.modules["ray._private.colorama"] = _load_module(
-        os.path.join(thirdparty_files, "colorama"), "colorama"
-    )
-    sys.modules["ray._private.setproctitle"] = _load_module(
-        thirdparty_files, "setproctitle"
-    )
 
     if (
         platform.system() == "Linux"
