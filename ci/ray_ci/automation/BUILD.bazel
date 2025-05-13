@@ -67,6 +67,17 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "find_tests",
+    srcs = ["find_tests.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
+    ],
+)
+
 py_library(
     name = "update_version_lib",
     srcs = ["update_version_lib.py"],

@@ -112,14 +112,25 @@ class CITestStateMachine(TestStateMachine):
         return self.is_flaky_result_history(self.test_results)
 
     @staticmethod
-    def is_flaky_result_history(results: List[TestResult]):
+    def is_flaky_result_history(results: List[TestResult]) -> bool:
+        return (
+            CITestStateMachine.get_flaky_percentage(results)
+            >= FLAKY_PERCENTAGE_THRESHOLD
+        )
+
+    def get_flaky_percentage(
+        results: List[TestResult],
+    ) -> float:
+        """
+        Get the percentage of flaky tests in the test history
+        """
+        if not results:
+            return 0.0
         transition = 0
         for i in range(0, len(results) - 1):
             if results[i].is_failing() and results[i + 1].is_passing():
                 transition += 1
-        if transition >= FLAKY_PERCENTAGE_THRESHOLD * len(results) / 100:
-            return True
-        return False
+        return transition * 100 / len(results)
 
     def _consistently_failing_to_flaky(self) -> bool:
         return len(self.test_results) >= CONTINUOUS_FAILURE_TO_FLAKY and all(
