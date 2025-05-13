@@ -608,6 +608,13 @@ message TaskInfoEntry {
   optional string call_site = 27;
 }
 
+message TaskAttempt {
+  // The task id of the task attempt.
+  bytes task_id = 1;
+  // The attempt number of the task attempt.
+  int32 attempt_number = 2;
+}
+
 message Bundle {
   message BundleIdentifier {
     bytes placement_group_id = 1;
