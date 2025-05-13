@@ -1,5 +1,7 @@
 import argparse
 
+import functools
+import time
 import pyarrow as pa
 import pyarrow.compute as pc
 import pandas as pd
@@ -32,6 +34,21 @@ def parse_args() -> argparse.Namespace:
             "'map' and 'flat_map'.",
         ),
     )
+    parser.add_argument(
+        "--map-batches-sleep-ms",
+        type=int,
+        default=0,
+        help=(
+            "Sleep time in milliseconds for each map_batches call. This is useful to "
+            "simulate complex computation."
+        ),
+    )
+    parser.add_argument(
+        "--output-path",
+        type=str,
+        default="/mnt/cluster_storage/map_benchmark_results",
+        help=("Path to write the output data."),
+    )
     return parser.parse_args()
 
 
@@ -48,19 +65,24 @@ def main(args: argparse.Namespace) -> None:
             ds = ds.map(increment_row)
         elif args.api == "map_batches":
             if not args.compute or args.compute == "tasks":
-                ds = ds.map_batches(increment_batch, batch_format=args.batch_format)
+                ds = ds.map_batches(
+                    functools.partial(
+                        increment_batch,
+                        map_batches_sleep_ms=args.map_batches_sleep_ms,
+                    ),
+                    batch_format=args.batch_format,
+                )
             else:
                 ds = ds.map_batches(
                     IncrementBatch,
+                    fn_constructor_args=[args.map_batches_sleep_ms],
                     batch_format=args.batch_format,
                     concurrency=(1, 1024),
                 )
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)
 
-        # Iterate over the results.
-        for _ in ds.iter_internal_ref_bundles():
-            pass
+        ds.write_parquet(args.output_path)
 
         # Report arguments for the benchmark.
         return vars(args)
@@ -79,7 +101,10 @@ def flat_increment_row(row):
     return [row]
 
 
-def increment_batch(batch):
+def increment_batch(batch, map_batches_sleep_ms=0):
+    if map_batches_sleep_ms > 0:
+        time.sleep(map_batches_sleep_ms / 1000)
+
     if isinstance(batch, (dict, pd.DataFrame)):
         # Avoid modifying the column in-place (i.e., +=) because NumPy arrays are
         # read-only. See https://github.com/ray-project/ray/issues/369.
@@ -95,8 +120,11 @@ def increment_batch(batch):
 
 
 class IncrementBatch:
+    def __init__(self, map_batches_sleep_ms=0):
+        self.map_batches_sleep_ms = map_batches_sleep_ms
+
     def __call__(self, batch):
-        return increment_batch(batch)
+        return increment_batch(batch, self.map_batches_sleep_ms)
 
 
 if __name__ == "__main__":

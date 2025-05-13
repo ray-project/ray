@@ -290,15 +290,10 @@
       compute: [tasks]
       scaling: [fixed_size]
     adjustments:
-      # Include at least one test with actors.
+      # Autoscaling tests
       - with:
           format: numpy
-          compute: actors
-          scaling: fixed_size
-      # Include at least one autoscaling test.
-      - with:
-          format: numpy
-          compute: tasks
+          compute: [actors, tasks]
           scaling: autoscaling
 
   cluster:
