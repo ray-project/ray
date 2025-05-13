@@ -177,9 +177,12 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "graceful_shutdown_timeout_s": 20.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
+                                "request_scheduling_stats_period_s": 10.0,
+                                "request_scheduling_stats_timeout_s": 30.0,
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },
+                                "replica_scheduler": "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler",
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},

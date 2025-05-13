@@ -52,6 +52,16 @@ public class DeploymentConfig implements Serializable {
    */
   private Double healthCheckTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
 
+  /** Frequency at which the controller will record scheduling stats replicas. */
+  private Double requestSchedulingStatsPeriodS =
+      Constants.DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S;
+
+  /**
+   * Timeout that the controller will wait for a response from the replica's request scheduling
+   * stats before retrying.
+   */
+  private Double requestSchedulingStatsTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
+
   private AutoscalingConfig autoscalingConfig;
 
   /** This flag is used to let replica know they are deplyed from a different language. */
@@ -140,6 +150,28 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
+  public Double getRequestSchedulingStatsPeriodS() {
+    return requestSchedulingStatsPeriodS;
+  }
+
+  public DeploymentConfig setRequestSchedulingStatsPeriodS(Double requestSchedulingStatsPeriodS) {
+    if (requestSchedulingStatsPeriodS != null) {
+      this.requestSchedulingStatsPeriodS = requestSchedulingStatsPeriodS;
+    }
+    return this;
+  }
+
+  public Double getRequestSchedulingStatsTimeoutS() {
+    return requestSchedulingStatsTimeoutS;
+  }
+
+  public DeploymentConfig setRequestSchedulingStatsTimeoutS(Double requestSchedulingStatsTimeoutS) {
+    if (requestSchedulingStatsTimeoutS != null) {
+      this.requestSchedulingStatsTimeoutS = requestSchedulingStatsTimeoutS;
+    }
+    return this;
+  }
+
   public AutoscalingConfig getAutoscalingConfig() {
     return autoscalingConfig;
   }
@@ -199,6 +231,8 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setRequestSchedulingStatsPeriodS(requestSchedulingStatsPeriodS)
+            .setRequestSchedulingStatsTimeoutS(requestSchedulingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage)
             .setVersion(version);
@@ -220,6 +254,8 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setRequestSchedulingStatsPeriodS(requestSchedulingStatsPeriodS)
+            .setRequestSchedulingStatsTimeoutS(requestSchedulingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage);
     if (null != userConfig) {
