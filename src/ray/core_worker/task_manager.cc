@@ -998,6 +998,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_retries_left == 0);
       }
     }
+    // Keep `num_retries_left` and `num_oom_retries_left` up to date
+    num_retries_left = it->second.num_retries_left;
+    num_oom_retries_left = it->second.num_oom_retries_left;
+
     if (will_retry) {
       MarkTaskRetryOnFailed(it->second, error_info);
     }
@@ -1005,7 +1009,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  std::ostringstream stream;
   std::string num_retries_left_str =
       num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
   RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
@@ -1014,8 +1017,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
-    // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
-    // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
                            ? ExponentialBackoff::GetBackoffMs(
                                  spec.AttemptNumber(),

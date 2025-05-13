@@ -3,6 +3,7 @@ import collections
 import threading
 import unittest
 from typing import Any, Optional, Tuple
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,7 +12,11 @@ from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+    _ActorPool,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
@@ -392,44 +397,80 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_locality_manager_actor_ranking(self):
+    def test_locality_based_actor_ranking(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
-        bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
-        for i, b in enumerate(bundles):
-            fake_loc_map[b] = "node1"
-        pool._get_location = lambda b: fake_loc_map[b]
+        bundles = make_ref_bundles([[0] for _ in range(5)])
+
+        def _rank_actors(bundle):
+            actors = [actor1, actor2]
+            ranks = pool._rank_actors(actors, bundle)
+
+            assert len(ranks) == len(actors)
+
+            return list(zip(actors, ranks))
 
         # Setup an actor on each node.
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
-        # Actors on node1 should be preferred.
-        res1 = pool.pick_actor(bundles[0])
-        assert res1 == actor1
-        res2 = pool.pick_actor(bundles[1])
-        assert res2 == actor1
+        # Node1 is higher in priority
+        def _get_preferred_locs():
+            return {"node1": 1024, "node2": 512}
 
-        # Fallback to remote actors.
-        res3 = pool.pick_actor(bundles[2])
-        assert res3 == actor2
-        res4 = pool.pick_actor(bundles[3])
-        assert res4 == actor2
-        res5 = pool.pick_actor(bundles[4])
-        assert res5 is None
+        # Actors on node1 should be preferred
+        with patch.object(
+            bundles[0], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[0])
+            assert ranked_actors == [(actor1, (-1024, 0)), (actor2, (-512, 0))]
 
-    def test_locality_manager_busyness_ranking(self):
+            res1 = pool.pick_actor(bundles[0])
+            assert res1 == actor1
+
+        # Actors on node1 should be preferred still
+        with patch.object(
+            bundles[1], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[1])
+            assert ranked_actors == [(actor1, (-1024, 1)), (actor2, (-512, 0))]
+
+            res2 = pool.pick_actor(bundles[1])
+            assert res2 == actor1
+
+        # Fallback to remote actors
+        with patch.object(
+            bundles[2], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[2])
+            # NOTE: Actor 1 is at max requests in-flight hence excluded
+            assert ranked_actors == [(actor1, (-1024, 2)), (actor2, (-512, 0))]
+
+            res3 = pool.pick_actor(bundles[2])
+            assert res3 == actor2
+
+        # NOTE: Actor 2 is selected (since Actor 1 is at capacity)
+        with patch.object(
+            bundles[3], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            res4 = pool.pick_actor(bundles[3])
+            assert res4 == actor2
+
+        # NOTE: Actor 2 is at max requests in-flight, hence excluded
+        with patch.object(
+            bundles[4], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            res5 = pool.pick_actor(bundles[4])
+            assert res5 is None
+
+    def test_locality_based_actor_ranking_no_locations(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
         bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
         # Also test unknown location handling.
-        for i, b in enumerate(bundles):
-            fake_loc_map[b] = None
-        pool._get_location = lambda b: fake_loc_map[b]
+        pool._get_preferred_locations = lambda b: []
 
         # Setup two actors on the same node.
         actor1 = self._add_ready_actor(pool, node_id="node1")
@@ -450,7 +491,33 @@ class TestActorPool(unittest.TestCase):
         assert res3 is None
 
 
-def test_start_actor_timeout(ray_start_regular, restore_data_context):
+def test_min_max_resource_requirements(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        target_max_block_size=None,
+        compute_strategy=ray.data.ActorPoolStrategy(
+            min_size=1,
+            max_size=2,
+        ),
+        ray_remote_args={"num_cpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    assert (
+        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+        and max_resource_usage_bound == ExecutionResources.for_limits()
+    )
+
+
+def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
     """Tests that ActorPoolMapOperator raises an exception on
     timeout while waiting for actors."""
 
@@ -482,6 +549,8 @@ def test_start_actor_timeout(ray_start_regular, restore_data_context):
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
+    ray.shutdown()
+
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()

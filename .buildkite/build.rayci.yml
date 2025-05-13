@@ -22,7 +22,7 @@ steps:
     tags:
       - linux_wheels
       - oss
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
@@ -49,6 +49,10 @@ steps:
       - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
     job_env: docbuild-py3.12
+    tags:
+      - oss
+      - doc
+      - skip-on-premerge
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     tags:

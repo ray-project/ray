@@ -20,13 +20,13 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NodeMetrics,
     OpRuntimeMetrics,
 )
+from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 
 logger = logging.getLogger(__name__)
 
@@ -182,11 +182,6 @@ class _StatsActor:
             description="""Bytes spilled by dataset operators.
                 DataContext.enable_get_object_locations_for_metrics
                 must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
-        self.allocated_bytes = Gauge(
-            "data_allocated_bytes",
-            description="Bytes allocated by dataset operators",
             tag_keys=op_tags_keys,
         )
         self.freed_bytes = Gauge(
@@ -1028,9 +1023,9 @@ class DatasetStatsSummary:
 
         Args:
             already_printed: Set of operator IDs that have already had its stats printed
-            out.
+               out.
             include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest operator.
+               log stats of the latest operator.
             add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
