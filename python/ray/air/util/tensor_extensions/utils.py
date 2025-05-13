@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Sequence, Union, List, Protocol
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util import _lazy_import_pandas_no_raise
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
@@ -39,6 +40,12 @@ def _is_arrow_array(value: ArrayLike) -> bool:
     return isinstance(value, (pa.Array, pa.ChunkedArray))
 
 
+def _is_pandas_series(value: ArrayLike) -> bool:
+    pd = _lazy_import_pandas_no_raise()
+
+    return pd is not None and isinstance(value, pd.Series)
+
+
 def _should_convert_to_tensor(
     column_values: Union[List[Any], np.ndarray, ArrayLike], column_name: str
 ) -> bool:
@@ -66,7 +73,11 @@ def _should_convert_to_tensor(
 
 
 def _is_ndarray_like_not_pyarrow_array(column_values):
-    return is_ndarray_like(column_values) and not _is_arrow_array(column_values)
+    return (
+        is_ndarray_like(column_values) and
+        not _is_arrow_array(column_values) and
+        not _is_pandas_series(column_values)
+    )
 
 
 def _is_ndarray_tensor(t: Any) -> bool:
