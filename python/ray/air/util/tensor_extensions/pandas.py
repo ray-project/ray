@@ -30,7 +30,6 @@
 # - Added support for heterogeneously-shaped tensors.
 # - Miscellaneous small bug fixes and optimizations.
 
-import logging
 import numbers
 import os
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
@@ -758,8 +757,9 @@ class TensorArray(
                     pass
                 elif all(
                     (
-                        v is None or
-                        isinstance(v, (np.ndarray, TensorArrayElement)) or
+                        v is None
+                        or isinstance(v, (np.ndarray, TensorArrayElement))
+                        or
                         # NOTE: String is also a sequence
                         (isinstance(v, Sequence) and not isinstance(v, str))
                     )
