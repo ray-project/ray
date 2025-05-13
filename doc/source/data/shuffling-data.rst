@@ -24,9 +24,9 @@ To randomly shuffle the ordering of input files before reading, call a :ref:`rea
 :func:`~ray.data.read_images`, and use the ``shuffle="files"`` parameter. This randomly assigns
 input files to workers for reading.
 
-This is the fastest option for shuffle, and is a purely metadata operation. This
-option doesn't shuffle the actual rows inside files, so the randomness might be
-poor if each file has many rows.
+This is the fastest "shuffle" option: it is purely a metadata operation -- list of files constituting the dataset is random-shuffled before being
+fetched by the reading tasks. This option, however, doesn't shuffle the rows inside files, so the randomness might not be
+sufficient for your needs in case of files with the large number of rows.
 
 .. testcode::
 
@@ -44,11 +44,12 @@ Local shuffle when iterating over batches
 
 To locally shuffle a subset of rows using iteration methods, such as :meth:`~ray.data.Dataset.iter_batches`,
 :meth:`~ray.data.Dataset.iter_torch_batches`, and :meth:`~ray.data.Dataset.iter_tf_batches`,
-specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
-size during iteration. See more details in
+specify `local_shuffle_buffer_size`.
+
+This shuffles up to a `local_shuffle_buffer_size` number of rows buffered during iteration. See more details in
 :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
 
-This is slower than shuffling ordering of files, and shuffles rows locally without
+This is slower than files shuffling, and shuffles rows locally without
 network transfer. This local shuffle buffer can be used together with shuffling
 ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
 
