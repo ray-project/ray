@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         "--output-path",
         type=str,
         default="/mnt/cluster_storage/map_benchmark_results",
-        help=("Path to write the output data."),
+        help="Path to write the output data.",
     )
     return parser.parse_args()
 
