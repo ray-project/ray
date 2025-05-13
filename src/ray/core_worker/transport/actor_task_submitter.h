@@ -337,9 +337,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// case we hard code an error info.
     std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
-    /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
-    /// without replies.
-    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    /// Stores all callbacks of inflight tasks. An actor task is inflight
+    /// if the PushTask RPC is sent but the reply is not received yet.
+    absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -402,7 +402,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
