@@ -242,8 +242,7 @@ class DataIterator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_context(self) -> DataContext:
-        ...
+    def get_context(self) -> DataContext: ...
 
     @PublicAPI
     def iter_torch_batches(
@@ -967,6 +966,15 @@ class DataIterator(abc.ABC):
     def __del__(self):
         # Clear metrics on deletion in case the iterator was not fully consumed.
         StatsManager.clear_iteration_metrics(self._get_dataset_tag())
+
+    def map_batches(self, *args, **kwargs):
+        raise AttributeError(
+            "Cannot call `map_batches` on a DataIterator. This error "
+            "typically occurs when trying to apply an operation (e.g. preprocessor "
+            "transform, format conversion) to a dataset shard inside a train worker. "
+            "Instead, you should apply the operation to the Ray Dataset before splitting "
+            "or sharding it across workers."
+        )
 
 
 # Backwards compatibility alias.
