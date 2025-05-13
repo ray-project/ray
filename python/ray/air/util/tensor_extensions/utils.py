@@ -74,9 +74,9 @@ def _should_convert_to_tensor(
 
 def _is_ndarray_like_not_pyarrow_array(column_values):
     return (
-        is_ndarray_like(column_values) and
-        not _is_arrow_array(column_values) and
-        not _is_pandas_series(column_values)
+        is_ndarray_like(column_values)
+        and not _is_arrow_array(column_values)
+        and not _is_pandas_series(column_values)
     )
 
 
