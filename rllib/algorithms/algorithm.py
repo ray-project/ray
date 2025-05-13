@@ -3634,9 +3634,7 @@ class Algorithm(Checkpointable, Trainable):
         make_callback(
             "on_env_runners_recreated",
             callbacks_objects=self.callbacks,
-            callbacks_functions=(
-                config.callbacks_on_env_runners_recreated
-            ),
+            callbacks_functions=(config.callbacks_on_env_runners_recreated),
             kwargs=dict(
                 algorithm=self,
                 env_runner_group=env_runner_group,

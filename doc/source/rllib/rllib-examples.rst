@@ -70,6 +70,12 @@ Actions
 
 Algorithms
 ++++++++++
+
+- `Custom implementation of the Model-Agnostic Meta-Learning (MAML) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/maml_lr_supervised_learning.py>`__:
+   Shows how to stably train a model in an "infinite-task" environment, where each task corresponds
+   to a sinusoidal function with randomly sampled amplitude and phase. Because each new task introduces
+   a shift in data distribution, traditional learning algorithms would fail to generalize.
+
 - `Custom "vanilla policy gradient" (VPG) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py>`__:
    Shows how to write a very simple policy gradient :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from scratch,
    including a matching :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`,
