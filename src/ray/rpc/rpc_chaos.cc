@@ -31,7 +31,7 @@ namespace {
   RpcFailureManager is a simple chaos testing framework. Before starting ray, users
   should set up os environment to use this feature for testing purposes.
   To use this, simply do
-      export RAY_testing_rpc_failure="method1=3:0.25:0.5,method2=5:0.5:0.25"
+      export RAY_testing_rpc_failure="method1=3:25:50,method2=5:25:25"
    Key is the RPC call name and value is the max number of failures to inject.
 */
 class RpcFailureManager {
@@ -53,10 +53,10 @@ class RpcFailureManager {
         auto [iter, _] = failable_methods_.emplace(
             equal_split[0],
             Failable{.num_failures = std::stoi(colon_split[0]),
-                     .req_failure_prob = std::stof(colon_split[1]),
-                     .resp_failure_prob = std::stof(colon_split[2])});
+                     .req_failure_prob = std::stoi(colon_split[1]),
+                     .resp_failure_prob = std::stoi(colon_split[2])});
         const auto &failable = iter->second;
-        RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 1.0);
+        RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 100);
       }
 
       std::random_device rd;
@@ -79,8 +79,8 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    std::uniform_real_distribution<> dist(0.0, 1.0);
-    const double random_number = dist(gen_);
+    std::uniform_int_distribution<int> dist(0, 100);
+    const int random_number = dist(gen_);
     if (random_number <= failable.req_failure_prob) {
       failable.num_failures--;
       return RpcFailure::Request;
@@ -89,7 +89,6 @@ class RpcFailureManager {
       failable.num_failures--;
       return RpcFailure::Response;
     }
-    // 50% chance
     return RpcFailure::None;
   }
 
@@ -98,8 +97,8 @@ class RpcFailureManager {
   std::mt19937 gen_;
   struct Failable {
     int num_failures;
-    double req_failure_prob;
-    double resp_failure_prob;
+    int req_failure_prob;
+    int resp_failure_prob;
   };
   // call name -> (max_num_failures, req_failure_prob, resp_failure_prob)
   absl::flat_hash_map<std::string, Failable> failable_methods_ ABSL_GUARDED_BY(&mu_);

@@ -108,8 +108,8 @@ def test_kv_timeout(ray_start_regular):
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:0.25:0.25,"
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:0.25:0.25",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:25:25,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:25:25",
     )
     ray.init()
     gcs_address = ray._private.worker.global_worker.gcs_client.address

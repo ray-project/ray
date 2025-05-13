@@ -737,14 +737,10 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
 
 def test_transient_error_retry(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
-        # Inject transient errors into the RPC client. There is a 25% chance
-        # that the RPC request will fail, a 25% chance that the RPC reply
-        # will fail, and a 50% chance that the RPC will succeed. This test
-        # submits 200 tasks with infinite retries and verifies that all tasks
-        # eventually succeed in the unstable network environment.
+        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=100:0.25:0.25",
+            "CoreWorkerService.grpc_client.PushTask=100:25:25",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -773,7 +769,7 @@ def test_update_object_location_batch_failure(
         m.setenv(
             "RAY_testing_rpc_failure",
             "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
-            + ("1.0:0" if deterministic_failure == "request" else "0:1.0"),
+            + ("100:0" if deterministic_failure == "request" else "0:100"),
         )
         cluster = ray_start_cluster
         head_node_id = cluster.add_node(

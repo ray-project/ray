@@ -20,7 +20,7 @@
 #include "ray/common/ray_config.h"
 
 TEST(RpcChaosTest, Basic) {
-  RayConfig::instance().testing_rpc_failure() = "method1=0,method2=1";
+  RayConfig::instance().testing_rpc_failure() = "method1=0:25:25,method2=1:25:25";
   ray::rpc::testing::Init();
   ASSERT_EQ(ray::rpc::testing::GetRpcFailure("unknown"),
             ray::rpc::testing::RpcFailure::None);
