@@ -53,11 +53,12 @@ public class DeploymentConfig implements Serializable {
   private Double healthCheckTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
 
   /** Frequency at which the controller will record scheduling stats replicas. */
-  private Double requestSchedulingStatsPeriodS = Constants.DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S;
+  private Double requestSchedulingStatsPeriodS =
+      Constants.DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S;
 
   /**
-   * Timeout that the controller will wait for a response from the replica's request
-   * scheduling stats before retrying.
+   * Timeout that the controller will wait for a response from the replica's request scheduling
+   * stats before retrying.
    */
   private Double requestSchedulingStatsTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
 
