@@ -289,7 +289,7 @@ class TaskSpecBuilder {
       int max_retries,
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
-      uint64_t actor_counter) {
+      uint64_t sequence_number) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
@@ -299,7 +299,7 @@ class TaskSpecBuilder {
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
-    actor_spec->set_actor_counter(actor_counter);
+    actor_spec->set_sequence_number(sequence_number);
     return *this;
   }
 
