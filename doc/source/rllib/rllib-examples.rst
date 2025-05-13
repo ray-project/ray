@@ -76,6 +76,13 @@ Algorithms
    a matching :py:class:`~ray.rllib.core.learner.learner.Learner` which defines the loss function,
    and the Algorithm's :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` implementation.
 
+- `Custom algorithm with a global, shared data actor for sending manipulated rewards from EnvRunners to Learners <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py>`__:
+   Shows how to write a custom shared data actor accessible from any of the Algorithm's other actors,
+   like :py:class:`~ray.rllib.env.env_runner.EnvRunner` and :py:class:`~ray.rllib.core.learner.learner.Learner` actors.
+   The new actor stores manipulated rewards from sampled episodes under unique, per-episode keys and then serves
+   this information to the :py:class:`~ray.rllib.core.learner.learner.Learner` for adding these rewards to the train
+   batch.
+
 
 Checkpoints
 +++++++++++

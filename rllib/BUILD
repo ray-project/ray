@@ -3373,14 +3373,14 @@ py_test(
 # subdirectory: algorithms/
 # ....................................
 py_test(
-    name = "examples/algorithms/vpg_custom_algorithm",
+    name = "examples/algorithms/custom_algorithm_w_shared_data_actor",
     size = "medium",
-    srcs = ["examples/algorithms/vpg_custom_algorithm.py"],
+    srcs = ["examples/algorithms/custom_algorithm_w_shared_data_actor.py"],
     args = [
         "--enable-new-api-stack",
         "--as-test",
     ],
-    main = "examples/algorithms/vpg_custom_algorithm.py",
+    main = "examples/algorithms/custom_algorithm_w_shared_data_actor.py",
     tags = [
         "examples",
         "team:rllib",
@@ -3404,6 +3404,21 @@ py_test(
         "--no-plot",
     ],
     main = "examples/algorithms/maml_lr_supervised_learning.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/algorithms/vpg_custom_algorithm",
+    size = "medium",
+    srcs = ["examples/algorithms/vpg_custom_algorithm.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--as-test",
+    ],
+    main = "examples/algorithms/vpg_custom_algorithm.py",
     tags = [
         "examples",
         "team:rllib",
