@@ -88,7 +88,7 @@ bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
   }
 }
 
-void TaskSpecification::ComputeResources() {
+Status TaskSpecification::ComputeResources() {
   auto &required_resources = message_->required_resources();
 
   if (required_resources.empty()) {

@@ -568,7 +568,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const rpc::TensorTransport TensorTransport() const;
 
  private:
-  void ComputeResources();
+  Status ComputeResources();
 
   /// Field storing required resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
