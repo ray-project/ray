@@ -377,8 +377,12 @@ class GetLogOptions:
     # One of {file, stream}. File means it will return the whole log.
     # stream means it will keep the connection and streaming the log.
     media_type: str = "file"
-    # The file name of the log.
+    # The filename to match when finding the log to download from the Ray log directory.
+    # NOTE: This can be a nested path relative to the Ray log directory.
     filename: Optional[str] = None
+    # The filename to download the log as on the client side.
+    # If not provided, the filename will be "file.txt".
+    download_filename: str = "file.txt"
     # The actor id of the log. It is used only for worker logs.
     actor_id: Optional[str] = None
     # The task id of the log.
@@ -1701,7 +1705,6 @@ def remove_ansi_escape_codes(text: str) -> str:
 
 
 def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
-
     """Convert a dict to a state schema.
 
     Args:

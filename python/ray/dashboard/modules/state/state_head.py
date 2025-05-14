@@ -195,7 +195,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
     @routes.get("/api/v0/logs/{media_type}", resp_type=ResponseType.STREAM)
     @RateLimitedModule.enforce_max_concurrent_calls
-    async def get_logs(self, req: aiohttp.web.Request):
+    async def get_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """
         Fetches logs from the given criteria.
         """
@@ -206,6 +206,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
             node_ip=req.query.get("node_ip", None),
             media_type=req.match_info.get("media_type", "file"),
             filename=req.query.get("filename", None),
+            download_filename=req.query.get("download_filename", None),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
             submission_id=req.query.get("submission_id", None),
@@ -228,6 +229,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
+        response.headers["Content-Disposition"] = (
+            f'attachment; filename="{options.download_filename}"'
+        )
 
         logs_gen = self._log_api.stream_logs(options, get_actor_fn)
         # Handle the first chunk separately and returns 500 if an error occurs.
