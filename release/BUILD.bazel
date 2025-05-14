@@ -288,7 +288,10 @@ py_binary(
     ) + [
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
-    ]
+    ] + glob(
+        ["**/*.py"],
+        exclude = ["ray_release/tests/*.py"],
+    )
 )
 
 py_library(
