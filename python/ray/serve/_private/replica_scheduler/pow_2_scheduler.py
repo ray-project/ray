@@ -49,11 +49,12 @@ class PowerOfTwoChoicesReplicaScheduler(
     started it (in order to maintain the FIFO order). The total number of tasks is
     capped at (2 * num_replicas).
     """
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
-        
-    #     print(f"!!!PowerOfTwoChoicesReplicaScheduler initialized!!!")
-        
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        print("!!!PowerOfTwoChoicesReplicaScheduler initialized!!!")
+
     async def choose_replicas(
         self,
         replicas_ranks: List[Set[RunningReplica]],

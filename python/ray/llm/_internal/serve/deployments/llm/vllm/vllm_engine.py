@@ -155,6 +155,7 @@ class _EngineBackgroundProcess:
 
         # Beginning of injected code: to log metrics from vllm
         from vllm.engine.metrics import RayPrometheusStatLogger
+
         additional_metrics_logger = RayPrometheusStatLogger(
             local_interval=0.5,
             labels={"model_name": engine_args.model},
@@ -170,7 +171,7 @@ class _EngineBackgroundProcess:
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
             usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
-            stat_loggers={"ray": additional_metrics_logger} # Add this line
+            stat_loggers={"ray": additional_metrics_logger},  # Add this line
         )
         self._error = None
 
@@ -485,6 +486,7 @@ class VLLMEngine(LLMEngine):
 
         ### Beginning of injected code
         from vllm.engine.metrics import RayPrometheusStatLogger
+
         additional_metrics_logger = RayPrometheusStatLogger(
             local_interval=0.5,
             labels={"model_name": engine_args.model},
@@ -496,7 +498,7 @@ class VLLMEngine(LLMEngine):
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
-            stat_loggers={"ray": additional_metrics_logger} # Add this line
+            stat_loggers={"ray": additional_metrics_logger},  # Add this line
         )
 
     async def prepare_request(

@@ -185,7 +185,6 @@ class LLMRouter:
     def __init__(
         self,
         llm_deployments: List[DeploymentHandle],
-        tree_deployment: DeploymentHandle,
         *,
         _get_lora_model_metadata_func: Optional[
             Callable[[str, LLMConfig], Awaitable[Dict[str, Any]]]

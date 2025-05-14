@@ -1023,7 +1023,7 @@ class ReplicaScheduler(ABC):
     ) -> List[Set[RunningReplica]]:
         pass
 
-    def on_request_scheduled(
+    async def on_request_scheduled(
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,

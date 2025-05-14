@@ -690,9 +690,14 @@ class LLMServer(_LLMServerBase):
         deployment_options = deployment_options or {}
         return LLMDeployment.options(**deployment_options)
 
-from ray.serve._private.replica_scheduler.prefix_aware_scheduler_simple import PrefixAwareReplicaSchedulerSimple
+
+from work.ray.python.ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
+    PrefixAwareReplicaSchedulerSimple,
+)
+
+
 @serve.deployment(
-    # replica_scheduler=PrefixAwareReplicaSchedulerSimple,
+    replica_scheduler=PrefixAwareReplicaSchedulerSimple,
     # TODO make this configurable
     autoscaling_config={
         "min_replicas": 1,
@@ -711,8 +716,6 @@ from ray.serve._private.replica_scheduler.prefix_aware_scheduler_simple import P
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )
-
-
 class LLMDeployment(LLMServer):
     # Note (genesu): We are separating the LLMServer and LLMDeployment just
     # to give developers an ability to test the implementation outside the Ray Serve.

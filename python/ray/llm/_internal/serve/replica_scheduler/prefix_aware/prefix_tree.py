@@ -525,22 +525,23 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def get_smallest_tenant(self) -> Optional[str]:
+    def get_smallest_tenants(self) -> Optional[List[str]]:
         """
-        Get the tenant with the smallest total character count.
+        Get the tenants with the smallest total character count.
 
         Returns:
-            Tenant with smallest character count, or None if no tenants
+            Tenants with smallest character count, or None if no tenants
         """
         with self.lock:
             if not self.tenant_to_char_count:
                 return None
 
-            return min(
-                self.tenant_to_char_count,
-                key=self.tenant_to_char_count.get,
-                default=None,
-            )
+            min_count = min(self.tenant_to_char_count.values())
+            return [
+                tenant
+                for tenant, count in self.tenant_to_char_count.items()
+                if count == min_count
+            ]
 
 
 @ray.remote
@@ -551,8 +552,3 @@ class PrefixTreeActor(PrefixTree):
         Note: This method is intended to be used only in tests.
         """
         return getattr(self, attribute)
-
-from ray import serve
-@serve.deployment
-class PrefixTreeDeployment(PrefixTree):
-    ...
