@@ -29,7 +29,6 @@ def override_runtime_env_retries():
 @pytest.mark.parametrize("field", ["conda", "pip"])
 def test_ray_init_install_failure(
     start_cluster_shared,
-    shutdown_only,
     tmp_path,
     field,
 ):
@@ -61,7 +60,6 @@ def test_ray_init_install_failure(
 @pytest.mark.parametrize("field", ["conda", "pip"])
 def test_install_failure_logging(
     start_cluster_shared,
-    shutdown_only,
     field,
     tmp_path,
 ):
