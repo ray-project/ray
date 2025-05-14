@@ -573,7 +573,10 @@ class _ActorPool(AutoscalingActorPool):
 
     def scale_up(self, num_actors: int) -> int:
         logger.info(
-            f"Scaling up actor pool by {num_actors} (current is {self._running_actors})"
+            f"Scaling up actor pool by {num_actors} ("
+            f"running={self.num_running_actors()}, "
+            f"pending={self.num_pending_actors()}, "
+            f"restarting={self.num_restarting_actors()})"
         )
 
         for _ in range(num_actors):
@@ -582,11 +585,20 @@ class _ActorPool(AutoscalingActorPool):
         return num_actors
 
     def scale_down(self, num_actors: int) -> int:
-        num_killed = 0
+        num_released = 0
         for _ in range(num_actors):
-            if self._kill_inactive_actor():
-                num_killed += 1
-        return num_killed
+            if self._release_inactive_actor():
+                num_released += 1
+
+        if num_released > 0:
+            logger.info(
+                f"Scaled down actor pool by {num_released} ("
+                f"running={self.num_running_actors()}, "
+                f"pending={self.num_pending_actors()}, "
+                f"restarting={self.num_restarting_actors()})"
+            )
+
+        return num_released
 
     # === End of overriding methods of AutoscalingActorPool ===
 
@@ -761,20 +773,20 @@ class _ActorPool(AutoscalingActorPool):
             for running_actor in self._running_actors.values()
         )
 
-    def _kill_inactive_actor(self) -> bool:
+    def _release_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
 
-        Returns whether an inactive actor was actually killed.
+        Returns whether an inactive actor was actually released.
         """
         # We prioritize killing pending actors over idle actors to reduce actor starting
         # churn.
-        killed = self._maybe_kill_pending_actor()
-        if not killed:
-            # If no pending actor was killed, so kill actor.
-            killed = self._maybe_kill_idle_actor()
-        return killed
+        released = self._try_release_pending_actor()
+        if not released:
+            # If no pending actor was released, so kill actor.
+            released = self._try_release_idle_actor()
+        return released
 
-    def _maybe_kill_pending_actor(self) -> bool:
+    def _try_release_pending_actor(self) -> bool:
         if self._pending_actors:
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
@@ -783,7 +795,7 @@ class _ActorPool(AutoscalingActorPool):
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
 
-    def _maybe_kill_idle_actor(self) -> bool:
+    def _try_release_idle_actor(self) -> bool:
         for actor, state in self._running_actors.items():
             if state.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
