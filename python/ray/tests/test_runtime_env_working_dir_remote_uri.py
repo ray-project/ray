@@ -1,10 +1,8 @@
 import os
 import sys
-from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -24,7 +22,7 @@ REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 @pytest.fixture(scope="module")
 def _start_cluster_shared_two_nodes(_start_cluster_shared):
     cluster, address = _start_cluster_shared
-    cluster.add_node(num_cpus=1, runtime_env_dir_name=f"worker_node_runtime_resources")
+    cluster.add_node(num_cpus=1, runtime_env_dir_name="worker_node_runtime_resources")
     yield cluster, address
 
 
