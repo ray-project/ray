@@ -155,8 +155,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 1
         assert (
-            pool.actor_info_progress_str()
-            == "; Actors: 1 (alive 0, restarting 1, pending 0)"
+            pool._get_summary_str() == "; Actors: 1 (alive 0, restarting 1, pending 0)"
         )
 
         # Mark the actor as alive and test pick_actor succeeds
@@ -171,7 +170,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
-        assert pool.actor_info_progress_str() == "; Actors: 1"
+        assert pool._get_summary_str() == "; Actors: 1"
 
         # Return the actor
         pool.return_actor(picked_actor)
@@ -183,7 +182,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 1
-        assert pool.actor_info_progress_str() == "; Actors: 1"
+        assert pool._get_summary_str() == "; Actors: 1"
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.

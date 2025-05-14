@@ -66,7 +66,9 @@ class DefaultAutoscaler(Autoscaler):
         op_state: "OpState",
     ) -> _AutoscalingAction:
         # Do not scale up, if the op is completed or no more inputs are coming.
-        if op.completed() or (op._inputs_complete and op_state.total_enqueued_input_bundles() == 0):
+        if op.completed() or (
+            op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
+        ):
             return _AutoscalingAction.SCALE_DOWN
 
         if actor_pool.current_size() < actor_pool.min_size():
@@ -93,14 +95,15 @@ class DefaultAutoscaler(Autoscaler):
         else:
             return _AutoscalingAction.NO_OP
 
-
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
                 while True:
                     # Try to scale up or down the actor pool.
-                    recommended_action = self._derive_scaling_action(actor_pool, op, state)
+                    recommended_action = self._derive_scaling_action(
+                        actor_pool, op, state
+                    )
 
                     if recommended_action is _AutoscalingAction.SCALE_UP:
                         if actor_pool.scale_up(1) == 0:

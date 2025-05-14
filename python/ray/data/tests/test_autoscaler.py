@@ -4,8 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray.data import ExecutionResources
-from ray.data._internal.execution.autoscaler.default_autoscaler import \
-    DefaultAutoscaler, _AutoscalingAction
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    DefaultAutoscaler,
+    _AutoscalingAction,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )

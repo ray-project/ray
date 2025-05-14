@@ -16,8 +16,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.physical_operator import \
-    _ActorInfo
+from ray.data._internal.execution.interfaces.physical_operator import _ActorInfo
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
@@ -573,7 +572,9 @@ class _ActorPool(AutoscalingActorPool):
         )
 
     def scale_up(self, num_actors: int) -> int:
-        logger.info(f"Scaling up actor pool by {num_actors} (current is {self._running_actors})")
+        logger.info(
+            f"Scaling up actor pool by {num_actors} (current is {self._running_actors})"
+        )
 
         for _ in range(num_actors):
             actor, ready_ref = self._create_actor_fn()
