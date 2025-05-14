@@ -1,6 +1,7 @@
 import logging
 import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -167,6 +168,15 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
+
+
+@dataclass
+class _ActorInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
 
 
 class PhysicalOperator(Operator):
@@ -632,14 +642,9 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def actor_info_counts(self) -> Tuple[int, int, int]:
-        """Returns Actor counts for Alive, Restarting and Pending Actors.
-
-        This method will be called in add_output API in OpState. Subclasses can
-        override it to return counts for Alive, Restarting and Pending
-        Actors.
-        """
-        return 0, 0, 0
+    def get_actor_info(self) -> _ActorInfo:
+        """Returns the current status of actors being used by the operator"""
+        return _ActorInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

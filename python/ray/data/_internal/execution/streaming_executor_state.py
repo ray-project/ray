@@ -259,7 +259,7 @@ class OpState:
                 ref.num_rows() is not None
             ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
-        active, restarting, pending = self.op.actor_info_counts()
+        active, restarting, pending = self.op.get_actor_info()
         self.op.metrics.num_alive_actors = active
         self.op.metrics.num_restarting_actors = restarting
         self.op.metrics.num_pending_actors = pending

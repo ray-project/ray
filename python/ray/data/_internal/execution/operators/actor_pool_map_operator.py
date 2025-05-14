@@ -16,6 +16,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.physical_operator import \
+    _ActorInfo
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
@@ -421,11 +423,11 @@ class ActorPoolMapOperator(MapOperator):
 
     def actor_info_progress_str(self) -> str:
         """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
-        return self._actor_pool.actor_info_progress_str()
+        return self._actor_pool._get_summary_str()
 
-    def actor_info_counts(self) -> Tuple[int, int, int]:
+    def get_actor_info(self) -> _ActorInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
-        return self._actor_pool.actor_info_counts()
+        return self._actor_pool.get_actor_info()
 
 
 class _MapWorker:
@@ -575,6 +577,8 @@ class _ActorPool(AutoscalingActorPool):
         )
 
     def scale_up(self, num_actors: int) -> int:
+        logger.info(f"Scaling up actor pool by {num_actors} (current is {self._running_actors})")
+
         for _ in range(num_actors):
             actor, ready_ref = self._create_actor_fn()
             self.add_pending_actor(actor, ready_ref)
@@ -851,16 +855,17 @@ class _ActorPool(AutoscalingActorPool):
 
         return ref
 
-    def actor_info_counts(self) -> Tuple[int, int, int]:
-        """Returns Actor counts for Alive, Restarting and Pending Actors."""
-        alive = self.num_alive_actors()
-        pending = self.num_pending_actors()
-        restarting = self.num_restarting_actors()
-        return alive, pending, restarting
+    def get_actor_info(self) -> _ActorInfo:
+        """Returns current snapshot of actors' being used in the pool"""
+        return _ActorInfo(
+            running=self.num_alive_actors(),
+            pending=self.num_pending_actors(),
+            restarting=self.num_restarting_actors(),
+        )
 
-    def actor_info_progress_str(self) -> str:
+    def _get_summary_str(self) -> str:
         """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
-        alive, pending, restarting = self.actor_info_counts()
+        alive, pending, restarting = self.get_actor_info()
         total = alive + pending + restarting
         if total == alive:
             return f"; Actors: {total}"
