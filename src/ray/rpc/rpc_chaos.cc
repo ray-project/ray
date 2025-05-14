@@ -27,13 +27,14 @@ namespace rpc {
 namespace testing {
 namespace {
 
-/*
-  RpcFailureManager is a simple chaos testing framework. Before starting ray, users
-  should set up os environment to use this feature for testing purposes.
-  To use this, simply do
-      export RAY_testing_rpc_failure="method1=3:25:50,method2=5:25:25"
-   Key is the RPC call name and value is the max number of failures to inject.
-*/
+// RpcFailureManager is a simple chaos testing framework. Before starting ray, users
+// should set up os environment to use this feature for testing purposes.
+// To use this, simply do
+//     export RAY_testing_rpc_failure="method1=3:25:50,method2=5:25:25"
+// Key is the RPC call name and value is a three part colon separated structure. It
+// contains the max number of failures to inject + probability of req failure +
+// probability of reply failure.
+
 class RpcFailureManager {
  public:
   RpcFailureManager() { Init(); }
@@ -79,7 +80,7 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    std::uniform_int_distribution<int> dist(0, 100);
+    std::uniform_int_distribution<int> dist(1, 100);
     const int random_number = dist(gen_);
     if (random_number <= failable.req_failure_prob) {
       failable.num_failures--;
