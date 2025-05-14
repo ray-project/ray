@@ -97,7 +97,6 @@ def test_actor_pool_scaling():
             with patch(op, "_inputs_complete", False, is_method=False):
                 assert_autoscaling_action(_AutoscalingAction.NO_OP)
 
-
     # Should be no-op since the op doesn't have enough resources.
     with patch(
         op_state._scheduling_status,
