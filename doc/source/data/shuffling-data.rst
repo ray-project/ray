@@ -76,7 +76,7 @@ ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order
     shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
 
 Randomizing block order
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 :ref:`See Key Concepts <key-concepts>`
 

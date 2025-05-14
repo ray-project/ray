@@ -101,7 +101,7 @@ Ray Data implements two main shuffle algorithms that power different operations:
 .. _hash-shuffle:
 
 Hash-shuffling
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
 .. note:: Hash-shuffling is available in Ray 2.46
 
