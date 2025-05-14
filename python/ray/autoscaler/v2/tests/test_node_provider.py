@@ -676,21 +676,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         Validate _get_workers_delete_info correctly returns the worker groups with pending
         deletes, worker groups with finished deletes, and the set of workers to delete.
         """
-        # Setup provider with multiple worker pods in podlist. We set replicas to 0
-        # to simulate the case where the autoscaler patches the RayCluster `replicas: 0`
-        # but alive Pods still exist in workersToDelete.
+        # Create a RayCluster CR and set replicas to 0 to simulate the case where the autoscaler
+        # patches the RayCluster with `replicas: 0`, but alive Pods still exist in workersToDelete.
         raycluster_cr = get_basic_ray_cr()
         raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 0
         self.mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
-        )
-        self.provider = KubeRayProvider(
-            cluster_name="test",
-            provider_config={
-                "namespace": "default",
-                "head_node_type": "headgroup",
-            },
-            k8s_api_client=self.mock_client,
         )
 
         # Add some workers to workersToDelete.
@@ -707,9 +698,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             pending_deletes,
             finished_deletes,
             workers_to_delete,
-        ) = self.provider._get_workers_delete_info(
-            raycluster_cr, self.provider.get_non_terminated()
-        )
+        ) = KubeRayProvider._get_workers_delete_info(raycluster_cr, set(pod_names))
 
         # Validate _get_workers_delete_info populates sets as expected.
         assert pending_deletes == {"small-group"}
