@@ -3373,14 +3373,14 @@ py_test(
 # subdirectory: algorithms/
 # ....................................
 py_test(
-    name = "examples/algorithms/custom_algorithm_w_shared_data_actor",
+    name = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor",
     size = "medium",
-    srcs = ["examples/algorithms/custom_algorithm_w_shared_data_actor.py"],
+    srcs = ["examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py"],
     args = [
         "--enable-new-api-stack",
         "--as-test",
     ],
-    main = "examples/algorithms/custom_algorithm_w_shared_data_actor.py",
+    main = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py",
     tags = [
         "examples",
         "team:rllib",
