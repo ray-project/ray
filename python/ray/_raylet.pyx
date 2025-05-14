@@ -3881,10 +3881,10 @@ cdef class CoreWorker:
                                 name,
                                 c_strategy,
                                 bundles,
-                                bundle_label_selector,
                                 is_detached,
                                 max_cpu_fraction_per_node,
-                                c_soft_target_node_id),
+                                c_soft_target_node_id,
+                                bundle_label_selector),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
