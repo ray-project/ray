@@ -633,15 +633,6 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
-
-        This method will be called in summary_str API in OpState. Subclasses can
-        override it to return Actor progress strings for Alive, Restarting and Pending
-        Actors.
-        """
-        return ""
-
     def get_actor_info(self) -> _ActorInfo:
         """Returns the current status of actors being used by the operator"""
         return _ActorInfo(running=0, pending=0, restarting=0)

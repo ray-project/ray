@@ -22,7 +22,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
-    Waitable,
+    Waitable, _ActorInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -288,7 +288,7 @@ class OpState:
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
-        desc += self.op.actor_info_progress_str()
+        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
         desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
@@ -702,3 +702,16 @@ def _rank_operators(
         )
 
     return [_ranker(op) for op in ops]
+
+def _actor_info_summary_str(info: _ActorInfo) -> str:
+    total = info.running + info.pending + info.restarting
+    base = f"Actors: {total}"
+
+    if total == info.running:
+        return base
+    else:
+        return (
+            f"{base} (running={info.running}, restarting={info.restarting}, "
+            f"pending={info.pending})"
+        )
+

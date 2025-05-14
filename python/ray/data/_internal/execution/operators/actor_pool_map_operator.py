@@ -421,10 +421,6 @@ class ActorPoolMapOperator(MapOperator):
             else:
                 self._actor_pool.update_running_actor_state(actor, False)
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
-        return self._actor_pool._get_summary_str()
-
     def get_actor_info(self) -> _ActorInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
@@ -862,18 +858,6 @@ class _ActorPool(AutoscalingActorPool):
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),
         )
-
-    def _get_summary_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
-        alive, pending, restarting = self.get_actor_info()
-        total = alive + pending + restarting
-        if total == alive:
-            return f"; Actors: {total}"
-        else:
-            return (
-                f"; Actors: {total} (alive {alive}, restarting {restarting}, "
-                f"pending {pending})"
-            )
 
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
