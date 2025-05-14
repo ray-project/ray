@@ -49,7 +49,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
         [worker_client_pool, worker_id, node_id](const Status &status,
                                                  rpc::IsLocalWorkerDeadReply &&reply) {
           if (!status.ok()) {
-            RAY_LOG(ERROR).WithField(worker_id).WithField(node_id)
+            RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                 << "Failed to check if worker is dead on request to raylet";
             return;
           }
