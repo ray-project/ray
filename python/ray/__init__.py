@@ -62,22 +62,30 @@ def _configure_system():
         # TODO(zhaoch23): Cache the internal psutil. Remove this import if we
         # decide to replace all import psutil with from ray._private import psutil.
         import psutil  # noqa: F401
-        import colorama  # noqa: F401
 
-        existing_module = sys.modules.get("setproctitle")
+        existing_setproctitle_module = sys.modules.get("setproctitle")
+        existing_colorama_module = sys.modules.get("colorama")
 
-        if existing_module is not None:
+        if existing_setproctitle_module is not None:
             del sys.modules["setproctitle"]  # Clear the cache
+        if existing_colorama_module is not None:
+            del sys.modules["colorama"]  # Clear the cache
 
         import setproctitle
+        import colorama
 
         sys.modules[f"ray._private.setproctitle"] = setproctitle
+        sys.modules[f"ray._private.colorama"] = colorama
 
         # Restore the user's module
-        if existing_module:
-            sys.modules["setproctitle"] = existing_module
+        if existing_setproctitle_module:
+            sys.modules["setproctitle"] = existing_setproctitle_module
         else:
             del sys.modules["setproctitle"]
+        if existing_colorama_module:
+            sys.modules["colorama"] = existing_colorama_module
+        else:
+            del sys.modules["colorama"]
     finally:
         sys.path = original_sys_path
 
