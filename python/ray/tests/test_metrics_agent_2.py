@@ -12,7 +12,10 @@ from typing import List
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
-from opencensus.stats.aggregation_data import LastValueAggregationData
+from opencensus.stats.aggregation_data import (
+    LastValueAggregationData,
+    SumAggregationData,
+)
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.metrics.export.value import ValueDouble
 from prometheus_client.core import REGISTRY
@@ -551,6 +554,23 @@ def _stub_worker_level_metric(label: str, value: float) -> OpencensusProxyMetric
         LastValueAggregationData(ValueDouble, value),
     )
     return metric
+
+
+def test_aggregate_metric_data():
+    collector = OpenCensusProxyCollector("")
+    collector._aggregate_metric_data(
+        [
+            LastValueAggregationData(ValueDouble, 1.0),
+            LastValueAggregationData(ValueDouble, 2.0),
+            LastValueAggregationData(ValueDouble, 3.0),
+        ]
+    ).value == 6.0
+    collector._aggregate_metric_data(
+        [
+            SumAggregationData(ValueDouble, 1.0),
+            SumAggregationData(ValueDouble, 4.0),
+        ]
+    ).sum_data == 5.0
 
 
 def test_collect_worker_metrics_with_recommended_cardinality():
