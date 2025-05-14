@@ -31,7 +31,7 @@ from ray.serve._private.replica_scheduler.replica_wrapper import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwareReplicaSchedulerSimple(
+class PrefixAwareReplicaScheduler(
     FIFOMixin, MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.

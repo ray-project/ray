@@ -691,13 +691,13 @@ class LLMServer(_LLMServerBase):
         return LLMDeployment.options(**deployment_options)
 
 
-from work.ray.python.ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
-    PrefixAwareReplicaSchedulerSimple,
+from ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
+    PrefixAwareReplicaScheduler,
 )
 
 
 @serve.deployment(
-    replica_scheduler=PrefixAwareReplicaSchedulerSimple,
+    replica_scheduler=PrefixAwareReplicaScheduler,
     # TODO make this configurable
     autoscaling_config={
         "min_replicas": 1,
