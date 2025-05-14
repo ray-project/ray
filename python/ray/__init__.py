@@ -50,46 +50,42 @@ def _configure_system():
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
     )
-    if not os.path.exists(thirdparty_files):
-        logger.warning(
-            f"thirdparty_files not found at {thirdparty_files}. "
-            "Using the default libraries."
-        )
 
     # Temporarily add thirdparty_files to sys.path to import the libraries,
     # but ensure we restore path and properly isolate the imports
     original_sys_path = sys.path.copy()
     sys.path.insert(0, thirdparty_files)
+
+    existing_setproctitle_module = sys.modules.get("setproctitle")
+    existing_colorama_module = sys.modules.get("colorama")
+
+    if existing_setproctitle_module is not None:
+        del sys.modules["setproctitle"]  # Clear the cache
+    if existing_colorama_module is not None:
+        del sys.modules["colorama"]  # Clear the cache
     try:
         # TODO(zhaoch23): Cache the internal psutil. Remove this import if we
         # decide to replace all import psutil with from ray._private import psutil.
         import psutil  # noqa: F401
 
-        existing_setproctitle_module = sys.modules.get("setproctitle")
-        existing_colorama_module = sys.modules.get("colorama")
-
-        if existing_setproctitle_module is not None:
-            del sys.modules["setproctitle"]  # Clear the cache
-        if existing_colorama_module is not None:
-            del sys.modules["colorama"]  # Clear the cache
-
         import setproctitle
         import colorama
-
+        
         sys.modules["ray._private.setproctitle"] = setproctitle
         sys.modules["ray._private.colorama"] = colorama
 
-        # Restore the user's module
-        if existing_setproctitle_module:
-            sys.modules["setproctitle"] = existing_setproctitle_module
-        else:
-            del sys.modules["setproctitle"]
-        if existing_colorama_module:
-            sys.modules["colorama"] = existing_colorama_module
-        else:
-            del sys.modules["colorama"]
-    finally:
+        del sys.modules["setproctitle"]
+        del sys.modules["colorama"]
+    except ImportError:
+        logger.warning(f"Error importing setproctitle and colorama.")
+    else: # Restore the original sys.path if no error
         sys.path = original_sys_path
+
+    # Restore the user's module
+    if existing_setproctitle_module:
+        sys.modules["setproctitle"] = existing_setproctitle_module
+    if existing_colorama_module:
+        sys.modules["colorama"] = existing_colorama_module
 
     if (
         platform.system() == "Linux"
