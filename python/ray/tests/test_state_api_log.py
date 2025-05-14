@@ -984,7 +984,10 @@ def test_log_download_filename(ray_start_with_dashboard):
 
     stream_response = requests.get(
         webui_url
-        + f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out&lines=5&download_filename={download_filename}",
+        + (
+            f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
+            f"&lines=5&download_filename={download_filename}"
+        ),
     )
     if stream_response.status_code != 200:
         raise ValueError(stream_response.content.decode("utf-8"))
