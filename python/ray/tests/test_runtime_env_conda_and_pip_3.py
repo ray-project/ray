@@ -21,17 +21,18 @@ class TestGC:
         os.environ.get("CI") and sys.platform != "linux",
         reason="Needs PR wheels built in CI, so only run on linux CI machines.",
     )
-    @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_actor_level_gc(
-        self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
+        self, runtime_env_disable_URI_cache, start_cluster, tmp_path
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         cluster, address = start_cluster
 
         ray.init(address)
 
-        runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+        conda_runtime_env = generate_runtime_env_dict(
+            "conda", "python_object", tmp_path
+        )
+        pip_runtime_env = generate_runtime_env_dict("pip", "python_object", tmp_path)
 
         @ray.remote
         class A:
@@ -40,14 +41,15 @@ class TestGC:
 
                 return True
 
-        NUM_ACTORS = 5
-        actors = [
-            A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
+        conda_actors = [
+            A.options(runtime_env=conda_runtime_env).remote() for _ in range(2)
         ]
-        ray.get([a.test_import.remote() for a in actors])
-        for i in range(5):
+        pip_actors = [A.options(runtime_env=pip_runtime_env).remote() for _ in range(2)]
+        ray.get([a.test_import.remote() for a in conda_actors + pip_actors])
+        for a in conda_actors + pip_actors:
             assert not check_local_files_gced(cluster)
-            ray.kill(actors[i])
+            ray.kill(a)
+
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
     @pytest.mark.skipif(
@@ -73,13 +75,11 @@ class TestGC:
         indirect=True,
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_task_level_gc(
         self,
         runtime_env_disable_URI_cache,
         ray_start_cluster,
         field,
-        spec_format,
         tmp_path,
     ):
         """Tests that task-level working_dir is GC'd when the task exits."""
@@ -94,7 +94,7 @@ class TestGC:
         ):
             soft_limit_zero = True
 
-        runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+        runtime_env = generate_runtime_env_dict(field, "python_file", tmp_path)
 
         @ray.remote
         def f():
