@@ -208,6 +208,9 @@ class HttpServerDashboardHead:
                     http_status=status_tag,
                     Version=ray.__version__,
                     SessionName=self._session_name,
+                    StorageNamespace=os.environ.get(
+                        "RAY_external_storage_namespace", "default"
+                    ),
                     Component="dashboard",
                 ).observe(resp_time)
                 self.metrics.metrics_request_count.labels(
@@ -216,6 +219,9 @@ class HttpServerDashboardHead:
                     http_status=status_tag,
                     Version=ray.__version__,
                     SessionName=self._session_name,
+                    StorageNamespace=os.environ.get(
+                        "RAY_external_storage_namespace", "default"
+                    ),
                     Component="dashboard",
                 ).inc()
             except Exception as e:

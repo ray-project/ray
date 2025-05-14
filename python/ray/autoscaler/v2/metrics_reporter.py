@@ -1,3 +1,5 @@
+import os
+
 from collections import defaultdict
 from typing import Dict, List
 
@@ -47,15 +49,27 @@ class AutoscalerMetricsReporter:
 
         for instance_type, status_count in status_count_by_type.items():
             self._prom_metrics.pending_nodes.labels(
-                SessionName=self._prom_metrics.session_name, NodeType=instance_type
+                SessionName=self._prom_metrics.session_name,
+                NodeType=instance_type,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(status_count["pending"])
 
             self._prom_metrics.active_nodes.labels(
-                SessionName=self._prom_metrics.session_name, NodeType=instance_type
+                SessionName=self._prom_metrics.session_name,
+                NodeType=instance_type,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(status_count["running"])
 
             self._prom_metrics.recently_failed_nodes.labels(
-                SessionName=self._prom_metrics.session_name, NodeType=instance_type
+                SessionName=self._prom_metrics.session_name,
+                NodeType=instance_type,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(status_count["terminating"])
 
             self._prom_metrics.stopped_nodes.inc(status_count["terminated"])
@@ -91,10 +105,18 @@ class AutoscalerMetricsReporter:
 
         for resource_name, resource_value in pending_resources.items():
             self._prom_metrics.pending_resources.labels(
-                SessionName=self._prom_metrics.session_name, resource=resource_name
+                SessionName=self._prom_metrics.session_name,
+                resource=resource_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(resource_value)
 
         for resource_name, resource_value in cluster_resources.items():
             self._prom_metrics.cluster_resources.labels(
-                SessionName=self._prom_metrics.session_name, resource=resource_name
+                SessionName=self._prom_metrics.session_name,
+                resource=resource_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(resource_value)

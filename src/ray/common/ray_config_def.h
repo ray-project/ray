@@ -399,6 +399,8 @@ RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
+// Enable redis operations status reporting.
+RAY_CONFIG(bool, enable_redis_operations_observing, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)

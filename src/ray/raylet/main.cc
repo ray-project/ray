@@ -457,7 +457,9 @@ int main(int argc, char *argv[]) {
             {ray::stats::WorkerIdKey, ""},
             {ray::stats::VersionKey, kRayVersion},
             {ray::stats::NodeAddressKey, node_ip_address},
-            {ray::stats::SessionNameKey, session_name}};
+            {ray::stats::SessionNameKey, session_name},
+            {ray::stats::StorageNamespaceKey,
+             RayConfig::instance().external_storage_namespace()}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
         ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);

@@ -398,6 +398,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "Version": ray.__version__,
             "Component": self._component,
             "SessionName": self.session_name,
+            "StorageNamespace": os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         }
         self.metrics.metrics_dashboard_cpu.labels(**labels).set(
             float(self._dashboard_proc.cpu_percent())

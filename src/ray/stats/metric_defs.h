@@ -112,6 +112,10 @@ DECLARE_stats(gcs_task_manager_task_events_dropped);
 DECLARE_stats(gcs_task_manager_task_events_stored);
 DECLARE_stats(gcs_task_manager_task_events_reported);
 
+/// Redis monitor
+DECLARE_stats(redis_operation_count);
+DECLARE_stats(redis_operation_data_size_bytes);
+
 /// Object Store
 DECLARE_stats(object_store_memory);
 DECLARE_stats(object_store_dist);

@@ -305,14 +305,27 @@ DEFINE_stats(spill_manager_throughput_mb,
 /// GCS Storage
 DEFINE_stats(gcs_storage_operation_latency_ms,
              "Time to invoke an operation on Gcs storage",
-             ("Operation"),
+             ("Operation", "TableName"),
              ({0.1, 1, 10, 100, 1000, 10000}, ),
              ray::stats::HISTOGRAM);
 DEFINE_stats(gcs_storage_operation_count,
              "Number of operations invoked on Gcs storage",
-             ("Operation"),
+             ("Operation", "TableName"),
              (),
              ray::stats::COUNT);
+
+/// Redis Monitor
+DEFINE_stats(redis_operation_count,
+             "Number of operations invoked on Redis",
+             ("Operation", "TableName"),
+             (),
+             ray::stats::COUNT);
+DEFINE_stats(redis_operation_data_size_bytes,
+             "Data size of an operation on Redis includes input data size for write "
+             "operations and output data size for read operations",
+             ("Operation", "TableName", "Type"),
+             (),
+             ray::stats::SUM);
 
 /// Placement Group
 // The end to end placement group creation latency.

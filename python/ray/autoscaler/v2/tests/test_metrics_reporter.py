@@ -75,20 +75,32 @@ def test_report_nodes_resources():
 
     assert _get_metrics(
         reporter._prom_metrics.active_nodes.labels(
-            SessionName="test", NodeType="type_1"
+            SessionName="test",
+            NodeType="type_1",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_active_nodes",
     ) == [3]
     assert _get_metrics(
         reporter._prom_metrics.pending_nodes.labels(
-            SessionName="test", NodeType="type_1"
+            SessionName="test",
+            NodeType="type_1",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_pending_nodes",
     ) == [4]
 
     assert _get_metrics(
         reporter._prom_metrics.recently_failed_nodes.labels(
-            SessionName="test", NodeType="type_1"
+            SessionName="test",
+            NodeType="type_1",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_recently_failed_nodes",
     ) == [1]
@@ -102,28 +114,44 @@ def test_report_nodes_resources():
 
     assert _get_metrics(
         reporter._prom_metrics.cluster_resources.labels(
-            SessionName="test", resource="CPU"
+            SessionName="test",
+            resource="CPU",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_cluster_resources",
     ) == [3]
 
     assert _get_metrics(
         reporter._prom_metrics.cluster_resources.labels(
-            SessionName="test", resource="GPU"
+            SessionName="test",
+            resource="GPU",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_cluster_resources",
     ) == [1]
 
     assert _get_metrics(
         reporter._prom_metrics.pending_resources.labels(
-            SessionName="test", resource="CPU"
+            SessionName="test",
+            resource="CPU",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_pending_resources",
     ) == [4]
 
     assert _get_metrics(
         reporter._prom_metrics.pending_resources.labels(
-            SessionName="test", resource="GPU"
+            SessionName="test",
+            resource="GPU",
+            StorageNamespace=os.environ.get(
+                "RAY_external_storage_namespace", "default"
+            ),
         ).collect(),
         "autoscaler_pending_resources",
     ) == [2]

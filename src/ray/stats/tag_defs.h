@@ -46,6 +46,8 @@ extern const TagKeyType NameKey;
 
 extern const TagKeyType SourceKey;
 
+extern const TagKeyType StorageNamespaceKey;
+
 // Object store memory location tag constants
 extern const TagKeyType LocationKey;
 

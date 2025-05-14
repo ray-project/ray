@@ -1,4 +1,5 @@
 from typing import Optional
+import os
 
 
 class NullMetric:
@@ -72,39 +73,64 @@ try:
                 "batch will be observed once for *each* node in that batch. "
                 "For example, if 8 nodes are launched in 3 minutes, a launch "
                 "time of 3 minutes will be observed 8 times.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="seconds",
                 namespace="autoscaler",
                 registry=self.registry,
                 buckets=histogram_buckets,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.worker_update_time: Histogram = Histogram(
                 "worker_update_time_seconds",
                 "Worker update time. This is the time between when an updater "
                 "thread begins executing and when it exits successfully. This "
                 "metric only observes times for successful updates.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="seconds",
                 namespace="autoscaler",
                 registry=self.registry,
                 buckets=histogram_buckets,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.update_time: Histogram = Histogram(
                 "update_time",
                 "Autoscaler update time. This is the time for an autoscaler "
                 "update iteration to complete.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="seconds",
                 namespace="autoscaler",
                 registry=self.registry,
                 buckets=update_time_buckets,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.pending_nodes: Gauge = Gauge(
                 "pending_nodes",
                 "Number of nodes pending to be started.",
                 labelnames=(
                     "NodeType",
                     "SessionName",
+                    "StorageNamespace",
                 ),
                 unit="nodes",
                 namespace="autoscaler",
@@ -116,6 +142,7 @@ try:
                 labelnames=(
                     "NodeType",
                     "SessionName",
+                    "StorageNamespace",
                 ),
                 unit="nodes",
                 namespace="autoscaler",
@@ -128,6 +155,7 @@ try:
                 labelnames=(
                     "NodeType",
                     "SessionName",
+                    "StorageNamespace",
                 ),
                 unit="nodes",
                 namespace="autoscaler",
@@ -136,133 +164,253 @@ try:
             self.started_nodes: Counter = Counter(
                 "started_nodes",
                 "Number of nodes started.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.stopped_nodes: Counter = Counter(
                 "stopped_nodes",
                 "Number of nodes stopped.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.updating_nodes: Gauge = Gauge(
                 "updating_nodes",
                 "Number of nodes in the process of updating.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.recovering_nodes: Gauge = Gauge(
                 "recovering_nodes",
                 "Number of nodes in the process of recovering.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.running_workers: Gauge = Gauge(
                 "running_workers",
                 "Number of worker nodes running.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.failed_create_nodes: Counter = Counter(
                 "failed_create_nodes",
                 "Number of nodes that failed to be created due to an "
                 "exception in the node provider's create_node method.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.failed_updates: Counter = Counter(
                 "failed_updates",
                 "Number of failed worker node updates.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="updates",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.successful_updates: Counter = Counter(
                 "successful_updates",
                 "Number of succesfful worker node updates.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="updates",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.failed_recoveries: Counter = Counter(
                 "failed_recoveries",
                 "Number of failed node recoveries.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="recoveries",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.successful_recoveries: Counter = Counter(
                 "successful_recoveries",
                 "Number of successful node recoveries.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="recoveries",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.update_loop_exceptions: Counter = Counter(
                 "update_loop_exceptions",
                 "Number of exceptions raised in the update loop of the autoscaler.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.node_launch_exceptions: Counter = Counter(
                 "node_launch_exceptions",
                 "Number of exceptions raised while launching nodes.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.reset_exceptions: Counter = Counter(
                 "reset_exceptions",
                 "Number of exceptions raised while resetting the autoscaler.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.config_validation_exceptions: Counter = Counter(
                 "config_validation_exceptions",
                 "Number of exceptions raised while validating the config "
                 "during a reset.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             self.drain_node_exceptions: Counter = Counter(
                 "drain_node_exceptions",
                 "Number of exceptions raised when making a DrainNode rpc"
                 "prior to node termination.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "SessionName",
+                    "StorageNamespace",
+                ),
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            ).labels(
+                SessionName=session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
+            )
             # This represents the autoscaler's view of essentially
             # `ray.cluster_resources()`, it may be slightly different from the
             # core metric from an eventual consistency perspective.
             self.cluster_resources: Gauge = Gauge(
                 "cluster_resources",
                 "Total logical resources in the cluster.",
-                labelnames=("resource", "SessionName"),
+                labelnames=("resource", "SessionName", "StorageNamespace"),
                 unit="resources",
                 namespace="autoscaler",
                 registry=self.registry,
@@ -272,7 +420,7 @@ try:
             self.pending_resources: Gauge = Gauge(
                 "pending_resources",
                 "Pending logical resources in the cluster.",
-                labelnames=("resource", "SessionName"),
+                labelnames=("resource", "SessionName", "StorageNamespace"),
                 unit="resources",
                 namespace="autoscaler",
                 registry=self.registry,

@@ -290,7 +290,13 @@ class GcsTableStorage {
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
   explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
+      : GcsTableStorage(
+            RayConfig::instance().enable_redis_operations_observing()
+                ? std::static_pointer_cast<StoreClient>(
+                      std::make_shared<ObservableStoreClient>(
+                          std::make_unique<RedisStoreClient>(std::move(redis_client))))
+                : std::static_pointer_cast<StoreClient>(
+                      std::make_shared<RedisStoreClient>(std::move(redis_client)))) {}
 };
 
 /// \class InMemoryGcsTableStorage

@@ -210,7 +210,9 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       {ray::stats::WorkerIdKey, worker_id_.Hex()},
       {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, options_.node_ip_address},
-      {ray::stats::SessionNameKey, options_.session_name}};
+      {ray::stats::SessionNameKey, options_.session_name},
+      {ray::stats::StorageNamespaceKey,
+       RayConfig::instance().external_storage_namespace()}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize

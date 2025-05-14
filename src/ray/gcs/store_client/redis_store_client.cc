@@ -23,12 +23,14 @@
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
 
+using namespace ray::stats;
 namespace {
 
 constexpr std::string_view kClusterSeparator = "@";
@@ -60,6 +62,13 @@ std::vector<RedisCommand> GenCommandsBatched(const std::string &command,
   return batched_requests;
 }
 
+template <typename Record>
+void conditional_record(Record record) {
+  if (RayConfig::instance().enable_redis_operations_observing()) {
+    record();
+  }
+}
+
 }  // namespace
 
 std::string RedisKey::ToString() const {
@@ -88,21 +97,33 @@ void RedisStoreClient::MGetValues(
           std::move(callback));
 
   for (auto &command : batched_commands) {
+    conditional_record([&table_name] {
+      STATS_redis_operation_count.Record(
+          1, {{"Operation", "HMGET"}, {"TableName", table_name}});
+    });
     auto mget_callback = [finished_count,
                           total_count,
                           // Copies!
                           args = command.args,
                           // Copies!
                           shared_callback,
-                          key_value_map](const std::shared_ptr<CallbackReply> &reply) {
+                          key_value_map,
+                          table_name](const std::shared_ptr<CallbackReply> &reply) {
+      size_t total_size = 0;
       if (!reply->IsNil()) {
         auto value = reply->ReadAsStringArray();
         for (size_t index = 0; index < value.size(); ++index) {
           if (value[index].has_value()) {
             (*key_value_map)[args[index]] = *(value[index]);
+            total_size += (*(value[index])).size();
           }
         }
       }
+      conditional_record([&table_name, &total_size] {
+        STATS_redis_operation_data_size_bytes.Record(
+            total_size,
+            {{"Operation", "HMGET"}, {"TableName", table_name}, {"Type", "Output"}});
+      });
 
       ++(*finished_count);
       if (*finished_count == total_count) {
@@ -136,6 +157,17 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
         auto added_num = reply->ReadAsInteger();
         std::move(callback).Dispatch("RedisStoreClient.AsyncPut", added_num != 0);
       };
+  conditional_record([&table_name, &overwrite] {
+    STATS_redis_operation_count.Record(
+        1, {{"Operation", overwrite ? "HSET" : "HSETNX"}, {"TableName", table_name}});
+  });
+  conditional_record([&table_name, &overwrite, &command] {
+    STATS_redis_operation_data_size_bytes.Record(
+        command.args[1].size(),
+        {{"Operation", overwrite ? "HSET" : "HSETNX"},
+         {"TableName", table_name},
+         {"Type", "Input"}});
+  });
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
   return Status::OK();
 }
@@ -144,11 +176,16 @@ Status RedisStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
     ToPostable<OptionalItemCallback<std::string>> callback) {
-  auto redis_callback = [callback = std::move(callback)](
+  auto redis_callback = [callback = std::move(callback), table_name](
                             const std::shared_ptr<CallbackReply> &reply) mutable {
     std::optional<std::string> result;
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
+      conditional_record([&table_name, &result] {
+        STATS_redis_operation_data_size_bytes.Record(
+            (*result).size(),
+            {{"Operation", "HGET"}, {"TableName", table_name}, {"Type", "Output"}});
+      });
     }
     Status status = Status::OK();
     if (reply->IsError()) {
@@ -160,6 +197,10 @@ Status RedisStoreClient::AsyncGet(
   RedisCommand command{/*command=*/"HGET",
                        RedisKey{external_storage_namespace_, table_name},
                        /*args=*/{key}};
+  conditional_record([&table_name] {
+    STATS_redis_operation_count.Record(
+        1, {{"Operation", "HGET"}, {"TableName", table_name}});
+  });
   SendRedisCmdArgsAsKeys(std::move(command), std::move(redis_callback));
   return Status::OK();
 }
@@ -332,6 +373,10 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
   auto shared_callback = std::make_shared<Postable<void(int64_t)>>(std::move(callback));
 
   for (auto &command : del_cmds) {
+    conditional_record([&table] {
+      STATS_redis_operation_count.Record(1,
+                                         {{"Operation", "HDEL"}, {"TableName", table}});
+    });
     // `callback` is copied to each `delete_callback` lambda. Don't move.
     auto delete_callback = [num_deleted, finished_count, total_count, shared_callback](
                                const std::shared_ptr<CallbackReply> &reply) {
@@ -406,6 +451,10 @@ void RedisStoreClient::RedisScanner::Scan() {
       [this, self_ref = self_ref_](const std::shared_ptr<CallbackReply> &reply) {
         OnScanCallback(reply);
       });
+  conditional_record([this] {
+    STATS_redis_operation_count.Record(
+        1, {{"Operation", "HSCAN"}, {"TableName", redis_key_.table_name}});
+  });
 }
 
 void RedisStoreClient::RedisScanner::OnScanCallback(
@@ -413,6 +462,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
   size_t cursor = reply->ReadAsScanArray(&scan_result);
+  size_t total_size = 0;
   // Update cursor and results_.
   {
     absl::MutexLock lock(&mutex_);
@@ -430,8 +480,15 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
     RAY_CHECK(scan_result.size() % 2 == 0);
     for (size_t i = 0; i < scan_result.size(); i += 2) {
       results_.emplace(std::move(scan_result[i]), std::move(scan_result[i + 1]));
+      total_size += scan_result[i].size() + scan_result[i + 1].size();
     }
   }
+  conditional_record([this, &total_size] {
+    STATS_redis_operation_data_size_bytes.Record(total_size,
+                                                 {{"Operation", "HSCAN"},
+                                                  {"TableName", redis_key_.table_name},
+                                                  {"Type", "Output"}});
+  });
 
   // If pending_request_count_ is equal to 0, it means that the scan of this batch is
   // completed and the next batch is started if any.
@@ -447,6 +504,10 @@ Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   RedisCommand command = {
       "INCRBY", RedisKey{external_storage_namespace_, "JobCounter"}, {"1"}};
 
+  conditional_record([] {
+    STATS_redis_operation_count.Record(
+        1, {{"Operation", "INCRBY"}, {"TableName", "JobCounter"}});
+  });
   auto *cxt = redis_client_->GetPrimaryContext();
 
   cxt->RunArgvAsync(command.ToRedisArgs(),
@@ -483,6 +544,10 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
                                      Postable<void(bool)> callback) {
   RedisCommand command = {
       "HEXISTS", RedisKey{external_storage_namespace_, table_name}, {key}};
+  conditional_record([&table_name] {
+    STATS_redis_operation_count.Record(
+        1, {{"Operation", "HEXISTS"}, {"TableName", table_name}});
+  });
   SendRedisCmdArgsAsKeys(
       std::move(command),
       [callback =
@@ -538,6 +603,10 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto *context = cli->GetPrimaryContext();
   auto delete_one_sync = [context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"UNLINK", key};
+    conditional_record([] {
+      STATS_redis_operation_count.Record(
+          1, {{"Operation", "UNLINK"}, {"TableName", "UNKNOWN"}});
+    });
     std::promise<std::shared_ptr<CallbackReply>> promise;
     context->RunArgvAsync(del_cmd,
                           [&promise](const std::shared_ptr<CallbackReply> &reply) {
@@ -581,6 +650,10 @@ void Scanner::Scan(const std::function<void()> on_done) {
         OnScanCallback(reply, std::move(on_done));
       };
   redis_client_->GetPrimaryContext()->RunArgvAsync(cmd, std::move(scan_callback));
+  conditional_record([] {
+    STATS_redis_operation_count.Record(1,
+                                       {{"Operation", "SCAN"}, {"TableName", "UNKNOWN"}});
+  });
 }
 
 void Scanner::OnScanCallback(const std::shared_ptr<CallbackReply> &reply,
@@ -588,6 +661,15 @@ void Scanner::OnScanCallback(const std::shared_ptr<CallbackReply> &reply,
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
   cursor_ = reply->ReadAsScanArray(&scan_result);
+  size_t total_size = 0;
+  for (auto &res : scan_result) {
+    total_size += res.size();
+  }
+  conditional_record([&total_size] {
+    STATS_redis_operation_data_size_bytes.Record(
+        total_size,
+        {{"Operation", "SCAN"}, {"TableName", "UNKNOWN"}, {"Type", "Output"}});
+  });
   keys_.reserve(keys_.size() + scan_result.size());
   keys_.insert(keys_.end(),
                std::make_move_iterator(scan_result.begin()),

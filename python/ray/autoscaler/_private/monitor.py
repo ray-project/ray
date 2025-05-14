@@ -467,10 +467,16 @@ class Monitor:
             self.prom_metrics.cluster_resources.labels(
                 resource=resource_name,
                 SessionName=self.prom_metrics.session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(total)
             self.prom_metrics.pending_resources.labels(
                 resource=resource_name,
                 SessionName=self.prom_metrics.session_name,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(pending)
 
         pending_node_count = Counter()
@@ -485,6 +491,9 @@ class Monitor:
             self.prom_metrics.pending_nodes.labels(
                 SessionName=self.prom_metrics.session_name,
                 NodeType=node_type,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(count)
 
         for node_type in node_types:
@@ -492,6 +501,9 @@ class Monitor:
             self.prom_metrics.active_nodes.labels(
                 SessionName=self.prom_metrics.session_name,
                 NodeType=node_type,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(count)
 
         failed_node_counts = Counter()
@@ -506,6 +518,9 @@ class Monitor:
             self.prom_metrics.recently_failed_nodes.labels(
                 SessionName=self.prom_metrics.session_name,
                 NodeType=node_type,
+                StorageNamespace=os.environ.get(
+                    "RAY_external_storage_namespace", "default"
+                ),
             ).set(count)
 
     def update_event_summary(self):

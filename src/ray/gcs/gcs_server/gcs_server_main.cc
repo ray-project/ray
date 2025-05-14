@@ -119,11 +119,14 @@ int main(int argc, char *argv[]) {
 
   ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
-                                            {ray::stats::WorkerIdKey, ""},
-                                            {ray::stats::VersionKey, kRayVersion},
-                                            {ray::stats::NodeAddressKey, node_ip_address},
-                                            {ray::stats::SessionNameKey, session_name}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::WorkerIdKey, ""},
+      {ray::stats::VersionKey, kRayVersion},
+      {ray::stats::NodeAddressKey, node_ip_address},
+      {ray::stats::SessionNameKey, session_name},
+      {ray::stats::StorageNamespaceKey,
+       RayConfig::instance().external_storage_namespace()}};
   ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.

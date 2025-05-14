@@ -2840,6 +2840,7 @@ ray_cc_library(
         ":gcs_callback",
         ":gcs_store_client",
         ":redis_client",
+        ":stats_metric",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

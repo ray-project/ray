@@ -1370,6 +1370,9 @@ class ReporterAgent(
                 global_tags={
                     "Version": ray.__version__,
                     "SessionName": self._session_name,
+                    "StorageNamespace": os.environ.get(
+                        "RAY_external_storage_namespace", "default"
+                    ),
                 },
             )
 

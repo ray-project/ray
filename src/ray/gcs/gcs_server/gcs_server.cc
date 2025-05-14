@@ -648,11 +648,17 @@ void GcsServer::InitUsageStatsClient() {
 void GcsServer::InitKVManager() {
   // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
+  std::unique_ptr<StoreClient> store_client;
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
+    if (RayConfig::instance().enable_redis_operations_observing()) {
+      store_client = std::make_unique<ObservableStoreClient>(
+          std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
+    } else {
+      store_client = std::make_unique<RedisStoreClient>(CreateRedisClient(io_context));
+    }
+    instance = std::make_unique<StoreClientInternalKV>(std::move(store_client));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
