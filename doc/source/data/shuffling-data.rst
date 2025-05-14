@@ -100,21 +100,36 @@ To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dat
     # Randomize the block order of this dataset.
     ds = ds.randomize_block_order()
 
-Shuffle all rows (Global shuffle)
+Global shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
-This is the slowest option for shuffle, and requires transferring data across
-network between workers. This option achieves the best randomness among all options.
+To shuffle all rows globally, across the whole dataset, multiple options are available
+
+    1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` will essentially permute and shuffle individual rows
+    from existing blocks into the new ones using (optionally) provided seed.
+
+    2. (**NEW in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter will trigger
+    :ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
+    deterministic way of co-locating rows based on the hash of the column values.
+
+Please note, that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization barrier --
+subsequent operators won't be able to start executing until shuffle completion.
 
 .. testcode::
 
     import ray
+    from ray.data.context import ShuffleStrategy
 
-    ds = (
-        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-        .random_shuffle()
-    )
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+
+    # Random shuffle
+    random_shuffled_ds = ds.random_shuffle()
+
+    # First enable hash-shuffle as shuffling strategy
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    # Hash-shuffle
+    hash_shuffled_ds = ds.repartition(key="id", num_blocks=200)
 
 .. _optimizing_shuffles:
 
