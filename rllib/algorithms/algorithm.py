@@ -3301,9 +3301,9 @@ class Algorithm(Checkpointable, Trainable):
                         # Fire the callback for re-created EnvRunners.
                         if restored:
                             self._make_on_env_runners_recreated_callbacks(
-                                self.config,
-                                self.env_runner_group,
-                                restored,
+                                config=self.config,
+                                env_runner_group=self.env_runner_group,
+                                restored_env_runner_indices=restored,
                             )
 
                     # Try to train one step.
@@ -3435,9 +3435,9 @@ class Algorithm(Checkpointable, Trainable):
             # Fire the callback for re-created EnvRunners.
             if restored:
                 self._make_on_env_runners_recreated_callbacks(
-                    self.evaluation_config,
-                    self.eval_env_runner_group,
-                    restored,
+                    config=self.evaluation_config,
+                    env_runner_group=self.eval_env_runner_group,
+                    restored_env_runner_indices=restored,
                 )
 
         # Run `self.evaluate()` only once per training iteration.
@@ -3627,9 +3627,10 @@ class Algorithm(Checkpointable, Trainable):
 
     def _make_on_env_runners_recreated_callbacks(
         self,
+        *,
         config,
-        restored,
         env_runner_group,
+        restored_env_runner_indices,
     ):
         make_callback(
             "on_env_runners_recreated",
@@ -3638,7 +3639,7 @@ class Algorithm(Checkpointable, Trainable):
             kwargs=dict(
                 algorithm=self,
                 env_runner_group=env_runner_group,
-                env_runner_indices=restored,
+                env_runner_indices=restored_env_runner_indices,
                 is_evaluation=config.in_evaluation,
             ),
         )
@@ -3649,7 +3650,7 @@ class Algorithm(Checkpointable, Trainable):
             kwargs=dict(
                 algorithm=self,
                 worker_set=env_runner_group,
-                worker_ids=restored,
+                worker_ids=restored_env_runner_indices,
                 is_evaluation=config.in_evaluation,
             ),
         )
@@ -4022,9 +4023,9 @@ class Algorithm(Checkpointable, Trainable):
                         # Fire the callback for re-created EnvRunners.
                         if restored:
                             self._make_on_env_runners_recreated_callbacks(
-                                self.config,
-                                self.env_runner_group,
-                                restored,
+                                config=self.config,
+                                env_runner_group=self.env_runner_group,
+                                restored_env_runner_indices=restored,
                             )
 
                     with self._timers[TRAINING_STEP_TIMER]:
