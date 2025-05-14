@@ -242,7 +242,7 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
-
+        self._docs_path: Optional[str] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -322,6 +322,10 @@ class ActorReplicaWrapper:
         current target config for the deployment.
         """
         return self._version.deployment_config
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -691,6 +695,7 @@ class ActorReplicaWrapper:
                         self._version,
                         self._initialization_latency_s,
                         self._port,
+                        self._docs_path,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -955,6 +960,10 @@ class DeploymentReplica:
     @property
     def version(self):
         return self._actor.version
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._actor.docs_path
 
     @property
     def actor_id(self) -> str:
@@ -1390,6 +1399,17 @@ class DeploymentState:
     @property
     def app_name(self) -> str:
         return self._id.app_name
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        replicas = self._replicas.get([ReplicaState.RUNNING])
+        docs_paths = [replica.docs_path for replica in replicas]
+        if len(set(docs_paths)) > 1:
+            raise ValueError(
+                f"All replicas must have the same docs path. "
+                f"Got {docs_paths} for deployment {self._id}."
+            )
+        return docs_paths[0] if docs_paths else None
 
     @property
     def _failed_to_start_threshold(self) -> int:
@@ -2566,6 +2586,12 @@ class DeploymentStateManager:
     def get_deployment(self, deployment_id: DeploymentID) -> Optional[DeploymentInfo]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].target_info
+        else:
+            return None
+
+    def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].docs_path
         else:
             return None
 

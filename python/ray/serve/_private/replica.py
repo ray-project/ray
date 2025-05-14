@@ -376,6 +376,7 @@ class ReplicaBase(ABC):
         )
 
         self._port: Optional[int] = None
+        self._docs_path: Optional[str] = None
 
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
@@ -695,12 +696,8 @@ class ReplicaBase(ABC):
                         self._user_callable_wrapper.initialize_callable()
                     )
                     if self._user_callable_asgi_app:
-                        docs_path = self._user_callable_wrapper._callable.docs_path
-                        # Since it's possible for user to pass a builder function that returns a FastAPI app
-                        # we will not have a docs path on the ASGI app object untill initialize_callable is called
-                        # so we set the docs path on the controller in this case
-                        await self._controller_handle.set_docs_path.remote(
-                            self._deployment_id.app_name, docs_path
+                        self._docs_path = (
+                            self._user_callable_wrapper._callable.docs_path
                         )
                     await self._on_initialized()
                     self._user_callable_initialized = True
@@ -766,12 +763,19 @@ class ReplicaBase(ABC):
 
     def get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
+    ) -> Tuple[
+        DeploymentConfig,
+        DeploymentVersion,
+        Optional[float],
+        Optional[int],
+        Optional[str],
+    ]:
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
             self._port,
+            self._docs_path,
         )
 
     @abstractmethod

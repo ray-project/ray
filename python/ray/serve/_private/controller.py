@@ -1053,15 +1053,6 @@ class ServeController:
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
 
-    def set_docs_path(self, name: str, docs_path: str):
-        """Set the docs path for an application.
-
-        Args:
-            name: Application name.
-            docs_path: Docs path.
-        """
-        self.application_state_manager.set_docs_path(name, docs_path)
-
     def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
         """Name of the ingress deployment in an application.
 

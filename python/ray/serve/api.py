@@ -2,7 +2,7 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
@@ -171,12 +171,12 @@ def get_replica_context() -> ReplicaContext:
 
 @PublicAPI(stability="stable")
 def ingress(app: Union[ASGIApp, Callable]) -> Callable:
-    """Wrap a deployment class with a ASGI application for HTTP request parsing.
+    """Wrap a deployment class with an ASGI application for HTTP request parsing.
     There are a few different ways to use this functionality.
 
-    FastAPI app routes are defined inside the deployment class.
-
     Example:
+
+    FastAPI app routes are defined inside the deployment class.
 
         .. code-block:: python
 
@@ -194,7 +194,8 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
 
             app = MyFastAPIDeployment.bind()
 
-    You can also use standalone FastAPI app without routes inside a deployment.
+    You can also use a standalone FastAPI app without registering
+    routes inside the deployment.
 
     .. code-block:: python
 
@@ -210,7 +211,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
         deployment = serve.deployment(serve.ingress(app)())
         app = deployment.bind()
 
-    Can also take a builder function that returns an ASGI app.
+    You can also pass in a builder function that returns an ASGI app.
     The builder function is evaluated when the deployment is initialized on
     replicas.
 
@@ -218,7 +219,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
 
         from ray import serve
 
-        def get_app():
+        def build_asgi_app():
             from fastapi import FastAPI
             app = FastAPI()
             @app.get("/hi")
@@ -226,7 +227,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                 return "Hello world!"
             return app
 
-        deployment = serve.deployment(serve.ingress(get_app)())
+        deployment = serve.deployment(serve.ingress(build_asgi_app)())
         app = deployment.bind()
 
     Args:
@@ -235,7 +236,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
             You can also pass in a builder function that returns an ASGI app.
     """
 
-    def decorator(cls: Optional[Callable] = None) -> Callable:
+    def decorator(cls: Optional[Type[Any]] = None) -> Callable:
         if cls is None:
 
             class ASGIIngressDeployment:

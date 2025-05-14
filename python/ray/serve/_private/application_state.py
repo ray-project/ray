@@ -262,10 +262,28 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        return self._docs_path
+        # if the docs path is set during the deploy app task, use that
+        if self._docs_path is not None:
+            return self._docs_path
 
-    def set_docs_path(self, docs_path: Optional[str]):
-        self._docs_path = docs_path
+        # else get the docs path from the running deployments
+        deployments = self._deployment_state_manager.get_deployments_in_application(
+            self._name
+        )
+        docs_paths = [
+            self._deployment_state_manager.get_deployment_docs_path(
+                DeploymentID(deployment, self._name)
+            )
+            for deployment in deployments
+        ]
+        docs_paths = [path for path in docs_paths if path is not None]
+        if len(docs_paths) == 0:
+            return None
+        if len(docs_paths) > 1:
+            raise RayServeException(
+                f"Multiple docs paths found for application '{self._name}'"
+            )
+        return docs_paths[0]
 
     @property
     def status(self) -> ApplicationStatus:
