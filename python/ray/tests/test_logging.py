@@ -29,9 +29,7 @@ from ray._private.ray_constants import (
     PROCESS_TYPE_RAY_CLIENT_SERVER,
     PROCESS_TYPE_REAPER,
     PROCESS_TYPE_REDIS_SERVER,
-    PROCESS_TYPE_REPORTER,
     PROCESS_TYPE_RUNTIME_ENV_AGENT,
-    PROCESS_TYPE_WEB_UI,
     PROCESS_TYPE_WORKER,
 )
 from ray._private.log_monitor import (
