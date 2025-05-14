@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "gmock/gmock.h"
+#include "mock/ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -100,20 +101,9 @@ class MockGcsClient : public gcs::GcsClient {
   }
 };
 
-class MockRayletClient : public raylet::RayletClient {
- public:
-  MockRayletClient() = default;
-
-  MOCK_METHOD(void,
-              IsLocalWorkerDead,
-              (const WorkerID &worker_id,
-               const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
-              (override));
-};
-
 TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDead) {
   auto gcs_client = std::make_unique<MockGcsClient>();
-  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto raylet_client = std::make_shared<MockRayletClientInterface>();
   auto node_info = std::make_unique<rpc::GcsNodeInfo>();
 
   std::unique_ptr<CoreWorkerClientPool> client_pool;
@@ -148,7 +138,6 @@ TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDea
   // Stays connected first time.
   dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
       ->unavailable_timeout_callback_();
-  // Expect disconnect because node should be dead.
   ASSERT_EQ(client_pool->Size(), 1);
 
   // Disconnected second time.
@@ -158,9 +147,8 @@ TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDea
 }
 
 TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackWorkerDead) {
-  // This will return dead node.
   auto gcs_client = std::make_unique<MockGcsClient>();
-  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto raylet_client = std::make_shared<MockRayletClientInterface>();
   auto node_info = std::make_unique<rpc::GcsNodeInfo>();
 
   std::unique_ptr<CoreWorkerClientPool> client_pool;
