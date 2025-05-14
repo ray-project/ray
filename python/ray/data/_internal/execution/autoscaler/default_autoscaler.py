@@ -59,7 +59,7 @@ class DefaultAutoscaler(Autoscaler):
         else:
             return actor_pool.num_active_actors() / actor_pool.current_size()
 
-    def _derive_action(
+    def _derive_scaling_action(
         self,
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
@@ -100,7 +100,7 @@ class DefaultAutoscaler(Autoscaler):
             for actor_pool in actor_pools:
                 while True:
                     # Try to scale up or down the actor pool.
-                    recommended_action = self._derive_action(actor_pool, op, state)
+                    recommended_action = self._derive_scaling_action(actor_pool, op, state)
 
                     if recommended_action is _AutoscalingAction.SCALE_UP:
                         if actor_pool.scale_up(1) == 0:
