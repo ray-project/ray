@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
         # If ONNX and module has not been exported yet, do this here using
         # the input_dict as example input.
-        if ort_session is None:
+        if args.use_onnx_for_inference and ort_session is None:
             tensor_input_dict = tree.map_structure(
                 lambda s: torch.from_numpy(s), input_dict
             )
