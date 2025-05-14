@@ -360,7 +360,7 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
 Group-by and transforming groups
 ===============================
 
-To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values`. Then, call
+To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values. Then, call
 :meth:`~ray.data.grouped_data.GroupedData.map_groups` to transform the groups.
 
 .. tab-set::

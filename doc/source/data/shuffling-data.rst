@@ -83,7 +83,7 @@ Randomizing block order
 This option randomizes the order of :ref:`blocks <data_key_concepts>` in a dataset. While applying this operation alone doesn't involve heavy computation
 and communication, it requires Ray Data to materialize all blocks in memory before actually randomizing their ordering in the queue for subsequent operation.
 
-.. note:: Ray Data doesn't guarantee any particular ordering of the blocks when blocks are read from different files (in parallel). Henceforth, this particular option
+.. note:: Ray Data doesn't guarantee any particular ordering of the blocks when blocks are read from different files (in parallel) by default, unless `DataContext.execution_options.preserve_order` is set to true. Henceforth, this particular option
     is primarily relevant in cases when blocks are yielded from relatively small set of very large files.
 
 .. note:: Only use this option when your dataset is small enough to fit into the object store memory.
@@ -112,7 +112,7 @@ To shuffle all rows globally, across the whole dataset, multiple options are ava
     :ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
     deterministic way of co-locating rows based on the hash of the column values.
 
-Please note, that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization barrier --
+Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization barrier --
 subsequent operators won't be able to start executing until shuffle completion.
 
 .. testcode::

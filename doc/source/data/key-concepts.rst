@@ -34,7 +34,7 @@ Block is the basic unit of data that every Ray Data dataset is partitioned into 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
 (which is usually the entrypoint of the program, referred to as the :term:`driver`)
-and stores the blocks as objects in Ray Object Store's shared-memory
+and stores the blocks as objects in Ray's shared-memory
 :ref:`object store <objects-in-ray>`. Internally, Ray Data can natively handle blocks either
 as Pandas ``DataFrame``s or PyArrow ``Table``s.
 
