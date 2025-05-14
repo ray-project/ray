@@ -14,7 +14,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
-
+from ray.train.v2.exceptions import TrainingFailedError
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
 
 
@@ -110,7 +110,7 @@ def test_dataset_setup_callback(ray_start_4_cpus):
 
 
 def test_transform_on_split_iterator_raises(ray_start_4_cpus):
-    """Check that calling illegal method on a StreamSplitDataIterator shard raises AttributeError."""
+    """Check that calling illegal method on a StreamSplitDataIterator shard raises TrainingFailedError."""
     ds = ray.data.range(10)
 
     def train_fn():
@@ -123,8 +123,15 @@ def test_transform_on_split_iterator_raises(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=1),
     )
 
-    with pytest.raises(AttributeError, match="Cannot call `map_batches` on a "):
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
+        
+    # Check that the worker failures contain an AttributeError with the expected message
+    worker_errors = list(exc_info.value.worker_failures.values())
+    assert any(
+        isinstance(e, AttributeError) and "Cannot call `map_batches` on a" in str(e)
+        for e in worker_errors
+    )
 
 
 if __name__ == "__main__":
