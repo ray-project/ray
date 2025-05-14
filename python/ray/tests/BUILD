@@ -351,6 +351,7 @@ py_test_module_list(
         "test_label_scheduling.py",
         "test_label_utils.py",
         "test_minimal_install.py",
+        "test_path_utils.py",
         "test_runtime_env_ray_minimal.py",
         "test_utils.py",
     ],
