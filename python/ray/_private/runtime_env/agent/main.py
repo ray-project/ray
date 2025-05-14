@@ -12,6 +12,7 @@ from ray._common.utils import (
 )
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private import logging_utils
+from ray._raylet import GcsClient
 
 
 def import_libs():
@@ -148,11 +149,11 @@ if __name__ == "__main__":
         logging_rotation_backup_count,
     )
 
+    gcs_client = GcsClient(address=args.gcs_address, cluster_id=args.cluster_id_hex)
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,
         logging_params=logging_params,
-        gcs_address=args.gcs_address,
-        cluster_id_hex=args.cluster_id_hex,
+        gcs_client=gcs_client,
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
@@ -216,7 +217,7 @@ if __name__ == "__main__":
 
         # No need to await this task.
         check_raylet_task = create_check_raylet_task(
-            args.log_dir, args.gcs_address, parent_dead_callback, loop
+            args.log_dir, gcs_client, parent_dead_callback, loop
         )
     runtime_env_agent_ip = (
         "127.0.0.1" if args.node_ip_address == "127.0.0.1" else "0.0.0.0"

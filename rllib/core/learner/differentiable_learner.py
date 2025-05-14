@@ -123,7 +123,7 @@ class DifferentiableLearner(Checkpointable):
 
         # TODO (simon): Move the `build_learner_connector` to the
         # `DifferentiableLearnerConfig`.
-        self._learner_connector = self.config.build_learner_connector(
+        self._learner_connector = self.learner_config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
             device=None,
@@ -383,14 +383,13 @@ class DifferentiableLearner(Checkpointable):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         # self.after_gradient_based_update(timesteps=timesteps or {})
-
         self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
             return params, loss_per_module, self.metrics.reduce()
         else:
-            return params, loss_per_module, None
+            return params, loss_per_module, {}
 
     def _create_iterator_if_necessary(
         self,
@@ -678,6 +677,26 @@ class DifferentiableLearner(Checkpointable):
                 )
             return False
         return True
+
+    @abc.abstractmethod
+    def _get_tensor_variable(
+        self,
+        value: Any,
+        dtype: Any = None,
+        trainable: bool = False,
+    ) -> TensorType:
+        """Returns a framework-specific tensor variable with the initial given value.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-classes.
+
+        Args:
+            value: The initial value for the tensor variable variable.
+
+        Returns:
+            The framework specific tensor variable of the given initial value,
+            dtype and trainable/requires_grad property.
+        """
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _reset(self):

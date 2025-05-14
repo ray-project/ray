@@ -8,6 +8,11 @@ from typing_extensions import Hashable
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.util import (
+    _op_name_white_list,
+    _recorded_operators,
+    _recorded_operators_lock,
+)
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
@@ -22,11 +27,6 @@ from ray.data._internal.util import (
     iterate_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
-from ray.data._internal.logical.util import (
-    _op_name_white_list,
-    _recorded_operators,
-    _recorded_operators_lock,
-)
 
 
 def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):

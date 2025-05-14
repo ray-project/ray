@@ -446,7 +446,7 @@ class StorageContext:
 
         Args:
             checkpoint: The checkpoint to persist to
-            (fs, experiment_fs_path / checkpoint_dir_name).
+                (fs, experiment_fs_path / checkpoint_dir_name).
 
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
