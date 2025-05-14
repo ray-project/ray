@@ -353,6 +353,7 @@ py_test_module_list(
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
         "test_utils.py",
+        "tests_bundle_label_selector.py",
     ],
     tags = [
         "exclusive",

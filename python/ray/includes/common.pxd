@@ -362,6 +362,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_string &name,
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
+            const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
             c_bool is_detached,
             double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,

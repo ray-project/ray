@@ -2783,6 +2783,7 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_id,
       placement_group_creation_options.name,
       placement_group_creation_options.bundles,
+      placement_group_creation_options.bundle_label_selector,
       placement_group_creation_options.strategy,
       placement_group_creation_options.is_detached,
       placement_group_creation_options.max_cpu_fraction_per_node,
