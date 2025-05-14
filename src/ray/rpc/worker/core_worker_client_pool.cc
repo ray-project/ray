@@ -15,8 +15,8 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 #include <memory>
-
-#include "ray/raylet_client/raylet_client.h"
+#include <string>
+#include <utility>
 
 namespace ray {
 namespace rpc {
@@ -24,9 +24,13 @@ namespace rpc {
 std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
     gcs::GcsClient *gcs_client,
     rpc::CoreWorkerClientPool *worker_client_pool,
-    rpc::ClientCallManager *client_call_manager,
+    std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
+        raylet_client_factory,
     const rpc::Address &addr) {
-  return [addr, gcs_client, worker_client_pool, client_call_manager]() {
+  return [addr,
+          gcs_client,
+          worker_client_pool,
+          raylet_client_factory = std::move(raylet_client_factory)]() {
     const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
     RAY_CHECK(gcs_client->Nodes().IsSubscribedToNodeChange());
@@ -38,16 +42,18 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
       worker_client_pool->Disconnect(worker_id);
       return;
     }
-
-    raylet::RayletClient raylet_client(
-        rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                           node_info->node_manager_port(),
-                                           *client_call_manager));
-    raylet_client.IsLocalWorkerDead(
+    auto raylet_client = raylet_client_factory(node_info->node_manager_address(),
+                                               node_info->node_manager_port());
+    raylet_client->IsLocalWorkerDead(
         worker_id,
-        [worker_client_pool, worker_id](const Status &status,
-                                        rpc::IsLocalWorkerDeadReply &&reply) {
-          if (status.ok() && reply.is_dead()) {
+        [worker_client_pool, worker_id, node_id](const Status &status,
+                                                 rpc::IsLocalWorkerDeadReply &&reply) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR).WithField(worker_id).WithField(node_id)
+                << "Failed to check if worker is dead on request to raylet";
+            return;
+          }
+          if (reply.is_dead()) {
             RAY_LOG(INFO).WithField(worker_id)
                 << "Disconnect core worker client since it is dead";
             worker_client_pool->Disconnect(worker_id);

@@ -551,7 +551,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
     }
   }
-
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
@@ -560,7 +559,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 gcs_client_.get(),
                 core_worker_client_pool_.get(),
-                client_call_manager_.get(),
+                [this](const std::string &node_manager_address, int32_t port) {
+                  return std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_manager_address, port, *client_call_manager_));
+                },
                 addr));
       });
 

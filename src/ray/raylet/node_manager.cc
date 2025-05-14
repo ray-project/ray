@@ -161,7 +161,14 @@ NodeManager::NodeManager(
             addr,
             client_call_manager_,
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
-                gcs_client_.get(), &worker_rpc_pool_, &client_call_manager_, addr));
+                gcs_client_.get(),
+                &worker_rpc_pool_,
+                [this](const std::string &node_manager_address, int32_t port) {
+                  return std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_manager_address, port, client_call_manager_));
+                },
+                addr));
       }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
