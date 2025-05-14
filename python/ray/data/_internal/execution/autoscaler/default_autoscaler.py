@@ -1,3 +1,4 @@
+import enum
 import math
 import time
 from typing import TYPE_CHECKING, Dict
@@ -15,6 +16,12 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+
+
+class _AutoscalingAction(enum.Enum):
+    NO_OP = 0
+    SCALE_UP = 1
+    SCALE_DOWN = -1
 
 
 class DefaultAutoscaler(Autoscaler):
@@ -52,49 +59,40 @@ class DefaultAutoscaler(Autoscaler):
         else:
             return actor_pool.num_active_actors() / actor_pool.current_size()
 
-    def _actor_pool_should_scale_up(
+    def _derive_action(
         self,
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
-    ):
+    ) -> _AutoscalingAction:
         # Do not scale up, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op_state.total_enqueued_input_bundles() == 0):
-            return False
+            return _AutoscalingAction.SCALE_DOWN
+
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
-            return True
-        elif actor_pool.current_size() >= actor_pool.max_size():
+            return _AutoscalingAction.SCALE_UP
+        elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
-            return False
+            return _AutoscalingAction.SCALE_DOWN
+
         # Do not scale up, if the op does not have more resources.
         if not op_state._scheduling_status.under_resource_limits:
-            return False
+            return _AutoscalingAction.NO_OP
+
         # Do not scale up, if the op has enough free slots for the existing inputs.
         if op_state.total_enqueued_input_bundles() <= actor_pool.num_free_task_slots():
-            return False
+            return _AutoscalingAction.NO_OP
+
         # Determine whether to scale up based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
-        return util > self._actor_pool_scaling_up_threshold
+        if util >= self._actor_pool_scaling_up_threshold:
+            return _AutoscalingAction.SCALE_UP
+        elif util <= self._actor_pool_scaling_down_threshold:
+            return _AutoscalingAction.SCALE_DOWN
+        else:
+            return _AutoscalingAction.NO_OP
 
-    def _actor_pool_should_scale_down(
-        self,
-        actor_pool: AutoscalingActorPool,
-        op: "PhysicalOperator",
-        op_state: "OpState",
-    ):
-        # Scale down, if the op is completed or no more inputs are coming.
-        if op.completed() or (op._inputs_complete and op_state.total_enqueued_input_bundles() == 0):
-            return True
-        if actor_pool.current_size() > actor_pool.max_size():
-            # Scale down, if the actor pool is above max size.
-            return True
-        elif actor_pool.current_size() <= actor_pool.min_size():
-            # Do not scale down, if the actor pool is already at min size.
-            return False
-        # Determine whether to scale down based on the actor pool utilization.
-        util = self._calculate_actor_pool_util(actor_pool)
-        return util < self._actor_pool_scaling_down_threshold
 
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
@@ -102,23 +100,16 @@ class DefaultAutoscaler(Autoscaler):
             for actor_pool in actor_pools:
                 while True:
                     # Try to scale up or down the actor pool.
-                    should_scale_up = self._actor_pool_should_scale_up(
-                        actor_pool,
-                        op,
-                        state,
-                    )
-                    should_scale_down = self._actor_pool_should_scale_down(
-                        actor_pool,
-                        op,
-                        state,
-                    )
-                    if should_scale_up and not should_scale_down:
+                    recommended_action = self._derive_action(actor_pool, op, state)
+
+                    if recommended_action is _AutoscalingAction.SCALE_UP:
                         if actor_pool.scale_up(1) == 0:
                             break
-                    elif should_scale_down and not should_scale_up:
+                    elif recommended_action is _AutoscalingAction.SCALE_DOWN:
                         if actor_pool.scale_down(1) == 0:
                             break
                     else:
+                        # No-op
                         break
 
     def _try_scale_up_cluster(self):
