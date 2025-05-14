@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import torch
 from torch.utils.data import IterableDataset
 from torch.utils.data.distributed import DistributedSampler
+import multiprocessing as mp
 
 import ray.train
 import ray
@@ -54,6 +55,9 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
         self.num_torch_workers = dataloader_config.num_torch_workers
         self.num_ray_workers = benchmark_config.num_workers
+
+        self.mp_context = mp.get_context("forkserver")
+        self.mp_context.set_forkserver_preload(["torch", "torchvision"])
 
         # Log configuration without worker rank since context may not be initialized
         logger.info(
@@ -152,7 +156,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=dataloader_config.torch_multiprocessing_context,
+            multiprocessing_context=self.mp_context,
             sampler=train_sampler,
         )
 
@@ -215,7 +219,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=dataloader_config.torch_multiprocessing_context,
+            multiprocessing_context=self.mp_context,
             sampler=val_sampler,
         )
         return self.create_batch_iterator(dataloader, device)
