@@ -132,7 +132,7 @@ Example of hash shuffling based on column `id`:
 .. testcode::
 
     import ray
-    from ray.data.context import ShuffleStrategy
+    from ray.data.context import DataContext, ShuffleStrategy
 
     # First enable hash-shuffle as shuffling strategy
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
