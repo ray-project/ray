@@ -112,6 +112,10 @@ Hash-shuffling is a classical hash-partitioning based shuffling where:
 Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, by
 ensuring that rows with the same key-values are being placed into the same partition.
 
+.. note:: To use hash-shuffling in your aggregations and repartitioning operations, you need to currently specify
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before invoking corresponding ``Dataset`` operations.
+
+
 Range-partition shuffling
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
