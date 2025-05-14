@@ -488,8 +488,6 @@ class ASGIAppReplicaWrapper:
     def docs_path(self) -> Optional[str]:
         if isinstance(self._asgi_app, FastAPI):
             return self._asgi_app.docs_url
-        else:
-            return None
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy

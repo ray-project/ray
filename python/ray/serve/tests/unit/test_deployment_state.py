@@ -97,6 +97,7 @@ class MockReplicaActorWrapper:
         self._port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
+        self._docs_path = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -173,6 +174,10 @@ class MockReplicaActorWrapper:
     @property
     def initialization_latency_s(self) -> float:
         return self._initialization_latency_s
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
 
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status
@@ -311,7 +316,7 @@ def deployment_version(code_version) -> DeploymentVersion:
 @pytest.fixture
 def mock_deployment_state_manager(
     request,
-) -> Tuple[DeploymentStateManager, MockTimer, Mock]:
+) -> Tuple[DeploymentStateManager, MockTimer, Mock, Mock]:
     """Fully mocked deployment state manager.
 
     i.e kv store and gcs client is mocked so we don't need to initialize
@@ -4783,6 +4788,105 @@ class TestStopReplicasOnDrainingNodes:
                 (ReplicaState.STARTING, 2, v2),
             ],
         )
+
+
+def test_docs_path_update(mock_deployment_state_manager):
+    """Test that docs_path is updated when replica version matches target version."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info, version = deployment_info()
+    version_with_docs = DeploymentVersion(
+        code_version="test_version",
+        deployment_config=version.deployment_config,
+        ray_actor_options=version.ray_actor_options,
+    )
+
+    # Deploy with target version
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds._target_state.version = version_with_docs
+
+    # Create a replica with a docs path
+    replica_id = ReplicaID(get_random_string(), deployment_id=TEST_DEPLOYMENT_ID)
+    test_docs_path = "/test/docs/path"
+
+    # Mock the replica actor
+    class MockReplicaActorWrapperWithDocsPath(MockReplicaActorWrapper):
+        @property
+        def docs_path(self):
+            return test_docs_path
+
+    # Override the _actor instance in DeploymentReplica
+    deployment_replica = DeploymentReplica(replica_id, version_with_docs)
+    deployment_replica._actor = MockReplicaActorWrapperWithDocsPath(
+        replica_id, version_with_docs
+    )
+    deployment_replica._actor.set_ready()
+
+    # Add the replica to the deployment state
+    ds._replicas.add(ReplicaState.RUNNING, deployment_replica)
+
+    # Before checking health, the docs_path should be None
+    assert ds.docs_path is None
+
+    # Call check_and_update_replicas which contains the code to update docs_path
+    ds.check_and_update_replicas()
+
+    # After checking health, the docs_path should be updated
+    assert ds.docs_path == test_docs_path
+
+
+def test_docs_path_not_updated_for_different_version(mock_deployment_state_manager):
+    """Test that docs_path is not updated when replica version doesn't match target version."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info, version = deployment_info()
+    target_version = DeploymentVersion(
+        code_version="target_version",
+        deployment_config=version.deployment_config,
+        ray_actor_options=version.ray_actor_options,
+    )
+    replica_version = DeploymentVersion(
+        code_version="different_version",
+        deployment_config=version.deployment_config,
+        ray_actor_options=version.ray_actor_options,
+    )
+
+    # Deploy with target version
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds._target_state.version = target_version
+
+    # Create a replica with a different version and a docs path
+    replica_id = ReplicaID(get_random_string(), deployment_id=TEST_DEPLOYMENT_ID)
+    test_docs_path = "/test/docs/path"
+
+    # Mock the replica actor
+    class MockReplicaActorWrapperWithDocsPath(MockReplicaActorWrapper):
+        @property
+        def docs_path(self):
+            return test_docs_path
+
+    # Override the _actor instance in DeploymentReplica
+    deployment_replica = DeploymentReplica(replica_id, replica_version)
+    deployment_replica._actor = MockReplicaActorWrapperWithDocsPath(
+        replica_id, replica_version
+    )
+    deployment_replica._actor.set_ready()
+
+    # Add the replica to the deployment state
+    ds._replicas.add(ReplicaState.RUNNING, deployment_replica)
+
+    # Before checking health, the docs_path should be None
+    assert ds.docs_path is None
+
+    # Call check_and_update_replicas which contains the code to update docs_path
+    ds.check_and_update_replicas()
+
+    # The docs_path should still be None since versions don't match
+    assert ds.docs_path is None
 
 
 if __name__ == "__main__":

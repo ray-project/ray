@@ -2594,8 +2594,6 @@ class DeploymentStateManager:
     def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
-        else:
-            return None
 
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
