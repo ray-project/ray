@@ -92,8 +92,10 @@ class TestGC:
         ):
             soft_limit_zero = True
 
-        conda_runtime_env = generate_runtime_env_dict("conda", "python_file", tmp_path)
-        pip_runtime_env = generate_runtime_env_dict("pip", "python_file", tmp_path)
+        conda_runtime_env = generate_runtime_env_dict(
+            "conda", "python_object", tmp_path
+        )
+        pip_runtime_env = generate_runtime_env_dict("pip", "python_object", tmp_path)
 
         @ray.remote
         def f():
