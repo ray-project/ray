@@ -213,22 +213,34 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
 
     You can also pass in a builder function that returns an ASGI app.
     The builder function is evaluated when the deployment is initialized on
-    replicas.
+    replicas. This example shows how to use a sub-deployment inside the routes
+    defined outside the deployment class.
 
     .. code-block:: python
 
         from ray import serve
 
+        @serve.deployment
+        class SubDeployment:
+            def __call__(self):
+                return "Hello world!"
+
         def build_asgi_app():
             from fastapi import FastAPI
+
             app = FastAPI()
+
+            def get_sub_deployment_handle():
+                return serve.get_deployment_handle(SubDeployment.name, app_name="my_app")
+
             @app.get("/hi")
-            def say_hi():
-                return "Hello world!"
+            async def say_hi(handle: Depends(get_sub_deployment_handle)):
+                return await handle.remote()
+
             return app
 
         deployment = serve.deployment(serve.ingress(build_asgi_app)())
-        app = deployment.bind()
+        app = deployment.bind(SubDeployment.bind(), name="my_app", route_prefix="/")
 
     Args:
         app: the FastAPI app to wrap this class with.

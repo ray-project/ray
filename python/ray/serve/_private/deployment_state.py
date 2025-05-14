@@ -1313,6 +1313,8 @@ class DeploymentState:
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
 
+        self._docs_path: Optional[str] = None
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1402,14 +1404,7 @@ class DeploymentState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        replicas = self._replicas.get([ReplicaState.RUNNING])
-        docs_paths = [replica.docs_path for replica in replicas]
-        if len(set(docs_paths)) > 1:
-            raise ValueError(
-                f"All replicas must have the same docs path. "
-                f"Got {docs_paths} for deployment {self._id}."
-            )
-        return docs_paths[0] if docs_paths else None
+        return self._docs_path
 
     @property
     def _failed_to_start_threshold(self) -> int:
@@ -2132,6 +2127,13 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
+                # if replica version is the same as the target version,
+                # we update the docs path
+                if (
+                    replica.version == self._target_state.version
+                    and replica.docs_path is not None
+                ):
+                    self._docs_path = replica.docs_path
             else:
                 logger.warning(
                     f"Replica {replica.replica_id} failed health check, stopping it."
