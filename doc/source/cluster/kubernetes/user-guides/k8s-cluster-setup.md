@@ -31,5 +31,5 @@ We collect a few helpful links for users who are getting started with a managed 
 # Set up an AKS cluster (Microsoft Azure)
 - {ref}`kuberay-aks-gpu-cluster-setup`
 
-# Set up an ACK Cluster (Alibaba Cloud)
+# Set up an ACK cluster (Alibaba Cloud)
 - {ref}`kuberay-ack-gpu-cluster-setup`
