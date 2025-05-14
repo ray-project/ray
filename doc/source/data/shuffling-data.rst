@@ -115,15 +115,24 @@ To shuffle all rows globally, across the whole dataset, multiple options are ava
 Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization barrier --
 subsequent operators won't be able to start executing until shuffle completion.
 
+Example of random shuffling with seed:
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+
+    # Random shuffle with seed
+    random_shuffled_ds = ds.random_shuffle(seed=123)
+
+
+Example of hash shuffling based on column `id`:
+
 .. testcode::
 
     import ray
     from ray.data.context import ShuffleStrategy
-
-    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-
-    # Random shuffle
-    random_shuffled_ds = ds.random_shuffle()
 
     # First enable hash-shuffle as shuffling strategy
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE

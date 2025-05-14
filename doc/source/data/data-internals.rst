@@ -115,19 +115,22 @@ Hash-shuffling is particularly useful for operations that require deterministic 
 ensuring that rows with the same key-values are being placed into the same partition.
 
 .. note:: To use hash-shuffling in your aggregations and repartitioning operations, you need to currently specify
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before invoking corresponding ``Dataset`` operations.
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``.
 
 
-Range-partition shuffling
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Range-partitioning shuffle
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Range-partitioning based shuffling also is a classical algorithm, based on the dataset being split into target number of ranges as determined by boundaries approximating
+Range-partitioning based shuffle also is a classical algorithm, based on the dataset being split into target number of ranges as determined by boundaries approximating
 the real ranges of the totally ordered (ie sorted) dataset.
 
 1. **Sampling phase:** every input block is randomly sampled for (10) rows. Samples are combined into a single dataset, which is then sorted and split into
 target number of partitions defining approximate *range boundaries*.
-2. **Partition phase:** every block is split into partitions based on the *range boundaries* derived in the previous step.
+2. **Partition phase:** every block is sorted and split into partitions based on the *range boundaries* derived in the previous step.
 3. **Reduce phase:** individual partitions within the same range are then recombined to produce the resulting block.
+
+.. note:: Range-partitioning shuffle is a default shuffling strategy. To set it explicitly specify
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED`` before creating a ``Dataset``.
 
 
 Operators, plans, and planning

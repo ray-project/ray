@@ -13,8 +13,6 @@ on the provided key columns like following:
 
     import ray
 
-    :skipif: True
-
     doubles_ds = ray.data.range(4).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
     )
@@ -79,4 +77,4 @@ Following are important considerations for successfully configuring number of ag
 .. note:: *Rule of thumb* is to *avoid setting `num_partitions` >> number of aggregators as it might create bottlenecks*
 
 1.  Setting `DataContext.max_hash_shuffle_aggregators` will cap the number of aggregators
-2.  Setting it to large enough value will have an effect of allocating 1 partition to 1 aggregator (when max_hash_shuffle_aggregators >= num_partitions)
+2.  Setting it to large enough value will have an effect of allocating 1 partition to 1 aggregator (when `max_hash_shuffle_aggregators >= num_partitions`)
