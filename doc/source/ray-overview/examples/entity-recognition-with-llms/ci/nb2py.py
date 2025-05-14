@@ -6,7 +6,7 @@ import nbformat
 def convert_notebook(input_path: str, output_path: str) -> None:
     """
     Read a Jupyter notebook and write a Python script, converting all %%bash
-    cells into subprocess.run calls that raise on error.
+    cells and IPython "!" commands into subprocess.run calls that raise on error.
     """
     nb = nbformat.read(input_path, as_version=4)
     with open(output_path, "w") as out:
@@ -17,7 +17,6 @@ def convert_notebook(input_path: str, output_path: str) -> None:
             lines = cell.source.splitlines()
             # Detect a %%bash cell
             if lines and lines[0].strip().startswith("%%bash"):
-                # Combine all lines after the magic into one bash script
                 bash_script = "\n".join(lines[1:]).rstrip()
                 out.write("import subprocess\n")
                 out.write(
@@ -27,13 +26,31 @@ def convert_notebook(input_path: str, output_path: str) -> None:
                     "               executable='/bin/bash')\n\n"
                 )
             else:
-                # Regular Python cell: dump as-is
-                out.write(cell.source.rstrip() + "\n\n")
+                # Detect any IPython '!' shell commands in code lines
+                has_bang = any(line.lstrip().startswith("!") for line in lines)
+                if has_bang:
+                    out.write("import subprocess\n")
+                    for line in lines:
+                        stripped = line.lstrip()
+                        if stripped.startswith("!"):
+                            cmd = stripped[1:].lstrip()
+                            out.write(
+                                f"subprocess.run(r'''{cmd}''',\n"
+                                "               shell=True,\n"
+                                "               check=True,\n"
+                                "               executable='/bin/bash')\n"
+                            )
+                        else:
+                            out.write(line.rstrip() + "\n")
+                    out.write("\n")
+                else:
+                    # Regular Python cell: dump as-is
+                    out.write(cell.source.rstrip() + "\n\n")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert a Jupyter notebook to a Python script, preserving bash cells as subprocess calls."
+        description="Convert a Jupyter notebook to a Python script, preserving bash cells and '!' commands as subprocess calls."
     )
     parser.add_argument("input_nb", help="Path to the input .ipynb file")
     parser.add_argument("output_py", help="Path for the output .py script")
