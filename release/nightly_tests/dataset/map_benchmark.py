@@ -43,12 +43,6 @@ def parse_args() -> argparse.Namespace:
             "simulate complex computation."
         ),
     )
-    parser.add_argument(
-        "--output-path",
-        type=str,
-        default="/mnt/cluster_storage/map_benchmark_results",
-        help="Path to write the output data.",
-    )
     return parser.parse_args()
 
 
@@ -82,7 +76,13 @@ def main(args: argparse.Namespace) -> None:
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)
 
-        ds.write_parquet(args.output_path)
+        def dummy_write(batch):
+            return {"num_rows": [len(batch["column00"])]}
+
+        ds = ds.map_batches(dummy_write)
+
+        for _ in ds.iter_internal_ref_bundles():
+            pass
 
         # Report arguments for the benchmark.
         return vars(args)
@@ -103,7 +103,7 @@ def flat_increment_row(row):
 
 def increment_batch(batch, map_batches_sleep_ms=0):
     if map_batches_sleep_ms > 0:
-        time.sleep(map_batches_sleep_ms / 1000)
+        time.sleep(map_batches_sleep_ms / 1000.0)
 
     if isinstance(batch, (dict, pd.DataFrame)):
         # Avoid modifying the column in-place (i.e., +=) because NumPy arrays are
