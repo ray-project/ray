@@ -301,7 +301,7 @@
           format: numpy
           compute: [actors, tasks]
           scaling: autoscaling
-          map-batches-sleep-ms: 1000
+          map-batches-sleep-ms: 100
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
