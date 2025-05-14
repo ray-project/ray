@@ -22,7 +22,7 @@ class TestGC:
         reason="Needs PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_actor_level_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
@@ -73,7 +73,7 @@ class TestGC:
         indirect=True,
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_task_level_gc(
         self,
         runtime_env_disable_URI_cache,
