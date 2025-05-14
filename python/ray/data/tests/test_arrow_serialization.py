@@ -26,7 +26,6 @@ from ray._private.arrow_serialization import (
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
-    _object_extension_type_allowed,
 )
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
@@ -415,13 +414,9 @@ pytest_custom_serialization_arrays = [
     (lazy_fixture("list_of_empty_struct_array"), 0.1),
     # Complex nested array
     (lazy_fixture("complex_nested_array"), 0.1),
+    # Array of pickled objects
+    (lazy_fixture("pickled_objects_array"), 0.1),
 ]
-
-if _object_extension_type_allowed():
-    pytest_custom_serialization_arrays.append(
-        # Array of pickled objects
-        (lazy_fixture("pickled_objects_array"), 0.1),
-    )
 
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
@@ -543,9 +538,6 @@ def test_arrow_scalar_conversion(ray_start_regular_shared):
     assert res == [{"id": 1}], res
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_arrow_object_and_array_support(ray_start_regular_shared):
     obj = types.SimpleNamespace(some_attribute="test")
 

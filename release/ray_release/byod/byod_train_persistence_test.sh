@@ -4,4 +4,4 @@
 
 set -exo pipefail
 
-pip3 install -U torch fsspec s3fs gcsfs pyarrow>=9.0.0 pytest
+pip3 install -U torch fsspec s3fs gcsfs pyarrow>=17.0.0 pytest

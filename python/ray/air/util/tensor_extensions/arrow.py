@@ -132,39 +132,28 @@ def convert_to_pyarrow_array(
 
     except ArrowConversionError as ace:
         from ray.data import DataContext
-        from ray.data.extensions.object_extension import (
-            ArrowPythonObjectArray,
-            _object_extension_type_allowed,
-        )
+        from ray.data.extensions.object_extension import ArrowPythonObjectArray
 
         enable_fallback_config: Optional[
             bool
         ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
 
-        if not _object_extension_type_allowed():
-            object_ext_type_fallback_allowed = False
+        # NOTE: By default setting is unset which (for compatibility reasons)
+        #       is allowing the fallback
+        object_ext_type_fallback_allowed = (
+            enable_fallback_config is None or enable_fallback_config
+        )
+
+        if object_ext_type_fallback_allowed:
             object_ext_type_detail = (
-                "skipping fallback to serialize as pickled python"
-                f" objects (due to unsupported Arrow version {PYARROW_VERSION}, "
-                f"min required version is {MIN_PYARROW_VERSION_SCALAR_SUBCLASS})"
+                "falling back to serialize as pickled python objects"
             )
         else:
-            # NOTE: By default setting is unset which (for compatibility reasons)
-            #       is allowing the fallback
-            object_ext_type_fallback_allowed = (
-                enable_fallback_config is None or enable_fallback_config
+            object_ext_type_detail = (
+                "skipping fallback to serialize as pickled python objects "
+                "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
+                "= False)"
             )
-
-            if object_ext_type_fallback_allowed:
-                object_ext_type_detail = (
-                    "falling back to serialize as pickled python objects"
-                )
-            else:
-                object_ext_type_detail = (
-                    "skipping fallback to serialize as pickled python objects "
-                    "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
-                    "= False)"
-                )
 
         # To avoid logging following warning for every block it's
         # only going to be logged in following cases
@@ -293,7 +282,7 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
 
 
 def _infer_pyarrow_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -375,7 +364,7 @@ _NUMPY_TO_ARROW_PRECISION_MAP = {
 
 
 def _try_infer_pa_timestamp_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     if isinstance(column_values, list) and len(column_values) > 0:
         # In case provided column values is a list of elements, this

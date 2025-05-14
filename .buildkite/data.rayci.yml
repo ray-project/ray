@@ -28,30 +28,6 @@ steps:
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
 
   # tests
-  - label: ":database: data: arrow v9 tests"
-    tags:
-      - data
-    instance_type: medium
-    parallelism: 2
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data9build
-        --except-tags data_integration,doctest,data_non_parallel
-    depends_on: data9build
-
-  - label: ":database: data: arrow v9 tests (data_non_parallel)"
-    tags:
-      - data
-      - data_non_parallel
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --build-name data9build
-        --only-tags data_non_parallel
-    depends_on: data9build
-
   - label: ":database: data: arrow v19 tests"
     tags:
       - python
