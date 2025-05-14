@@ -612,6 +612,13 @@ message LabelSelector {
   map<string, string> label_selector_dict = 1;
 }
 
+message TaskAttempt {
+  // The task id of the task attempt.
+  bytes task_id = 1;
+  // The attempt number of the task attempt.
+  int32 attempt_number = 2;
+}
+
 message Bundle {
   message BundleIdentifier {
     bytes placement_group_id = 1;
@@ -767,7 +774,7 @@ message ActorTaskSpec {
   // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
-  uint64 actor_counter = 5;
+  uint64 sequence_number = 5;
 }
 
 // Represents a task, including task spec.

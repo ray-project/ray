@@ -250,13 +250,6 @@ message TaskEvents {
   bytes job_id = 6;
 }
 
-message TaskAttempt {
-  // The task id of the task attempt.
-  bytes task_id = 1;
-  // The attempt number of the task attempt.
-  int32 attempt_number = 2;
-}
-
 // Represents a compact list of task state events by different tasks,
 // where each task has a list of state change events.
 message TaskEventData {

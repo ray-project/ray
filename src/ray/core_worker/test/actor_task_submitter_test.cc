@@ -48,7 +48,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(
       caller_worker_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
-  task.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(counter);
+  task.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(counter);
   task.GetMutableMessage().set_num_returns(0);
   return task;
 }
@@ -461,11 +461,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   // Tasks 2 and 3 get retried. In the real world, the seq_no of these two tasks should be
   // updated to 4 and 5 by `CoreWorker::InternalHeartbeat`.
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
-  task2.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(4);
+  task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(4);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
   task3.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
-  task3.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(5);
+  task3.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(5);
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task4.GetTaskAttempt(), Status::OK()));
@@ -524,7 +524,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   // Upon re-connect, task 2 (failed) should be retried.
   // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
-  task2.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(3);
+  task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(3);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
 
