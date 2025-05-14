@@ -98,6 +98,8 @@ Shuffle Algorithms
 
 Ray Data implements two main shuffle algorithms that power different operations:
 
+.. _hash-shuffle:
+
 Hash-shuffling
 ~~~~~~~~~~~~~
 
