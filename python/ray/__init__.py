@@ -9,27 +9,6 @@ log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
-def _import_private_modules(package_name: str):
-    import importlib
-    import sys
-
-    # Cache the user's module
-    existing_module = sys.modules.get(package_name)
-
-    if existing_module is not None:
-        del sys.modules[package_name]  # Clear the cache
-
-    module = importlib.import_module(package_name)
-
-    sys.modules[f"ray._private.{package_name}"] = module
-
-    # Restore the user's module
-    if existing_module:
-        sys.modules[package_name] = existing_module
-    else:
-        del sys.modules[package_name]
-
-
 def _configure_system():
     import os
     import platform
@@ -81,9 +60,22 @@ def _configure_system():
         # TODO(zhaoch23): Cache the internal psutil. Remove this import if we
         # decide to replace all import psutil with from ray._private import psutil.
         import psutil  # noqa: F401
+        import colorama  # noqa: F401
 
-        _import_private_modules("setproctitle")
-        _import_private_modules("colorama")
+        existing_module = sys.modules.get("setproctitle")
+
+        if existing_module is not None:
+            del sys.modules["setproctitle"]  # Clear the cache
+
+        import setproctitle
+
+        sys.modules[f"ray._private.setproctitle"] = setproctitle
+
+        # Restore the user's module
+        if existing_module:
+            sys.modules["setproctitle"] = existing_module
+        else:
+            del sys.modules["setproctitle"]
     finally:
         sys.path = original_sys_path
 
