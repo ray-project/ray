@@ -97,10 +97,5 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
 }
 
-uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
-    const TaskSpecification &task_spec) const {
-  return task_spec.ActorCounter();
-}
-
 }  // namespace core
 }  // namespace ray

@@ -181,7 +181,14 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            logger.debug(f"Shutting down executor for dataset {self._dataset_id}")
+            status_detail = (
+                f"failed with {exception}" if exception else "completed successfully"
+            )
+
+            logger.debug(
+                f"Shutting down executor for dataset {self._dataset_id} "
+                f"({status_detail})"
+            )
 
             _num_shutdown += 1
             self._shutdown = True
@@ -227,9 +234,12 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
                 state.close_progress_bars()
 
+            min_ = round(timer.min(), 3)
+            max_ = round(timer.max(), 3)
+            total = round(timer.get(), 3)
             logger.debug(
                 f"Shut down operator hierarchy for dataset {self._dataset_id}"
-                f" (min/max/total={timer.min()}/{timer.max()}/{timer.get()}s)"
+                f" (min/max/total={min_}/{max_}/{total}s)"
             )
 
             if exception is None:
