@@ -53,7 +53,6 @@ To configure Object Store to be 50% add to your image:
 
     RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
 
-
 .. _joins_configuring_num_partitions:
 
 Configuring number of partitions
