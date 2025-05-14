@@ -227,10 +227,13 @@ class StateHead(SubprocessModule, RateLimitedModule):
                 return None
             return actor_info_dict[actor_id]
 
-        response = aiohttp.web.StreamResponse()
-        response.content_type = "text/plain"
-        response.headers["Content-Disposition"] = (
-            f'attachment; filename="{options.download_filename}"'
+        response = aiohttp.web.StreamResponse(
+            content_type="text/plain",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{options.download_filename}"'
+                )
+            },
         )
 
         logs_gen = self._log_api.stream_logs(options, get_actor_fn)
