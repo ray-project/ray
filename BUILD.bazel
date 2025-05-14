@@ -184,9 +184,19 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/metrics_agent_client.h"],
     deps = [
         ":grpc_client",
-        "//src/ray/common:status",
         "//src/ray/protobuf:reporter_cc_proto",
         "//src/ray/util:logging",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "event_aggregator_client",
+    hdrs = ["src/ray/rpc/event_aggregator_client.h"],
+    deps = [
+        ":grpc_client",
+         "//src/ray/util:logging",
+        "//src/ray/protobuf:event_aggregator_service_cc_proto",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -225,6 +235,7 @@ ray_cc_library(
         ":grpc_common_base",
         ":grpc_server",
         ":metrics_agent_client",
+        ":event_aggregator_client",
         ":retryable_grpc_client",
         ":rpc_chaos",
         ":rpc_server_call",
