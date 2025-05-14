@@ -125,7 +125,7 @@ class Stats:
                 "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
             )
 
-        if reduce is None:
+        if reduce is None and percentiles is not False:
             if window in (None, float("inf")):
                 raise ValueError(
                     "A window must be specified when reduce is 'percentiles'!"
