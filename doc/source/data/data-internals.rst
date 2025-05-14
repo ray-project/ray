@@ -92,6 +92,38 @@ To change the size at which Ray Data splits blocks, configure
 Ray Data can’t split rows. So, if your dataset contains large rows (for example, large
 images), then Ray Data can’t bound the block size.
 
+
+Shuffle Algorithms
+------------------
+
+Ray Data implements two main shuffle algorithms that power different operations:
+
+Hash-shuffling
+~~~~~~~~~~~~~
+
+.. note:: Hash-shuffling is available in Ray 2.46
+
+Hash-shuffling is a classical hash-partitioning based shuffling where:
+
+1. **Partition phase:** rows in every block are hash-partitioned based on values in the *key columns* into a specified number of partitions, following a simple residual formula of ``hash(key-values) % N`` (used in hash-tables and pretty much everywhere).
+2. **Push phase:** partition's shards from individual blocks are then pushed into corresponding aggregating actors (called ``HashShuffleAggregator``s) handling respective partitions.
+3. **Reduce phase:** aggregators combine received individual partition's shards back into blocks optionally applying additional transformations before producing the resulting blocks.
+
+Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, by
+ensuring that rows with the same key-values are being placed into the same partition.
+
+Range-partition shuffling
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Range-partitioning based shuffling also is a classical algorithm, based on the dataset being split into target number of ranges as determined by boundaries approximating
+the real ranges of the totally ordered (ie sorted) dataset.
+
+1. **Sampling phase:** every input block is randomly sampled for (10) rows. Samples are combined into a single dataset, which is then sorted and split into
+target number of partitions defining approximate *range boundaries*.
+2. **Partition phase:** every block is split into partitions based on the *range boundaries* derived in the previous step.
+3. **Reduce phase:** individual partitions within the same range are then recombined to produce the resulting block.
+
+
 Operators, plans, and planning
 ------------------------------
 
