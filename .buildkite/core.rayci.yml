@@ -176,7 +176,7 @@ steps:
         --except-tags gpu
         --skip-ray-installation
 
-  - label: ":ray: core: data tests"
+  - label: ":ray: core: dask & modin tests"
     tags: python
     instance_type: medium
     commands:
