@@ -1,5 +1,7 @@
-from pathlib import Path
+import os
 import sys
+from pathlib import Path
+from typing import Dict, Tuple
 
 import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
@@ -19,7 +21,39 @@ S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
 
-@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
+def _test() -> Tuple[str, Dict]:
+    import test_module
+
+    assert test_module.one() == 2
+
+    ctx = ray.get_runtime_context()
+    return ctx.get_node_id(), ctx.get_runtime_env()
+
+@ray.remote
+def test_import_task() -> Tuple[str, Dict]:
+    return _test()
+
+
+@ray.remote
+class TestImportActor:
+    def test_import(self) -> Tuple[str, Dict]:
+        return _test()
+
+
+def test_failure_without_runtime_env(start_cluster):
+    """Sanity checks that the test task & actor fail without a runtime_env."""
+    cluster, address = start_cluster
+
+
+    task_obj_ref = test_import_task.remote()
+    actor = TestImportActor.remote()
+    actor_obj_ref = actor.test_import.remote()
+    with pytest.raises(ModuleNotFoundError):
+        ray.get(task_obj_ref)
+    with pytest.raises(ModuleNotFoundError):
+        ray.get(actor_obj_ref)
+    
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("remote_uri", [*REMOTE_URIS, S3_WHL_PACKAGE_URI])
 @pytest.mark.parametrize("per_task_actor", [True, False])
 def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
@@ -39,7 +73,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     elif option == "py_modules":
         env = {"py_modules": [remote_uri]}
 
-    if option == "failure" or per_task_actor:
+    if per_task_actor:
         ray.init(address)
     else:
         ray.init(address, runtime_env=env)
@@ -50,14 +84,10 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
 
         return test_module.one()
 
-    if option != "failure" and per_task_actor:
+    if per_task_actor:
         test_import = test_import.options(runtime_env=env)
 
-    if option == "failure":
-        with pytest.raises(ImportError):
-            ray.get(test_import.remote())
-    else:
-        assert ray.get(test_import.remote()) == 2
+    assert ray.get(test_import.remote()) == 2
 
     @ray.remote
     class Actor:
@@ -66,15 +96,11 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
 
             return test_module.one()
 
-    if option != "failure" and per_task_actor:
+    if per_task_actor:
         Actor = Actor.options(runtime_env=env)
 
     a = Actor.remote()
-    if option == "failure":
-        with pytest.raises(ImportError):
-            assert ray.get(a.test_import.remote()) == 2
-    else:
-        assert ray.get(a.test_import.remote()) == 2
+    assert ray.get(a.test_import.remote()) == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -143,8 +169,6 @@ def test_runtime_context(start_cluster, working_dir):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
