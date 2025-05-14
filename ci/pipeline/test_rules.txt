@@ -213,7 +213,12 @@ ci/ci.sh
 src/
 @ core_cpp cpp
 @ java python linux_wheels macos_wheels
-@ dashboard release_tests accelerated_dag
+@ dashboard release_tests
+;
+
+src/ray/core_worker/experimental*.h
+src/ray/core_worker/experimental*.cc
+@ accelerated_dag
 ;
 
 .github/
