@@ -31,8 +31,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
     RAY_CHECK(gcs_client->Nodes().IsSubscribedToNodeChange());
     const rpc::GcsNodeInfo *node_info =
-        gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
-    if (node_info != nullptr && node_info->state() == rpc::GcsNodeInfo::DEAD) {
+        gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+    if (node_info == nullptr) {
       RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
           << "Disconnect core worker client since its node is dead";
       worker_client_pool->Disconnect(worker_id);
