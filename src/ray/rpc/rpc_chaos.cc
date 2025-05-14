@@ -53,9 +53,9 @@ class RpcFailureManager {
         RAY_CHECK_EQ(colon_split.size(), 3UL);
         auto [iter, _] = failable_methods_.emplace(
             equal_split[0],
-            Failable{.num_remaining_failures = std::stoi(colon_split[0]),
-                     .req_failure_prob = std::stoi(colon_split[1]),
-                     .resp_failure_prob = std::stoi(colon_split[2])});
+            Failable{.num_remaining_failures = std::stoul(colon_split[0]),
+                     .req_failure_prob = std::stoul(colon_split[1]),
+                     .resp_failure_prob = std::stoul(colon_split[2])});
         const auto &failable = iter->second;
         RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 100);
       }
@@ -80,8 +80,8 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    std::uniform_int_distribution<int> dist(1, 100);
-    const int random_number = dist(gen_);
+    std::uniform_int_distribution<size_t> dist(1ul, 100ul);
+    const size_t random_number = dist(gen_);
     if (random_number <= failable.req_failure_prob) {
       failable.num_remaining_failures--;
       return RpcFailure::Request;
@@ -97,9 +97,9 @@ class RpcFailureManager {
   absl::Mutex mu_;
   std::mt19937 gen_;
   struct Failable {
-    int num_remaining_failures;
-    int req_failure_prob;
-    int resp_failure_prob;
+    size_t num_remaining_failures;
+    size_t req_failure_prob;
+    size_t resp_failure_prob;
   };
   // call name -> (num_remaining_failures, req_failure_prob, resp_failure_prob)
   absl::flat_hash_map<std::string, Failable> failable_methods_ ABSL_GUARDED_BY(&mu_);
