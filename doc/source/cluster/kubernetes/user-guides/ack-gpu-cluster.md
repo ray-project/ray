@@ -7,8 +7,7 @@ The configuration outlined here can be applied to most KubeRay examples found in
 
 ## Step 1: Create a Kubernetes cluster on Aliyun ACK
 
-Follow the first two steps in [this Aliyun documentation](https://www.alibabacloud.com/help/en/ack/ack-managed-and-ack-dedicated/user-guide/create-an-ack-managed-cluster-2) to:
-(1) create your Aliyun ACK cluster and (2) configure your computer to communicate with your cluster.
+Follow the "Create a cluster" in [this Aliyun documentation](https://www.alibabacloud.com/help/en/ack/ack-managed-and-ack-dedicated/user-guide/create-an-ack-managed-cluster-2) create your Aliyun ACK cluster and follow [this Aliyun documentation](https://www.alibabacloud.com/help/en/ack/ack-managed-and-ack-dedicated/user-guide/access-clusters) to configure your computer to communicate with your cluster.
 
 ## Step 2: Create node pools for the Aliyun ACK cluster
 
