@@ -900,6 +900,59 @@ def test_ingress_with_fastapi_with_native_deployment(serve_instance):
     )
 
 
+def sub_deployment():
+    @serve.deployment
+    class SubModel:
+        def __call__(self, a: int):
+            return a + 1
+
+    return SubModel.options(name="sub_deployment")
+
+
+def fastapi_builder_with_sub_deployment():
+    app = fastapi_builder()
+
+    def get_sub_deployment_handle():
+        return serve.get_deployment_handle(sub_deployment().name, "default")
+
+    class Data(BaseModel):
+        a: int
+
+    @app.get("/sub_deployment", response_model=Data)
+    async def f(
+        request: Request, handle: DeploymentHandle = Depends(get_sub_deployment_handle)
+    ):
+        a = int(request.query_params.get("a", 1))
+        result = await handle.remote(a)
+        return Data(a=result)
+
+    return app
+
+
+def test_deployment_composition_with_builder_function(serve_instance):
+    @serve.deployment
+    @serve.ingress(fastapi_builder_with_sub_deployment)
+    class ASGIIngress:
+        def __init__(self, sub_deployment: DeploymentHandle):
+            self.sub_deployment = sub_deployment
+
+    serve.run(ASGIIngress.bind(sub_deployment().bind()))
+
+    resp = requests.get("http://localhost:8000/sub_deployment?a=2")
+    assert resp.json() == {"a": 3}
+
+
+def test_deployment_composition_with_builder_function_without_decorator(serve_instance):
+    app = serve.deployment(serve.ingress(fastapi_builder_with_sub_deployment)())
+
+    # the default ingress deployment returned from serve.ingress accepts args and kwargs
+    # and passes them to the deployment constructor
+    serve.run(app.bind(sub_deployment().bind()))
+
+    resp = requests.get("http://localhost:8000/sub_deployment?a=2")
+    assert resp.json() == {"a": 3}
+
+
 def starlette_builder():
     from starlette.applications import Starlette
     from starlette.middleware import Middleware
