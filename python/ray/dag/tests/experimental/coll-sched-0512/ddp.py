@@ -42,28 +42,29 @@ def run_ddp(num_actors: int = 2):
     actor_to_execution_schedule = list(
         compiled_dag.actor_to_execution_schedule.values()
     )
-    for i in range(num_actors):
-        logger.info(actor_to_execution_schedule[i])
 
     expected_schedule = actor_to_execution_schedule[0]
-    equal_schedule = True
     for schedule in actor_to_execution_schedule[1:]:
         for op1, op2 in zip(expected_schedule, schedule):
             if op1 != op2:
                 logger.error(f"op1: {op1}, op2: {op2}")
-                equal_schedule = False
-                break
-        if not equal_schedule:
-            break
-    if not equal_schedule:
-        logger.error("Actor schedules are not equal")
+                for i in range(num_actors):
+                    logger.error(actor_to_execution_schedule[i])
+                assert False
 
     ray.shutdown()
+
+
+def run_ddp_bench():
+    for num_actors in [2, 4, 8]:
+        run_ddp(num_actors)
 
 
 def main(name: str):
     if name == "ddp":
         run_ddp()
+    elif name == "ddp_bench":
+        run_ddp_bench()
     else:
         logger.error(f"Unknown name: {name}")
 

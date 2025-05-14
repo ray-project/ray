@@ -63,7 +63,8 @@ class _DAGNodeOperation:
         return (
             f"_DAGNodeOperation("
             f"exec_task_idx: {self.exec_task_idx}, "
-            f" type: {self.type})"
+            f"type: {self.type}, "
+            f"method_name: {self.method_name})"
         )
 
     def viz_str(self):
@@ -156,8 +157,8 @@ class _DAGOperationGraphNode:
             return compare(self, other)
         elif self.is_nccl_op != other.is_nccl_op:
             # When one node is a NCCL operation and the other is not, prioritize
-            # the non-NCCL operation.
-            return not self.is_nccl_op
+            # the NCCL operation.
+            return self.is_nccl_op
         else:
             # When either both nodes are NCCL operations or both nodes are not
             # NCCL operations, use the default comparison.
