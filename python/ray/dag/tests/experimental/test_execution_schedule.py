@@ -910,10 +910,11 @@ class TestGenerateActorToExecutionSchedule:
             graph[task_idx_1_2][_DAGNodeOperationType.WRITE].operation,
         ]
         assert actor_to_execution_schedule[fake_actor_2] == [
+            # `actor_2.task_idx_2_2.READ` (P2P recv) is scheduled together with
+            # `actor_1.task_idx_1_1.WRITE` (P2P send).
+            graph[task_idx_2_2][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_1][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_1][_DAGNodeOperationType.COMPUTE].operation,
-            # The order of `task_idx_2_2.READ` and `task_idx_2_2.COMPUTE` is important.
-            graph[task_idx_2_2][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_1][_DAGNodeOperationType.WRITE].operation,
             graph[task_idx_2_2][_DAGNodeOperationType.COMPUTE].operation,
             graph[task_idx_2_2][_DAGNodeOperationType.WRITE].operation,
@@ -1011,10 +1012,11 @@ class TestGenerateActorToExecutionSchedule:
             graph[task_idx_2_1][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_1][_DAGNodeOperationType.COMPUTE].operation,
             graph[task_idx_2_1][_DAGNodeOperationType.WRITE].operation,
+            # `actor_2.task_idx_2_3.READ` (P2P recv) is scheduled together with
+            # `actor_1.task_idx_1_2.WRITE` (P2P send).
+            graph[task_idx_2_3][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_2][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_2][_DAGNodeOperationType.COMPUTE].operation,
-            # The order of `task_idx_2_3.READ` and `task_idx_2_2.WRITE` is important.
-            graph[task_idx_2_3][_DAGNodeOperationType.READ].operation,
             graph[task_idx_2_2][_DAGNodeOperationType.WRITE].operation,
             graph[task_idx_2_3][_DAGNodeOperationType.COMPUTE].operation,
             graph[task_idx_2_3][_DAGNodeOperationType.WRITE].operation,

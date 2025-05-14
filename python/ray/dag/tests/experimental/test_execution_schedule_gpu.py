@@ -152,13 +152,15 @@ def test_simulate_pp_2workers_2batches_1f1b(
         (1, _DAGNodeOperationType.READ),
         (1, _DAGNodeOperationType.COMPUTE),
         (1, _DAGNodeOperationType.WRITE),
+        # Scheduled together with `w2 (1, WRITE)`.
+        (3, _DAGNodeOperationType.READ),
         (2, _DAGNodeOperationType.READ),
         (2, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.READ),
         (2, _DAGNodeOperationType.WRITE),
+        # Scheduled together with `w2 (3, WRITE)`.
+        (4, _DAGNodeOperationType.READ),
         (3, _DAGNodeOperationType.COMPUTE),
         (3, _DAGNodeOperationType.WRITE),
-        (4, _DAGNodeOperationType.READ),
         (4, _DAGNodeOperationType.COMPUTE),
         (4, _DAGNodeOperationType.WRITE),
     ]
@@ -195,12 +197,12 @@ def test_simulate_pp_2workers_2batches_1f1b(
         assert len(refs) == 2
         for ref in refs:
             tensor = ray.get(ref)
-            assert torch.equal(tensor, tensor_cpu)
+            assert torch.equal(tensor.cpu(), tensor_cpu)
     else:
         tensors = ray.get(refs)
         assert len(tensors) == 2
         for tensor in tensors:
-            assert torch.equal(tensor, tensor_cpu)
+            assert torch.equal(tensor.cpu(), tensor_cpu)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
