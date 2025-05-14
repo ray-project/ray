@@ -35,14 +35,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Convert a Jupyter notebook to a Python script, preserving bash cells as subprocess calls."
     )
-    parser.add_argument(
-        "input_nb",
-        help="Path to the input .ipynb file"
-    )
-    parser.add_argument(
-        "output_py",
-        help="Path for the output .py script"
-    )
+    parser.add_argument("input_nb", help="Path to the input .ipynb file")
+    parser.add_argument("output_py", help="Path for the output .py script")
     args = parser.parse_args()
     convert_notebook(args.input_nb, args.output_py)
 
