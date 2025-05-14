@@ -246,7 +246,7 @@ class VLLMEngine(LLMEngine):
         self.model_config = await self.engine.get_model_config()
 
         self._tokenizer = await self.engine.get_tokenizer()
-        self._resolved_content_format = resolve_chat_template_content_format(
+        _resolve_chat_template_content_kwargs = dict(
             # Use HF to get the chat template so set it to None here.
             chat_template=None,
             # Default to None, change when it's needed.
@@ -257,6 +257,17 @@ class VLLMEngine(LLMEngine):
             tokenizer=self._tokenizer,
             trust_remote_code=self.model_config.trust_remote_code,
         )
+        try:
+            self._resolved_content_format = resolve_chat_template_content_format(
+                **_resolve_chat_template_content_kwargs
+            )
+        except TypeError:
+            # vLLM 0.9.0 changes API (#52975)
+            _resolve_chat_template_content_kwargs.pop("trust_remote_code")
+            _resolve_chat_template_content_kwargs["model_config"] = self.model_config
+            self._resolved_content_format = resolve_chat_template_content_format(
+                **_resolve_chat_template_content_kwargs
+            )
 
         logger.info("Started vLLM engine.")
 
@@ -504,7 +515,7 @@ class VLLMEngine(LLMEngine):
             )
             mm_data = await mm_futures
 
-            prompt_text = apply_hf_chat_template(
+            _apply_hf_chat_template_kwargs = dict(
                 tokenizer=self._tokenizer,
                 conversation=conversation,
                 chat_template=None,
@@ -515,6 +526,13 @@ class VLLMEngine(LLMEngine):
                 add_generation_prompt=True,
                 continue_final_message=False,
             )
+            try:
+                prompt_text = apply_hf_chat_template(**_apply_hf_chat_template_kwargs)
+            except TypeError:
+                # vLLM 0.9.0 changes API (#52975)
+                _apply_hf_chat_template_kwargs.pop("trust_remote_code")
+                _apply_hf_chat_template_kwargs["model_config"] = model_config
+                prompt_text = apply_hf_chat_template(**_apply_hf_chat_template_kwargs)
         else:
             prompt_text = prompt.prompt
 
