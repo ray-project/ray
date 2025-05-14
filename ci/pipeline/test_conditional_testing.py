@@ -68,7 +68,7 @@ ci/ci.sh: lint tools
 
 src/ray.cpp:
     - lint core_cpp cpp java python
-    - linux_wheels macos_wheels dashboard release_tests accelerated_dag
+    - linux_wheels macos_wheels dashboard release_tests
 
 .github/CODEOWNERS: lint
 README.rst: lint
