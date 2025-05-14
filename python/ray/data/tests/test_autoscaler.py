@@ -88,11 +88,15 @@ def test_actor_pool_scaling():
     with patch(op, "completed", True):
         assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN)
 
-    # Should scale down since all inputs have been already dispatched
-    with patch(op, "_inputs_complete", True, is_method=False):
-        with patch(op_state.input_queues[0], "__len__", 0):
-            with patch(op, "internal_queue_size", 0):
+    # Should scale down only once all inputs have been already dispatched
+    with patch(op_state.input_queues[0], "__len__", 0):
+        with patch(op, "internal_queue_size", 0):
+            with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN)
+
+            with patch(op, "_inputs_complete", False, is_method=False):
+                assert_autoscaling_action(_AutoscalingAction.NO_OP)
+
 
     # Should be no-op since the op doesn't have enough resources.
     with patch(
