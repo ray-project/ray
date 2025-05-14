@@ -12,7 +12,7 @@ from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
 import ray
-from ray.data import ActorPoolStrategy, DataContext
+from ray.data import ActorPoolStrategy
 import copy
 import itertools
 from typing import List
@@ -162,6 +162,7 @@ def main(scale_factor: int):
     benchmark = Benchmark()
 
     from ray.data.context import DataContext
+
     DataContext.get_current().eager_free = False
 
     print("Creating metadata")
