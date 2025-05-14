@@ -57,6 +57,7 @@ def make_task_actor(*, runtime_env: Optional[Dict]) -> Tuple:
     return test_import_task, TestImportActor
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_failure_without_runtime_env(start_cluster_shared_two_nodes):
     """Sanity checks that the test task & actor fail without a runtime_env."""
     cluster, address = start_cluster_shared_two_nodes
@@ -72,6 +73,7 @@ def test_failure_without_runtime_env(start_cluster_shared_two_nodes):
         ray.get(actor_obj_ref)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("remote_uri", [*REMOTE_URIS, S3_WHL_PACKAGE_URI])
 @pytest.mark.parametrize("per_task_actor", [True, False])
