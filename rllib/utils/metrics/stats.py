@@ -467,7 +467,7 @@ class Stats:
             if self._ema_coeff is not None:
                 new_values.extend([np.nanmean(tmp_values)] * n_values)
             elif self._reduce_method in [None, "sum"]:
-                new_values.extend([self._reduced_values(values=tmp_values)[0]])
+                new_values.extend(tmp_values)
             else:
                 new_values.extend(self._reduced_values(values=tmp_values)[0] * n_values)
 
