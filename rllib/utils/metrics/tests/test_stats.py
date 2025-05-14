@@ -471,9 +471,9 @@ def test_reduce_per_index_on_merge():
 
 
 def test_percentiles():
-    """Test that the percentiles reduce method works correctly."""
+    """Test that percentiles work correctly."""
     # Test basic functionality with single stats
-    stats = Stats(reduce="percentiles", window=5)
+    stats = Stats(reduce=None, percentiles=True, window=5)
     stats.push(5)
     stats.push(2)
     stats.push(8)
@@ -490,27 +490,25 @@ def test_percentiles():
     check(stats.peek(), [1, 2, 3, 8, 9])
 
     # Test reduce
-    reduced_stats = stats.reduce()
-    check(reduced_stats.values, [1, 2, 3, 8, 9])
+    reduced_values = stats.reduce()
+    check(reduced_values, [1, 2, 3, 8, 9])
 
     # Test merge_in_parallel
-    stats1 = Stats(reduce="percentiles", window=10)
+    stats1 = Stats(reduce=None, percentiles=True, window=10)
     stats1.push(10)
     stats1.push(30)
     stats1.push(20)
-    check(stats1.peek(), [10, 20, 30])
-    stats1.reduce()
+    check(stats1.reduce(), [10, 20, 30])
     check(stats1.values, [10, 20, 30])
 
-    stats2 = Stats(reduce="percentiles", window=10)
+    stats2 = Stats(reduce=None, percentiles=True, window=10)
     stats2.push(15)
     stats2.push(5)
     stats2.push(25)
-    check(stats2.peek(), [5, 15, 25])
-    stats2.reduce()
+    check(stats2.reduce(), [5, 15, 25])
     check(stats2.values, [5, 15, 25])
 
-    merged_stats = Stats(reduce="percentiles", window=10)
+    merged_stats = Stats(reduce=None, percentiles=True, window=10)
     merged_stats.merge_in_parallel(stats1, stats2)
     # Should merge and sort values from both stats
     # Merged values should be sorted, as incoming values are sorted
@@ -519,23 +517,23 @@ def test_percentiles():
 
     # Test validation - window required
     with pytest.raises(ValueError, match="A window must be specified"):
-        Stats(reduce="percentiles", window=None)
+        Stats(reduce=None, percentiles=True, window=None)
 
     # Test validation - percentiles must be a list
-    with pytest.raises(ValueError, match="must be a list"):
-        Stats(reduce="percentiles", window=5, percentiles=0.5)
+    with pytest.raises(ValueError, match="must be a list or bool"):
+        Stats(reduce=None, percentiles=0.5, window=5)
 
     # Test validation - percentiles must contain numbers
     with pytest.raises(ValueError, match="must contain only ints or floats"):
-        Stats(reduce="percentiles", window=5, percentiles=["invalid"])
+        Stats(reduce=None, window=5, percentiles=["invalid"])
 
     # Test validation - percentiles must be between 0 and 100
     with pytest.raises(ValueError, match="must contain only values between 0 and 100"):
-        Stats(reduce="percentiles", window=5, percentiles=[-1, 50, 101])
+        Stats(reduce=None, window=5, percentiles=[-1, 50, 101])
 
     # Test validation - percentiles must be None for other reduce methods
     with pytest.raises(
-        ValueError, match="must be None when `reduce` is not 'percentiles'"
+        ValueError, match="`percentiles` must be False when `reduce` is not `None`"
     ):
         Stats(reduce="mean", window=5, percentiles=[50])
 

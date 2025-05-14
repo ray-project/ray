@@ -386,6 +386,7 @@ def test_lifetime_stats_behavior():
     # Reduce both children and merge into root
     results1 = child1.reduce()
     results2 = child2.reduce()
+    breakpoint()
     root_logger.merge_and_log_n_dicts([results1, results2])
     check(root_logger.peek("lifetime_metric"), 30)
 
@@ -400,6 +401,7 @@ def test_lifetime_stats_behavior():
     check(results2["lifetime_metric"], [35])  # 35 (20+15)
 
     # Merge new results into root - root should accumulate
+    breakpoint()
     root_logger.merge_and_log_n_dicts([results1, results2])
     check(root_logger.peek("lifetime_metric"), 50)  # 30 + 5 + 15
 
