@@ -50,7 +50,9 @@ def _configure_system():
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
     )
-    assert os.path.exists(thirdparty_files), f"thirdparty_files not found at {os.listdir(os.path.dirname(__file__))}"
+    assert os.path.exists(
+        thirdparty_files
+    ), f"thirdparty_files not found at {os.listdir(os.path.dirname(__file__))}"
 
     # Temporarily add thirdparty_files to sys.path to import the libraries,
     # but ensure we restore path and properly isolate the imports
