@@ -60,13 +60,13 @@ Number of partitions (also referred to as blocks) provide an important trade-off
 
 **Rule of thumb**: *keep partitions large, but not too large to OOM*
 
-1.  It’s important to not “oversize” partitions for joins as that could lead to OOMs (if joined partitions might be be too large to fit in memory)
+1.  It’s important to not “oversize” partitions for joins as that could lead to OOMs (if joined partitions might be too large to fit in memory)
 2.  It’s also important to not create too many small partitions as this creates an overhead of passing large amount of smaller objects
 
 Configuring number of Aggregators
 ----------------------------------------------
 
-“Aggregators” are worker actors that perform actual joins/aggregations/shuffling, they receive individual partition chunks from the incoming blocks and subsequently "aggregate" them in the way that is required to perform given operation.
+“Aggregators” are worker actors that perform actual joins/aggregations/shuffling, they receive individual partition chunks from the incoming blocks and subsequently "aggregate" them in the way that's required to perform given operation.
 
 Following are important considerations for successfully configuring number of aggregators in your pool:
 
@@ -76,5 +76,5 @@ Following are important considerations for successfully configuring number of ag
 
 .. note:: *Rule of thumb* is to *avoid setting `num_partitions` >> number of aggregators as it might create bottlenecks*
 
-1.  Setting `DataContext.max_hash_shuffle_aggregators` will cap the number of aggregators
-2.  Setting it to large enough value will have an effect of allocating 1 partition to 1 aggregator (when `max_hash_shuffle_aggregators >= num_partitions`)
+1.  Setting `DataContext.max_hash_shuffle_aggregators` caps the number of aggregators
+2.  Setting it to large enough value has an effect of allocating 1 partition to 1 aggregator (when `max_hash_shuffle_aggregators >= num_partitions`)
