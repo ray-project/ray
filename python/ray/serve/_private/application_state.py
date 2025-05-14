@@ -1062,9 +1062,6 @@ class ApplicationStateManager:
     def get_docs_path(self, app_name: str) -> Optional[str]:
         return self._application_states[app_name].docs_path
 
-    def set_docs_path(self, app_name: str, docs_path: str):
-        self._application_states[app_name].set_docs_path(docs_path)
-
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
 
