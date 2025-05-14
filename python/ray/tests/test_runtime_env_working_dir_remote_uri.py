@@ -1,19 +1,19 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
 
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
-# If you find that confusing, take it up with @jiaodong...
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
@@ -21,50 +21,67 @@ S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
 
-def _test() -> Tuple[str, Dict]:
-    import test_module
-
-    assert test_module.one() == 2
-
-    ctx = ray.get_runtime_context()
-    return ctx.get_node_id(), ctx.get_runtime_env()
-
-@ray.remote
-def test_import_task() -> Tuple[str, Dict]:
-    return _test()
+@pytest.fixture(scope="module")
+def _start_cluster_shared_two_nodes(_start_cluster_shared):
+    cluster, address = _start_cluster_shared
+    cluster.add_node(num_cpus=1, runtime_env_dir_name=f"worker_node_runtime_resources")
+    yield cluster, address
 
 
-@ray.remote
-class TestImportActor:
-    def test_import(self) -> Tuple[str, Dict]:
+@pytest.fixture
+def start_cluster_shared_two_nodes(_start_cluster_shared_two_nodes):
+    """Shares a two-node cluster instance across all tests in the module.
+
+    Shuts down Ray between test cases.
+    """
+    yield _start_cluster_shared_two_nodes
+    ray.shutdown()
+
+
+def make_task_actor(*, runtime_env: Optional[Dict]) -> Tuple:
+    def _test() -> Tuple[str, Dict]:
+        import test_module
+
+        assert test_module.one() == 2
+
+        ctx = ray.get_runtime_context()
+        return ctx.get_node_id(), ctx.runtime_env
+
+    @ray.remote(runtime_env=runtime_env)
+    def test_import_task() -> Tuple[str, Dict]:
         return _test()
 
+    @ray.remote(runtime_env=runtime_env)
+    class TestImportActor:
+        def test_import(self) -> Tuple[str, Dict]:
+            return _test()
 
-def test_failure_without_runtime_env(start_cluster):
+    return test_import_task, TestImportActor
+
+
+def test_failure_without_runtime_env(start_cluster_shared_two_nodes):
     """Sanity checks that the test task & actor fail without a runtime_env."""
-    cluster, address = start_cluster
+    cluster, address = start_cluster_shared_two_nodes
 
+    task, actor = make_task_actor(runtime_env=None)
+    task_obj_ref = task.remote()
+    a = actor.remote()
+    actor_obj_ref = a.test_import.remote()
 
-    task_obj_ref = test_import_task.remote()
-    actor = TestImportActor.remote()
-    actor_obj_ref = actor.test_import.remote()
     with pytest.raises(ModuleNotFoundError):
         ray.get(task_obj_ref)
     with pytest.raises(ModuleNotFoundError):
         ray.get(actor_obj_ref)
-    
+
+
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("remote_uri", [*REMOTE_URIS, S3_WHL_PACKAGE_URI])
 @pytest.mark.parametrize("per_task_actor", [True, False])
-def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
-    """Tests the case where we lazily read files or import inside a task/actor.
-
-    In this case, the files come from a remote location.
-
-    This tests both that this fails *without* the working_dir and that it
-    passes with it.
-    """
-    cluster, address = start_cluster
+def test_remote_package_uri_multi_node(
+    start_cluster_shared_two_nodes, option, remote_uri, per_task_actor
+):
+    """Test the case where we lazily import inside a task/actor."""
+    cluster, address = start_cluster_shared_two_nodes
 
     if option == "working_dir":
         if remote_uri.endswith(".whl"):
@@ -78,94 +95,35 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     else:
         ray.init(address, runtime_env=env)
 
-    @ray.remote
-    def test_import():
-        import test_module
+    node_ids = [n["NodeID"] for n in ray.nodes()]
+    task, actor = make_task_actor(runtime_env=env if per_task_actor else None)
 
-        return test_module.one()
+    # Run one task and one actor task pinned to each node in the cluster and verify:
+    # 1) The task succeeded because the runtime_env was set up correctly.
+    # 2) The task was placed on the correct node.
+    # 3) The Ray runtime_context was populated with the configured runtime_env.
+    task_refs = [
+        task.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False)
+        ).remote()
+        for node_id in node_ids
+    ]
+    for i, task_ref in enumerate(task_refs):
+        node_id, env_in_task = ray.get(task_ref)
+        assert node_id == node_ids[i]
+        assert env_in_task == env
 
-    if per_task_actor:
-        test_import = test_import.options(runtime_env=env)
-
-    assert ray.get(test_import.remote()) == 2
-
-    @ray.remote
-    class Actor:
-        def test_import(self):
-            import test_module
-
-            return test_module.one()
-
-    if per_task_actor:
-        Actor = Actor.options(runtime_env=env)
-
-    a = Actor.remote()
-    assert ray.get(a.test_import.remote()) == 2
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize(
-    "source", [*REMOTE_URIS, S3_WHL_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
-)
-def test_multi_node(start_cluster, option: str, source: str):
-    """Tests that the working_dir is propagated across multi-node clusters."""
-    NUM_NODES = 3
-    cluster, address = start_cluster
-    for i in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
-
-    if option == "working_dir":
-        if source.endswith(".whl"):
-            pytest.skip(".whl working dir is not supported")
-        ray.init(address, runtime_env={"working_dir": source})
-    elif option == "py_modules":
-        if source not in REMOTE_URIS and source != S3_WHL_PACKAGE_URI:
-            source = str(Path(source) / "test_module")
-        ray.init(address, runtime_env={"py_modules": [source]})
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def check_and_get_node_id(self):
-            import test_module
-
-            test_module.one()
-            return ray.get_runtime_context().get_node_id()
-
-    num_cpus = int(ray.available_resources()["CPU"])
-    actors = [A.remote() for _ in range(num_cpus)]
-    object_refs = [a.check_and_get_node_id.remote() for a in actors]
-    assert len(set(ray.get(object_refs))) == NUM_NODES
-
-
-@pytest.mark.parametrize("working_dir", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
-def test_runtime_context(start_cluster, working_dir):
-    """Tests that the working_dir is propagated in the runtime_context."""
-    cluster, address = start_cluster
-    ray.init(runtime_env={"working_dir": working_dir})
-
-    def check():
-        wd = ray.get_runtime_context().runtime_env["working_dir"]
-        if working_dir in REMOTE_URIS:
-            assert wd == working_dir
-        else:
-            assert wd.startswith("gcs://_ray_pkg_")
-
-    check()
-
-    @ray.remote
-    def task():
-        check()
-
-    ray.get(task.remote())
-
-    @ray.remote
-    class Actor:
-        def check(self):
-            check()
-
-    a = Actor.remote()
-    ray.get(a.check.remote())
+    actors = [
+        actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False)
+        ).remote()
+        for node_id in node_ids
+    ]
+    actor_task_refs = [a.test_import.remote() for a in actors]
+    for i, actor_task_ref in enumerate(actor_task_refs):
+        node_id, env_in_task = ray.get(actor_task_ref)
+        assert node_id == node_ids[i]
+        assert env_in_task == env
 
 
 if __name__ == "__main__":
