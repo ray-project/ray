@@ -131,7 +131,7 @@ class _DAGOperationGraphNode:
             f"_DAGOperationGraphNode("
             f"operation: {self.operation}, "
             f"task_idx: {self.task_idx}, "
-            f"actor_handle: {self.actor_handle}, "
+            f"actor_id: {self.actor_handle._ray_actor_id}, "
             f"requires_nccl: {self.requires_nccl})"
         )
 
@@ -141,28 +141,18 @@ class _DAGOperationGraphNode:
         `_select_next_nodes`. The priority queue is a min-heap, so the node with
         higher priority is considered "less than" the other node.
         """
-
-        def compare(lhs: "_DAGOperationGraphNode", rhs: "_DAGOperationGraphNode"):
-            # If both nodes belong to the same actor, the node with the smaller
-            # `exec_task_idx` is prioritized. If two nodes belong to different
-            # actors, it approximates balancing the scheduled tasks across actors,
-            # by prioritizing the node with the smaller `exec_task_idx`. The tie
-            # is broken by the `task_idx`.
-            if lhs.operation.exec_task_idx != rhs.operation.exec_task_idx:
-                return lhs.operation.exec_task_idx < rhs.operation.exec_task_idx
-            return lhs.task_idx < rhs.task_idx
-
-        if self.actor_handle == other.actor_handle:
-            # When both nodes belong to the same actor, use the default comparison.
-            return compare(self, other)
-        elif self.is_nccl_op != other.is_nccl_op:
+        if self.is_nccl_op != other.is_nccl_op:
             # When one node is a NCCL operation and the other is not, prioritize
             # the NCCL operation.
             return self.is_nccl_op
         else:
-            # When either both nodes are NCCL operations or both nodes are not
-            # NCCL operations, use the default comparison.
-            return compare(self, other)
+            # When either both nodes are NCCL operations or both nodes are not NCCL
+            # operations, prioritize the earlier task within the same actor and load
+            # balance tasks across actors. The tie is broken by the `task_idx`.
+            return (self.operation.exec_task_idx, self.task_idx) < (
+                other.operation.exec_task_idx,
+                other.task_idx,
+            )
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
         """
@@ -317,7 +307,7 @@ def _select_next_nodes(
         execution schedules.
     """
     top_priority_node = None
-    for _, candidates in actor_to_candidates.items():
+    for candidates in actor_to_candidates.values():
         if len(candidates) == 0:
             continue
         if top_priority_node is None or candidates[0] < top_priority_node:
@@ -693,8 +683,9 @@ def _generate_actor_to_execution_schedule(
         nodes = [node for node in nodes if node not in visited_nodes]
         # Add the selected nodes to the execution schedule.
         for node in nodes:
-            actor_to_execution_schedule[node.actor_handle].append(node)
+            assert node not in visited_nodes
             visited_nodes.add(node)
+            actor_to_execution_schedule[node.actor_handle].append(node)
         # Update the in-degree of the downstream nodes.
         for node in nodes:
             for out_node_task_idx, out_node_type in node.out_edges:
@@ -708,7 +699,7 @@ def _generate_actor_to_execution_schedule(
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"
-    for _, candidates in actor_to_candidates.items():
+    for candidates in actor_to_candidates.values():
         assert len(candidates) == 0, "Expected all candidates to be empty"
 
     return actor_to_execution_schedule

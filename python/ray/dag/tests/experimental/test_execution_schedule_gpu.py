@@ -152,12 +152,14 @@ def test_simulate_pp_2workers_2batches_1f1b(
         (1, _DAGNodeOperationType.READ),
         (1, _DAGNodeOperationType.COMPUTE),
         (1, _DAGNodeOperationType.WRITE),
-        # Scheduled together with `w2 (1, WRITE)`.
+        # `w1 (3, READ)` (P2P recv) is scheduled together with
+        # `w2 (1, WRITE)` (P2P send).
         (3, _DAGNodeOperationType.READ),
         (2, _DAGNodeOperationType.READ),
         (2, _DAGNodeOperationType.COMPUTE),
         (2, _DAGNodeOperationType.WRITE),
-        # Scheduled together with `w2 (3, WRITE)`.
+        # `w1 (4, READ)` (P2P recv) is scheduled together with
+        # `w2 (3, WRITE)` (P2P send).
         (4, _DAGNodeOperationType.READ),
         (3, _DAGNodeOperationType.COMPUTE),
         (3, _DAGNodeOperationType.WRITE),
@@ -337,7 +339,8 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
         (1, _DAGNodeOperationType.WRITE),
     ]
     b_expected_schedule = [
-        # Scheduled together with `a (0, WRITE)`.
+        # `b (1, READ)` (P2P recv) is scheduled together with
+        # `a (0, WRITE)` (P2P send).
         (1, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
@@ -346,7 +349,8 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
         (1, _DAGNodeOperationType.WRITE),
     ]
     c_expected_schedule = [
-        # Scheduled together with `a (0, WRITE)`.
+        # `c (1, READ)` (P2P recv) is scheduled together with
+        # `a (0, WRITE)` (P2P send).
         (1, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
@@ -425,7 +429,8 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
     # Check receiver schedule
     expected_no_overlap_schedule = [
         (0, _DAGNodeOperationType.READ),
-        # Scheduled together with `sender2 (0, WRITE)`.
+        # `receiver (1, READ)` (P2P recv) is scheduled together with
+        # `sender2 (0, WRITE)` (P2P send).
         (1, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
         (0, _DAGNodeOperationType.WRITE),
@@ -434,7 +439,8 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
     ]
     expected_overlap_schedule = [
         (0, _DAGNodeOperationType.READ),
-        # Scheduled together with `sender2 (0, WRITE)`.
+        # `receiver (1, READ)` (P2P recv) is scheduled together with
+        # `sender2 (0, WRITE)` (P2P send).
         (1, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
         (0, _DAGNodeOperationType.WRITE),
