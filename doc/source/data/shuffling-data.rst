@@ -24,7 +24,7 @@ To randomly shuffle the ordering of input files before reading, call a :ref:`rea
 :func:`~ray.data.read_images`, and use the ``shuffle="files"`` parameter. This randomly assigns
 input files to workers for reading.
 
-This is the fastest "shuffle" option: it is purely a metadata operation -- list of files constituting the dataset is random-shuffled before being
+This is the fastest "shuffle" option: it's purely a metadata operation --- list of files constituting the dataset is random-shuffled before being
 fetched by the reading tasks. This option, however, doesn't shuffle the rows inside files, so the randomness might not be
 sufficient for your needs in case of files with the large number of rows.
 
@@ -105,15 +105,15 @@ Global shuffle
 
 To shuffle all rows globally, across the whole dataset, multiple options are available
 
-    1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` will essentially permute and shuffle individual rows
+    1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
     from existing blocks into the new ones using (optionally) provided seed.
 
-    2. (**NEW in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter will trigger
+    2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
     :ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
     deterministic way of co-locating rows based on the hash of the column values.
 
-Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization barrier --
-subsequent operators won't be able to start executing until shuffle completion.
+Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization
+barrier --- subsequent operators won't be able to start executing until shuffle completion.
 
 Example of random shuffling with seed:
 
@@ -154,7 +154,7 @@ Use global per-epoch shuffling only if your model is sensitive to the
 randomness of the training data. Based on a
 `theoretical foundation <https://arxiv.org/abs/1709.10432>`__, all
 gradient-descent-based model trainers benefit from improved (global) shuffle quality.
-In practice, the benefit is particularly pronounced for tabular data/models.
+In practice, the benefit's particularly pronounced for tabular data/models.
 However, the more global the shuffle is, the more expensive the shuffling operation.
 The increase compounds with distributed data-parallel training on a multi-node cluster due
 to data transfer costs. This cost can be prohibitive when using very large datasets.
