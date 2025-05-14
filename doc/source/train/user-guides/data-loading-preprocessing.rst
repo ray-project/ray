@@ -328,10 +328,18 @@ For more details, see the following sections for each framework:
 .. note::
 
     When using PyTorch DataLoader with more than 1 worker, you should set the
-    process start method to be `forkserver` or `spawn` i.e.
-    ``data_loader = DataLoader(dataset, multiprocessing_context=multiprocessing.get_context("forkserver"), num_workers=2...)``.
+    process start method to be `forkserver` or `spawn`.
     :ref:`Forking Ray Actors and Tasks is an anti-pattern <forking-ray-processes-antipattern>` that
     can lead to unexpected issues such as deadlocks.
+
+    .. code-block:: python
+
+        data_loader = DataLoader(
+            dataset,
+            num_workers=2, 
+            multiprocessing_context=multiprocessing.get_context("forkserver"), 
+            ...
+        )
 
 .. _train-datasets-split:
 
