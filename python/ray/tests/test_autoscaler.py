@@ -1,10 +1,10 @@
 import copy
-import logging
-import sys
 import json
+import logging
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -20,11 +20,6 @@ import yaml
 from jsonschema.exceptions import ValidationError
 
 import ray
-from ray.tests.autoscaler_test_utils import (
-    MockNode,
-    MockProcessRunner,
-    MockProvider,
-)
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -61,13 +56,16 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
+from ray.core.generated import common_pb2, gcs_pb2
+from ray.exceptions import RpcError
+from ray.tests.autoscaler_test_utils import (
+    MockNode,
+    MockProcessRunner,
+    MockProvider,
+)
 from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
 )
-from ray.exceptions import RpcError
-
-from ray.core.generated import gcs_pb2, common_pb2
-
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 

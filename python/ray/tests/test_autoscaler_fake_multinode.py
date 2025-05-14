@@ -1,9 +1,10 @@
-import pytest
 import platform
+import time
+
+import pytest
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
-import time
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")

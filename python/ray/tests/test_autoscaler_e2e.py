@@ -1,15 +1,16 @@
 import subprocess
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+import sys
 
 import pytest
+
 import ray
-import sys
 from ray._private.test_utils import (
-    wait_for_condition,
-    get_metric_check_condition,
     MetricSamplePattern,
     SignalActor,
+    get_metric_check_condition,
+    wait_for_condition,
 )
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
@@ -369,6 +370,7 @@ def test_infeasible_task_early_cancellation_actor_creation(
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

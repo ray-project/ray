@@ -1,25 +1,24 @@
-import sys
 import random
-
-import ray
-
-import pytest
+import sys
 import time
 
+import pytest
+
+import ray
+from ray._private.test_utils import (
+    RayletKiller,
+    WorkerKillerActor,
+    get_and_run_resource_killer,
+    get_log_message,
+    wait_for_condition,
+)
+from ray.cluster_utils import AutoscalingCluster
+from ray.exceptions import ObjectLostError, RayTaskError
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.util.placement_group import placement_group
-from ray._private.test_utils import (
-    RayletKiller,
-    get_log_message,
-    get_and_run_resource_killer,
-    WorkerKillerActor,
-    wait_for_condition,
-)
-from ray.exceptions import RayTaskError, ObjectLostError
-from ray.util.state.common import ListApiOptions, StateResource
 from ray.util.state.api import StateApiClient, list_nodes
-from ray.cluster_utils import AutoscalingCluster
+from ray.util.state.common import ListApiOptions, StateResource
 
 
 def assert_no_system_failure(p, timeout):
@@ -318,6 +317,7 @@ def test_node_killer_filter(autoscaler_v2):
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

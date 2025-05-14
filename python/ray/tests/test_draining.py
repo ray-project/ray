@@ -1,11 +1,12 @@
 import sys
+import time
+
 import pytest
 
 import ray
-import time
+from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
