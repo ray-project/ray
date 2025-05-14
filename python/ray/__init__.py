@@ -50,9 +50,11 @@ def _configure_system():
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
     )
-    assert os.path.exists(
-        thirdparty_files
-    ), f"thirdparty_files not found at {os.listdir(os.path.dirname(__file__))}"
+    if not os.path.exists(thirdparty_files):
+        logger.warning(
+            f"thirdparty_files not found at {thirdparty_files}. "
+            "Using the default libraries."
+        )
 
     # Temporarily add thirdparty_files to sys.path to import the libraries,
     # but ensure we restore path and properly isolate the imports
@@ -74,8 +76,8 @@ def _configure_system():
         import setproctitle
         import colorama
 
-        sys.modules[f"ray._private.setproctitle"] = setproctitle
-        sys.modules[f"ray._private.colorama"] = colorama
+        sys.modules["ray._private.setproctitle"] = setproctitle
+        sys.modules["ray._private.colorama"] = colorama
 
         # Restore the user's module
         if existing_setproctitle_module:
