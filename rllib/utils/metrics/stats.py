@@ -667,7 +667,7 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
-                percentiles=state.get("percentiles", None),
+                percentiles=state.get("percentiles", False),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
@@ -682,7 +682,7 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
-                percentiles=state.get("percentiles", None),
+                percentiles=state.get("percentiles", False),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
@@ -693,7 +693,7 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
-                percentiles=state.get("percentiles", None),
+                percentiles=state.get("percentiles", False),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
