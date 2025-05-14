@@ -57,7 +57,7 @@ class RpcFailureManager {
                      .req_failure_prob = std::stoul(colon_split[1]),
                      .resp_failure_prob = std::stoul(colon_split[2])});
         const auto &failable = iter->second;
-        RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 100);
+        RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 100UL);
       }
 
       std::random_device rd;
