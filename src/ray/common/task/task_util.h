@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
@@ -31,8 +33,8 @@ struct TaskFailureEntry {
 
   /// Whether this task should be retried.
   bool should_retry;
-  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
-      : ray_error_info(ray_error_info),
+  TaskFailureEntry(rpc::RayErrorInfo ray_error_info, bool should_retry)
+      : ray_error_info(std::move(ray_error_info)),
         creation_time(std::chrono::steady_clock::now()),
         should_retry(should_retry) {}
 };

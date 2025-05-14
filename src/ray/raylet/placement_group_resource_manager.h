@@ -76,9 +76,9 @@ class PlacementGroupResourceManager {
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec A set of bundles which in use.
-  void ReturnUnusedBundle(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
+  void ReturnUnusedBundle(const absl::flat_hash_set<BundleID, pair_hash> &in_use_bundles);
 
-  virtual ~PlacementGroupResourceManager() {}
+  virtual ~PlacementGroupResourceManager() = default;
 
  protected:
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.

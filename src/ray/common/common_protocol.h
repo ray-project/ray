@@ -107,6 +107,7 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ID ids[], int64_t num_ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  results.reserve(num_ids);
   for (int64_t i = 0; i < num_ids; i++) {
     results.push_back(to_flatbuf(fbb, ids[i]));
   }
@@ -117,7 +118,8 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
-  for (auto id : ids) {
+  results.reserve(ids.size());
+  for (const auto &id : ids) {
     results.push_back(to_flatbuf(fbb, id));
   }
   return fbb.CreateVector(results);
@@ -127,14 +129,15 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
-  for (auto id : ids) {
+  results.reserve(ids.size());
+  for (const auto &id : ids) {
     results.push_back(to_flatbuf(fbb, id));
   }
   return fbb.CreateVector(results);
 }
 
 static inline ray::rpc::ObjectReference ObjectIdToRef(
-    const ray::ObjectID &object_id, const ray::rpc::Address owner_address) {
+    const ray::ObjectID &object_id, const ray::rpc::Address &owner_address) {
   ray::rpc::ObjectReference ref;
   ref.set_object_id(object_id.Binary());
   ref.mutable_owner_address()->CopyFrom(owner_address);
@@ -148,6 +151,7 @@ static inline ray::ObjectID ObjectRefToId(const ray::rpc::ObjectReference &objec
 static inline std::vector<ray::ObjectID> ObjectRefsToIds(
     const std::vector<ray::rpc::ObjectReference> &object_refs) {
   std::vector<ray::ObjectID> object_ids;
+  object_ids.reserve(object_refs.size());
   for (const auto &ref : object_refs) {
     object_ids.push_back(ObjectRefToId(ref));
   }

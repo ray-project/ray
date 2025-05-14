@@ -15,9 +15,8 @@
 #include "ray/raylet/placement_group_resource_manager.h"
 
 #include <cctype>
-#include <fstream>
 #include <memory>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace ray {
@@ -25,7 +24,7 @@ namespace ray {
 namespace raylet {
 
 void PlacementGroupResourceManager::ReturnUnusedBundle(
-    const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
+    const absl::flat_hash_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
       RAY_CHECK_OK(ReturnBundle(*iter->second));
@@ -38,7 +37,7 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
 
 NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler)
-    : cluster_resource_scheduler_(cluster_resource_scheduler) {}
+    : cluster_resource_scheduler_(std::move(cluster_resource_scheduler)) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {
