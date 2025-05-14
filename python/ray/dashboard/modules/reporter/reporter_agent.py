@@ -592,11 +592,20 @@ class ReporterAgent(
         return gpu_utilizations
 
     @staticmethod
-    def _parse_nvsmi_output(nvsmi_stdout: str) -> Dict[int, List[Tuple[str, str, str]]]:
+    def _parse_nvsmi_output(nvsmi_stdout: str) -> Dict[int, List[Tuple[int, int, int]]]:
         """Parse the output of nvidia-smi pmon -c 1."""
         process_utilizations = defaultdict(list)
         lines = nvsmi_stdout.splitlines()
-        table_header = lines.pop(0).lower().split()[1:]
+        # Get the first line that is started with #
+        table_header = None
+        for line in lines:
+            if line.startswith("#"):
+                table_header = line
+                break
+        if not table_header:
+            logger.debug("nvidia-smi pmon -c 1 output is empty.")
+            return process_utilizations
+        table_header = table_header.lower().split()[1:]
         # Base on different versions, the header may be different.
         gpu_id_index = table_header.index("gpu")
         pid_index = table_header.index("pid")
@@ -611,14 +620,13 @@ class ReporterAgent(
                 continue
 
             gpu_id, pid, sm, mem = (
-                columns[gpu_id_index],
-                columns[pid_index],
-                columns[sm_index],
-                columns[mem_index],
+                int(columns[gpu_id_index]),
+                0 if columns[pid_index] == "-" else int(columns[pid_index]),
+                0 if columns[sm_index] == "-" else int(columns[sm_index]),
+                0 if columns[mem_index] == "-" else int(columns[mem_index]),
             )
-            if pid == "-":  # no process on this GPU
+            if pid == 0:  # no process on this GPU
                 continue
-            gpu_id = int(gpu_id)
             pinfo = (pid, mem, sm)
             process_utilizations[gpu_id].append(pinfo)
         return process_utilizations
