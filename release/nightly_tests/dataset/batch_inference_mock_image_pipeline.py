@@ -161,6 +161,9 @@ class EmbedPatches:
 def main(scale_factor: int):
     benchmark = Benchmark()
 
+    from ray.data.context import DataContext
+    DataContext.get_current().eager_free = False
+
     print("Creating metadata")
     metadata = create_metadata(scale_factor=scale_factor)
 
