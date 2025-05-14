@@ -7,6 +7,7 @@ from typing import Tuple
 
 import ray
 from ray.exceptions import ActorUnavailableError, ActorDiedError
+from ray._private.test_utils import SignalActor
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -181,6 +182,37 @@ def test_actor_unavailable_norestart(ray_start_regular, caller):
 
 
 @ray.remote(max_restarts=-1, max_task_retries=0)
+class ActorAwaitingOnCreation:
+    """
+    An actor that is awaiting for a signal to be sent to it during its init. It is used
+    to test the behavior of the actor when it is killed and restarted.
+
+    It also increments a counter during its init to keep track of the number of
+    restarts.
+    """
+
+    def __init__(
+        self, restart_counter: Counter, blocking_signal: SignalActor, restart_limit: int
+    ):
+        restart_count = ray.get(restart_counter.slow_increment.remote(1, 0.1))
+        ray.get(blocking_signal.wait.remote())  # block on signal
+        if restart_count > restart_limit:
+            msg = (
+                "Failed to restart the actor because the retry limit "
+                f"{restart_limit} was reached."
+            )
+            print(msg)
+            raise ValueError(msg)
+
+    def ping(self, name):
+        print(f"ping from {name}")
+        return f"hello {name}!"
+
+    def getpid(self):
+        return os.getpid()
+
+
+@ray.remote(max_restarts=-1, max_task_retries=0)
 class SlowCtor:
     """
     An actor that has a slow init. It performs:
@@ -216,39 +248,47 @@ class SlowCtor:
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 @pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
-    c = Counter.remote()
-    # Restart config:
-    # Initial run, Restart #1: ok.
-    # Restart #2, #3: fails, can retry.
-    # Afterwards: no more restarts, any new method call raises ActorDiedError.
-    a = SlowCtor.options(max_restarts=3).remote(
-        counter=c, init_sleep_s=2, die_range=[2, 10000]
+    counter = Counter.remote()
+    signal_actor = SignalActor.remote()
+    actor = ActorAwaitingOnCreation.options(max_restarts=3).remote(
+        restart_counter=counter, blocking_signal=signal_actor, restart_limit=2
     )
-    assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
 
-    # Kill the actor process. Triggers restart #1. During its __init__, all incoming
-    # calls get ActorUnavailableError.
-    sigkill_actor(a)
+    # unblock actor creation
+    ray.get(signal_actor.send.remote())
+    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
+        pass  # just wait for the signal to be sent
+    assert ray.get(actor.ping.remote("lemon")) == "hello lemon!"
+
+    # block actor creation and kill it
+    ray.get(signal_actor.send.remote(clear=True))
+    sigkill_actor(actor)
 
     with pytest.raises(ActorUnavailableError, match="RpcError"):
-        print(ray.get(a.ping.remote("unavailable")))
+        print(ray.get(actor.ping.remote("unavailable")))
     # When the actor is restarting, any method call raises ActorUnavailableError.
     with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
-        print(ray.get(a.ping.remote("unavailable")))
+        print(ray.get(actor.ping.remote("unavailable")))
 
-    # Waits for the actor to restart.
-    time.sleep(3)
-    assert ray.get(a.ping.remote("ok")) == "hello ok!"
+    # unblock actor creation
+    ray.get(signal_actor.send.remote())
+    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
+        pass  # just wait for the signal to be sent
+    assert ray.get(actor.ping.remote("ok")) == "hello ok!"
 
-    # Kill the actor again. Triggers restart #2. However it raises ValueError in init
-    # so it consequently triggers restart #3 and also fails. Afterwards, ActorDiedError
-    # is raised.
-    sigkill_actor(a)
+    # block actor creation and kill it
+    ray.get(signal_actor.send.remote(clear=True))
+    sigkill_actor(actor)
+
     with pytest.raises(ActorUnavailableError):
-        print(ray.get(a.ping.remote("unavailable")))
-    time.sleep(4)
+        print(ray.get(actor.ping.remote("unavailable")))
+
+    # unblock actor creation, the actor still dies because it reaches the restart limit
+    ray.get(signal_actor.send.remote())
+    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
+        pass  # just wait for the signal to be sent
     with pytest.raises(ActorDiedError, match="an error raised in its creation task"):
-        print(ray.get(a.ping.remote("actor error")))
+        print(ray.get(actor.ping.remote("actor error")))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
