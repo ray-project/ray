@@ -355,9 +355,74 @@ This command generates two files: an LLM config file, saved in `model_config/`, 
 Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the
 future.
 
-Read and check how the generated model config looks like. Refer to
-`vLLMEngine Config <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_.
-to further customize.
+After reading and reviewing the generated model config, see
+the `vLLM engine configuration docs <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_
+for further customization.
+
+Observability
+---------------------
+Ray enables LLM service-level logging by default, and makes these statistics available using Grafana and Prometheus. For more details on configuring Grafana and Prometheus, see :ref:`collect-metrics`.
+
+These higher-level metrics track request and token behavior across deployed models. For example: average total tokens per request, ratio of input tokens to generated tokens, and peak tokens per second.
+
+For visualization, Ray ships with a Serve LLM-specific dashboard, which is automatically available in Grafana. Example below:
+
+.. image:: images/serve_llm_dashboard.png
+
+Engine Metrics
+---------------------
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
+
+Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
+
+.. tab-set::
+
+    .. tab-item:: Python
+        :sync: builder
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_app
+
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                log_engine_metrics=True
+            )
+
+            app = build_openai_app({"llm_configs": [llm_config]})
+            serve.run(app, blocking=True)
+
+    .. tab-item:: YAML
+        :sync: bind
+
+        .. code-block:: yaml
+
+            # config.yaml
+            applications:
+            - args:
+                llm_configs:
+                    - model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+                    log_engine_metrics: true
+            import_path: ray.serve.llm:build_openai_app
+            name: llm_app
+            route_prefix: "/"
+
 
 Advanced Usage Patterns
 -----------------------

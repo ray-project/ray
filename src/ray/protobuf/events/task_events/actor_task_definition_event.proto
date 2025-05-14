@@ -14,6 +14,9 @@
 
 syntax = "proto3";
 
+import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/common.proto";
+
 package ray.rpc.events;
 
 // Message containing the definition information of an actor task.
