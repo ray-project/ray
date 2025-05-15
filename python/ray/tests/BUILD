@@ -124,8 +124,8 @@ py_test_module_list(
         "test_client_reconnect.py",
     ],
     tags = [
-        "ray_client",
         "exclusive",
+        "ray_client",
         "team:core",
     ],
     deps = [
@@ -140,8 +140,8 @@ py_test_module_list(
         "test_client_builder.py",
     ],
     tags = [
-        "ray_client",
         "exclusive",
+        "ray_client",
         "team:core",
         "use_all_core",
     ],
@@ -160,8 +160,8 @@ py_test_module_list(
         "test_client_warnings.py",
     ],
     tags = [
-        "ray_client",
         "exclusive",
+        "ray_client",
         "team:core",
     ],
     deps = [
@@ -176,9 +176,9 @@ py_test_module_list(
         "test_client_init.py",
     ],
     tags = [
-        "ray_client",
         "exclusive",
         "no_windows",
+        "ray_client",
         "team:core",
     ],
     deps = [
@@ -219,8 +219,8 @@ py_test_module_list(
     ],
     name_suffix = "_client_mode",
     tags = [
-        "ray_client",
         "exclusive",
+        "ray_client",
         "team:core",
     ],
     deps = [
