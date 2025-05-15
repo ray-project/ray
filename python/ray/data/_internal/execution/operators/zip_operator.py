@@ -229,12 +229,6 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             )
         stats = {self._name: to_stats(output_metadata)}
 
-        # Clean up inputs.
-        for ref in left_input:
-            ref.destroy_if_owned()
-        for ref in right_input:
-            ref.destroy_if_owned()
-
         return output_refs, stats
 
     def _calculate_blocks_rows_and_bytes(

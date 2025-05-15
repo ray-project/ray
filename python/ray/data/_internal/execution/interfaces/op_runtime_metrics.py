@@ -722,5 +722,4 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 # Keep track of node ids to ensure we don't double count
                 node_ids.add(node_id)
 
-        inputs.destroy_if_owned()
         del self._running_tasks[task_index]

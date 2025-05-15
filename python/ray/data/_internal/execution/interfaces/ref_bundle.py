@@ -3,9 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional, Tuple
 
 import ray
-from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 from .common import NodeIdStr
@@ -88,19 +86,6 @@ class RefBundle:
     def size_bytes(self) -> int:
         """Size of the blocks of this bundle in bytes."""
         return sum(m.size_bytes for m in self.metadata)
-
-    def destroy_if_owned(self) -> int:
-        """Clears the object store memory for these blocks if owned.
-
-        Returns:
-            The number of bytes freed.
-        """
-        should_free = self.owns_blocks and DataContext.get_current().eager_free
-        for block_ref in self.block_refs:
-            trace_deallocation(
-                block_ref, "RefBundle.destroy_if_owned", free=should_free
-            )
-        return self.size_bytes() if should_free else 0
 
     def get_preferred_object_locations(self) -> Dict[NodeIdStr, int]:
         """Returns a mapping of node IDs to total bytes stored on each node.

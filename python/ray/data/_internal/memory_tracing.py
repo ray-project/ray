@@ -35,21 +35,17 @@ def trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
         ray.get(tracer.trace_alloc.remote([ref], loc))
 
 
-def trace_deallocation(ref: ray.ObjectRef, loc: str, free: bool = True) -> None:
+def trace_deallocation(ref: ray.ObjectRef, loc: str) -> None:
     """Record that an object has been deleted (and delete if free=True).
 
     Args:
         ref: The object we no longer need.
         loc: A human-readable string identifying the call site.
-        free: Whether to eagerly destroy the object instead of waiting for Ray
-            reference counting to kick in.
     """
-    if free:
-        ray._private.internal_api.free(ref, local_only=False)
     ctx = DataContext.get_current()
     if ctx.trace_allocations:
         tracer = _get_mem_actor()
-        ray.get(tracer.trace_dealloc.remote([ref], loc, free))
+        ray.get(tracer.trace_dealloc.remote([ref], loc))
 
 
 def leak_report() -> str:
@@ -90,23 +86,11 @@ class _MemActor:
             self.cur_mem += size_bytes
             self.peak_mem = max(self.cur_mem, self.peak_mem)
 
-    def trace_dealloc(self, ref: List[ray.ObjectRef], loc: str, freed: bool):
+    def trace_dealloc(self, ref: List[ray.ObjectRef], loc: str):
         ref = ref[0]  # Avoid Ray materializing the ref.
         size_bytes = self.allocated.get(ref, {}).get("size_bytes", 0)
-        if freed:
-            print(f"[mem_tracing] Freed {size_bytes} bytes at {loc}: {ref}")
-            if ref in self.allocated:
-                self.cur_mem -= size_bytes
-                self.deallocated[ref] = self.allocated.pop(ref)
-                self.deallocated[ref]["dealloc_loc"] = loc
-            if ref in self.deallocated:
-                # This object reference is already deallocated.
-                pass
-            else:
-                print(f"[mem_tracing] WARNING: allocation of {ref} was not traced!")
-        else:
-            print(f"[mem_tracing] Skipped freeing {size_bytes} bytes at {loc}: {ref}")
-            self.skip_dealloc[ref] = loc
+        print(f"[mem_tracing] Skipped freeing {size_bytes} bytes at {loc}: {ref}")
+        self.skip_dealloc[ref] = loc
 
     def leak_report(self) -> str:
         output = StringIO()
