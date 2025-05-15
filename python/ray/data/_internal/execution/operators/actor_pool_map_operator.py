@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -498,6 +499,7 @@ class _ActorPool(AutoscalingActorPool):
     actors when the operator is done submitting work to the pool.
     """
 
+    _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 30
     _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
 
     def __init__(
@@ -519,6 +521,8 @@ class _ActorPool(AutoscalingActorPool):
         assert self._max_tasks_in_flight >= 1
         assert self._create_actor_fn is not None
 
+        # Timestamp of the last scale up action
+        self._last_scale_up_ts: Optional[float] = None
         # Actors that have started running, including alive and restarting actors.
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
@@ -573,6 +577,20 @@ class _ActorPool(AutoscalingActorPool):
             for actor_state in self._running_actors.values()
         )
 
+    def can_scale_down(self):
+        # NOTE: To prevent bouncing back and forth, we disallow scale down for
+        #       a "cool-off" period after the most recent scaling up, with an intention
+        #       to allow application to actually utilize newly provisioned resources
+        #       before making decisions on subsequent action
+        #
+        #       Note that this action is unidirectional and doesn't apply to
+        #       scaling up, ie if actor pool just scaled down, it'd still be able
+        #       to scale back up immediately.
+        return (
+            self._last_scale_up_ts is None or
+            time.time() >= self._last_scale_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+        )
+
     def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         logger.info(
             f"Scaling up actor pool by {num_actors} ("
@@ -584,6 +602,10 @@ class _ActorPool(AutoscalingActorPool):
         for _ in range(num_actors):
             actor, ready_ref = self._create_actor_fn()
             self.add_pending_actor(actor, ready_ref)
+
+        # Capture last scale up timestamp
+        self._last_scale_up_ts = time.time()
+
         return num_actors
 
     def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:

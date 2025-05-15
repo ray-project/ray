@@ -66,6 +66,10 @@ class AutoscalingActorPool(ABC):
         )
 
     @abstractmethod
+    def can_scale_down(self):
+        ...
+
+    @abstractmethod
     def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         """Request the actor pool to scale up by the given number of actors.
 
