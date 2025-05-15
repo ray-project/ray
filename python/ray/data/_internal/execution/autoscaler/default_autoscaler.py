@@ -108,7 +108,9 @@ class DefaultAutoscaler(Autoscaler):
                 f"utilization of {util} >= {self._actor_pool_scaling_up_threshold}",
             )
         elif util <= self._actor_pool_scaling_down_threshold:
-            if actor_pool.current_size() <= actor_pool.min_size():
+            if not actor_pool.can_scale_down():
+                return _AutoscalingAction.NO_OP, "debounced"
+            elif actor_pool.current_size() <= actor_pool.min_size():
                 return _AutoscalingAction.NO_OP, "reached min size"
 
             return (
@@ -132,7 +134,7 @@ class DefaultAutoscaler(Autoscaler):
 
                 if recommended_action is _AutoscalingAction.SCALE_UP:
                     actor_pool.scale_up(1, reason=reason)
-                elif recommended_action is _AutoscalingAction.SCALE_DOWN and actor_pool.can_scale_down():
+                elif recommended_action is _AutoscalingAction.SCALE_DOWN:
                     actor_pool.scale_down(1, reason=reason)
 
     def _try_scale_up_cluster(self):
