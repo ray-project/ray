@@ -2,6 +2,7 @@ import asyncio
 import collections
 import datetime
 import threading
+import time
 import unittest
 from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, patch
@@ -124,11 +125,14 @@ class TestActorPool(unittest.TestCase):
             assert pool._last_scale_up_ts == time.time()
 
             # Advance clock
-            f.tick(datetime.timedelta(seconds=_ActorPool._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S + 1))
+            f.tick(
+                datetime.timedelta(
+                    seconds=_ActorPool._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S + 1
+                )
+            )
 
             # Assert can scale down after debounce period
             assert pool.can_scale_down()
-
 
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.

@@ -587,8 +587,9 @@ class _ActorPool(AutoscalingActorPool):
         #       scaling up, ie if actor pool just scaled down, it'd still be able
         #       to scale back up immediately.
         return (
-            self._last_scale_up_ts is None or
-            time.time() >= self._last_scale_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+            self._last_scale_up_ts is None
+            or time.time()
+            >= self._last_scale_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
         )
 
     def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
