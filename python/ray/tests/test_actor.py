@@ -857,6 +857,10 @@ def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
+            # NOTE: Since we shadow the setproctitle module, we need to import it
+            # from ray._private.
+            from ray._private import setproctitle
+
             assert setproctitle.getproctitle() == f"ray::{name}"
 
     f = Foo.remote()

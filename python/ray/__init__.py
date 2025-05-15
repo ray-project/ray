@@ -70,15 +70,15 @@ def _configure_system():
 
         import setproctitle
         import colorama
-        
+
         sys.modules["ray._private.setproctitle"] = setproctitle
         sys.modules["ray._private.colorama"] = colorama
 
         del sys.modules["setproctitle"]
         del sys.modules["colorama"]
     except ImportError:
-        logger.warning(f"Error importing setproctitle and colorama.")
-    else: # Restore the original sys.path if no error
+        logger.warning("Error importing setproctitle and colorama.")
+    else:  # Restore the original sys.path if no error
         sys.path = original_sys_path
 
     # Restore the user's module
