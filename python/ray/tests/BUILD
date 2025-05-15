@@ -714,7 +714,10 @@ py_test(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_actor_resources.py",
         "test_dataclient_disconnect.py",
+        "test_iter.py",
+        "test_placement_group.py",
         "test_runtime_env_working_dir_remote_uri.py",
         "test_scheduling_performance.py",
         "test_state_api_2.py",
@@ -740,7 +743,6 @@ py_test_module_list(
         "test_actor.py",
         "test_actor_failures.py",
         "test_actor_lineage_reconstruction.py",
-        "test_actor_resources.py",
         "test_actor_retry_1.py",
         "test_actor_retry_2.py",
         "test_cancel.py",
@@ -751,7 +753,6 @@ py_test_module_list(
         "test_failure_3.py",
         "test_generators.py",
         "test_multi_node.py",
-        "test_placement_group.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
         "test_reconstruction.py",
@@ -832,7 +833,6 @@ py_test_module_list(
     size = "large",
     files = [
         "test_failure_4.py",
-        "test_iter.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
@@ -854,7 +854,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "enormous",
+    size = "medium",
     files = [
         "test_implicit_resource.py",
         "test_plasma_unlimited.py",
