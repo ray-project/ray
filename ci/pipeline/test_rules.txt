@@ -98,10 +98,6 @@ python/
 @ python core_cpp
 ;
 
-.buildkite/serverless.rayci.yml
-@ python
-;
-
 java/
 .buildkite/others.rayci.yml
 @ java
