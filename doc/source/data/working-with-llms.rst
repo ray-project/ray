@@ -187,14 +187,14 @@ To do multi-LoRA batch inference, you need to set LoRA related parameters in `en
 
 .. _vision_language_model:
 
-Batch inference with vision-language model (VLM)
+Batch inference with vision-language-model (VLM)
 --------------------------------
 
 Ray Data LLM also supports running batch inference with vision language
 models. This example shows how to prepare a dataset with images and run
 batch inference with a vision language model.
 
-We applied 2 adjustments on top of the previous example:
+This example applies 2 adjustments on top of the previous example:
 
 - set `has_image=True` in `vLLMEngineProcessorConfig`
 - prepare image input inside preprocessor
