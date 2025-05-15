@@ -207,7 +207,7 @@ def _split_all_blocks(
             trace_deallocation(b, "split._split_all_blocks")
     else:
         for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks", free=False)
+            trace_deallocation(b, "split._split_all_blocks")
 
     return itertools.chain.from_iterable(all_blocks_split_results)
 

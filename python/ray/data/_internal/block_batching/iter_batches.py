@@ -27,7 +27,6 @@ def iter_batches(
     ref_bundles: Iterator[RefBundle],
     *,
     stats: Optional[DatasetStats] = None,
-    clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
     batch_format: Optional[str] = "default",
     drop_last: bool = False,
@@ -74,11 +73,6 @@ def iter_batches(
     Args:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
-        clear_block_after_read: Whether to clear the block from object store
-            manually (i.e. without waiting for Python's automatic GC) after it
-            is read. Doing so will reclaim memory faster and hence reduce the
-            memory footprint. However, the caller has to ensure the safety, i.e.
-            the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -118,8 +112,6 @@ def iter_batches(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    eager_free = clear_block_after_read and DataContext.get_current().eager_free
-
     def _async_iter_batches(
         ref_bundles: Iterator[RefBundle],
     ) -> Iterator[DataBatch]:
@@ -129,7 +121,6 @@ def iter_batches(
             prefetcher=prefetcher,
             num_batches_to_prefetch=prefetch_batches,
             batch_size=batch_size,
-            eager_free=eager_free,
         )
 
         # Step 2: Resolve the blocks.
@@ -239,7 +230,6 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
-    eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
     corresponding block references while prefetching `num_batches_to_prefetch`
@@ -251,7 +241,6 @@ def prefetch_batches_locally(
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
-        eager_free: Whether to eagerly free the object reference from the object store.
     """
 
     sliding_window = collections.deque()
@@ -299,7 +288,7 @@ def prefetch_batches_locally(
             except StopIteration:
                 pass
         yield block_ref
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        trace_deallocation(block_ref, loc="iter_batches")
     prefetcher.stop()
 
 

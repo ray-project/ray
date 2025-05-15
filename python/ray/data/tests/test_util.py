@@ -174,8 +174,7 @@ def test_memory_tracing(enabled):
     trace_allocation(ref1, "test1")
     trace_allocation(ref2, "test2")
     trace_allocation(ref3, "test5")
-    trace_deallocation(ref1, "test3", free=False)
-    trace_deallocation(ref2, "test4", free=True)
+    trace_deallocation(ref1, "test3")
     ray.get(ref1)
     with pytest.raises(ray.exceptions.ObjectFreedError):
         ray.get(ref2)
@@ -185,7 +184,6 @@ def test_memory_tracing(enabled):
     if enabled:
         assert "Leaked object, created at test1" in report, report
         assert "Leaked object, created at test5" in report, report
-        assert "Freed object from test2 at test4" in report, report
         assert "skipped dealloc at test3" in report, report
     else:
         assert "test1" not in report, report
