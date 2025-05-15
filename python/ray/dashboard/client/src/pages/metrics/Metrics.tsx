@@ -305,20 +305,32 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=37",
       },
       {
-        title: "(p50) Task Completion Time",
+        title: "(p00) Task Completion Time",
         pathParams: "orgId=1&theme=light&panelId=38",
       },
       {
-        title: "(p75) Task Completion Time",
+        title: "(p05) Task Completion Time",
         pathParams: "orgId=1&theme=light&panelId=39",
       },
       {
-        title: "(p90) Task Completion Time",
+        title: "(p50) Task Completion Time",
         pathParams: "orgId=1&theme=light&panelId=40",
       },
       {
-        title: "(p99) Task Completion Time",
+        title: "(p75) Task Completion Time",
         pathParams: "orgId=1&theme=light&panelId=41",
+      },
+      {
+        title: "(p90) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=42",
+      },
+      {
+        title: "(p99) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=44",
+      },
+      {
+        title: "(p100) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=45",
       },
     ],
   },

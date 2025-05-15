@@ -369,6 +369,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         0.5,
         0.75,
         1,
+        2.5,
+        5,
+        7.5,
+        10,
+        20,
+        40,
+        60,
     ]
     task_completion_time: float = metric_field(
         default=0,

@@ -26,7 +26,7 @@ from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
-from ray.util.metrics import Gauge, Histogram, Metric
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -353,8 +353,6 @@ class _StatsActor:
                     **metric.metrics_args,
                 )
             elif metric.metrics_type == MetricsType.Counter:
-                from ray.util.metrics import Counter
-
                 metrics[metric.name] = Counter(
                     metric_name,
                     description=metric_description,
@@ -427,6 +425,16 @@ class _StatsActor:
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
+        def _record(
+            prom_metric: Metric, value: Union[int, float], tags: Dict[str, str] = None
+        ):
+            if isinstance(prom_metric, Gauge):
+                prom_metric.set(value, tags)
+            elif isinstance(prom_metric, Counter):
+                prom_metric.inc(value, tags)
+            elif isinstance(prom_metric, Histogram):
+                prom_metric.observe(value, tags)
+
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
@@ -437,27 +445,25 @@ class _StatsActor:
             self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
-
             for field_name, prom_metric in self.execution_metrics_inputs.items():
-                prom_metric.inc_set_or_observe(stats.get(field_name, 0), tags)
-
+                _record(prom_metric, stats.get(field_name, 0), tags)
             for field_name, prom_metric in self.execution_metrics_outputs.items():
-                prom_metric.inc_set_or_observe(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_tasks.items():
-                prom_metric.inc_set_or_observe(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for (
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
-                prom_metric.inc_set_or_observe(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_actors.items():
-                prom_metric.inc_set_or_observe(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_misc.items():
-                prom_metric.inc_set_or_observe(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
         # by the _data_context.enable_per_node_metrics flag in the streaming executor but
@@ -476,7 +482,7 @@ class _StatsActor:
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
-                    prom_metric.inc_set_or_observe(metric_value, tags)
+                    _record(prom_metric, metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
