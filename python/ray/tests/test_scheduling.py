@@ -434,7 +434,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 @pytest.mark.skipif(
     ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
 )
-@pytest.mark.skipif(sys.platform == "win32", "Fails on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
 def test_lease_request_leak(shutdown_only):
     ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
