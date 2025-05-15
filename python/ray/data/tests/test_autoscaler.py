@@ -65,43 +65,47 @@ def test_actor_pool_scaling():
 
     # Should scale up since the util above the threshold.
     assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.9
-    assert_autoscaling_action(_AutoscalingAction.SCALE_UP, 'utilization of 0.9 >= 0.8')
+    assert_autoscaling_action(_AutoscalingAction.SCALE_UP, "utilization of 0.9 >= 0.8")
 
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_active_actors", 7):
         assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.7
-        assert_autoscaling_action(_AutoscalingAction.NO_OP, '0.5 < 0.7 < 0.8')
+        assert_autoscaling_action(_AutoscalingAction.NO_OP, "0.5 < 0.7 < 0.8")
 
     # Should be no-op since we have reached the max size.
     with patch(actor_pool, "current_size", 15):
         with patch(actor_pool, "num_active_actors", 15):
-            assert_autoscaling_action(_AutoscalingAction.NO_OP, 'reached max size')
+            assert_autoscaling_action(_AutoscalingAction.NO_OP, "reached max size")
 
     # Should be no-op since we have reached the min size.
     with patch(actor_pool, "current_size", 5):
         with patch(actor_pool, "num_active_actors", 2):
-            assert_autoscaling_action(_AutoscalingAction.NO_OP, 'reached min size')
-
+            assert_autoscaling_action(_AutoscalingAction.NO_OP, "reached min size")
 
     # Should scale up since the pool is below the min size.
     with patch(actor_pool, "current_size", 4):
-        assert_autoscaling_action(_AutoscalingAction.SCALE_UP, 'pool below min size')
+        assert_autoscaling_action(_AutoscalingAction.SCALE_UP, "pool below min size")
 
     # Should scale down since if the op is completed, or
     # the op has no more inputs.
     with patch(op, "completed", True):
-        assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN, 'consumed all inputs')
+        assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN, "consumed all inputs")
 
     # Should scale down only once all inputs have been already dispatched
     with patch(op_state.input_queues[0], "__len__", 0):
         with patch(op, "internal_queue_size", 0):
             with patch(op, "_inputs_complete", True, is_method=False):
-                assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN, 'consumed all inputs')
+                assert_autoscaling_action(
+                    _AutoscalingAction.SCALE_DOWN, "consumed all inputs"
+                )
 
             # If inputs are not completed, should be no-op as there's nothing
             # to schedule and Actor Pool still has free slots
             with patch(op, "_inputs_complete", False, is_method=False):
-                assert_autoscaling_action(_AutoscalingAction.NO_OP, "pool has sufficient task slots remaining: enqueued inputs 0 <= free slots 5)")
+                assert_autoscaling_action(
+                    _AutoscalingAction.NO_OP,
+                    "pool has sufficient task slots remaining: enqueued inputs 0 <= free slots 5)",
+                )
 
     # Should be no-op since the op doesn't have enough resources.
     with patch(
@@ -110,22 +114,30 @@ def test_actor_pool_scaling():
         False,
         is_method=False,
     ):
-        assert_autoscaling_action(_AutoscalingAction.NO_OP, "operator exceeding resource quota")
+        assert_autoscaling_action(
+            _AutoscalingAction.NO_OP, "operator exceeding resource quota"
+        )
 
     # Should be a no-op since the op has enough free slots for
     # the existing inputs.
     with patch(op_state, "total_enqueued_input_bundles", 5):
-        # TODO fix, should follow the same utilization ratio
-        assert_autoscaling_action(_AutoscalingAction.NO_OP, "pool has sufficient task slots remaining: enqueued inputs 5 <= free slots 5)")
+        assert_autoscaling_action(
+            _AutoscalingAction.NO_OP,
+            "pool has sufficient task slots remaining: enqueued inputs 5 <= free slots 5)",
+        )
 
     # Should scale down since the util is below the threshold.
     with patch(actor_pool, "num_active_actors", 4):
         assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.4
-        assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN, "utilization of 0.4 <= 0.5")
+        assert_autoscaling_action(
+            _AutoscalingAction.SCALE_DOWN, "utilization of 0.4 <= 0.5"
+        )
 
     # Should scale down since the pool is above the max size.
     with patch(actor_pool, "current_size", 16):
-        assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN, "pool exceeding max size")
+        assert_autoscaling_action(
+            _AutoscalingAction.SCALE_DOWN, "pool exceeding max size"
+        )
 
 
 def test_cluster_scaling():

@@ -155,7 +155,9 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        self._actor_pool.scale_up(self._actor_pool.min_size(), reason="scaling to min size")
+        self._actor_pool.scale_up(
+            self._actor_pool.min_size(), reason="scaling to min size"
+        )
 
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.

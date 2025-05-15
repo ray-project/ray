@@ -72,6 +72,10 @@ class AutoscalingActorPool(ABC):
         The number of actually added actors may be less than the requested
         number.
 
+        Args:
+            num_actors: Number of additional actors to be added to the pool
+            reason: (Optional) Reason for action
+
         Returns:
             The number of actors actually added.
         """
@@ -83,6 +87,10 @@ class AutoscalingActorPool(ABC):
 
         The number of actually removed actors may be less than the requested
         number.
+
+        Args:
+            num_actors: Number of additional actors to be removed from the pool
+            reason: (Optional) Reason for action
 
         Returns:
             The number of actors actually removed.
