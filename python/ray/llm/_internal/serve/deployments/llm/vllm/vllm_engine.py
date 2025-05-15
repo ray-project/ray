@@ -234,7 +234,9 @@ class VLLMEngine(LLMEngine):
 
         If the engine is already running, do nothing.
         """
-        from vllm.entrypoints.chat_utils import resolve_chat_template_content_format
+        from vllm.entrypoints.chat_utils import (
+            resolve_chat_template_content_format as _resolve_chat_template_content_format,
+        )
 
         if self.running:
             # The engine is already running!
@@ -246,7 +248,21 @@ class VLLMEngine(LLMEngine):
         self.model_config = await self.engine.get_model_config()
 
         self._tokenizer = await self.engine.get_tokenizer()
-        _resolve_chat_template_content_kwargs = dict(
+
+        def resolve_chat_template_content_format(model_config, **kwargs):
+            try:
+                return _resolve_chat_template_content_format(
+                    model_config=model_config, **kwargs
+                )
+            except TypeError:
+                # Legacy API before vLLM 0.9.0.
+                # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
+                return _resolve_chat_template_content_format(
+                    trust_remote_code=model_config.trust_remote_code, **kwargs
+                )
+
+        self._resolved_content_format = resolve_chat_template_content_format(
+            model_config=self.model_config,
             # Use HF to get the chat template so set it to None here.
             chat_template=None,
             # Default to None, change when it's needed.
@@ -255,19 +271,7 @@ class VLLMEngine(LLMEngine):
             # Let vLLM decide the content format.
             given_format="auto",
             tokenizer=self._tokenizer,
-            trust_remote_code=self.model_config.trust_remote_code,
         )
-        try:
-            self._resolved_content_format = resolve_chat_template_content_format(
-                **_resolve_chat_template_content_kwargs
-            )
-        except TypeError:
-            # vLLM 0.9.0 changes API (#52975)
-            _resolve_chat_template_content_kwargs.pop("trust_remote_code")
-            _resolve_chat_template_content_kwargs["model_config"] = self.model_config
-            self._resolved_content_format = resolve_chat_template_content_format(
-                **_resolve_chat_template_content_kwargs
-            )
 
         logger.info("Started vLLM engine.")
 
@@ -499,7 +503,7 @@ class VLLMEngine(LLMEngine):
     ) -> GenerationRequest:
         from vllm.entrypoints.chat_utils import (
             parse_chat_messages_futures,
-            apply_hf_chat_template,
+            apply_hf_chat_template as _apply_hf_chat_template,
         )
 
         model_config = self.model_config
@@ -515,24 +519,28 @@ class VLLMEngine(LLMEngine):
             )
             mm_data = await mm_futures
 
-            _apply_hf_chat_template_kwargs = dict(
+            def apply_hf_chat_template(model_config, **kwargs):
+                try:
+                    return _apply_hf_chat_template(model_config=model_config, **kwargs)
+                except TypeError:
+                    # Legacy API before vLLM 0.9.0.
+                    # TODO(#52975): Remove above once vLLM <0.9.0 is no longer supported.
+                    return _apply_hf_chat_template(
+                        trust_remote_code=model_config.trust_remote_code, **kwargs
+                    )
+
+            prompt_text = apply_hf_chat_template(
+                model_config=model_config,
                 tokenizer=self._tokenizer,
                 conversation=conversation,
                 chat_template=None,
                 tools=None,
-                trust_remote_code=model_config.trust_remote_code,
                 tokenize=False,
                 # **kwargs for tokenizer.apply_chat_template
+                trust_remote_code=model_config.trust_remote_code,
                 add_generation_prompt=True,
                 continue_final_message=False,
             )
-            try:
-                prompt_text = apply_hf_chat_template(**_apply_hf_chat_template_kwargs)
-            except TypeError:
-                # vLLM 0.9.0 changes API (#52975)
-                _apply_hf_chat_template_kwargs.pop("trust_remote_code")
-                _apply_hf_chat_template_kwargs["model_config"] = model_config
-                prompt_text = apply_hf_chat_template(**_apply_hf_chat_template_kwargs)
         else:
             prompt_text = prompt.prompt
 
