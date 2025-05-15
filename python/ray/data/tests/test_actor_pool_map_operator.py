@@ -1,11 +1,13 @@
 import asyncio
 import collections
+import datetime
 import threading
 import unittest
 from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -73,10 +75,14 @@ class TestActorPool(unittest.TestCase):
         self, pool: _ActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
-        assert pool.scale_up(1) == 1
+        num_actors = pool.scale_up(1)
+
+        assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
+
         actor, ready_ref = self._last_created_actor_and_ready_ref
         self._last_created_actor_and_ready_ref = None
+
         return actor, ready_ref
 
     def _wait_for_actor_ready(self, pool: _ActorPool, ready_ref):
@@ -106,6 +112,23 @@ class TestActorPool(unittest.TestCase):
         assert pool.max_size() == 4
         assert pool.current_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
+
+    def test_can_scale_down(self):
+        pool = self._create_actor_pool(min_size=1, max_size=4)
+
+        with freeze_time() as f:
+            # Scale up
+            pool.scale_up(1)
+            # Assert we can't scale down immediately after scale up
+            assert not pool.can_scale_down()
+            assert pool._last_scale_up_ts == time.time()
+
+            # Advance clock
+            f.tick(datetime.timedelta(seconds=_ActorPool._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S + 1))
+
+            # Assert can scale down after debounce period
+            assert pool.can_scale_down()
+
 
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.
