@@ -861,7 +861,7 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 ///  To use this, simply do
 ///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
