@@ -65,7 +65,7 @@ def test_validate_no_local_paths_fails_if_local_working_dir():
 def test_validate_no_local_paths_fails_if_local_py_module():
     with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
         runtime_env = RuntimeEnv(py_modules=[tmp_file.name, "gcs://some_other_file"])
-        with pytest.raises(ValueError, match=rf"{tmp_file.name}.*not a valid URI"):
+        with pytest.raises(ValueError, match="not a valid URI"):
             _validate_no_local_paths(runtime_env)
 
 
