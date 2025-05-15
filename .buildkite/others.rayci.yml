@@ -78,7 +78,6 @@ steps:
       - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --consider-master-branch --production
     matrix:
       - "core"
-      - "serverless"
       - "serve"
       - "data"
       - "ml"

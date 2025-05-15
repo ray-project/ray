@@ -108,6 +108,38 @@ py_test(
     ],
 )
 
+py_test(
+    name = "gentle_walkthrough",
+    size = "medium",
+    srcs = ["test_myst_doc.py"],
+    args = [
+        "--path",
+        "doc/source/ray-core/examples/gentle_walkthrough.ipynb",
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    main = "test_myst_doc.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "web_crawler",
+    size = "medium",
+    srcs = ["test_myst_doc.py"],
+    args = [
+        "--path",
+        "doc/source/ray-core/examples/web-crawler.ipynb",
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    main = "test_myst_doc.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Test all doc/source/ray-observability/doc_code code included in rst/md files.
 # --------------------------------------------------------------------

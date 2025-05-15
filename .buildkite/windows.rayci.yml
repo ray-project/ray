@@ -62,22 +62,6 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
     depends_on: windowsbuild
 
-  - label: ":serverless: serverless: :windows: tests"
-    tags: python
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --build-name windowsbuild
-        --operating-system windows
-        --except-tags no_windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-        --parallelism-per-worker 3
-    depends_on: windowsbuild
-
   - label: ":ray-serve: serve: :windows: tests"
     tags: serve
     job_env: WINDOWS
@@ -138,26 +122,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
         --run-flaky-tests
         --except-tags no_windows
-        --build-name windowsbuild
-        --operating-system windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-    depends_on: windowsbuild
-    soft_fail: true
-
-  - label: "flaky :windows: serverless tests"
-    key: windows_serverless_flaky_tests
-    tags:
-      - flaky
-      - skip-on-premerge
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --except-tags no_windows
-        --run-flaky-tests
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"

@@ -87,6 +87,10 @@ python/ray/experimental/channel/
 @ python accelerated_dag
 ;
 
+python/ray/util/client/
+@ python ray_client
+;
+
 python/
 @ ml tune train data
 # Python changes might impact cross language stack in Java.
@@ -96,10 +100,6 @@ python/
 
 .buildkite/core.rayci.yml
 @ python core_cpp
-;
-
-.buildkite/serverless.rayci.yml
-@ python
 ;
 
 java/

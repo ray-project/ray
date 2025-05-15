@@ -45,7 +45,6 @@ python/ray/dag/dag.py:
     - lint python accelerated_dag
 
 .buildkite/core.rayci.yml: lint python core_cpp
-.buildkite/serverless.rayci.yml: lint python
 java/ray.java: lint java
 .buildkite/others.rayci.yml: lint java
 cpp/ray.cc: lint cpp

@@ -481,6 +481,7 @@ service CoreWorkerService {
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
   // Update the batched object location information to the ownership-based object
   // directory.
+  // Failure: Retries, it's idempotent.
   rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
       returns (UpdateObjectLocationBatchReply);
   // Get object locations from the ownership-based object directory.

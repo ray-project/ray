@@ -16,12 +16,15 @@
 
 #include <list>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -34,6 +37,15 @@ class CoreWorkerClientPool {
   /// Creates a CoreWorkerClientPool by a given connection function.
   explicit CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
       : core_worker_client_factory_(std::move(client_factory)){};
+
+  /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
+  /// core worker and node manager.
+  static std::function<void()> GetDefaultUnavailableTimeoutCallback(
+      gcs::GcsClient *gcs_client,
+      rpc::CoreWorkerClientPool *worker_client_pool,
+      std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
+          raylet_client_factory,
+      const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
@@ -70,7 +82,7 @@ class CoreWorkerClientPool {
 
   struct CoreWorkerClientEntry {
    public:
-    CoreWorkerClientEntry() {}
+    CoreWorkerClientEntry() = default;
     CoreWorkerClientEntry(ray::WorkerID worker_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
         : worker_id(std::move(worker_id)),
