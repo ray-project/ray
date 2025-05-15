@@ -2,7 +2,7 @@ import abc
 from datetime import datetime
 
 import itertools
-import json
+import pickle
 import logging
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
@@ -469,12 +469,12 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._shape).encode()
+        return pickle.dumps(self._shape)
 
     def __arrow_ext_class__(self):
         """
         ExtensionArray subclass with custom logic for this array of tensors
-        type.
+        type
 
         Returns:
             A subclass of pd.api.extensions.ExtensionArray.
@@ -580,7 +580,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = pickle.loads(serialized)
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -610,7 +610,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = pickle.loads(serialized)
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -1076,12 +1076,11 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._ndim).encode()
+        return pickle.dumps(self._ndim)
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        ndim = json.loads(serialized)
-        dtype = storage_type["data"].type.value_type
+        ndim = pickle.loads(serialized)
         return cls(dtype, ndim)
 
     def __arrow_ext_class__(self):
