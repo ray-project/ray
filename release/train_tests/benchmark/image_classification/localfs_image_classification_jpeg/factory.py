@@ -56,7 +56,11 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
                 field_names=["class"],
             ),
-            override_num_blocks=override_num_blocks,
+            **(
+                {"override_num_blocks": override_num_blocks}
+                if override_num_blocks is not None
+                else {}
+            ),
         ).map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset
@@ -69,7 +73,11 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
                 field_names=["class"],
             ),
-            override_num_blocks=override_num_blocks,
+            **(
+                {"override_num_blocks": override_num_blocks}
+                if override_num_blocks is not None
+                else {}
+            ),
         ).map(get_preprocess_map_fn(random_transforms=False))
 
         return {

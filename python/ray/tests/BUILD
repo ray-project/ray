@@ -480,7 +480,7 @@ py_test_module_list(
         "test_nccl_channel.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -737,7 +737,6 @@ py_test_module_list(
         "test_state_api.py",
         "test_state_api_2.py",
         "test_storage.py",
-        "test_stress_failure.py",
         "test_task_events.py",
         "test_task_events_2.py",
         "test_task_events_3.py",

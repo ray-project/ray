@@ -51,11 +51,10 @@ class RpcFailureManager {
         RAY_CHECK_EQ(equal_split.size(), 2UL);
         std::vector<std::string> colon_split = absl::StrSplit(equal_split[1], ':');
         RAY_CHECK_EQ(colon_split.size(), 3UL);
-        auto [iter, _] = failable_methods_.emplace(
-            equal_split[0],
-            Failable{.num_remaining_failures = std::stoul(colon_split[0]),
-                     .req_failure_prob = std::stoul(colon_split[1]),
-                     .resp_failure_prob = std::stoul(colon_split[2])});
+        auto [iter, _] = failable_methods_.emplace(equal_split[0],
+                                                   Failable{std::stoul(colon_split[0]),
+                                                            std::stoul(colon_split[1]),
+                                                            std::stoul(colon_split[2])});
         const auto &failable = iter->second;
         RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 100UL);
       }

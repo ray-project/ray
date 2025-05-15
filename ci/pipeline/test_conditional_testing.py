@@ -42,7 +42,7 @@ python/_raylet.pyx:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint python accelerated_dag
+    - lint python compiled_graphs
 
 .buildkite/core.rayci.yml: lint python core_cpp
 java/ray.java: lint java
@@ -67,7 +67,7 @@ ci/ci.sh: lint tools
 
 src/ray.cpp:
     - lint core_cpp cpp java python
-    - linux_wheels macos_wheels dashboard release_tests accelerated_dag
+    - linux_wheels macos_wheels dashboard release_tests
 
 .github/CODEOWNERS: lint
 README.rst: lint
