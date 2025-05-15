@@ -3803,6 +3803,51 @@
   variations:
     - __suffix__: aws
 
+- name: chaos_many_actors_kill_raylet
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start
+    script: python chaos_test/test_chaos_basic.py --workload=large_object
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_many_actors_terminate_instance
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos_basic.py --workload=large_object
+
+  variations:
+    - __suffix__: aws
+
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   group: data-tests
   working_dir: nightly_tests
