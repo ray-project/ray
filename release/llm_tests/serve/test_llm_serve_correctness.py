@@ -1,84 +1,136 @@
+import os
 import pytest
-import requests
-from vllm import LLMClient
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from test_utils import start_service  # adjust import as needed
+from openai import AsyncOpenAI
+from vllm.v1.engine.async_llm import AsyncLLM
+from ray.serve.llm import LLMConfig
+from probes.query_utils import TextGenerationProbeQuerier
+from probes.messages import prompt
+from test_utils import start_service, get_current_compute_config_name
 
 # Shared LLM configuration
 LLM_CONFIG = LLMConfig(
-    model_loading_config=ModelLoadingConfig(model_id="llama-1b"),
-    runtime_env={"env_vars": {"ENV": "production"}},
-    model_loading_config_extra={},  # any additional model loading settings
+    model_loading_config=dict(
+        model_id="qwen-0.5b",
+        model_source="Qwen/Qwen2.5-0.5B-Instruct",
+    ),
     accelerator_type="A10G",
-    engine_kwargs={"max_model_len": 2048},
-    resources_per_bundle={"CPU": 4, "GPU": 1},
+    deployment_config=dict(
+        autoscaling_config=dict(
+            min_replicas=1,
+            max_replicas=1,
+        )
+    ),
+    log_engine_metrics=True,
+    engine_kwargs=dict(
+        tensor_parallel_size=2,
+    ),
 )
+
 
 # Derive deployment and engine configs
 SERVE_OPTIONS = LLM_CONFIG.get_serve_options(name_prefix="")
 ENGINE_CONFIG = LLM_CONFIG.get_engine_config()
 INIT_KWARGS = ENGINE_CONFIG.get_initialization_kwargs()
+CLOUD = "serve_release_tests_cloud"
+SERVICE_NAME = "serve_llm_release_correctness_test_service"
+
+
+@pytest.fixture(scope="function", autouse=True)
+def use_v1_only(monkeypatch):
+    """
+    The change relies on V1 APIs, so set VLLM_USE_V1=1.
+    """
+    monkeypatch.setenv("VLLM_USE_V1", "1")
+
+
+@pytest.fixture(scope="module")
+async def openai_async_client():
+    """Create an async OpenAI client for testing."""
+    async with AsyncOpenAI(
+        base_url=SERVE_OPTIONS.get("base_url", "http://localhost:8000"), api_key="test"
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="module")
 def ray_service():
-    # Start Ray Serve LLM service with identical LLMConfig
+    """Start Ray Serve LLM service with identical LLMConfig."""
+
+    cluster_env = os.environ["ANYSCALE_JOB_CLUSTER_ENV_NAME"]
+    image_uri = f"anyscale/image/{cluster_env}:1"
     with start_service(
-        service_name=SERVE_OPTIONS["name"],
-        image_uri=SERVE_OPTIONS.get("user_config", {}).get(
-            "image_uri", "your-docker-image:latest"
-        ),
-        compute_config=LLM_CONFIG.resources_per_bundle,
-        applications=["./app_config.yaml"],
+        service_name=SERVICE_NAME,
+        image_uri=image_uri,
+        compute_config=get_current_compute_config_name(),
+        applications=["./app_config.yaml"],  # TODO: How to set based on LLMConfig?
         working_dir=".",
-        cloud="aws",
-        env_vars=LLM_CONFIG.runtime_env.get("env_vars", {}),
+        cloud=CLOUD,
+        env_vars=None,
         timeout_s=300,
     ) as service_info:
-        api_url = service_info["api_url"]
-        api_token = service_info["api_token"]
-        yield api_url, api_token
+        yield service_info
 
 
 @pytest.fixture(scope="module")
-def vllm_client():
-    # Initialize vLLM client using same engine config
-    client = LLMClient(model_name=LLM_CONFIG.model_id, **INIT_KWARGS)
-    yield client
-    client.close()
+async def vllm_engine():
+    """Initialize async vLLM engine using same engine config."""
+    engine = AsyncLLM.from_engine_args(**INIT_KWARGS)
+    yield engine
+    await engine.close()
 
 
-def generate_with_ray(api_url: str, api_token: str, prompt: str) -> str:
-    headers = {"Authorization": f"Bearer {api_token}"}
-    payload = {"prompt": prompt, "max_tokens": 64, "temperature": 0.0}
-    resp = requests.post(
-        f"{api_url}/{SERVE_OPTIONS['name']}", headers=headers, json=payload
+async def generate_with_ray(
+    querier: TextGenerationProbeQuerier, test_prompt: str
+) -> str:
+    """Generate text using Ray Serve."""
+    params = prompt(test_prompt)  # Use prompt format for direct comparison
+    response = await querier.query(
+        model=LLM_CONFIG.model_loading_config.model_id,
+        stream=False,
+        chat=False,  # Use completions API for direct comparison
+        **params,
     )
-    resp.raise_for_status()
-    return resp.json().get("text", "")
+    return response.full().strip()
 
 
-def generate_with_vllm(client: LLMClient, prompt: str) -> str:
-    result = client.generate(prompt=prompt, max_tokens=64, temperature=0.0)
-    return result.completions[0].text if result.completions else ""
+async def generate_with_vllm(engine: AsyncLLM, test_prompt: str) -> str:
+    """Generate text using vLLM directly."""
+    result = await engine.generate(
+        prompt=test_prompt,
+        sampling_params=ENGINE_CONFIG.get_sampling_params(
+            max_tokens=64, temperature=0.0
+        ),
+    )
+    return result.outputs[0].text.strip() if result.outputs else ""
 
 
 @pytest.mark.parametrize(
-    "prompt",
+    "test_prompt",
     [
         "Translate English to French: 'Hello, how are you?'",
+        "What is 2+2?",
+        "Write a haiku about programming.",
     ],
 )
-def test_llama1b_ray_vs_vllm(ray_service, vllm_client, prompt):
+@pytest.mark.asyncio
+async def test_llama1b_ray_vs_vllm(
+    ray_service, openai_async_client, vllm_engine, test_prompt: str, test_id: str
+):
     """
     Release test: Compare Ray Serve llama-1b output against vLLM reference to ensure fix,
     using identical LLMConfig initialization.
     """
-    api_url, api_token = ray_service
-    ray_output = generate_with_ray(api_url, api_token, prompt)
-    vllm_output = generate_with_vllm(vllm_client, prompt)
+    querier = TextGenerationProbeQuerier(
+        openai_async_client, {"temperature": 0.0, "max_tokens": 64}
+    )
 
-    assert ray_output.strip() == vllm_output.strip(), (
+    # Add test_id to prompt to ensure uniqueness
+    test_prompt = f"{test_id} {test_prompt}"
+
+    ray_output = await generate_with_ray(querier, test_prompt)
+    vllm_output = await generate_with_vllm(vllm_engine, test_prompt)
+
+    assert ray_output == vllm_output, (
         f"Mismatch between Ray Serve and vLLM outputs.\n"
         f"Ray Serve output: {ray_output!r}\n"
         f"vLLM output:      {vllm_output!r}"
