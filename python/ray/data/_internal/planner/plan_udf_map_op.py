@@ -3,7 +3,6 @@ import collections
 import inspect
 import logging
 import queue
-from threading import Thread
 from types import GeneratorType
 from typing import Any, Callable, Iterable, List, Optional
 
@@ -12,7 +11,6 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -25,10 +23,10 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     MapTransformCallable,
     MapTransformer,
+    MapTransformUDFContext,
     Row,
     RowMapTransformFn,
 )
-from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
     Filter,
@@ -44,7 +42,6 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockType,
-    CallableClass,
     DataBatch,
     UserDefinedFunction,
 )
@@ -53,36 +50,6 @@ from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
-
-
-class _MapActorContext:
-    def __init__(
-        self,
-        udf_map_cls: UserDefinedFunction,
-        udf_map_fn: Callable[[Any], Any],
-        is_async: bool,
-    ):
-        self.udf_map_cls = udf_map_cls
-        self.udf_map_fn = udf_map_fn
-        self.is_async = is_async
-        self.udf_map_asyncio_loop = None
-        self.udf_map_asyncio_thread = None
-
-        if is_async:
-            self._init_async()
-
-    def _init_async(self):
-        # Only used for callable class with async generator `__call__` method.
-        loop = get_or_create_event_loop()
-
-        def run_loop():
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        thread = Thread(target=run_loop)
-        thread.start()
-        self.udf_map_asyncio_loop = loop
-        self.udf_map_asyncio_thread = thread
 
 
 def plan_project_op(
@@ -171,18 +138,29 @@ def plan_filter_op(
             except Exception as e:
                 _handle_debugger_exception(e, block)
 
-        transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
+        udf_context = MapTransformUDFContext(
+            op_fn=filter_batch_fn,
+            op_fn_wrappers=[_generate_transform_fn_for_map_batches],
+        )
         map_transformer = _create_map_transformer_for_map_batches_op(
-            transform_fn,
+            udf_context,
             batch_size=None,
             batch_format="pyarrow",
             zero_copy_batch=True,
         )
     else:
-        filter_fn, init_fn = _parse_op_fn(op)
-        transform_fn = _generate_transform_fn_for_filter(filter_fn)
+
+        udf_context = MapTransformUDFContext(
+            op_fn=op._fn,
+            fn_args=op._fn_args or (),
+            fn_kwargs=op._fn_kwargs or {},
+            fn_constructor_args=op._fn_constructor_args or (),
+            fn_constructor_kwargs=op._fn_constructor_kwargs or {},
+            is_async=inspect.isasyncgenfunction(op._fn.__call__),
+            op_fn_wrappers=[_generate_transform_fn_for_filter]
+        )
         map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, init_fn
+            udf_context
         )
 
     return MapOperator.create(
@@ -210,28 +188,32 @@ def plan_udf_map_op(
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
-    fn, init_fn = _parse_op_fn(op)
+    udf_context = MapTransformUDFContext(
+        op_fn=op._fn,
+        fn_args=op._fn_args or (),
+        fn_kwargs=op._fn_kwargs or {},
+        fn_constructor_args=op._fn_constructor_args or (),
+        fn_constructor_kwargs=op._fn_constructor_kwargs or {},
+        is_async=inspect.isasyncgenfunction(op._fn.__call__),
+    )
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn)
+        udf_context.op_fn_wrappers.append(_generate_transform_fn_for_map_batches)
         map_transformer = _create_map_transformer_for_map_batches_op(
-            transform_fn,
+            udf_context,
             op._batch_size,
             op._batch_format,
             op._zero_copy_batch,
-            init_fn,
         )
     else:
         if isinstance(op, MapRows):
-            transform_fn = _generate_transform_fn_for_map_rows(fn)
+            udf_context.op_fn_wrappers.append(_generate_transform_fn_for_map_rows)
         elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(fn)
+            udf_context.op_fn_wrappers.append(_generate_transform_fn_for_flat_map)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-        map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, init_fn
-        )
+        map_transformer = _create_map_transformer_for_row_based_map_op(udf_context)
 
     return MapOperator.create(
         map_transformer,
@@ -244,79 +226,6 @@ def plan_udf_map_op(
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
     )
-
-
-def _parse_op_fn(op: AbstractUDFMap):
-    # Note, it's important to define these standalone variables.
-    # So the parsed functions won't need to caputure the entire operator, which may not
-    # be serializable.
-    op_fn = op._fn
-    fn_args = op._fn_args or ()
-    fn_kwargs = op._fn_kwargs or {}
-
-    if isinstance(op._fn, CallableClass):
-        fn_constructor_args = op._fn_constructor_args or ()
-        fn_constructor_kwargs = op._fn_constructor_kwargs or {}
-
-        is_async_gen = inspect.isasyncgenfunction(op._fn.__call__)
-
-        # TODO(scottjlee): (1) support non-generator async functions
-        # (2) make the map actor async
-        if not is_async_gen:
-            op_fn = make_callable_class_concurrent(op_fn)
-
-        def init_fn():
-            if ray.data._map_actor_context is None:
-                ray.data._map_actor_context = _MapActorContext(
-                    udf_map_cls=op_fn,
-                    udf_map_fn=op_fn(
-                        *fn_constructor_args,
-                        **fn_constructor_kwargs,
-                    ),
-                    is_async=is_async_gen,
-                )
-
-        if is_async_gen:
-
-            async def fn(item: Any) -> Any:
-                assert ray.data._map_actor_context is not None
-                assert ray.data._map_actor_context.is_async
-
-                try:
-                    return ray.data._map_actor_context.udf_map_fn(
-                        item,
-                        *fn_args,
-                        **fn_kwargs,
-                    )
-                except Exception as e:
-                    _handle_debugger_exception(e, item)
-
-        else:
-
-            def fn(item: Any) -> Any:
-                assert ray.data._map_actor_context is not None
-                assert not ray.data._map_actor_context.is_async
-                try:
-                    return ray.data._map_actor_context.udf_map_fn(
-                        item,
-                        *fn_args,
-                        **fn_kwargs,
-                    )
-                except Exception as e:
-                    _handle_debugger_exception(e, item)
-
-    else:
-
-        def fn(item: Any) -> Any:
-            try:
-                return op_fn(item, *fn_args, **fn_kwargs)
-            except Exception as e:
-                _handle_debugger_exception(e, item)
-
-        def init_fn():
-            pass
-
-    return fn, init_fn
 
 
 def _handle_debugger_exception(e: Exception, item: Any = None):
@@ -379,11 +288,11 @@ def _validate_batch_output(batch: Block) -> None:
 
 
 def _generate_transform_fn_for_map_batches(
-    fn: UserDefinedFunction,
+    fn: UserDefinedFunction, udf_context: MapTransformUDFContext
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output)
+        transform_fn = _generate_transform_fn_for_async_map(fn, udf_context, _validate_batch_output)
 
     else:
 
@@ -431,8 +340,7 @@ def _generate_transform_fn_for_map_batches(
 
 
 def _generate_transform_fn_for_async_map(
-    fn: UserDefinedFunction,
-    validate_fn,
+    fn: UserDefinedFunction, udf_context: MapTransformUDFContext, validate_fn
 ) -> MapTransformCallable:
     # Generates a transform function for asynchronous mapping of items (either batches or rows)
     # using a user-defined function (UDF). This consolidated function handles both asynchronous
@@ -460,7 +368,7 @@ def _generate_transform_fn_for_async_map(
 
         async def process_all_items():
             try:
-                loop = ray.data._map_actor_context.udf_map_asyncio_loop
+                loop = udf_context.map_actor_context.udf_map_asyncio_loop
                 tasks = [loop.create_task(process_item(x)) for x in input_iterable]
 
                 ctx = ray.data.DataContext.get_current()
@@ -474,7 +382,7 @@ def _generate_transform_fn_for_async_map(
                 output_item_queue.put(sentinel)
 
         # Use the existing event loop to create and run Tasks to process each item
-        loop = ray.data._map_actor_context.udf_map_asyncio_loop
+        loop = udf_context.map_actor_context.udf_map_asyncio_loop
         asyncio.run_coroutine_threadsafe(process_all_items(), loop)
 
         # Yield results as they become available.
@@ -506,7 +414,7 @@ def _validate_row_output(item):
 
 
 def _generate_transform_fn_for_map_rows(
-    fn: UserDefinedFunction,
+    fn: UserDefinedFunction, udf_context: MapTransformUDFContext
 ) -> MapTransformCallable[Row, Row]:
     def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
@@ -518,11 +426,11 @@ def _generate_transform_fn_for_map_rows(
 
 
 def _generate_transform_fn_for_flat_map(
-    fn: UserDefinedFunction,
+    fn: UserDefinedFunction, udf_context: MapTransformUDFContext
 ) -> MapTransformCallable[Row, Row]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output)
+        transform_fn = _generate_transform_fn_for_async_map(fn, udf_context, _validate_row_output)
 
     else:
 
@@ -536,7 +444,7 @@ def _generate_transform_fn_for_flat_map(
 
 
 def _generate_transform_fn_for_filter(
-    fn: UserDefinedFunction,
+    fn: UserDefinedFunction, udf_context: MapTransformUDFContext
 ) -> MapTransformCallable[Row, Row]:
     def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
@@ -561,11 +469,10 @@ def _generate_transform_fn_for_map_block(
 
 
 def _create_map_transformer_for_map_batches_op(
-    batch_fn: MapTransformCallable[DataBatch, DataBatch],
+    udf_context: MapTransformUDFContext,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
-    init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a map_batches operator."""
     transform_fns = [
@@ -576,16 +483,15 @@ def _create_map_transformer_for_map_batches_op(
             zero_copy_batch=zero_copy_batch,
         ),
         # Apply the UDF.
-        BatchMapTransformFn(batch_fn, is_udf=True),
+        BatchMapTransformFn(udf_context=udf_context),
         # Convert output batches to blocks.
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
-    return MapTransformer(transform_fns, init_fn)
+    return MapTransformer(transform_fns)
 
 
 def _create_map_transformer_for_row_based_map_op(
-    row_fn: MapTransformCallable[Row, Row],
-    init_fn: Optional[Callable[[], None]] = None,
+    udf_context: MapTransformUDFContext,
 ) -> MapTransformer:
     """Create a MapTransformer for a row-based map operator
     (e.g. map, flat_map, filter)."""
@@ -593,11 +499,11 @@ def _create_map_transformer_for_row_based_map_op(
         # Convert input blocks to rows.
         BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
-        RowMapTransformFn(row_fn, is_udf=True),
+        RowMapTransformFn(udf_context=udf_context),
         # Convert output rows to blocks.
         BuildOutputBlocksMapTransformFn.for_rows(),
     ]
-    return MapTransformer(transform_fns, init_fn=init_fn)
+    return MapTransformer(transform_fns)
 
 
 def _create_map_transformer_for_block_based_map_op(

@@ -1,13 +1,31 @@
+import asyncio
 import itertools
+import logging
 import time
 from abc import abstractmethod
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
+from threading import Thread
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
+import ray
+from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    CallableClass,
+    DataBatch,
+    UserDefinedFunction,
+)
+from ray.exceptions import UserCodeException
+from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+
+logger = logging.getLogger(__name__)
+
 
 # Allowed input/output data types for a MapTransformFn.
 Row = Dict[str, Any]
@@ -41,6 +59,61 @@ class MapTransformFnCategory(Enum):
     # Data format conversion after the actual data processing, i.e., converting rows or batches to output blocks.
     PostProcess = 2
 
+class _MapActorContext:
+    def __init__(
+        self,
+        udf_map_cls: UserDefinedFunction,
+        udf_map_fn: Callable[[Any], Any],
+        is_async: bool,
+    ):
+        self.udf_map_cls = udf_map_cls
+        self.udf_map_fn = udf_map_fn
+        self.is_async = is_async
+        self.udf_map_asyncio_loop = None
+        self.udf_map_asyncio_thread = None
+
+        if is_async:
+            self._init_async()
+
+    def _init_async(self):
+        # Only used for callable class with async generator `__call__` method.
+        loop = get_or_create_event_loop()
+
+        def run_loop():
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        thread = Thread(target=run_loop)
+        thread.start()
+        self.udf_map_asyncio_loop = loop
+        self.udf_map_asyncio_thread = thread
+
+@dataclass
+class MapTransformUDFContext:
+    op_fn: UserDefinedFunction
+    fn_args: Tuple[Any, ...] = field(default_factory=tuple)
+    fn_kwargs: Dict[str, Any] = field(default_factory=dict)
+    fn_constructor_args: Tuple[Any, ...] = field(default_factory=tuple)
+    fn_constructor_kwargs: Dict[str, Any] = field(default_factory=dict)
+    is_async: bool = field(default=False)
+    # a series of wrappers that will be applied to the UDF to transform it
+    op_fn_wrappers: List[Callable[[Any], Any]] = field(default_factory=list)
+    map_actor_context: Optional[_MapActorContext] = None
+
+
+# TODO: deduplicate with ray.data._internal.planner.plan_udf_map_op.py
+def _handle_debugger_exception(e: Exception, item: Any = None):
+    """If the Ray Debugger is enabled, keep the full stack trace unmodified
+    so that the debugger can stop at the initial unhandled exception.
+    Otherwise, clear the stack trace to omit noisy internal code path."""
+    error_message = f"Failed to process the following data block: {item}"
+
+    ctx = ray.data.DataContext.get_current()
+    if _is_ray_debugger_post_mortem_enabled() or ctx.raise_original_map_exception:
+        logger.error(error_message)
+        raise e
+    else:
+        raise UserCodeException(error_message) from e
 
 class MapTransformFn:
     """Represents a single transform function in a MapTransformer."""
@@ -50,7 +123,7 @@ class MapTransformFn:
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
         category: MapTransformFnCategory,
-        is_udf: bool = False,
+        udf_context: Optional[MapTransformUDFContext] = None,
     ):
         """
         Args:
@@ -63,7 +136,8 @@ class MapTransformFn:
         self._output_type = output_type
         self._category = category
         self._output_block_size_option = None
-        self._is_udf = is_udf
+        self._is_udf = udf_context is not None
+        self._udf_context = udf_context
 
     @abstractmethod
     def __call__(
@@ -72,6 +146,64 @@ class MapTransformFn:
         ctx: TaskContext,
     ) -> Iterable[MapTransformFnData]:
         ...
+
+    def init(self) -> None:
+        if self._is_udf and isinstance(self._udf_context.op_fn, CallableClass):
+            op_fn = self._udf_context.op_fn
+            if not self._udf_context.is_async:
+                op_fn = make_callable_class_concurrent(self._udf_context.op_fn)
+            self._udf_context.map_actor_context = _MapActorContext(
+                udf_map_cls=op_fn,
+                udf_map_fn=op_fn(
+                    *self._udf_context.fn_constructor_args,
+                    **self._udf_context.fn_constructor_kwargs,
+                ),
+                is_async=self._udf_context.is_async,
+            )
+        else:
+            # Do nothing for non-UDFs and non-CallableClass UDFs.
+            pass
+
+    def _generate_transform_fn_from_udf_context(self) -> MapTransformCallable:
+        # wrap bare UDF in appropriate wrapper
+        if isinstance(self._udf_context.op_fn, CallableClass):
+            if self._udf_context.is_async:
+                async def fn(item: Any) -> Any:
+                    assert self._udf_context.map_actor_context is not None
+                    assert self._udf_context.map_actor_context.is_async
+
+                    try:
+                        return self._udf_context.map_actor_context.udf_map_fn(
+                            item,
+                            *self._udf_context.fn_args,
+                            **self._udf_context.fn_kwargs,
+                        )
+                    except Exception as e:
+                        _handle_debugger_exception(e, item)
+            else:
+                def fn(item: Any) -> Any:
+                    assert self._udf_context.map_actor_context is not None
+                    assert not self._udf_context.map_actor_context.is_async
+                    try:
+                        return self._udf_context.map_actor_context.udf_map_fn(
+                            item,
+                            *self._udf_context.fn_args,
+                            **self._udf_context.fn_kwargs,
+                        )
+                    except Exception as e:
+                        _handle_debugger_exception(e, item)
+        else:
+            def fn(item: Any) -> Any:
+                try:
+                    return self._udf_context.op_fn(item, *self._udf_context.fn_args, **self._udf_context.fn_kwargs)
+                except Exception as e:
+                    _handle_debugger_exception(e, item)
+
+        # apply additional wrappers
+        for wrapper in self._udf_context.op_fn_wrappers:
+            fn = wrapper(fn, udf_context=self._udf_context)
+
+        return fn
 
     @property
     def input_type(self) -> MapTransformFnDataType:
@@ -200,7 +332,8 @@ class MapTransformer:
 
         Should be called before applying the transform.
         """
-        self._init_fn()
+        for transform_fn in self._transform_fns:
+            transform_fn.init()
 
     def _udf_timed_iter(
         self, input: Iterable[MapTransformFnData]
@@ -284,14 +417,14 @@ def create_map_transformer_from_block_fn(
 class RowMapTransformFn(MapTransformFn):
     """A rows-to-rows MapTransformFn."""
 
-    def __init__(self, row_fn: MapTransformCallable[Row, Row], is_udf: bool = False):
-        self._row_fn = row_fn
+    def __init__(self, udf_context: MapTransformUDFContext):
         super().__init__(
             MapTransformFnDataType.Row,
             MapTransformFnDataType.Row,
             category=MapTransformFnCategory.DataProcess,
-            is_udf=is_udf,
+            udf_context=udf_context,
         )
+        self._row_fn = self._generate_transform_fn_from_udf_context()
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
         yield from self._row_fn(input, ctx)
@@ -311,15 +444,15 @@ class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
     def __init__(
-        self, batch_fn: MapTransformCallable[DataBatch, DataBatch], is_udf: bool = False
+        self, udf_context: MapTransformUDFContext
     ):
-        self._batch_fn = batch_fn
         super().__init__(
             MapTransformFnDataType.Batch,
             MapTransformFnDataType.Batch,
             category=MapTransformFnCategory.DataProcess,
-            is_udf=is_udf,
+            udf_context=udf_context,
         )
+        self._batch_fn = self._generate_transform_fn_from_udf_context()
 
     def __call__(
         self, input: Iterable[DataBatch], ctx: TaskContext
@@ -341,15 +474,16 @@ class RowToBlockMapTransformFn(MapTransformFn):
     """A Row-to-Batch MapTransformFn."""
 
     def __init__(
-        self, transform_fn: MapTransformCallable[Row, Block], is_udf: bool = False
+        self, udf_context: MapTransformUDFContext
     ):
-        self._transform_fn = transform_fn
         super().__init__(
             MapTransformFnDataType.Row,
             MapTransformFnDataType.Block,
             category=MapTransformFnCategory.DataProcess,
-            is_udf=is_udf,
+            udf_context=udf_context,
         )
+        self._transform_fn = self._generate_transform_fn_from_udf_context()
+
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Block]:
         yield from self._transform_fn(input, ctx)
