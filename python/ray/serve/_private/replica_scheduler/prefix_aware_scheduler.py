@@ -57,6 +57,15 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._tree_actor = PrefixTreeActor.options(
             name="PrefixTreeActor", get_if_exists=True
         ).remote()
+        from ray import serve
+
+        print("[[PrefixAwareReplicaScheduler.__init__]]")
+        self._vllm_engine_deployment = serve.get_deployment_handle(
+            "vllm_engine_deployment", app_name="default"
+        )
+        print(
+            f"[[PrefixAwareReplicaScheduler.__init__]] vllm_engine_deployment: {self._vllm_engine_deployment}"
+        )
         self.IMBALANCED_THRESHOLD = 10
 
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
@@ -68,6 +77,15 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                 msg.get("content", "") for msg in request.messages if "content" in msg
             )
             return concatenated_messages
+        else:
+            raise ValueError("Invalid request")
+
+    def _extract_prompt_from_request(self, pending_request: PendingRequest):
+        request = pending_request.args[0]
+        if isinstance(request, CompletionRequest):
+            return request.prompt
+        elif isinstance(request, ChatCompletionRequest):
+            return request.messages
         else:
             raise ValueError("Invalid request")
 
@@ -84,6 +102,9 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
+        print(
+            f"[[PrefixAwareReplicaScheduler.choose_replicas]] pending_request: {pending_request}"
+        )
         # Get fallback replicas from PowerOfTwoChoicesReplicaScheduler
         fallback_replicas = await super().choose_replicas(
             replicas_ranks=replicas_ranks,
@@ -143,7 +164,27 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            input_text = self._extract_text_from_request(pending_request)
+            prompt = self._extract_prompt_from_request(pending_request)
+            print(
+                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] prompt: {prompt}"
+            )
+            from ray.llm._internal.serve.configs.server_models import Prompt
+
+            prompt = Prompt(prompt=prompt)
+            print(
+                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] Prompt(prompt=prompt): {prompt}"
+            )
+            vllm_request = await self._vllm_engine_deployment.prepare_request.remote(
+                request_id="N/A", prompt=prompt, stream=False, disk_lora_model=None
+            )
+            print(
+                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] vllm_request: {vllm_request}"
+            )
+            input_text = vllm_request.prompt
+            print(
+                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] input_text: {input_text}"
+            )
+            # input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
                 # Check for imbalanced load.
                 highest_queue_len = 0

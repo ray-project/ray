@@ -185,6 +185,10 @@ class _EngineBackgroundProcess:
         return self._error
 
 
+from ray import serve
+
+
+@serve.deployment(name="vllm_engine_deployment")
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
