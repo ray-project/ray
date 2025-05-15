@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
+DEFAULT_DOWNLOAD_FILENAME = "file.txt"
 
 # Max number of entries from API server to the client
 RAY_MAX_LIMIT_FROM_API_SERVER = env_integer(
@@ -382,7 +383,7 @@ class GetLogOptions:
     filename: Optional[str] = None
     # The filename to download the log as on the client side.
     # If not provided, the filename will be "file.txt".
-    download_filename: str = "file.txt"
+    download_filename: str = DEFAULT_DOWNLOAD_FILENAME
     # The actor id of the log. It is used only for worker logs.
     actor_id: Optional[str] = None
     # The task id of the log.

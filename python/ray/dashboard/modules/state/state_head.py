@@ -30,7 +30,12 @@ from ray.dashboard.utils import RateLimitedModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.utils import ResponseType
-from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
+from ray.util.state.common import (
+    DEFAULT_DOWNLOAD_FILENAME,
+    DEFAULT_LOG_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+    GetLogOptions,
+)
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
@@ -206,7 +211,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
             node_ip=req.query.get("node_ip", None),
             media_type=req.match_info.get("media_type", "file"),
             filename=req.query.get("filename", None),
-            download_filename=req.query.get("download_filename", None),
+            download_filename=req.query.get(
+                "download_filename", DEFAULT_DOWNLOAD_FILENAME
+            ),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
             submission_id=req.query.get("submission_id", None),
