@@ -18,14 +18,16 @@ from typing import (
     TypeVar,
     Callable,
     Literal,
+    Set,
 )
 import uuid
 import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
-from ray.experimental.util.types import Device
+from ray.experimental.util.types import Device, _NcclOpType
 
 T = TypeVar("T")
 
@@ -217,6 +219,16 @@ class DAGNode(DAGNodeBase):
         if isinstance(self._type_hint, AutoTransportType):
             self._original_type_hint = self._type_hint
         self._type_hint = type_hint
+
+    @property
+    def nccl_op_type(self) -> Optional[_NcclOpType]:
+        """Return the NCCL operation type for this node."""
+        return None
+
+    @property
+    def nccl_op(self) -> Optional[_NcclOperation]:
+        """Return the NCCL operation for this node."""
+        return None
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -509,12 +521,12 @@ class DAGNode(DAGNodeBase):
             )
         )
 
-    def traverse_and_apply(self, fn: "Callable[[DAGNode], T]"):
+    def get_topo_queue(self) -> List["DAGNode"]:
         """
-        Traverse all nodes in the connected component of the DAG that contains
-        the `self` node, and apply the given function to each node.
+        Traverse all nodes in the connected component of the DAG that contains the
+        `self` node, and return them in topological order.
         """
-        visited = set()
+        visited: Set[DAGNode] = set()
         queue = [self]
         cgraph_output_node: Optional[DAGNode] = None
 
@@ -534,7 +546,6 @@ class DAGNode(DAGNodeBase):
                             f"(1) {cgraph_output_node}, (2) {node}"
                         )
                     cgraph_output_node = node
-                fn(node)
                 visited.add(node)
                 """
                 Add all unseen downstream and upstream nodes to the queue.
@@ -558,6 +569,22 @@ class DAGNode(DAGNodeBase):
                 ):
                     if neighbor not in visited:
                         queue.append(neighbor)
+
+        # Topological sort.
+        topo_queue: List[DAGNode] = []
+        in_degrees: Dict[DAGNode, int] = {
+            node: len(node._upstream_nodes) for node in visited
+        }
+        frontier = [node for node in visited if in_degrees[node] == 0]
+        while frontier:
+            node = frontier.pop(0)
+            topo_queue.append(node)
+            for neighbor in node._downstream_nodes:
+                in_degrees[neighbor] -= 1
+                if in_degrees[neighbor] == 0:
+                    frontier.append(neighbor)
+        assert len(topo_queue) == len(visited)
+        return topo_queue
 
     def _raise_nested_dag_node_error(self, args):
         """

@@ -1,56 +1,13 @@
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, Dict
+from typing import TYPE_CHECKING, Any, Optional, Dict
 from ray.util.annotations import DeveloperAPI
 
 
 if TYPE_CHECKING:
     import cupy as cp
 
-T = TypeVar("T")
-
 
 @DeveloperAPI
-class DAGOperationFuture(ABC, Generic[T]):
-    """
-    A future representing the result of a DAG operation.
-
-    This is an abstraction that is internal to each actor,
-    and is not exposed to the DAG caller.
-    """
-
-    @abstractmethod
-    def wait(self):
-        """
-        Wait for the future and return the result of the operation.
-        """
-        raise NotImplementedError
-
-
-@DeveloperAPI
-class ResolvedFuture(DAGOperationFuture):
-    """
-    A future that is already resolved. Calling `wait()` on this will
-    immediately return the result without blocking.
-    """
-
-    def __init__(self, result):
-        """
-        Initialize a resolved future.
-
-        Args:
-            result: The result of the future.
-        """
-        self._result = result
-
-    def wait(self):
-        """
-        Wait and immediately return the result. This operation will not block.
-        """
-        return self._result
-
-
-@DeveloperAPI
-class GPUFuture(DAGOperationFuture[Any]):
+class GPUFuture:
     """
     A future for a GPU event on a CUDA stream.
 
@@ -62,7 +19,7 @@ class GPUFuture(DAGOperationFuture[Any]):
     on the given stream, or it could be CPU data. Then the future guarantees
     that when the wait() returns, the buffer is ready on the current stream.
 
-    The `wait()` does not block CPU.
+    The `wait()` optionally blocks CPU.
     """
 
     # Caching GPU futures ensures CUDA events associated with futures are properly
@@ -126,10 +83,18 @@ class GPUFuture(DAGOperationFuture[Any]):
         # Cache the GPU future such that its CUDA event is properly destroyed.
         GPUFuture.add_gpu_future(fut_id, self)
 
-    def wait(self) -> Any:
+    def wait(self, blocking: bool = False) -> Any:
         """
-        Wait for the future on the current CUDA stream and return the result from
-        the GPU operation. This operation does not block CPU.
+        Wait on the CUDA event associated with this future. Future operations on the
+        current CUDA stream are queued after the operation captured by this future.
+
+        Args:
+            blocking: Whether this operation blocks CPU. It is blocking when
+                the future is sent across actors (e.g., by SharedMemoryChannel),
+                in which case the future should be resolved before channel write.
+
+        Return:
+            The result buffer. It is only ready to read if blocking.
         """
         import cupy as cp
 
@@ -140,6 +105,8 @@ class GPUFuture(DAGOperationFuture[Any]):
             # Destroy the CUDA event after it is waited on.
             GPUFuture.remove_gpu_future(self._fut_id)
 
+        if blocking:
+            current_stream.synchronize()
         return self._buf
 
     def destroy_event(self) -> None:

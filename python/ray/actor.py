@@ -312,7 +312,11 @@ class ActorMethod:
                     (node, i),
                     dict(),
                     dict(),
-                    {IS_CLASS_METHOD_OUTPUT_KEY: True, PARENT_CLASS_NODE_KEY: actor},
+                    {
+                        BIND_INDEX_KEY: node._get_bind_index(),
+                        IS_CLASS_METHOD_OUTPUT_KEY: True,
+                        PARENT_CLASS_NODE_KEY: actor,
+                    },
                 )
                 output_nodes.append(output_node)
             return tuple(output_nodes)

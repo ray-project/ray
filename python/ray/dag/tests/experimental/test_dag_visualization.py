@@ -502,16 +502,16 @@ class TestVisualizationAscii:
         Expect output:
             Nodes Information:
             0 [label="Task 0  InputNode"]
-            1 [label="Task 1  Actor: 54777d... Method: return_three"]
+            1 [label="Task 1  Actor: 348427... Method: return_three"]
             2 [label="Task 2  ClassMethodOutputNode[0]"]
             3 [label="Task 3  ClassMethodOutputNode[1]"]
             4 [label="Task 4  ClassMethodOutputNode[2]"]
-            5 [label="Task 5  Actor: c927c9... Method: echo"]
-            6 [label="Task 6  Actor: c927c9... Method: echo"]
-            7 [label="Task 7  Actor: c927c9... Method: return_two"]
-            8 [label="Task 8  MultiOutputNode"]
-            9 [label="Task 9  ClassMethodOutputNode[0]"]
-            10 [label="Task 10  ClassMethodOutputNode[1]"]
+            5 [label="Task 5  Actor: 4110c1... Method: echo"]
+            6 [label="Task 6  Actor: 4110c1... Method: echo"]
+            7 [label="Task 7  Actor: 4110c1... Method: return_two"]
+            8 [label="Task 8  ClassMethodOutputNode[0]"]
+            9 [label="Task 9  ClassMethodOutputNode[1]"]
+            10 [label="Task 10  MultiOutputNode"]
 
             Edges Information:
             0 ---> 1
@@ -521,12 +521,12 @@ class TestVisualizationAscii:
             2 ---> 5
             3 ---> 6
             4 ---> 7
-            5 ---> 8
-            6 ---> 8
-            9 ---> 8
-            10 ---> 8
+            7 ---> 8
             7 ---> 9
-            7 ---> 10
+            5 ---> 10
+            6 ---> 10
+            8 ---> 10
+            9 ---> 10
 
             Legend:
             +++> : Represents Nccl-type data channels
@@ -535,15 +535,15 @@ class TestVisualizationAscii:
             Graph Built:
             0:InputNode
             |
-            1:Actor_54777d:return_three
-            |---------------------------->|---------------------------->|                                                  # noqa
-            2:Output[0]                   3:Output[1]                   4:Output[2]                                        # noqa
-            |                             |                             |                                                  # noqa
-            5:Actor_c927c9:echo           6:Actor_c927c9:echo           7:Actor_c927c9:return_two                          # noqa
-            |                             |                             |---------------------------->|                    # noqa
-            |                             |                             9:Output[0]                   10:Output[1]         # noqa
-            |<----------------------------|-----------------------------|-----------------------------|                    # noqa
-            8:MultiOutputNode
+            1:Actor_348427:return_three
+            |---------------------------->|---------------------------->|                                                 # noqa
+            2:Output[0]                   3:Output[1]                   4:Output[2]                                       # noqa
+            |                             |                             |                                                 # noqa
+            5:Actor_4110c1:echo           6:Actor_4110c1:echo           7:Actor_4110c1:return_two                         # noqa
+            |                             |                             |---------------------------->|                   # noqa
+            |                             |                             8:Output[0]                   9:Output[1]         # noqa
+            |<----------------------------|-----------------------------|-----------------------------|                   # noqa
+            10:MultiOutputNode
         """
 
         @ray.remote
@@ -589,12 +589,12 @@ class TestVisualizationAscii:
             ("2", "5"),
             ("3", "6"),
             ("4", "7"),
-            ("5", "8"),
-            ("6", "8"),
-            ("9", "8"),
-            ("10", "8"),
+            ("7", "8"),
             ("7", "9"),
-            ("7", "10"),
+            ("5", "10"),
+            ("6", "10"),
+            ("8", "10"),
+            ("9", "10"),
         }
         assert expected_edges.issubset(
             edge_pairs
@@ -605,16 +605,16 @@ class TestVisualizationAscii:
         Expect output:
             Nodes Information:
             0 [label="Task 0  InputNode"]
-            1 [label="Task 1  Actor: 84835a... Method: return_three"]
+            1 [label="Task 1  Actor: b9b307... Method: return_three"]
             2 [label="Task 2  ClassMethodOutputNode[0]"]
             3 [label="Task 3  ClassMethodOutputNode[1]"]
             4 [label="Task 4  ClassMethodOutputNode[2]"]
-            5 [label="Task 5  Actor: 02a6a1... Method: echo"]
-            6 [label="Task 6  Actor: 02a6a1... Method: return_two"]
-            7 [label="Task 7  Actor: 02a6a1... Method: echo"]
-            8 [label="Task 8  MultiOutputNode"]
-            9 [label="Task 9  ClassMethodOutputNode[0]"]
-            10 [label="Task 10  ClassMethodOutputNode[1]"]
+            5 [label="Task 5  Actor: 55b24a... Method: echo"]
+            6 [label="Task 6  Actor: 55b24a... Method: return_two"]
+            7 [label="Task 7  Actor: 55b24a... Method: echo"]
+            8 [label="Task 8  ClassMethodOutputNode[0]"]
+            9 [label="Task 9  ClassMethodOutputNode[1]"]
+            10 [label="Task 10  MultiOutputNode"]
 
             Edges Information:
             0 ---> 1
@@ -624,12 +624,12 @@ class TestVisualizationAscii:
             2 ---> 5
             3 ---> 6
             4 ---> 7
-            5 ---> 8
-            7 ---> 8
-            9 ---> 8
-            10 ---> 8
+            6 ---> 8
             6 ---> 9
-            6 ---> 10
+            5 ---> 10
+            7 ---> 10
+            8 ---> 10
+            9 ---> 10
 
             Legend:
             +++> : Represents Nccl-type data channels
@@ -638,15 +638,15 @@ class TestVisualizationAscii:
             Graph Built:
             0:InputNode
             |
-            1:Actor_84835a:return_three
+            1:Actor_b9b307:return_three
             |---------------------------->|---------------------------->|                            # noqa
             2:Output[0]                   3:Output[1]                   4:Output[2]                  # noqa
             |                             |                             |                            # noqa
-            5:Actor_02a6a1:echo           6:Actor_02a6a1:return_two     7:Actor_02a6a1:echo          # noqa
+            5:Actor_55b24a:echo           6:Actor_55b24a:return_two     7:Actor_55b24a:echo          # noqa
             |                             |---------------------------->|                            # noqa
-            |                             9:Output[0]                   10:Output[1]                 # noqa
+            |                             8:Output[0]                   9:Output[1]                  # noqa
             |<----------------------------------------------------------|                            # noqa
-            8:MultiOutputNod
+            10:MultiOutputNode
         """
 
         @ray.remote
@@ -692,12 +692,12 @@ class TestVisualizationAscii:
             ("2", "5"),
             ("3", "6"),
             ("4", "7"),
-            ("5", "8"),
-            ("7", "8"),
-            ("9", "8"),
-            ("10", "8"),
+            ("6", "8"),
             ("6", "9"),
-            ("6", "10"),
+            ("5", "10"),
+            ("7", "10"),
+            ("8", "10"),
+            ("9", "10"),
         }
         assert expected_edges.issubset(
             edge_pairs

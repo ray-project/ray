@@ -8,7 +8,8 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.constants import COLLECTIVE_OPERATION_KEY
+from ray.dag.constants import NCCL_OPERATION_KEY
+from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
@@ -20,7 +21,7 @@ from ray.experimental.util.types import (
 from ray.util.annotations import DeveloperAPI
 
 
-class _CollectiveOperation:
+class _CollectiveOperation(_NcclOperation):
     """
     Represent metadata for a NCCL collective operation.
 
@@ -41,6 +42,8 @@ class _CollectiveOperation:
         op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
+        super().__init__()
+
         if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
         if len(set(input_nodes)) != len(input_nodes):
@@ -89,6 +92,10 @@ class _CollectiveOperation:
     @property
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
+
+    @property
+    def nccl_op_type(self) -> _CollectiveOp:
+        return self._op
 
     def get_communicator(self) -> Communicator:
         if self._type_hint.communicator_id is not None:
@@ -154,6 +161,14 @@ class CollectiveOutputNode(ClassMethodNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
+        super().__init__(
+            method_name,
+            method_args,
+            method_kwargs,
+            method_options,
+            other_args_to_resolve,
+        )
+
         # Parse the input node.
         if not (
             isinstance(method_args, tuple)
@@ -164,18 +179,10 @@ class CollectiveOutputNode(ClassMethodNode):
         self._input_node = method_args[0]
         # Parse the collective operation.
         self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
-            COLLECTIVE_OPERATION_KEY, None
+            NCCL_OPERATION_KEY, None
         )
         if self._collective_op is None:
             raise ValueError("Expected a collective operation")
-
-        super().__init__(
-            method_name,
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve,
-        )
 
     def _copy_impl(
         self,
@@ -198,5 +205,9 @@ class CollectiveOutputNode(ClassMethodNode):
         )
 
     @property
-    def collective_op(self) -> _CollectiveOperation:
+    def nccl_op_type(self) -> _CollectiveOp:
+        return self._collective_op.nccl_op_type
+
+    @property
+    def nccl_op(self) -> _CollectiveOperation:
         return self._collective_op

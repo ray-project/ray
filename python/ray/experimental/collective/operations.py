@@ -5,7 +5,7 @@ import ray
 from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
-    COLLECTIVE_OPERATION_KEY,
+    NCCL_OPERATION_KEY,
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
@@ -77,7 +77,7 @@ def _bind(
             other_args_to_resolve={
                 PARENT_CLASS_NODE_KEY: actor_handle,
                 BIND_INDEX_KEY: actor_handle._ray_dag_bind_index,
-                COLLECTIVE_OPERATION_KEY: collective_op,
+                NCCL_OPERATION_KEY: collective_op,
             },
         )
         actor_handle._ray_dag_bind_index += 1
