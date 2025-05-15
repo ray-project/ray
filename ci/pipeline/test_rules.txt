@@ -88,7 +88,7 @@ python/ray/experimental/channel/
 ;
 
 python/ray/util/client/
-@ ray_client
+@ python ray_client
 ;
 
 python/
