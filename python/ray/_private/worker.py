@@ -1293,7 +1293,7 @@ def _maybe_modify_runtime_env(
     if ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
         from ray._private.runtime_env.uv_runtime_env_hook import (
             hook,
-            _get_uv_run_cmdline
+            _get_uv_run_cmdline,
         )
 
         cmdline = _get_uv_run_cmdline()
@@ -1303,7 +1303,7 @@ def _maybe_modify_runtime_env(
             return hook(runtime_env)
 
     if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(runtime_env)
+        return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(runtime_env)
 
 
 @PublicAPI
