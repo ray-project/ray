@@ -379,7 +379,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     ]
     task_completion_time: float = metric_field(
         default=0,
-        description="Time spent running all tasks to completion.",
+        description="Time spent running tasks to completion.",
         metrics_group=MetricsGroup.TASKS,
         metrics_type=MetricsType.Histogram,
         metrics_args={"boundaries": histogram_buckets_s},
