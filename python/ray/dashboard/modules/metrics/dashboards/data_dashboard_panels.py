@@ -438,7 +438,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(0, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(0, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p00) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -452,7 +452,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(0.05, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(0.05, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p05) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -466,7 +466,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(0.50, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(0.50, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p50) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -480,7 +480,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(0.75, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(0.75, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p75) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -494,7 +494,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(0.9, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(0.9, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p90) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -508,7 +508,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(0.99, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(0.99, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p99) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
@@ -522,7 +522,7 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="histogram_quantile(1, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[30m])))",
+                expr="histogram_quantile(1, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
                 legend="(p100) Completion Time: {{dataset}}, {{operator}}",
             ),
         ],
