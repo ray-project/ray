@@ -528,7 +528,7 @@ class ApplicationState:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
-                        f"Unexpected error occured while applying config for "
+                        f"Unexpected error occurred while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
@@ -674,7 +674,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
-                f"Unexpected error occured while deploying application "
+                f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
@@ -697,7 +697,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
-                f"Unexpected error occured while applying config for application "
+                f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
