@@ -87,6 +87,10 @@ python/ray/experimental/channel/
 @ python accelerated_dag
 ;
 
+python/ray/util/client/
+@ python ray_client
+;
+
 python/
 @ ml tune train data
 # Python changes might impact cross language stack in Java.

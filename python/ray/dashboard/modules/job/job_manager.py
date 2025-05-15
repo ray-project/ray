@@ -541,6 +541,9 @@ class JobManager:
                     runtime_env, submission_id, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+                # Don't pollute task events with system actor tasks that users don't
+                # know about.
+                enable_task_events=False,
             ).remote(
                 submission_id,
                 entrypoint,
