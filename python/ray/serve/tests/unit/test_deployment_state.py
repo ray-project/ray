@@ -175,6 +175,9 @@ class MockReplicaActorWrapper:
     def initialization_latency_s(self) -> float:
         return self._initialization_latency_s
 
+    def set_docs_path(self, docs_path: str):
+        self._docs_path = docs_path
+
     @property
     def docs_path(self) -> Optional[str]:
         return self._docs_path
@@ -4819,9 +4822,8 @@ def test_docs_path_update(mock_deployment_state_manager):
 
     # Override the _actor instance in DeploymentReplica
     deployment_replica = DeploymentReplica(replica_id, version_with_docs)
-    deployment_replica._actor = MockReplicaActorWrapperWithDocsPath(
-        replica_id, version_with_docs
-    )
+    deployment_replica._actor = MockReplicaActorWrapper(replica_id, version_with_docs)
+    deployment_replica._actor.set_docs_path(test_docs_path)
     deployment_replica._actor.set_ready()
 
     # Add the replica to the deployment state
@@ -4863,17 +4865,10 @@ def test_docs_path_not_updated_for_different_version(mock_deployment_state_manag
     replica_id = ReplicaID(get_random_string(), deployment_id=TEST_DEPLOYMENT_ID)
     test_docs_path = "/test/docs/path"
 
-    # Mock the replica actor
-    class MockReplicaActorWrapperWithDocsPath(MockReplicaActorWrapper):
-        @property
-        def docs_path(self):
-            return test_docs_path
-
     # Override the _actor instance in DeploymentReplica
     deployment_replica = DeploymentReplica(replica_id, replica_version)
-    deployment_replica._actor = MockReplicaActorWrapperWithDocsPath(
-        replica_id, replica_version
-    )
+    deployment_replica._actor = MockReplicaActorWrapper(replica_id, replica_version)
+    deployment_replica._actor.set_docs_path(test_docs_path)
     deployment_replica._actor.set_ready()
 
     # Add the replica to the deployment state

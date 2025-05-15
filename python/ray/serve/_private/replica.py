@@ -378,10 +378,6 @@ class ReplicaBase(ABC):
         self._port: Optional[int] = None
         self._docs_path: Optional[str] = None
 
-        self._controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        )
-
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
