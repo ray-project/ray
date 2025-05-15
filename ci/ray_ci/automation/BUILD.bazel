@@ -122,6 +122,9 @@ py_test(
         "ci_unit",
         "team:ci",
     ],
+    data = [
+        "@registry_x86_64//:file",
+    ],
     deps = [
         ci_require("pytest"),
         ci_require("docker"),
@@ -191,6 +194,16 @@ py_binary(
 py_binary(
     name = "list_docker_tags",
     srcs = ["list_docker_tags.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "generate_index",
+    srcs = ["generate_index.py"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":docker_tags_lib",
