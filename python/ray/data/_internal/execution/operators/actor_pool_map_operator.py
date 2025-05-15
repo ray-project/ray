@@ -129,8 +129,12 @@ class ActorPoolMapOperator(MapOperator):
         )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
+        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
+        # tell which operator they belong to. To fix that, we dynamically create a new
+        # class per operator with a unique name.
+        self._map_worker_cls = type(self.name, (_MapWorker,), {})
         # Cached actor class.
-        self._cls = None
+        self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
 
@@ -153,7 +157,7 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         # Create the actor workers and add them to the pool.
-        self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
+        self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale_up(self._actor_pool.min_size())
 
         # If `wait_for_min_actors_s` is specified and is positive, then
@@ -183,11 +187,11 @@ class ActorPoolMapOperator(MapOperator):
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
-        assert self._cls is not None
+        assert self._actor_cls is not None
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
-        actor = self._cls.options(
+        actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
         ).remote(
             ctx,
@@ -282,7 +286,7 @@ class ActorPoolMapOperator(MapOperator):
         for k, v in new_remote_args.items():
             remote_args[k] = v
             new_and_overriden_remote_args[k] = v
-        self._cls = ray.remote(**remote_args)(_MapWorker)
+        self._actor_cls = ray.remote(**remote_args)(self._map_worker_cls)
         return new_and_overriden_remote_args
 
     def all_inputs_done(self):
