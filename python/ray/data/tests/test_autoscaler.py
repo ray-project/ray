@@ -31,7 +31,8 @@ def test_actor_pool_scaling():
         min_size=MagicMock(return_value=5),
         max_size=MagicMock(return_value=15),
         current_size=MagicMock(return_value=10),
-        num_active_actors=MagicMock(return_value=9),
+        num_active_actors=MagicMock(return_value=10),
+        num_pending_actors=MagicMock(return_value=0),
         num_free_task_slots=MagicMock(return_value=5),
     )
 
@@ -64,13 +65,17 @@ def test_actor_pool_scaling():
         ) == (expected_action, expected_reason)
 
     # Should scale up since the util above the threshold.
-    assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.9
-    assert_autoscaling_action(_AutoscalingAction.SCALE_UP, "utilization of 0.9 >= 0.8")
+    assert autoscaler._calculate_actor_pool_util(actor_pool) == 1.0
+    assert_autoscaling_action(_AutoscalingAction.SCALE_UP, "utilization of 1.0 >= 0.8")
 
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_active_actors", 7):
         assert autoscaler._calculate_actor_pool_util(actor_pool) == 0.7
         assert_autoscaling_action(_AutoscalingAction.NO_OP, "0.5 < 0.7 < 0.8")
+
+    # Should be no-op since previous scaling hasn't finished yet
+    with patch(actor_pool, "num_pending_actors", 1):
+        assert_autoscaling_action(_AutoscalingAction.NO_OP, "pending actors")
 
     # Should be no-op since we have reached the max size.
     with patch(actor_pool, "current_size", 15):
@@ -132,6 +137,11 @@ def test_actor_pool_scaling():
         assert_autoscaling_action(
             _AutoscalingAction.SCALE_DOWN, "utilization of 0.4 <= 0.5"
         )
+
+        with patch(actor_pool, "can_scale_down", False):
+            assert_autoscaling_action(
+                _AutoscalingAction.NO_OP, "debounced"
+            )
 
     # Should scale down since the pool is above the max size.
     with patch(actor_pool, "current_size", 16):
