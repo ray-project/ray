@@ -82,11 +82,14 @@ class DefaultAutoscaler(Autoscaler):
         util = self._calculate_actor_pool_util(actor_pool)
         if util >= self._actor_pool_scaling_up_threshold:
             # Do not scale up if either
+            #   - Previous scale up has not finished yet
             #   - Actor Pool is at max size already
             #   - Op is throttled (ie exceeding allocated resource quota)
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
-            if actor_pool.current_size() >= actor_pool.max_size():
+            if actor_pool.num_pending_actors() > 0:
+                return _AutoscalingAction.NO_OP, "pending actors"
+            elif actor_pool.current_size() >= actor_pool.max_size():
                 return _AutoscalingAction.NO_OP, "reached max size"
             if not op_state._scheduling_status.under_resource_limits:
                 return _AutoscalingAction.NO_OP, "operator exceeding resource quota"
@@ -122,21 +125,15 @@ class DefaultAutoscaler(Autoscaler):
         for op, state in self._topology.items():
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
-                while True:
-                    # Try to scale up or down the actor pool.
-                    recommended_action, reason = self._derive_scaling_action(
-                        actor_pool, op, state
-                    )
+                # Try to scale up or down the actor pool.
+                recommended_action, reason = self._derive_scaling_action(
+                    actor_pool, op, state
+                )
 
-                    if recommended_action is _AutoscalingAction.SCALE_UP:
-                        if actor_pool.scale_up(1, reason=reason) == 0:
-                            break
-                    elif recommended_action is _AutoscalingAction.SCALE_DOWN:
-                        if actor_pool.scale_down(1, reason=reason) == 0:
-                            break
-                    else:
-                        # No-op
-                        break
+                if recommended_action is _AutoscalingAction.SCALE_UP:
+                    actor_pool.scale_up(1, reason=reason)
+                elif recommended_action is _AutoscalingAction.SCALE_DOWN and actor_pool.can_scale_down():
+                    actor_pool.scale_down(1, reason=reason)
 
     def _try_scale_up_cluster(self):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
