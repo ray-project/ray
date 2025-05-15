@@ -68,6 +68,7 @@ class BaseArrowBatchCollateFn(ArrowBatchCollateFn):
         return arrow_batch_to_tensors(
             batch,
             combine_chunks=self.device.type == "cpu",
+            pin_memory=self.device.type != "cpu",
         )
 
 

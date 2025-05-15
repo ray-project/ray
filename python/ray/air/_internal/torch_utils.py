@@ -331,6 +331,7 @@ def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     combine_chunks: bool = False,
+    pin_memory: bool = False,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert PyArrow batch to PyTorch tensors.
 
@@ -340,6 +341,7 @@ def arrow_batch_to_tensors(
             will be inferred from the NumPy ndarray data.
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
+        pin_memory: If True, the returned tensors will be pinned in memory.
 
     Returns:
         A dictionary of column name to list of tensors. For non-chunked columns,
@@ -350,7 +352,7 @@ def arrow_batch_to_tensors(
 
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
-        return {
+        return_batch = {
             col_name: convert_ndarray_batch_to_torch_tensor_batch(
                 col_array,
                 dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
@@ -361,25 +363,29 @@ def arrow_batch_to_tensors(
         numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
             batch,
         )
-        return convert_ndarray_list_to_torch_tensor_list(
+        return_batch = convert_ndarray_list_to_torch_tensor_list(
             numpy_list,
             dtypes=dtypes,
         )
+
+    if pin_memory:
+        for col_name, col_tensors in return_batch.items():
+            for i, tensor in enumerate(col_tensors):
+                return_batch[col_name][i] = tensor.pin_memory()
+
+    return return_batch
 
 
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
     Args:
         tensor_sequence: Sequence of tensors to stack
         device: The device to move tensors to
-        non_blocking: If True, perform device transfer without forcing a
-            synchronization.
 
     Returns:
         A contiguous tensor on the target device
@@ -407,7 +413,7 @@ def concat_tensors_to_device(
     row_start = 0
     for t in tensor_sequence:
         row_end = row_start + t.shape[0]
-        result[row_start:row_end].copy_(t, non_blocking=non_blocking)
+        result[row_start:row_end].copy_(t, non_blocking=t.is_pinned())
         row_start = row_end
 
     assert isinstance(result, torch.Tensor), "Result must be a torch.Tensor"
@@ -418,7 +424,6 @@ def concat_tensors_to_device(
 def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
@@ -431,8 +436,6 @@ def move_tensors_to_device(
             - A mapping (e.g., dict) of keys to tensors or sequences of tensors. The
               sequence of tensors is combined during GPU transfer.
         device: The device to move tensors to. If None, tensors are not moved.
-        non_blocking: If True, perform device transfer without forcing a
-            synchronization.
 
     Returns:
         The input tensors moved to the specified device
@@ -441,19 +444,17 @@ def move_tensors_to_device(
         return batch
 
     if isinstance(batch, torch.Tensor):
-        return batch.to(device=device, non_blocking=non_blocking)
+        return batch.to(device=device, non_blocking=batch.is_pinned())
 
     elif isinstance(batch, Mapping):
         new_batch = {}
         for k, v in batch.items():
             if isinstance(v, torch.Tensor):
-                new_batch[k] = v.to(device=device, non_blocking=non_blocking)
+                new_batch[k] = v.to(device=device, non_blocking=v.is_pinned())
 
             elif isinstance(v, ABCSequence) and not isinstance(v, (str, bytes)):
                 if all(isinstance(t, torch.Tensor) for t in v):
-                    new_batch[k] = concat_tensors_to_device(
-                        v, device=device, non_blocking=non_blocking
-                    )
+                    new_batch[k] = concat_tensors_to_device(v, device=device)
                 else:
                     raise TypeError(
                         f"Expected a sequence of torch.Tensor for key '{k}', "
@@ -469,9 +470,7 @@ def move_tensors_to_device(
 
     elif isinstance(batch, ABCSequence) and not isinstance(batch, (str, bytes)):
         if all(isinstance(t, torch.Tensor) for t in batch):
-            return concat_tensors_to_device(
-                batch, device=device, non_blocking=non_blocking
-            )
+            return concat_tensors_to_device(batch, device=device)
 
         elif all(
             isinstance(seq, ABCSequence)
@@ -479,10 +478,7 @@ def move_tensors_to_device(
             and all(isinstance(t, torch.Tensor) for t in seq)
             for seq in batch
         ):
-            return tuple(
-                concat_tensors_to_device(seq, device=device, non_blocking=non_blocking)
-                for seq in batch
-            )
+            return tuple(concat_tensors_to_device(seq, device=device) for seq in batch)
 
         else:
             sample_type = type(batch[0]) if batch else "empty"
