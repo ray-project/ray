@@ -142,9 +142,7 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
 
     # Test annotations on compute.
     df = dd.from_pandas(
-        pd.DataFrame(
-            np.random.randint(0, 2, size=(2, 2)), columns=["age", "grade"]
-        ),
+        pd.DataFrame(np.random.randint(0, 2, size=(2, 2)), columns=["age", "grade"]),
         npartitions=2,
     )
     c = df.apply(get_node_id, axis=1, meta={0: str})
@@ -154,7 +152,9 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
 
     # Test compute global Ray remote args.
     c = df.apply(get_node_id, axis=1, meta={0: str})
-    result = c.compute(ray_remote_args={"resources": {"pin": 0.01}}, optimize_graph=False)
+    result = c.compute(
+        ray_remote_args={"resources": {"pin": 0.01}}, optimize_graph=False
+    )
     assert result[0].iloc[0] == pinned_node.unique_id
 
 

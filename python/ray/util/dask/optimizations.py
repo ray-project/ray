@@ -1,9 +1,7 @@
-import operator
 import warnings
 
 import dask
 from dask import core
-from dask.core import istask
 from dask.dataframe.core import _concat
 from dask.highlevelgraph import HighLevelGraph
 
@@ -18,7 +16,8 @@ except ImportError:
     # This is the case for dask>=2025.1.0.
     SimpleShuffleLayer = None
 try:
-    import dask_expr
+    import dask_expr  # noqa: F401
+
     SimpleShuffleLayer = None
 except ImportError:
     pass

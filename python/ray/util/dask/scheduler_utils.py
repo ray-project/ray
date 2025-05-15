@@ -7,7 +7,7 @@ import os
 from queue import Queue, Empty
 
 from dask import config
-from dask._task_spec import DataNode, DependenciesMapping, convert_legacy_graph
+from dask._task_spec import DataNode, DependenciesMapping
 from dask.callbacks import local_callbacks, unpack_callbacks
 from dask.core import flatten, get_dependencies, reverse_dict
 from dask.order import order
