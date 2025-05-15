@@ -864,7 +864,7 @@ class ServeController:
             DeploymentRoute's protobuf serialized bytes
 
         Raises:
-            KeyError if the deployment doesn't exist.
+            KeyError: If the deployment doesn't exist.
         """
         id = DeploymentID(name=name, app_name=app_name)
         deployment_info = self.deployment_state_manager.get_deployment(id)
@@ -989,7 +989,7 @@ class ServeController:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
-            is NOT_STARTED.
+                  is NOT_STARTED.
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)

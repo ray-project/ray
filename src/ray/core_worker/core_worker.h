@@ -1270,7 +1270,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
-  /// the actor is (1) direct actor and (2) using asyncio mode.
+  /// the actor is (1) direct actor and (2) using async mode.
   ///
 
   /// Block current fiber until event is triggered.
@@ -1410,7 +1410,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
-      const std::unordered_map<std::string, std::string> &labels = {});
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const std::unordered_map<std::string, std::string> &label_selector = {});
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1660,11 +1661,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                             bool recursive,
                             const OnCanceledCallback &on_canceled);
 
-  /// Cancel an actor task queued or running in the current worker.
-  ///
-  /// See params in CancelTaskOnExecutor.
-  /// For the actor task cancel protocol, see the docstring of
-  /// actor_task_submitter.h::CancelTask.
+  // Attempt to cancel the actor task.
+  //
+  // The callback will be called with `success` to indicate if the cancellation succeeded.
+  // If not, the caller must retry the cancellation request until either it succeeds or
+  // the task finishes executing.
+  //
+  // A task can be in one of three states locally:
+  //
+  // 1) Not present in the local task receiver.
+  //    This means it wasn't received yet or it already finished executing.
+  // 2) Queued in the local task receiver, but not executing yet.
+  // 3) Executing.
+  //
+  // We first check if the task is present in the local receiver. If not, we
+  // do nothing and return success=false.
+  //
+  // If the task *is* present in the local receiver, we attempt to cancel it.
+  // The task may already be running, in which case we cancel it during execution.
+  //
+  // NOTE: only async actor tasks can be cancelled during execution. For non-async
+  // actor tasks that are already executing, we will return success=true to prevent the
+  // client from retrying infinitely.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,
@@ -1827,9 +1845,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
-  /// The currently executing task spec. We have to track this separately since
-  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
-  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ ABSL_GUARDED_BY(mutex_);
+  /// Set of currently-running tasks. For single-threaded, non-async actors this will
+  /// contain at most one task ID.
+  ///
+  /// We have to track this separately because we cannot access the thread-local worker
+  /// contexts from GetCoreWorkerStats().
+  absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);

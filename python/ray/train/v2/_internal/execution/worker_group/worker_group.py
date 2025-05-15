@@ -9,6 +9,7 @@ import ray
 from ray._private.ray_constants import env_float
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
+from ray.runtime_env import RuntimeEnv
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_REPORT_BARRIER_TIMEOUT_S,
@@ -349,16 +350,19 @@ class WorkerGroup:
         resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
 
-        worker_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
-            self._worker_cls
+        runtime_env = self._get_worker_runtime_env(
+            custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
         )
+        worker_actor_cls = ray.remote(
+            runtime_env=runtime_env,
+            **bundle_to_remote_args(resources_per_worker),
+        )(self._worker_cls)
 
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=placement_group, placement_group_bundle_index=i
                 ),
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
             ).remote()
             for i in range(num_workers)
         ]
@@ -778,3 +782,24 @@ class WorkerGroup:
         for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
         return sorted_workers
+
+    @staticmethod
+    def _get_worker_runtime_env(
+        custom_runtime_env: Union[Dict, RuntimeEnv],
+    ) -> Union[Dict, RuntimeEnv]:
+        """Update custom runtime env with internal Ray Train env vars
+        that should be propagated from the driver to worker processes.
+
+        Args:
+            custom_runtime_env: The custom runtime env dict passed in by the user.
+
+        Returns:
+            A copy of the custom runtime env dict updated with internal
+            Ray Train environment variables to propagate to worker processes.
+        """
+        merged_env_vars = get_env_vars_to_propagate()
+        merged_env_vars.update(custom_runtime_env.get("env_vars", {}))
+
+        runtime_env = dict(custom_runtime_env)
+        runtime_env["env_vars"] = merged_env_vars
+        return runtime_env

@@ -67,9 +67,9 @@ class TaskEventsGcPolicyInterface {
 
 class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
  public:
-  size_t MaxPriority() const { return 3; }
+  size_t MaxPriority() const override { return 3; }
 
-  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const {
+  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const override {
     if (IsTaskFinished(task_events)) {
       return 0;
     }

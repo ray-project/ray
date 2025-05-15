@@ -57,7 +57,7 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
         be created for this cluster.
 
     Raises:
-        RuntimeError if storage has not been configured or init failed.
+        RuntimeError: If storage has not been configured or init failed.
     """
     return _get_filesystem_internal()
 
@@ -334,8 +334,8 @@ class KVClient:
             List of file-info objects for the directory contents.
 
         Raises:
-            FileNotFoundError if the given path is not found.
-            NotADirectoryError if the given path isn't a valid directory.
+            FileNotFoundError: If the given path is not found.
+            NotADirectoryError: If the given path isn't a valid directory.
         """
         from pyarrow.fs import FileSelector, FileType, LocalFileSystem
 

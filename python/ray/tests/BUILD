@@ -62,6 +62,8 @@ py_test_module_list(
         "test_kill_raylet_signal_log.py",
         "test_metrics_agent.py",
         "test_metrics_head.py",
+        "test_multiprocessing.py",
+        "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_protobuf_compatibility.py",
     ],
@@ -113,6 +115,8 @@ py_test(
     ],
 )
 
+##### Begin Ray Client tests #####
+
 py_test_module_list(
     size = "large",
     files = [
@@ -120,8 +124,8 @@ py_test_module_list(
         "test_client_reconnect.py",
     ],
     tags = [
-        "client_tests",
         "exclusive",
+        "ray_client",
         "team:core",
     ],
     deps = [
@@ -136,8 +140,8 @@ py_test_module_list(
         "test_client_builder.py",
     ],
     tags = [
-        "client_tests",
         "exclusive",
+        "ray_client",
         "team:core",
         "use_all_core",
     ],
@@ -156,8 +160,8 @@ py_test_module_list(
         "test_client_warnings.py",
     ],
     tags = [
-        "client_tests",
         "exclusive",
+        "ray_client",
         "team:core",
     ],
     deps = [
@@ -172,9 +176,9 @@ py_test_module_list(
         "test_client_init.py",
     ],
     tags = [
-        "client_tests",
         "exclusive",
         "no_windows",
+        "ray_client",
         "team:core",
     ],
     deps = [
@@ -182,6 +186,50 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_CLIENT_MODE": "1",
+        "RAY_PROFILING": "1",
+    },
+    files = [
+        "test_actor.py",
+        "test_advanced.py",
+        "test_asyncio.py",
+        "test_basic.py",
+        "test_basic_2.py",
+        "test_basic_3.py",
+        "test_basic_4.py",
+        "test_basic_5.py",
+        "test_list_actors.py",
+        "test_list_actors_2.py",
+        "test_list_actors_3.py",
+        "test_list_actors_4.py",
+        "test_multiprocessing.py",
+        "test_object_assign_owner.py",
+        "test_placement_group.py",
+        "test_placement_group_2.py",
+        "test_placement_group_3.py",
+        "test_placement_group_4.py",
+        "test_placement_group_5.py",
+        "test_scheduling.py",
+        "test_scheduling_2.py",
+        "test_wait.py",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+##### End Ray Client tests #####
 
 # Issue #33491
 # Once test_memory_deadlock is fixed, remove this rule and move
@@ -346,6 +394,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_label_scheduling.py",
         "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
@@ -431,7 +480,7 @@ py_test_module_list(
         "test_nccl_channel.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -688,7 +737,6 @@ py_test_module_list(
         "test_state_api.py",
         "test_state_api_2.py",
         "test_storage.py",
-        "test_stress_failure.py",
         "test_task_events.py",
         "test_task_events_2.py",
         "test_task_events_3.py",
@@ -763,7 +811,6 @@ py_test_module_list(
     files = [
         "test_failure_4.py",
         "test_iter.py",
-        "test_multiprocessing.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
@@ -1139,43 +1186,6 @@ py_test(
         "exclusive",
         "no_windows",
         "team:kuberay",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-# TODO(ekl) we can't currently support tagging these as flaky since there's
-# no way to filter by both flaky and client mode tests in bazel.
-py_test_module_list(
-    size = "large",
-    env = {
-        "RAY_CLIENT_MODE": "1",
-        "RAY_PROFILING": "1",
-    },
-    files = [
-        "test_actor.py",
-        "test_advanced.py",
-        "test_asyncio.py",
-        "test_basic.py",
-        "test_basic_2.py",
-        "test_basic_3.py",
-        "test_basic_4.py",
-        "test_basic_5.py",
-        "test_list_actors.py",
-        "test_list_actors_2.py",
-        "test_list_actors_3.py",
-        "test_list_actors_4.py",
-        "test_multiprocessing.py",
-        "test_object_assign_owner.py",
-        "test_wait.py",
-    ],
-    name_suffix = "_client_mode",
-    tags = [
-        "client_tests",
-        "exclusive",
-        "team:core",
     ],
     deps = [
         ":conftest",

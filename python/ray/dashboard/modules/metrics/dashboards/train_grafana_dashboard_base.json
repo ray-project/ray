@@ -46,7 +46,7 @@
           "selected": false
         },
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, SessionName)",
+        "definition": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
         "description": "Filter queries to specific ray sessions.",
         "error": null,
         "hide": 0,
@@ -56,11 +56,11 @@
         "name": "SessionName",
         "options": [],
         "query": {
-          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, SessionName)",
+          "query": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
-        "regex": "",
+        "refresh": 1,
+        "regex": "{SessionName=\"(?<value>.*)\".*",
         "skipUrlSync": false,
         "sort": 2,
         "tagValuesQuery": "",
@@ -75,8 +75,8 @@
           "selected": false
         },
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_run_name)",
-        "description": "Filter queries to specific ray sessions.",
+        "definition": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+        "description": "Filter queries to specific Ray Train run names.",
         "error": null,
         "hide": 0,
         "includeAll": true,
@@ -85,11 +85,11 @@
         "name": "TrainRunName",
         "options": [],
         "query": {
-          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_run_name)",
+          "query": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
-        "regex": "",
+        "refresh": 1,
+        "regex": "{ray_train_run_name=\"(?<value>.*)\".*",
         "skipUrlSync": false,
         "sort": 2,
         "tagValuesQuery": "",
