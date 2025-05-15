@@ -2239,14 +2239,13 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
-        # TODO(rickyx): This is a hack to avoid running into race conditions
-        # within v1 autoscaler. These should no longer be relevant in v2.
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
     def testReportsConfigFailures(self):
@@ -3652,6 +3651,8 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         runner = MockProcessRunner()
+        # Avoid the "Unable to deserialize `image_env` to Python object" error in the DockerCommandRunner.
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         mock_gcs_client = MockGcsClient()
         autoscaler = MockAutoscaler(
@@ -3666,11 +3667,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # 1 worker is ready upfront.
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        # clear the summary for later check.
+        autoscaler.event_summarizer.clear()
 
         # Restore min_workers to allow scaling down to 0.
         config["available_node_types"]["worker"]["min_workers"] = 0
         self.write_config(config)
-        autoscaler.update()
 
         # Create a placement group with 2 bundles that require 2 workers.
         placement_group_table_data = gcs_pb2.PlacementGroupTableData(
@@ -3699,6 +3701,9 @@ class AutoscalingTest(unittest.TestCase):
             [placement_group_table_data],
         )
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        self.waitForNodes(2, tag_filters=WORKER_FILTER)
 
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." not in events, events
