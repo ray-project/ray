@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import pandas as pd
 import pyarrow
@@ -97,14 +97,14 @@ class ResultGrid:
         """
         return self._experiment_analysis._fs
 
-    def get_best_result(
+    def get_best_results(
         self,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         scope: str = "last",
         filter_nan_and_inf: bool = True,
-    ) -> Result:
-        """Get the best result from all the trials run.
+    ) -> List[Result]:
+        """Get the best results from all the trials run.
 
         Args:
             metric: Key for trial info to order on. Defaults to
@@ -124,6 +124,10 @@ class ResultGrid:
             filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
+        Returns:
+            A nonempty list of the best results for the provided metric. Note
+                that multiple trials may have exactly the same metric value, and
+                all of their results will be returned.
         """
         if len(self._experiment_analysis.trials) == 1:
             return self._trial_to_result(self._experiment_analysis.trials[0])
@@ -140,13 +144,13 @@ class ResultGrid:
                 "`TuneConfig` of your `Tuner`."
             )
 
-        best_trial = self._experiment_analysis.get_best_trial(
+        best_trials = self._experiment_analysis.get_best_trials(
             metric=metric,
             mode=mode,
             scope=scope,
             filter_nan_and_inf=filter_nan_and_inf,
         )
-        if not best_trial:
+        if not best_trials:
             error_msg = (
                 "No best trial found for the given metric: "
                 f"{metric or self._experiment_analysis.default_metric}. "
@@ -160,7 +164,41 @@ class ResultGrid:
             )
             raise RuntimeError(error_msg)
 
-        return self._trial_to_result(best_trial)
+        return list(map(self._trial_to_result, best_trials))
+
+    def get_best_result(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+        filter_nan_and_inf: bool = True,
+    ) -> Result:
+        """Get one of the best results from all the trials run.
+
+        Args:
+            metric: Key for trial info to order on. Defaults to
+                the metric specified in your Tuner's ``TuneConfig``.
+            mode: One of [min, max]. Defaults to the mode specified
+                in your Tuner's ``TuneConfig``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
+                If `scope=last`, only look at each trial's final step for
+                `metric`, and compare across trials based on `mode=[min,max]`.
+                If `scope=avg`, consider the simple average over all steps
+                for `metric` and compare across trials based on
+                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
+                consider the simple average over the last 5 or 10 steps for
+                `metric` and compare across trials based on `mode=[min,max]`.
+                If `scope=all`, find each trial's min/max score for `metric`
+                based on `mode`, and compare trials based on `mode=[min,max]`.
+            filter_nan_and_inf: If True (default), NaN or infinite
+                values are disregarded and these trials are never selected as
+                the best trial.
+        Returns:
+            The best results for the provided metric. Note that multiple trials
+                may have exactly the same metric value, and one of their results
+                will be returned. See `ExperimentAnalysis.get_best_trials()`.
+        """
+        return next(self.get_best_results(metric, mode, scope, filter_nan_and_inf))
 
     def get_dataframe(
         self,
