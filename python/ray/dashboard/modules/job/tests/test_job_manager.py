@@ -1403,7 +1403,10 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
     )
 
     assert "hello" in job_manager.get_job_logs(job_id)
-    assert len(list_tasks()) == 0
+
+    # Assert no task events for the JobSupervisor are exported.
+    for t in list_tasks():
+        assert "JobSupervisor" not in t.name
 
 
 if __name__ == "__main__":
