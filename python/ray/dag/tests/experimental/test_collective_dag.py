@@ -5,6 +5,7 @@ import sys
 from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
 import pytest
 
+import ray
 import ray.experimental.collective as collective
 from ray.dag import InputNode, MultiOutputNode
 from ray.experimental.channel import CPUCommunicator
