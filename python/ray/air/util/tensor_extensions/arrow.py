@@ -1081,6 +1081,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
         ndim = pickle.loads(serialized)
+        dtype = storage_type["data"].type.value_type
         return cls(dtype, ndim)
 
     def __arrow_ext_class__(self):
