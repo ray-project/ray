@@ -116,6 +116,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
             "controller_info": {
                 "node_id": node_id,
                 "node_ip": node_ip,
+                "node_instance_id": node_instance_id,
                 "actor_id": controller_details.actor_id,
                 "actor_name": controller_details.actor_name,
                 "worker_id": controller_details.worker_id,
@@ -131,6 +132,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 node_id: {
                     "node_id": node_id,
                     "node_ip": node_ip,
+                    "node_instance_id": node_instance_id,
                     "actor_id": proxy_details.actor_id,
                     "actor_name": proxy_details.actor_name,
                     "worker_id": proxy_details.worker_id,
@@ -188,6 +190,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 {
                                     "node_id": node_id,
                                     "node_ip": node_ip,
+                                    "node_instance_id": node_instance_id,
                                     "actor_id": replica.actor_id,
                                     "actor_name": replica.actor_name,
                                     "worker_id": replica.worker_id,
