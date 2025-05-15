@@ -41,8 +41,8 @@ class MetricsGroup(Enum):
 
 
 class MetricsType(Enum):
-    Counter = (0,)
-    Gauge = (1,)
+    Counter = 0
+    Gauge = 1
     Histogram = 2
 
 
