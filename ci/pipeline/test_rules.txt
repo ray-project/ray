@@ -84,7 +84,7 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python accelerated_dag
+@ python compiled_graphs
 ;
 
 python/ray/util/client/
@@ -218,7 +218,7 @@ src/
 
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
-@ accelerated_dag
+@ compiled_graphs
 ;
 
 .github/

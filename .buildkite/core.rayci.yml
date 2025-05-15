@@ -56,7 +56,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,spark_tests,ray_client,accelerated_dag
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,spark_tests,ray_client,compiled_graphs
         --install-mask all-ray-libraries
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
@@ -64,13 +64,13 @@ steps:
 
   - label: ":ray: core: cgraph python tests"
     tags:
-      - accelerated_dag
+      - compiled_graphs
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --only-tags accelerated_dag
+        --only-tags compiled_graphs
         --except-tags multi_gpu
         --install-mask all-ray-libraries
 
@@ -461,7 +461,7 @@ steps:
   - label: ":ray: core: multi gpu tests"
     key: core-multi-gpu-tests
     tags:
-      - accelerated_dag
+      - compiled_graphs
       - gpu
     instance_type: gpu-large
     # we're running some cgraph doc tests here as well since they need gpus

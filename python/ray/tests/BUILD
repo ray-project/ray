@@ -480,7 +480,7 @@ py_test_module_list(
         "test_nccl_channel.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
