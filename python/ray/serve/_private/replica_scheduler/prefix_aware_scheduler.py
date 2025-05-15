@@ -1,5 +1,4 @@
 import logging
-import random
 import time
 from typing import (
     List,
@@ -7,6 +6,10 @@ from typing import (
     Set,
 )
 
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest,
+    CompletionRequest,
+)
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -15,14 +18,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
-)
-from ray.serve._private.replica_scheduler.replica_scheduler import (
-    FIFOMixin,
-    LocalityScheduleMixin,
-    MultiplexScheduleMixin,
-    ReplicaScheduler,
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import (
     RunningReplica,
@@ -31,9 +29,7 @@ from ray.serve._private.replica_scheduler.replica_wrapper import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwareReplicaScheduler(
-    FIFOMixin, MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
-):
+class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
     Requests are scheduled in FIFO order.
@@ -63,11 +59,23 @@ class PrefixAwareReplicaScheduler(
         ).remote()
         self.IMBALANCED_THRESHOLD = 10
 
+    def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
+        request = pending_request.args[0]
+        if isinstance(request, CompletionRequest):
+            return request.prompt
+        elif isinstance(request, ChatCompletionRequest):
+            concatenated_messages = "".join(
+                msg.get("content", "") for msg in request.messages if "content" in msg
+            )
+            return concatenated_messages
+        else:
+            raise ValueError("Invalid request")
+
     async def choose_replicas(
         self,
-        replicas_ranks: List[Set[RunningReplica]],
+        replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[Set[RunningReplica]]:
+    ) -> List[List[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
          (at most) two random available replicas.
 
@@ -76,10 +84,16 @@ class PrefixAwareReplicaScheduler(
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        if (
-            pending_request is not None
-            and pending_request.metadata.multiplexed_model_id
-        ):
+        # Get fallback replicas from PowerOfTwoChoicesReplicaScheduler
+        fallback_replicas = await super().choose_replicas(
+            replicas_ranks=replicas_ranks,
+            pending_request=pending_request,
+        )
+
+        if pending_request is None or not fallback_replicas:
+            return fallback_replicas
+
+        if pending_request.metadata.multiplexed_model_id:
             # Get candidates for multiplexed model ID.
             candidate_replica_ids = self.apply_multiplex_scheduling(
                 pending_request=pending_request,
@@ -91,23 +105,16 @@ class PrefixAwareReplicaScheduler(
             )
 
         if not candidate_replica_ids:
-            return []
+            return fallback_replicas
+
         chosen_ids = await self.prefix_match_best_replicas(
             pending_request, candidate_replica_ids
         )
-        return [{self._replicas[chosen_id] for chosen_id in chosen_ids}]
 
-    def get_input_text(self, pending_request: PendingRequest) -> str:
-        chat_completion_request = pending_request.args[0]
-        if hasattr(chat_completion_request, "messages"):
-            messages = chat_completion_request.messages
-            return "".join(
-                msg.get("content", "") for msg in messages if "content" in msg
-            )
-        elif hasattr(chat_completion_request, "prompt"):
-            return chat_completion_request.prompt
-        else:
-            raise ValueError("Invalid chat completion request")
+        if chosen_ids:
+            return [[self._replicas[chosen_id] for chosen_id in chosen_ids]]
+
+        return fallback_replicas
 
     async def prefix_match_best_replicas(
         self,
@@ -129,18 +136,14 @@ class PrefixAwareReplicaScheduler(
         for replica_id_string in candidate_replica_ids_strings:
             await self._tree_actor._add_tenant.remote(replica_id_string)
 
-        # Default: return 2 replicas at random.
-        chosen_replica_ids_strings = random.sample(
-            list(candidate_replica_ids_strings),
-            min(2, len(candidate_replica_ids_strings)),
-        )
+        chosen_replica_ids_strings = []
 
         if (
             pending_request is not None
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            input_text = self.get_input_text(pending_request)
+            input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
                 # Check for imbalanced load.
                 highest_queue_len = 0
@@ -158,9 +161,7 @@ class PrefixAwareReplicaScheduler(
                 is_imbalanced = (
                     highest_queue_len - lowest_queue_len > self.IMBALANCED_THRESHOLD
                 )
-                if is_imbalanced:
-                    pass
-                else:
+                if not is_imbalanced:
                     (
                         matched_text,
                         matched_tenant_ids,
@@ -169,7 +170,6 @@ class PrefixAwareReplicaScheduler(
                     )
                     match_rate = len(matched_text) / len(input_text)
                     if match_rate < 0.1:
-                        pass
                         smallest_tenants = (
                             await self._tree_actor.get_smallest_tenants.remote()
                         )
@@ -204,7 +204,7 @@ class PrefixAwareReplicaScheduler(
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            input_text = self.get_input_text(pending_request)
+            input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
                 await self._tree_actor.insert.remote(
                     input_text, replica_id.to_full_id_str(), time.time()

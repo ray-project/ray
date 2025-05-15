@@ -256,6 +256,34 @@ class TestPrefixTreeMatch:
         assert matched_text == "ap"
         assert matched_tenants == ["tenant_2"]
 
+    def test_prefix_match_with_shared_prefix_tenant_filter(
+        self, tree: PrefixTree
+    ) -> None:
+        """Test prefix_match with a tenant filter when one tenant has a prefix of a longer string."""
+        tree.insert("apple", "tenant_1", 1)
+        tree.insert("applepie", "tenant_2", 2)
+
+        # Match the longer string but only allow tenant_1
+        matched_text, matched_tenants = tree.prefix_match("applepie", ["tenant_1"])
+
+        # Should only match up to "apple" as that's what tenant_1 owns
+        assert matched_text == "apple"
+        assert matched_tenants == ["tenant_1"]
+
+        # Verify that using both tenants would match the full string for tenant_2 only
+        matched_text, matched_tenants = tree.prefix_match(
+            "applepie", ["tenant_1", "tenant_2"]
+        )
+        assert matched_text == "applepie"
+        assert matched_tenants == ["tenant_2"]
+
+        # And both tenants should be returned for "apple"
+        matched_text, matched_tenants = tree.prefix_match(
+            "apple", ["tenant_1", "tenant_2"]
+        )
+        assert matched_text == "apple"
+        assert set(matched_tenants) == {"tenant_1", "tenant_2"}
+
     def test_prefix_match_with_non_existent_tenant_filter(
         self, tree: PrefixTree
     ) -> None:
@@ -428,27 +456,37 @@ class TestPrefixTreeEviction:
         assert get_lru_texts_from_tree(tree, "tenant_1") == [""]
 
 
-class TestPrefixTreeGetSmallestTenant:
-    def test_get_smallest_tenant(self, tree: PrefixTree) -> None:
-        """Test get_smallest_tenant identifies the tenant with the fewest characters."""
+class TestPrefixTreeGetSmallestTenants:
+    """Tests for the get_smallest_tenants method."""
+
+    def test_get_smallest_tenants(self, tree: PrefixTree) -> None:
+        """Test get_smallest_tenants identifies the tenant with the fewest characters."""
         tree.insert("aaaa", "tenant_1", 1)  # 4 chars
         tree.insert("bb", "tenant_2", 2)  # 2 chars
         tree.insert("c", "tenant_3", 3)  # 1 char
-        assert tree.get_smallest_tenant() == "tenant_3"
+        smallest_tenants = tree.get_smallest_tenants()
+        assert smallest_tenants == ["tenant_3"]
 
-    def test_get_smallest_tenant_empty_tree(self, tree: PrefixTree) -> None:
-        """Test get_smallest_tenant on an empty tree returns None."""
-        assert tree.get_smallest_tenant() is None
+    def test_get_smallest_tenants_empty_tree(self, tree: PrefixTree) -> None:
+        """Test get_smallest_tenants on an empty tree returns None."""
+        assert tree.get_smallest_tenants() is None
 
-    def test_get_smallest_tenant_after_update(self, tree: PrefixTree) -> None:
-        """Test get_smallest_tenant after removing the current smallest tenant."""
+    def test_get_smallest_tenants_after_update(self, tree: PrefixTree) -> None:
+        """Test get_smallest_tenants after removing the current smallest tenant."""
         tree.insert("aaaa", "tenant_1", 1)
         tree.insert("bb", "tenant_2", 2)
         tree.insert("c", "tenant_3", 3)
         tree.remove_tenant("tenant_3")  # Remove "c" (1 char)
-        assert (
-            tree.get_smallest_tenant() == "tenant_2"
-        )  # "bb" (2 chars) is now smallest
+        smallest_tenants = tree.get_smallest_tenants()
+        assert smallest_tenants == ["tenant_2"]  # "bb" (2 chars) is now smallest
+
+    def test_get_smallest_tenants_with_ties(self, tree: PrefixTree) -> None:
+        """Test get_smallest_tenants when multiple tenants have the same minimum count."""
+        tree.insert("aa", "tenant_1", 1)  # 2 chars
+        tree.insert("bb", "tenant_2", 2)  # 2 chars
+        tree.insert("cccc", "tenant_3", 3)  # 4 chars
+        smallest_tenants = tree.get_smallest_tenants()
+        assert set(smallest_tenants) == {"tenant_1", "tenant_2"}
 
 
 class TestPrefixTreeComprehensive:
