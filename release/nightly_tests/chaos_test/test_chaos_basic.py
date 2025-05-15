@@ -131,6 +131,36 @@ def run_actor_workload(total_num_cpus, smoke):
         assert str(i) in letter_set, i
 
 
+def run_actor_workload_with_large_object(total_num_cpus, smoke):
+    # This test is to ensure that the actor restart, task retry, and
+    # lineage reconstruction can work together.
+    class BigObject:
+        def __init__(self, idx):
+            self.idx = idx
+            # Make sure the object is large enough so that
+            # it will be stored in the object store.
+            self.data = b"x" * 1000 * 200
+
+    @ray.remote(num_cpus=1, max_restarts=-1, max_task_retries=-1)
+    class Actor:
+        def f(self, idx):
+            time.sleep(1)
+            return BigObject(idx)
+
+    NUM_ACTORS = int(total_num_cpus)
+    actors = [Actor.remote() for _ in range(NUM_ACTORS)]
+
+    multiplier = 1 if smoke else 3
+    TASK_PER_ACTOR = int(300 * multiplier)
+    TOTAL_TASKS = int(TASK_PER_ACTOR * NUM_ACTORS)
+    pb = ProgressBar("Chaos test", TOTAL_TASKS, "task")
+    results = []
+    for actor in actors:
+        results.extend([actor.f.remote(i) for i in range(TASK_PER_ACTOR)])
+    pb.fetch_until_complete(results)
+    pb.close()
+
+
 def run_placement_group_workload(total_num_cpus, smoke):
     raise NotImplementedError
 
@@ -177,6 +207,8 @@ def main():
         workload = run_task_workload
     elif args.workload == "actors":
         workload = run_actor_workload
+    elif args.workload == "large_object":
+        workload = run_actor_workload_with_large_object
     elif args.workload == "pg":
         workload = run_placement_group_workload
     else:
