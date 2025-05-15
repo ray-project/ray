@@ -32,3 +32,11 @@ export const get = <T = any, R = AxiosResponse<T>>(
 ): Promise<R> => {
   return axios.get<T, R>(formatUrl(url), config);
 };
+
+export const post = <T = any, R = AxiosResponse<T>>(
+  url: string,
+  data?: any,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
+  return axios.post<T, R>(formatUrl(url), data, config);
+};
