@@ -385,9 +385,9 @@ def concat_tensors_to_device(
         A contiguous tensor on the target device
     """
     # Assumes tensors have the same shape/dtype
-    assert tensor_sequence, (
-        f"Cannot stack empty sequence of tensors. Received: {tensor_sequence}"
-    )
+    assert (
+        tensor_sequence
+    ), f"Cannot stack empty sequence of tensors. Received: {tensor_sequence}"
 
     assert all(
         isinstance(t, torch.Tensor) for t in tensor_sequence
