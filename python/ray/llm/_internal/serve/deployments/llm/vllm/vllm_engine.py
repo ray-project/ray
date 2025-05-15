@@ -4,6 +4,7 @@ import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
+from ray import serve
 import re
 from concurrent.futures.thread import ThreadPoolExecutor
 from ray.util import metrics
@@ -185,10 +186,7 @@ class _EngineBackgroundProcess:
         return self._error
 
 
-from ray import serve
-
-
-@serve.deployment(name="vllm_engine_deployment")
+# @serve.deployment(name="vllm_engine_deployment")
 class VLLMEngine(LLMEngine):
     def __init__(
         self,

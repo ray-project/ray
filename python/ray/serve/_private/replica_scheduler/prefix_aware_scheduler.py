@@ -30,26 +30,22 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
-    """Chooses a replica for each request using the "power of two choices" procedure.
+    """Extends the PowerOfTwoChoicesReplicaScheduler with prefix-matching capabilities.
 
-    Requests are scheduled in FIFO order.
+    This scheduler optimizes replica selection by considering input text prefixes:
+    
+    1. Mixes between three strategies to balance prefix cache hit rate and load balancing:
+       - When load is balanced (queue length difference < threshold), it selects replicas
+         with the highest prefix match rate for the input text
+       - When load is balanced but match rate is below 10%, it falls back to the smallest tenants
+       - When load is imbalanced, it uses the default Power of Two selection
+    
+    2. Maintains a prefix tree to track which replicas have processed similar inputs:
+       - Inserts prompt text into the prefix tree after scheduling
+       - Uses this history to inform future scheduling decisions
 
-    When a request comes in, two candidate replicas are chosen randomly. Each replica
-    is sent a control message to fetch its queue length.
-
-    The replica responds with two items: (queue_len, accepted). Only replicas that
-    accept the request are considered; between those, the one with the lower queue
-    length is chosen.
-
-    In the case when neither replica accepts the request (e.g., their queues are full),
-    the procedure is repeated with backoff. This backoff repeats indefinitely until a
-    replica is chosen, so the caller should use timeouts and cancellation to avoid
-    hangs.
-
-    Each request being scheduled may spawn an independent task that runs the scheduling
-    procedure concurrently. This task will not necessarily satisfy the request that
-    started it (in order to maintain the FIFO order). The total number of tasks is
-    capped at (2 * num_replicas).
+    This approach improves performance by routing related requests to the same replicas,
+    increasing cache locality and reducing overhead for language model inference.
     """
 
     def __init__(self, *args, **kwargs):
@@ -57,37 +53,77 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._tree_actor = PrefixTreeActor.options(
             name="PrefixTreeActor", get_if_exists=True
         ).remote()
-        from ray import serve
-
-        print("[[PrefixAwareReplicaScheduler.__init__]]")
-        self._vllm_engine_deployment = serve.get_deployment_handle(
-            "vllm_engine_deployment", app_name="default"
-        )
-        print(
-            f"[[PrefixAwareReplicaScheduler.__init__]] vllm_engine_deployment: {self._vllm_engine_deployment}"
-        )
+        self._use_vllm_prompt_processor = False
+        if self._use_vllm_prompt_processor:
+            from ray import serve
+            self._vllm_engine_deployment = serve.get_deployment_handle(
+                "vllm_engine_deployment", app_name="default"
+            )
         self.IMBALANCED_THRESHOLD = 10
 
-    def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
-        request = pending_request.args[0]
-        if isinstance(request, CompletionRequest):
-            return request.prompt
-        elif isinstance(request, ChatCompletionRequest):
-            concatenated_messages = "".join(
-                msg.get("content", "") for msg in request.messages if "content" in msg
-            )
-            return concatenated_messages
-        else:
-            raise ValueError("Invalid request")
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        print(f"[[PrefixAwareReplicaScheduler.on_replica_actor_died]] replica_id: {replica_id}")
+        """Drop replica from replica set so it's not considered for future requests."""
+        super().on_replica_actor_died(replica_id)
+        chars_removed =self._tree_actor.remove_tenant.remote(replica_id.to_full_id_str())
+        print(f"[[PrefixAwareReplicaScheduler.on_replica_actor_died]] Removed {replica_id} from prefix tree, chars_removed: {chars_removed}")
 
-    def _extract_prompt_from_request(self, pending_request: PendingRequest):
+    def update_replicas(self, replicas: List[RunningReplica]):
+        """Update the set of available replicas to be considered for scheduling.
+
+        When the set of replicas changes, we may spawn additional scheduling tasks
+        if there are pending requests.
+        """
+        print(f"[[PrefixAwareReplicaScheduler.update_replicas]] replicas: {replicas}")
+        # 1) remember what was there before…
+        old_ids = set(self._replica_id_set)
+        print(f"[[PrefixAwareReplicaScheduler.update_replicas]] old_ids: {old_ids}")
+
+        # 2) run the default logic (updates self._replicas, self._replica_id_set, etc)
+        super().update_replicas(replicas)
+
+        # 3) figure out who was added / removed
+        new_ids = set(self._replica_id_set)
+        print(f"[[PrefixAwareReplicaScheduler.update_replicas]] new_ids: {new_ids}")
+        added   = new_ids - old_ids
+        removed = old_ids - new_ids
+
+        # 4) tell the prefix‐tree about the changes
+        for rid in added:
+            print(f"[[PrefixAwareReplicaScheduler.update_replicas]] Adding {rid} to prefix tree")
+            # rid is a ReplicaID; we store them in the tree as strings
+            self._tree_actor._add_tenant.remote(rid.to_full_id_str())
+
+        for rid in removed:
+            print(f"[[PrefixAwareReplicaScheduler.update_replicas]] Removing {rid} from prefix tree")
+            self._tree_actor.remove_tenant.remote(rid.to_full_id_str())
+
+
+    async def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
         request = pending_request.args[0]
         if isinstance(request, CompletionRequest):
-            return request.prompt
+            prompt = request.prompt
         elif isinstance(request, ChatCompletionRequest):
-            return request.messages
+            prompt = request.messages
         else:
-            raise ValueError("Invalid request")
+            raise ValueError("request is not a CompletionRequest or ChatCompletionRequest")
+
+        if self._use_vllm_prompt_processor:
+            from ray.llm._internal.serve.configs.server_models import Prompt, GenerationRequest
+            wrapped_prompt = Prompt(prompt=prompt)
+            vllm_request: GenerationRequest = await self._vllm_engine_deployment.prepare_request.remote(
+                request_id="N/A", prompt=wrapped_prompt, stream=False, disk_lora_model=None
+            )
+            prompt_text: str = vllm_request.prompt
+            return prompt_text
+        else:
+            if isinstance(prompt, list):
+                concatenated_messages = "".join(
+                    msg.get("content", "") for msg in prompt if "content" in msg
+                )
+                return concatenated_messages
+            else:
+                return prompt
 
     async def choose_replicas(
         self,
@@ -145,17 +181,18 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         """
         Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
         0. Default: same as pow 2 scheduler, return 2 replicas at random.
-        1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use default.
+        1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use replicas with smallest KV cache usage.
         2. If load is imbalanced, use default.
         """
         # Convert candidate replica IDs to strings for prefix matching.
         candidate_replica_ids_strings = [
             replica_id.to_full_id_str() for replica_id in candidate_replica_ids
         ]
+        print(f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] candidate_replica_ids_strings: {candidate_replica_ids_strings}")
 
-        # Ensure each candidate replica is an active tenant in the prefix tree.
-        for replica_id_string in candidate_replica_ids_strings:
-            await self._tree_actor._add_tenant.remote(replica_id_string)
+        # # Ensure each candidate replica is an active tenant in the prefix tree.
+        # for replica_id_string in candidate_replica_ids_strings:
+        #     await self._tree_actor._add_tenant.remote(replica_id_string)
 
         chosen_replica_ids_strings = []
 
@@ -164,27 +201,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            prompt = self._extract_prompt_from_request(pending_request)
-            print(
-                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] prompt: {prompt}"
-            )
-            from ray.llm._internal.serve.configs.server_models import Prompt
-
-            prompt = Prompt(prompt=prompt)
-            print(
-                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] Prompt(prompt=prompt): {prompt}"
-            )
-            vllm_request = await self._vllm_engine_deployment.prepare_request.remote(
-                request_id="N/A", prompt=prompt, stream=False, disk_lora_model=None
-            )
-            print(
-                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] vllm_request: {vllm_request}"
-            )
-            input_text = vllm_request.prompt
-            print(
-                f"[[PrefixAwareReplicaScheduler.prefix_match_best_replicas]] input_text: {input_text}"
-            )
-            # input_text = self._extract_text_from_request(pending_request)
+            input_text = await self._extract_text_from_request(pending_request)
             if input_text is not None:
                 # Check for imbalanced load.
                 highest_queue_len = 0
@@ -245,7 +262,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            input_text = self._extract_text_from_request(pending_request)
+            input_text = await self._extract_text_from_request(pending_request)
             if input_text is not None:
                 await self._tree_actor.insert.remote(
                     input_text, replica_id.to_full_id_str(), time.time()

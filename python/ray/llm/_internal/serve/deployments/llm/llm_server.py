@@ -47,6 +47,8 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
+
+
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
@@ -63,6 +65,9 @@ from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_model_request_id,
     get_response_for_error,
     get_serve_request_id,
+)
+from ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
+    PrefixAwareReplicaScheduler,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
@@ -439,12 +444,9 @@ class LLMServer(_LLMServerBase):
         await super().__init__(llm_config)
 
         self._engine_cls = engine_cls or self._default_engine_cls
-        print(
-            f"[[LLMServer.__init__]] self._get_engine_class: {self._get_engine_class}"
-        )
-        self.engine = self._get_engine_class.bind(self._llm_config)
-        print(f"[[LLMServer.__init__]] engine: {self.engine}")
-        self.engine_deployment = serve.run(self.engine, route_prefix="/vllm")
+        self.engine = self._get_engine_class(self._llm_config)
+        # self.engine = self._get_engine_class.bind(self._llm_config)
+        # self.engine_deployment = serve.run(self.engine, route_prefix="/vllm")
         await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         self.image_retriever = (
@@ -491,7 +493,8 @@ class LLMServer(_LLMServerBase):
         return self._engine_cls
 
     async def _start_engine(self):
-        await self.engine_deployment.start.remote()
+        # await self.engine_deployment.start.remote()
+        await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
         # Note: the model architecture is only available after node initialized and the
@@ -523,16 +526,15 @@ class LLMServer(_LLMServerBase):
         else:
             disk_lora_model = None
 
-        llm_request = await self.engine_deployment.prepare_request.remote(
+        # llm_request = await self.engine_deployment.prepare_request.remote(
+        llm_request = await self.engine.prepare_request(
             request_id=request_id,
             prompt=prompt,
             stream=stream,
             disk_lora_model=disk_lora_model,
         )
-        response_gen = self.engine_deployment.generate.options(stream=True).remote(
-            llm_request
-        )
-        async for llm_response in response_gen:
+        # async for llm_response in self.engine_deployment.generate.options(stream=True).remote(llm_request):
+        async for llm_response in self.engine.generate(llm_request):
             yield llm_response
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
@@ -621,7 +623,8 @@ class LLMServer(_LLMServerBase):
 
     async def check_health(self) -> bool:
         """Check the health of the llm engine."""
-        return await self.engine_deployment.check_health.remote()
+        # return await self.engine_deployment.check_health.remote()
+        return await self.engine.check_health()
 
     async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
         """Runs an embeddings request to the vllm engine, and return the response.
@@ -652,9 +655,8 @@ class LLMServer(_LLMServerBase):
                 "serve_request_context": serve.context._serve_request_context.get(),
             }
             vllm_request = VLLMEmbeddingRequest(**request_params)
-            embedding_data, total_tokens = await self.engine_deployment.embed.remote(
-                vllm_request
-            )
+            # embedding_data, total_tokens = await self.engine_deployment.embed.remote(vllm_request)
+            embedding_data, total_tokens = await self.engine.embed(vllm_request)
 
             data = [
                 EmbeddingResponseData(
@@ -698,11 +700,6 @@ class LLMServer(_LLMServerBase):
         """
         deployment_options = deployment_options or {}
         return LLMDeployment.options(**deployment_options)
-
-
-from ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
-    PrefixAwareReplicaScheduler,
-)
 
 
 @serve.deployment(
