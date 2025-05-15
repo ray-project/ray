@@ -14,7 +14,6 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
     convert_actor_state,
-    kill_actor_and_wait_for_failure,
     put_object,
     wait_for_condition,
 )
