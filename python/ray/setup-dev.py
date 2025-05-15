@@ -12,7 +12,7 @@ import sys
 # To avoid import errors, we move the current working dir to the end of sys.path.
 this_dir = os.path.dirname(__file__)
 if this_dir in sys.path:
-    cur = sys.path.remove(this_dir)
+    sys.path.remove(this_dir)
     sys.path.append(this_dir)
 
 import argparse
@@ -23,9 +23,12 @@ import subprocess
 import ray
 
 
-def do_link(package, force=False, skip_list=None, local_path=None):
+def do_link(package, force=False, skip_list=None, allow_list=None, local_path=None):
     if skip_list and package in skip_list:
         print(f"Skip creating symbolic link for {package}")
+        return
+    if allow_list is not None and package not in allow_list:
+        print(f"Skip creating symbolic link for {package} (not in allow list)")
         return
     package_home = os.path.abspath(os.path.join(ray.__file__, f"../{package}"))
     # Infer local_path automatically.
@@ -83,6 +86,12 @@ def do_link(package, force=False, skip_list=None, local_path=None):
                 os.makedirs(temp_dir)
             subprocess.check_call(["cp", "-r", generated_folder, temp_dir])
 
+        # Create backup of the old directory if it exists
+        if os.path.exists(package_home):
+            backup_dir = f"{package_home}.bak"
+            print(f"Creating backup of {package_home} to {backup_dir}")
+            subprocess.check_call(sudo + ["cp", "-r", package_home, backup_dir])
+
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
@@ -111,6 +120,13 @@ if __name__ == "__main__":
         required=False,
     )
     parser.add_argument(
+        "--allow",
+        "-a",
+        nargs="*",
+        help="List of folders to link (only these will be linked)",
+        required=False,
+    )
+    parser.add_argument(
         "--extras",
         "-e",
         nargs="*",
@@ -119,36 +135,48 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    if args.skip and args.allow:
+        print("Error: --skip and --allow cannot be used together.")
+        sys.exit(1)
+
     if not args.yes:
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
     # For LLMs
-    do_link("llm", force=args.yes, skip_list=args.skip)
-    do_link("serve/llm", force=args.yes, skip_list=args.skip)
-    do_link("data/llm.py", force=args.yes, skip_list=args.skip)
-    do_link("rllib", force=args.yes, skip_list=args.skip, local_path="../../../rllib")
-    do_link("air", force=args.yes, skip_list=args.skip)
-    do_link("tune", force=args.yes, skip_list=args.skip)
-    do_link("train", force=args.yes, skip_list=args.skip)
-    do_link("autoscaler", force=args.yes, skip_list=args.skip)
-    do_link("cloudpickle", force=args.yes, skip_list=args.skip)
-    do_link("data", force=args.yes, skip_list=args.skip)
-    do_link("scripts", force=args.yes, skip_list=args.skip)
-    do_link("internal", force=args.yes, skip_list=args.skip)
-    do_link("tests", force=args.yes, skip_list=args.skip)
-    do_link("experimental", force=args.yes, skip_list=args.skip)
-    do_link("util", force=args.yes, skip_list=args.skip)
-    do_link("workflow", force=args.yes, skip_list=args.skip)
-    do_link("serve", force=args.yes, skip_list=args.skip)
-    do_link("dag", force=args.yes, skip_list=args.skip)
-    do_link("widgets", force=args.yes, skip_list=args.skip)
-    do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
-    do_link("_private", force=args.yes, skip_list=args.skip)
-    do_link("dashboard", force=args.yes, skip_list=args.skip)
+    do_link("llm", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("serve/llm", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("data/llm.py", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link(
+        "rllib",
+        force=args.yes,
+        skip_list=args.skip,
+        allow_list=args.allow,
+        local_path="../../../rllib",
+    )
+    do_link("air", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("tune", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("train", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("autoscaler", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("cloudpickle", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("data", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("scripts", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("internal", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("tests", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("experimental", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("util", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("workflow", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("serve", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("dag", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("widgets", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link(
+        "cluster_utils.py", force=args.yes, skip_list=args.skip, allow_list=args.allow
+    )
+    do_link("_private", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    do_link("dashboard", force=args.yes, skip_list=args.skip, allow_list=args.allow)
 
     if args.extras is not None:
         for package in args.extras:
-            do_link(package, force=args.yes, skip_list=args.skip)
+            do_link(package, force=args.yes, skip_list=args.skip, allow_list=args.allow)
 
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
