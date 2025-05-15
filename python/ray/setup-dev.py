@@ -144,12 +144,10 @@ if __name__ == "__main__":
 
     # Dictionary of packages to link, with optional local_path
     packages_to_link = {
-        # LLM-related packages
         "llm": None,
         "serve/llm": None,
         "data/llm.py": None,
         "rllib": "../../../rllib",
-        # Core ray packages
         "air": None,
         "tune": None,
         "train": None,
