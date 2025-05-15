@@ -1394,8 +1394,7 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
 
 @pytest.mark.asyncio
 async def test_no_task_events_exported(shared_ray_instance, tmp_path):
-    """Verify that no task events are exported by the JobSupervisor.
-    """
+    """Verify that no task events are exported by the JobSupervisor."""
     job_manager = create_job_manager(shared_ray_instance, tmp_path)
     job_id = await job_manager.submit_job(entrypoint="echo hello")
 
@@ -1405,6 +1404,7 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
 
     assert "hello" in job_manager.get_job_logs(job_id)
     assert len(list_tasks()) == 0
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
