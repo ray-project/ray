@@ -86,8 +86,9 @@ class DefaultAutoscaler(Autoscaler):
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
             if (
-                not op_state._scheduling_status.under_resource_limits or
-                op_state.total_enqueued_input_bundles() <= actor_pool.num_free_task_slots()
+                not op_state._scheduling_status.under_resource_limits
+                or op_state.total_enqueued_input_bundles()
+                <= actor_pool.num_free_task_slots()
             ):
                 return _AutoscalingAction.NO_OP
 
