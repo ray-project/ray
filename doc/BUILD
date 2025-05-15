@@ -110,7 +110,7 @@ py_test(
 
 py_test(
     name = "gentle_walkthrough",
-    size = "small",
+    size = "medium",
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
@@ -126,7 +126,7 @@ py_test(
 
 py_test(
     name = "web_crawler",
-    size = "small",
+    size = "medium",
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
@@ -219,17 +219,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "doc_code_monte_carlo_pi",
-    size = "small",
-    srcs = ["source/ray-core/doc_code/monte_carlo_pi.py"],
-    main = "source/ray-core/doc_code/monte_carlo_pi.py",
-    tags = [
-        "exclusive",
-        "team:core",
-    ],
-)
-
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
@@ -240,7 +229,6 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/cgraph_profiling.py",
         "source/ray-core/doc_code/cgraph_nccl.py",
         "source/ray-core/doc_code/cgraph_overlap.py",
-        "source/ray-core/doc_code/monte_carlo_pi.py",
         # not testing this as it purposefully segfaults
         "source/ray-core/doc_code/cgraph_troubleshooting.py",
     ],
