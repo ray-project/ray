@@ -316,7 +316,6 @@ py_test_module_list(
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
         "test_task_metrics.py",
-        "test_task_metrics_reconstruction.py",
         "test_tempfile.py",
         "test_tls_auth.py",
         "test_traceback.py",
@@ -346,6 +345,25 @@ py_test_module_list(
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+##### Begin 'minimal installation' tests #####
+
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_utils.py",
+    ],
+    tags = [
+        "basic_test",
+        "exclusive",
+        "minimal",
         "team:core",
     ],
     deps = [
@@ -398,7 +416,6 @@ py_test_module_list(
         "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
-        "test_utils.py",
     ],
     tags = [
         "exclusive",
@@ -429,6 +446,8 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+##### End 'minimal installation' tests #####
 
 py_test_module_list(
     size = "small",
@@ -696,6 +715,13 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_dataclient_disconnect.py",
+        "test_runtime_env_working_dir_remote_uri.py",
+        "test_scheduling_performance.py",
+        "test_state_api_2.py",
+        "test_storage.py",
+        "test_task_events.py",
+        "test_task_metrics_reconstruction.py",
+        "test_unavailable_actors.py",
     ],
     tags = [
         "exclusive",
@@ -733,15 +759,10 @@ py_test_module_list(
         "test_reconstruction_stress.py",
         "test_reconstruction_stress_spill.py",
         "test_reference_counting_2.py",
-        "test_scheduling_performance.py",
         "test_state_api.py",
-        "test_state_api_2.py",
-        "test_storage.py",
         "test_stress_failure.py",
-        "test_task_events.py",
         "test_task_events_2.py",
         "test_task_events_3.py",
-        "test_unavailable_actors.py",
     ],
     tags = [
         "exclusive",
@@ -879,7 +900,6 @@ py_test_module_list(
         "test_runtime_env_working_dir_2.py",
         "test_runtime_env_working_dir_3.py",
         "test_runtime_env_working_dir_4.py",
-        "test_runtime_env_working_dir_remote_uri.py",
     ],
     tags = [
         "exclusive",
@@ -1090,7 +1110,7 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "medium",
+    size = "small",
     srcs = [
         "test_typing.py",
         "typing_files/check_typing_bad.py",
