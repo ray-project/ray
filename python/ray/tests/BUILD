@@ -115,6 +115,8 @@ py_test(
     ],
 )
 
+##### Begin Ray Client tests #####
+
 py_test_module_list(
     size = "large",
     files = [
@@ -122,7 +124,7 @@ py_test_module_list(
         "test_client_reconnect.py",
     ],
     tags = [
-        "client_tests",
+        "ray_client",
         "exclusive",
         "team:core",
     ],
@@ -138,7 +140,7 @@ py_test_module_list(
         "test_client_builder.py",
     ],
     tags = [
-        "client_tests",
+        "ray_client",
         "exclusive",
         "team:core",
         "use_all_core",
@@ -158,7 +160,7 @@ py_test_module_list(
         "test_client_warnings.py",
     ],
     tags = [
-        "client_tests",
+        "ray_client",
         "exclusive",
         "team:core",
     ],
@@ -174,7 +176,7 @@ py_test_module_list(
         "test_client_init.py",
     ],
     tags = [
-        "client_tests",
+        "ray_client",
         "exclusive",
         "no_windows",
         "team:core",
@@ -184,6 +186,50 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_CLIENT_MODE": "1",
+        "RAY_PROFILING": "1",
+    },
+    files = [
+        "test_actor.py",
+        "test_advanced.py",
+        "test_asyncio.py",
+        "test_basic.py",
+        "test_basic_2.py",
+        "test_basic_3.py",
+        "test_basic_4.py",
+        "test_basic_5.py",
+        "test_list_actors.py",
+        "test_list_actors_2.py",
+        "test_list_actors_3.py",
+        "test_list_actors_4.py",
+        "test_multiprocessing.py",
+        "test_object_assign_owner.py",
+        "test_placement_group.py",
+        "test_placement_group_2.py",
+        "test_placement_group_3.py",
+        "test_placement_group_4.py",
+        "test_placement_group_5.py",
+        "test_scheduling.py",
+        "test_scheduling_2.py",
+        "test_wait.py",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "ray_client",
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+##### End Ray Client tests #####
 
 # Issue #33491
 # Once test_memory_deadlock is fixed, remove this rule and move
@@ -1141,41 +1187,6 @@ py_test(
         "exclusive",
         "no_windows",
         "team:kuberay",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "large",
-    env = {
-        "RAY_CLIENT_MODE": "1",
-        "RAY_PROFILING": "1",
-    },
-    files = [
-        "test_actor.py",
-        "test_advanced.py",
-        "test_asyncio.py",
-        "test_basic.py",
-        "test_basic_2.py",
-        "test_basic_3.py",
-        "test_basic_4.py",
-        "test_basic_5.py",
-        "test_list_actors.py",
-        "test_list_actors_2.py",
-        "test_list_actors_3.py",
-        "test_list_actors_4.py",
-        "test_multiprocessing.py",
-        "test_object_assign_owner.py",
-        "test_wait.py",
-    ],
-    name_suffix = "_client_mode",
-    tags = [
-        "client_tests",
-        "exclusive",
-        "team:core",
     ],
     deps = [
         ":conftest",
