@@ -386,7 +386,7 @@ def concat_tensors_to_device(
     """
     # Assumes tensors have the same shape/dtype
     assert tensor_sequence, (
-        "Cannot stack empty sequence of tensors. Received: " f"{tensor_sequence}"
+        f"Cannot stack empty sequence of tensors. Received: {tensor_sequence}"
     )
 
     assert all(
