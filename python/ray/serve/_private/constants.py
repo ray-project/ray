@@ -412,3 +412,8 @@ RAY_SERVE_PROXY_GC_THRESHOLD = int(
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
 )
+
+# The default replica scheduler class to use if none is specified.
+DEFAULT_REPLICA_SCHEDULER_PATH = (
+    "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler"
+)

@@ -1879,7 +1879,6 @@ python/ray/serve/api.py
     DOC201: Function `get_replica_context` does not have a return section in docstring
     DOC201: Function `ingress` does not have a return section in docstring
     DOC101: Function `deployment`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `deployment`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_func_or_class: Optional[Callable], logging_config: Default[Union[Dict, LoggingConfig, None]], route_prefix: Default[Union[str, None]], version: Default[str]].
     DOC101: Function `run_many`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `run_many`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_local_testing_mode: bool].
     DOC101: Function `run`: Docstring contains fewer arguments than in function signature.
