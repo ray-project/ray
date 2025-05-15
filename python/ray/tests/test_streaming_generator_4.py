@@ -90,7 +90,7 @@ def test_many_tasks_lineage_reconstruction_mini_stress_test(
         )
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5",
+            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5:25:25",
         )
         cluster = ray_start_cluster
         cluster.add_node(
