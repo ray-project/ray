@@ -1281,6 +1281,28 @@ _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
 
 
+def _maybe_modify_runtime_env(runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool) -> Dict[str, Any]:
+    """
+    If RAY_ENABLE_UV_RUN_RUNTIME_ENV is set (which is the default) and the driver was run with `uv run`,
+    this function will set up a runtime environment that will replicate the driver's environment to the
+    workers. Otherwise, the runtime environment is modified by the user's runtime environment hook.
+    """
+
+    if ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
+        from ray._private.runtime_env.uv_runtime_env_hook import hook, _get_uv_run_cmdline
+
+        cmdline = _get_uv_run_cmdline()
+        if cmdline:
+            # This means the current driver is running in `uv run`, in which case we want
+            # to propagate the uv environment to the workers.
+            return hook(runtime_env)
+
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
+            return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                runtime_env
+            )
+
+
 @PublicAPI
 @client_mode_hook
 def init(
@@ -1661,10 +1683,8 @@ def init(
                 "a conflict."
             )
 
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+        runtime_env = _maybe_modify_runtime_env(runtime_env, _skip_env_hook)
+
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
@@ -1673,10 +1693,7 @@ def init(
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
     else:
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+        runtime_env = _maybe_modify_runtime_env(runtime_env, _skip_env_hook)
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
