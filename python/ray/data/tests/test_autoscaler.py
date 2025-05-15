@@ -94,6 +94,8 @@ def test_actor_pool_scaling():
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(_AutoscalingAction.SCALE_DOWN)
 
+            # If inputs are not completed, should be no-op as there's nothing
+            # to schedule and Actor Pool still has free slots
             with patch(op, "_inputs_complete", False, is_method=False):
                 assert_autoscaling_action(_AutoscalingAction.NO_OP)
 
