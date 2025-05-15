@@ -82,9 +82,12 @@ class DefaultAutoscaler(Autoscaler):
         util = self._calculate_actor_pool_util(actor_pool)
         if util >= self._actor_pool_scaling_up_threshold:
             # Do not scale up if either
+            #   - Actor Pool is at max size already
             #   - Op is throttled (ie exceeding allocated resource quota)
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
+            if actor_pool.current_size() >= actor_pool.max_size():
+                return _AutoscalingAction.NO_OP, "reached max size"
             if not op_state._scheduling_status.under_resource_limits:
                 return _AutoscalingAction.NO_OP, "operator exceeding resource quota"
             elif op_state.total_enqueued_input_bundles() <= actor_pool.num_free_task_slots():
@@ -96,6 +99,9 @@ class DefaultAutoscaler(Autoscaler):
 
             return _AutoscalingAction.SCALE_UP, f"utilization of {util} >= {self._actor_pool_scaling_up_threshold}"
         elif util <= self._actor_pool_scaling_down_threshold:
+            if actor_pool.current_size() <= actor_pool.min_size():
+                return _AutoscalingAction.NO_OP, "reached min size"
+
             return _AutoscalingAction.SCALE_DOWN, f"utilization of {util} <= {self._actor_pool_scaling_down_threshold}"
         else:
             return _AutoscalingAction.NO_OP, (
