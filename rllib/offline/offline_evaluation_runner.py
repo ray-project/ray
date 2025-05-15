@@ -58,7 +58,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         self.__dataset_iterator = None
         self.__batch_iterator = None
 
-        Runner.__init__(self, config=config)
+        Runner.__init__(self, config=config, **kwargs)
         Checkpointable.__init__(self)
 
         # This has to be defined after we have a `self.config`.
