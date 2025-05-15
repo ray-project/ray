@@ -696,6 +696,9 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     ray.shutdown()
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 def test_data_locality_spilled_objects(
     ray_start_cluster_enabled, fs_only_object_spilling_config
 ):
