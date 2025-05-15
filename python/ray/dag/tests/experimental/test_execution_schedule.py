@@ -172,6 +172,7 @@ class TestSelectNextNodes:
         )
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[task_idx_1][_DAGNodeOperationType.WRITE]],
+            fake_actor_2: [],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 2
@@ -287,6 +288,7 @@ class TestSelectNextNodes:
 
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_2: [],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
@@ -334,7 +336,9 @@ class TestSelectNextNodes:
         set_ready_collective_idxs(mock_graph, [dag_idx_3, dag_idx_4])
 
         mock_actor_to_candidates = {
+            fake_actor_1: [],
             fake_actor_2: [mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_3: [],
             fake_actor_4: [mock_graph[dag_idx_4][_DAGNodeOperationType.COMPUTE]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
