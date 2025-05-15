@@ -87,13 +87,10 @@ python/ray/experimental/channel/
 @ python accelerated_dag
 ;
 
-<<<<<<< Updated upstream
-=======
 python/ray/util/client/
 @ ray_client
 ;
 
->>>>>>> Stashed changes
 python/
 @ ml tune train data
 # Python changes might impact cross language stack in Java.

@@ -85,8 +85,6 @@ steps:
         python: ["3.12"]
         worker_id: ["0", "1", "2", "3"]
 
-<<<<<<< Updated upstream
-=======
   - label: ":ray: core: ray client tests"
     tags:
       - ray_client
@@ -97,7 +95,6 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --only-tags ray_client
 
->>>>>>> Stashed changes
   - label: ":ray: core: redis tests"
     tags:
       - python
