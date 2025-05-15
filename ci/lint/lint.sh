@@ -46,9 +46,7 @@ pre_commit() {
 }
 
 pre_commit_pydoclint() {
-  # Run pre-commit pydoc lint on all files
-  # TODO(elliot-barn) temporarily seperated from pre_commit due 
-  # to downstream doc lint failures
+  # Run pre-commit pydoclint on all files
   pip install -c python/requirements_compiled.txt pre-commit clang-format
   pre-commit run pydoclint --all-files --show-diff-on-failure
 }
