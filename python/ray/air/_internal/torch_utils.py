@@ -385,16 +385,27 @@ def concat_tensors_to_device(
         A contiguous tensor on the target device
     """
     # Assumes tensors have the same shape/dtype
-    assert tensor_sequence, "Cannot stack empty sequence of tensors"
+    assert (
+        tensor_sequence
+    ), f"Cannot stack empty sequence of tensors. Received: {tensor_sequence}"
+
     assert all(
         isinstance(t, torch.Tensor) for t in tensor_sequence
-    ), "All items must be torch.Tensor"
-    assert all(
-        t.dtype == tensor_sequence[0].dtype for t in tensor_sequence
-    ), "All tensors must have the same dtype"
-    assert all(
-        t.shape[1:] == tensor_sequence[0].shape[1:] for t in tensor_sequence
-    ), "All tensors must have the same shape[1:]"
+    ), "All items must be torch.Tensor. Found invalid types: " + str(
+        [type(t) for t in tensor_sequence if not isinstance(t, torch.Tensor)]
+    )
+
+    first_dtype = tensor_sequence[0].dtype
+    assert all(t.dtype == first_dtype for t in tensor_sequence), (
+        "All tensors must have the same dtype. "
+        f"Expected: {first_dtype}, got: {[t.dtype for t in tensor_sequence]}"
+    )
+
+    first_shape = tensor_sequence[0].shape[1:]
+    assert all(t.shape[1:] == first_shape for t in tensor_sequence), (
+        "All tensors must have the same shape[1:]. "
+        f"Expected: {first_shape}, got: {[t.shape[1:] for t in tensor_sequence]}"
+    )
 
     first = tensor_sequence[0]
     dtype = first.dtype
@@ -410,7 +421,6 @@ def concat_tensors_to_device(
         result[row_start:row_end].copy_(t, non_blocking=non_blocking)
         row_start = row_end
 
-    assert isinstance(result, torch.Tensor), "Result must be a torch.Tensor"
     return result
 
 

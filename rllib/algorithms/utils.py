@@ -90,7 +90,7 @@ class AggregatorActor(FaultAwareApply):
         env_steps = sum(len(e) for e in episodes)
 
         # If we have enough episodes collected to create a single train batch, pass
-        # them at once through the connector to recieve a single train batch.
+        # them at once through the connector to receive a single train batch.
         batch = self._learner_connector(
             episodes=episodes,
             rl_module=self._module,
