@@ -1,11 +1,9 @@
 # coding: utf-8
 import collections
 import logging
-import platform
 import subprocess
 import sys
 import time
-import unittest
 
 import numpy as np
 import pytest

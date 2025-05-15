@@ -6,7 +6,7 @@ import ray as real_ray
 from ray.job_config import JobConfig
 import ray.util.client.server.server as ray_client_server
 from ray.util.client import ray
-from ray._private.client_mode_hook import enable_client_mode, disable_client_hook
+from ray._private.client_mode_hook import disable_client_hook
 
 
 @contextmanager
