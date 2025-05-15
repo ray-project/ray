@@ -180,11 +180,15 @@ class TaskManagerTest : public ::testing::Test {
   }
 
   void AddTaskToResubmitQueue(int64_t execution_time_ms, const TaskSpecification &spec) {
+    absl::MutexLock lock(&manager_.mu_);
     TaskToRetry task_to_retry = {execution_time_ms, spec};
     manager_.to_resubmit_.push(std::move(task_to_retry));
   }
 
-  size_t GetResubmitQueueSize() const { return manager_.to_resubmit_.size(); }
+  size_t GetResubmitQueueSize() const {
+    absl::MutexLock lock(&manager_.mu_);
+    return manager_.to_resubmit_.size();
+  }
 
   bool lineage_pinning_enabled_;
   rpc::Address addr_;
