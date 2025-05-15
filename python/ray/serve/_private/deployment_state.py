@@ -2014,6 +2014,11 @@ class DeploymentState:
                     replica.replica_id, replica.actor_node_id
                 )
 
+                # if replica version is the same as the target version,
+                # we update the docs path
+                if replica.version == self._target_state.version:
+                    self._docs_path = replica.docs_path
+
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
                 replica_startup_message = (
@@ -2127,13 +2132,6 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
-                # if replica version is the same as the target version,
-                # we update the docs path
-                if (
-                    replica.version == self._target_state.version
-                    and replica.docs_path is not None
-                ):
-                    self._docs_path = replica.docs_path
             else:
                 logger.warning(
                     f"Replica {replica.replica_id} failed health check, stopping it."

@@ -4793,94 +4793,86 @@ class TestStopReplicasOnDrainingNodes:
         )
 
 
-def test_docs_path_update(mock_deployment_state_manager):
-    """Test that docs_path is updated when replica version matches target version."""
+def test_docs_path_not_updated_for_different_version(mock_deployment_state_manager):
+    # Create deployment state manager
     create_dsm, _, _, _ = mock_deployment_state_manager
-    dsm = create_dsm()
+    dsm: DeploymentStateManager = create_dsm()
 
-    info, version = deployment_info()
-    version_with_docs = DeploymentVersion(
-        code_version="test_version",
-        deployment_config=version.deployment_config,
-        ray_actor_options=version.ray_actor_options,
-    )
+    info_1, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
-    # Deploy with target version
-    dsm.deploy(TEST_DEPLOYMENT_ID, info)
-    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    ds._target_state.version = version_with_docs
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
 
-    # Create a replica with a docs path
-    replica_id = ReplicaID(get_random_string(), deployment_id=TEST_DEPLOYMENT_ID)
     test_docs_path = "/test/docs/path"
 
-    # Mock the replica actor
-    class MockReplicaActorWrapperWithDocsPath(MockReplicaActorWrapper):
-        @property
-        def docs_path(self):
-            return test_docs_path
+    # Set replicas ready and check statuses
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+        replica._actor.set_docs_path(test_docs_path)
 
-    # Override the _actor instance in DeploymentReplica
-    deployment_replica = DeploymentReplica(replica_id, version_with_docs)
-    deployment_replica._actor = MockReplicaActorWrapper(replica_id, version_with_docs)
-    deployment_replica._actor.set_docs_path(test_docs_path)
-    deployment_replica._actor.set_ready()
-
-    # Add the replica to the deployment state
-    ds._replicas.add(ReplicaState.RUNNING, deployment_replica)
-
-    # Before checking health, the docs_path should be None
     assert ds.docs_path is None
 
-    # Call check_and_update_replicas which contains the code to update docs_path
-    ds.check_and_update_replicas()
-
-    # After checking health, the docs_path should be updated
+    # status=HEALTHY, status_trigger=DEPLOY
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
     assert ds.docs_path == test_docs_path
 
+    # Deploy a new version
+    info_2, v2 = deployment_info(version="2")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
 
-def test_docs_path_not_updated_for_different_version(mock_deployment_state_manager):
-    """Test that docs_path is not updated when replica version doesn't match target version."""
-    create_dsm, _, _, _ = mock_deployment_state_manager
-    dsm = create_dsm()
-
-    info, version = deployment_info()
-    target_version = DeploymentVersion(
-        code_version="target_version",
-        deployment_config=version.deployment_config,
-        ray_actor_options=version.ray_actor_options,
+    dsm.update()
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
     )
-    replica_version = DeploymentVersion(
-        code_version="different_version",
-        deployment_config=version.deployment_config,
-        ray_actor_options=version.ray_actor_options,
+    assert ds.docs_path == test_docs_path
+
+    test_docs_path_new = "/test/docs/path/2"
+    # Set done stopping replicas ready and check statuses
+    for replica in ds._replicas.get([ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    dsm.update()
+
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+        replica._actor.set_docs_path(test_docs_path_new)
+    assert ds.docs_path == test_docs_path
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    assert ds.docs_path == test_docs_path_new
+
+    # Deploy a new version with None docs path
+    info_3, v3 = deployment_info(version="3")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_3)
+
+    dsm.update()
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v2), (ReplicaState.STARTING, 1, v3)],
     )
+    assert ds.docs_path == test_docs_path_new
 
-    # Deploy with target version
-    dsm.deploy(TEST_DEPLOYMENT_ID, info)
-    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    ds._target_state.version = target_version
+    for replica in ds._replicas.get([ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
 
-    # Create a replica with a different version and a docs path
-    replica_id = ReplicaID(get_random_string(), deployment_id=TEST_DEPLOYMENT_ID)
-    test_docs_path = "/test/docs/path"
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v3)])
+    assert ds.docs_path == test_docs_path_new
 
-    # Override the _actor instance in DeploymentReplica
-    deployment_replica = DeploymentReplica(replica_id, replica_version)
-    deployment_replica._actor = MockReplicaActorWrapper(replica_id, replica_version)
-    deployment_replica._actor.set_docs_path(test_docs_path)
-    deployment_replica._actor.set_ready()
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+        replica._actor.set_docs_path(None)
 
-    # Add the replica to the deployment state
-    ds._replicas.add(ReplicaState.RUNNING, deployment_replica)
-
-    # Before checking health, the docs_path should be None
-    assert ds.docs_path is None
-
-    # Call check_and_update_replicas which contains the code to update docs_path
-    ds.check_and_update_replicas()
-
-    # The docs_path should still be None since versions don't match
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v3)])
     assert ds.docs_path is None
 
 
