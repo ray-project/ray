@@ -261,10 +261,20 @@ def _push_candidate_node_if_ready(
                 (node.task_idx, node.operation.type)
             )
     if node.is_ready:
-        heapq.heappush(
-            actor_to_candidates[node.actor_handle._actor_id],
-            node,
-        )
+        if not node.is_nccl_collective:
+            heapq.heappush(
+                actor_to_candidates[node.actor_handle._actor_id],
+                node,
+            )
+        else:
+            # Push all the nodes in the collective operation to the candidates.
+            for collective_node_metadata in node.collective_idxs:
+                task_idx, op_type = collective_node_metadata
+                collective_node = graph[task_idx][op_type]
+                heapq.heappush(
+                    actor_to_candidates[collective_node.actor_handle._actor_id],
+                    collective_node,
+                )
 
 
 def _select_next_nodes(
@@ -315,15 +325,13 @@ def _select_next_nodes(
 
     if top_priority_node is None:
         return None
-    next_nodes = [
-        heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
-    ]
+    next_nodes = [top_priority_node]
 
     if not top_priority_node.is_nccl_op:
         # A non-NCCL operation node is picked.
         assert len(next_nodes) == 1
     elif top_priority_node.is_nccl_write:
-        # a NCCL write node is picked. NCCL is a blocking operation, so we need
+        # A NCCL write node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL read nodes to avoid a deadlock.
         for downstream_node_metadata in top_priority_node.out_edges:
             task_idx, op_type = downstream_node_metadata
@@ -332,7 +340,7 @@ def _select_next_nodes(
             next_nodes.append(downstream_node)
         assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
     elif top_priority_node.is_nccl_collective:
-        # a NCCL collective node is picked. NCCL is a blocking operation, so we need
+        # A NCCL collective node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL collective nodes in its collective
         # operation to avoid a deadlock.
         for collective_node_metadata in top_priority_node.collective_idxs:
@@ -342,6 +350,14 @@ def _select_next_nodes(
             if collective_node != top_priority_node:
                 next_nodes.append(collective_node)
         assert len(next_nodes) == len(top_priority_node.collective_idxs)
+
+    # Remove the selected nodes from the candidates.
+    for node in next_nodes:
+        candidates = actor_to_candidates[node.actor_handle._actor_id]
+        #  The NCCL read nodes are not added to the candidates.
+        if node in candidates:
+            candidates.remove(node)
+            heapq.heapify(candidates)
 
     return next_nodes
 
