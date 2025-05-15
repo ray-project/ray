@@ -19,7 +19,6 @@ from ray.data.extensions.tensor_extension import (
     TensorArray,
     TensorArrayElement,
     TensorDtype,
-    column_needs_tensor_extension,
 )
 
 __all__ = [
@@ -32,7 +31,6 @@ __all__ = [
     "ArrowTensorArray",
     "ArrowVariableShapedTensorType",
     "ArrowVariableShapedTensorArray",
-    "column_needs_tensor_extension",
     "ArrowConversionError",
     # Object array extension
     "ArrowPythonObjectArray",
