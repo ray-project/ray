@@ -1281,7 +1281,9 @@ _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
 
 
-def _maybe_modify_runtime_env(runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool) -> Dict[str, Any]:
+def _maybe_modify_runtime_env(
+    runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
+) -> Dict[str, Any]:
     """
     If RAY_ENABLE_UV_RUN_RUNTIME_ENV is set (which is the default) and the driver was run with `uv run`,
     this function will set up a runtime environment that will replicate the driver's environment to the
@@ -1289,7 +1291,10 @@ def _maybe_modify_runtime_env(runtime_env: Optional[Dict[str, Any]], _skip_env_h
     """
 
     if ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
-        from ray._private.runtime_env.uv_runtime_env_hook import hook, _get_uv_run_cmdline
+        from ray._private.runtime_env.uv_runtime_env_hook import (
+            hook,
+            _get_uv_run_cmdline
+        )
 
         cmdline = _get_uv_run_cmdline()
         if cmdline:
@@ -1298,9 +1303,7 @@ def _maybe_modify_runtime_env(runtime_env: Optional[Dict[str, Any]], _skip_env_h
             return hook(runtime_env)
 
     if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+            return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(runtime_env)
 
 
 @PublicAPI
