@@ -1,7 +1,7 @@
 import enum
 import math
 import time
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.autoscaling_requester import (
@@ -64,19 +64,19 @@ class DefaultAutoscaler(Autoscaler):
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
-    ) -> _AutoscalingAction:
+    ) -> Tuple[_AutoscalingAction, Optional[str]]:
         # Do not scale up, if the op is completed or no more inputs are coming.
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return _AutoscalingAction.SCALE_DOWN
+            return _AutoscalingAction.SCALE_DOWN, "consumed all inputs"
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
-            return _AutoscalingAction.SCALE_UP
+            return _AutoscalingAction.SCALE_UP, "pool below min size"
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
-            return _AutoscalingAction.SCALE_DOWN
+            return _AutoscalingAction.SCALE_DOWN, "pool exceeding max size"
 
         # Determine whether to scale up based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
@@ -85,18 +85,23 @@ class DefaultAutoscaler(Autoscaler):
             #   - Op is throttled (ie exceeding allocated resource quota)
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
-            if (
-                not op_state._scheduling_status.under_resource_limits
-                or op_state.total_enqueued_input_bundles()
-                <= actor_pool.num_free_task_slots()
-            ):
-                return _AutoscalingAction.NO_OP
+            if not op_state._scheduling_status.under_resource_limits:
+                return _AutoscalingAction.NO_OP, "operator exceeding resource quota"
+            elif op_state.total_enqueued_input_bundles() <= actor_pool.num_free_task_slots():
+                return _AutoscalingAction.NO_OP, (
+                    f"pool has sufficient task slots remaining: "
+                    f"enqueued inputs {op_state.total_enqueued_input_bundles()} <= "
+                    f"free slots {actor_pool.num_free_task_slots()})"
+                )
 
-            return _AutoscalingAction.SCALE_UP
+            return _AutoscalingAction.SCALE_UP, f"utilization of {util} >= {self._actor_pool_scaling_up_threshold}"
         elif util <= self._actor_pool_scaling_down_threshold:
-            return _AutoscalingAction.SCALE_DOWN
+            return _AutoscalingAction.SCALE_DOWN, f"utilization of {util} <= {self._actor_pool_scaling_down_threshold}"
         else:
-            return _AutoscalingAction.NO_OP
+            return _AutoscalingAction.NO_OP, (
+                f"{self._actor_pool_scaling_down_threshold} < "
+                f"{util} < {self._actor_pool_scaling_up_threshold}"
+            )
 
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
@@ -104,15 +109,15 @@ class DefaultAutoscaler(Autoscaler):
             for actor_pool in actor_pools:
                 while True:
                     # Try to scale up or down the actor pool.
-                    recommended_action = self._derive_scaling_action(
+                    recommended_action, reason = self._derive_scaling_action(
                         actor_pool, op, state
                     )
 
                     if recommended_action is _AutoscalingAction.SCALE_UP:
-                        if actor_pool.scale_up(1) == 0:
+                        if actor_pool.scale_up(1, reason=reason) == 0:
                             break
                     elif recommended_action is _AutoscalingAction.SCALE_DOWN:
-                        if actor_pool.scale_down(1) == 0:
+                        if actor_pool.scale_down(1, reason=reason) == 0:
                             break
                     else:
                         # No-op

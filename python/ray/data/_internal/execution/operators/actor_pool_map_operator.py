@@ -155,7 +155,7 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        self._actor_pool.scale_up(self._actor_pool.min_size())
+        self._actor_pool.scale_up(self._actor_pool.min_size(), reason="scaling to min size")
 
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.
@@ -571,12 +571,12 @@ class _ActorPool(AutoscalingActorPool):
             for actor_state in self._running_actors.values()
         )
 
-    def scale_up(self, num_actors: int) -> int:
+    def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         logger.info(
             f"Scaling up actor pool by {num_actors} ("
             f"running={self.num_running_actors()}, "
             f"pending={self.num_pending_actors()}, "
-            f"restarting={self.num_restarting_actors()})"
+            f"restarting={self.num_restarting_actors()}; reason={reason})"
         )
 
         for _ in range(num_actors):
@@ -584,7 +584,7 @@ class _ActorPool(AutoscalingActorPool):
             self.add_pending_actor(actor, ready_ref)
         return num_actors
 
-    def scale_down(self, num_actors: int) -> int:
+    def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         num_released = 0
         for _ in range(num_actors):
             if self._release_inactive_actor():
@@ -595,7 +595,7 @@ class _ActorPool(AutoscalingActorPool):
                 f"Scaled down actor pool by {num_released} ("
                 f"running={self.num_running_actors()}, "
                 f"pending={self.num_pending_actors()}, "
-                f"restarting={self.num_restarting_actors()})"
+                f"restarting={self.num_restarting_actors()}; reason={reason})"
             )
 
         return num_released
