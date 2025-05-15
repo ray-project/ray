@@ -58,7 +58,7 @@ def test_resource_updater(ray_start_cluster):
     cluster = ray_start_cluster
 
     resource_updater = _ResourceUpdater(refresh_period=100)
-    # Before intialization, all resources are 0.
+    # Before initialization, all resources are 0.
     assert resource_updater.get_num_cpus() == 0
     assert resource_updater.get_num_gpus() == 0
 

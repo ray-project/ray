@@ -103,9 +103,9 @@ message ActorTableData {
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
   uint64 num_restarts = 8;
-  // The address of the the actor.
+  // The address of the actor.
   Address address = 9;
-  // The address of the the actor's owner (parent).
+  // The address of the actor's owner (parent).
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;

@@ -262,7 +262,20 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        return self._docs_path
+        # if the docs path is set during the deploy app task, use that
+        # TODO (abrar): this can be dropped completely in favor of the
+        # deployment state manager once we have migrated all the tests
+        # to the new API.
+        if self._docs_path is not None:
+            return self._docs_path
+
+        # else get the docs path from the running deployments
+        # we are making an assumption that the docs path can only be set
+        # on ingress deployments with fastapi.
+        ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
+        return self._deployment_state_manager.get_deployment_docs_path(
+            ingress_deployment
+        )
 
     @property
     def status(self) -> ApplicationStatus:
@@ -515,7 +528,7 @@ class ApplicationState:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
-                        f"Unexpected error occured while applying config for "
+                        f"Unexpected error occurred while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
@@ -661,7 +674,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
-                f"Unexpected error occured while deploying application "
+                f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
@@ -684,7 +697,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
-                f"Unexpected error occured while applying config for application "
+                f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
