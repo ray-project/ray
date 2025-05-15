@@ -4,7 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
@@ -29,7 +29,7 @@ from ray.serve._private.replica_scheduler import (
     ReplicaScheduler,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
@@ -214,6 +214,12 @@ class FakeReplicaScheduler(ReplicaScheduler):
             replica = self._replica_to_return
 
         return replica
+
+    async def choose_replicas(
+        self,
+        pending_request: Optional[PendingRequest] = None,
+    ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+        pass
 
 
 @pytest.fixture

@@ -273,6 +273,9 @@ class MockReplicaActorWrapper:
         self.health_check_called = True
         return self.healthy
 
+    def get_scheduling_stats(self) -> Dict[str, Any]:
+        return {}
+
 
 def deployment_info(
     version: Optional[str] = None,
