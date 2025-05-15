@@ -2,7 +2,7 @@ from typing import Dict, Iterator, Tuple
 import logging
 from abc import ABC, abstractmethod
 import sys
-import multiprocessing as mp
+import multiprocessing
 
 import torch
 from torch.utils.data import IterableDataset
@@ -99,6 +99,14 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         """
         pass
 
+    def _create_multiprocessing_context(self):
+        # Importing libs in torch dataloader worker subprocesses is very slow.
+        # Preload all imported modules to speed up subprocess forking. 
+        imported_modules = list(sys.modules.keys())
+        ctx = multiprocessing.get_context("forkserver")
+        ctx.set_forkserver_preload(imported_modules)
+        return ctx
+
     def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a DataLoader for training data.
 
@@ -144,10 +152,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         else:
             train_sampler = None
 
-        imported_modules = list(sys.modules.keys())
-        torch_ctx = mp.get_context("forkserver")
-        torch_ctx.set_forkserver_preload(imported_modules)
-
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
             batch_size=batch_size,
@@ -158,7 +162,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=torch_ctx,
+            multiprocessing_context=self._create_multiprocessing_context(),
             sampler=train_sampler,
         )
 
@@ -211,10 +215,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         else:
             val_sampler = None
 
-        imported_modules = list(sys.modules.keys())
-        torch_ctx = mp.get_context("forkserver")
-        torch_ctx.set_forkserver_preload(imported_modules)
-
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
             batch_size=batch_size,
@@ -225,7 +225,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=torch_ctx,
+            multiprocessing_context=self._create_multiprocessing_context(),
             sampler=val_sampler,
         )
         return self.create_batch_iterator(dataloader, device)
