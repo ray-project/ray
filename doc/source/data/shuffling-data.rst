@@ -138,7 +138,7 @@ Example of hash shuffling based on column `id`:
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # Hash-shuffle
-    hash_shuffled_ds = ds.repartition(key="id", num_blocks=200)
+    hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 
 .. _optimizing_shuffles:
 
