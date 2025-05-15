@@ -78,13 +78,13 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
         print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
 
         # Preserve ray/serve/generated
+        serve_temp_dir = "/tmp/ray/_serve/"
         if package == "serve":
             # Copy generated folder to a temp dir
             generated_folder = os.path.join(package_home, "generated")
-            temp_dir = "/tmp/ray/_serve/"
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
-            subprocess.check_call(["cp", "-r", generated_folder, temp_dir])
+            if not os.path.exists(serve_temp_dir):
+                os.makedirs(serve_temp_dir)
+            subprocess.check_call(["mv", "-r", generated_folder, serve_temp_dir])
 
         # Create backup of the old directory if it exists
         if os.path.exists(package_home):
@@ -97,7 +97,7 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
 
         # Move generated folder to local_home
         if package == "serve":
-            tmp_generated_folder = os.path.join(temp_dir, "generated")
+            tmp_generated_folder = os.path.join(serve_temp_dir, "generated")
             package_generated_folder = os.path.join(package_home, "generated")
             if not os.path.exists(package_generated_folder):
                 subprocess.check_call(
@@ -142,37 +142,43 @@ if __name__ == "__main__":
     if not args.yes:
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
-    # For LLMs
-    do_link("llm", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("serve/llm", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("data/llm.py", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link(
-        "rllib",
-        force=args.yes,
-        skip_list=args.skip,
-        allow_list=args.allow,
-        local_path="../../../rllib",
-    )
-    do_link("air", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("tune", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("train", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("autoscaler", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("cloudpickle", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("data", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("scripts", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("internal", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("tests", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("experimental", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("util", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("workflow", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("serve", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("dag", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("widgets", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link(
-        "cluster_utils.py", force=args.yes, skip_list=args.skip, allow_list=args.allow
-    )
-    do_link("_private", force=args.yes, skip_list=args.skip, allow_list=args.allow)
-    do_link("dashboard", force=args.yes, skip_list=args.skip, allow_list=args.allow)
+    # Dictionary of packages to link, with optional local_path
+    packages_to_link = {
+        # LLM-related packages
+        "llm": None,
+        "serve/llm": None,
+        "data/llm.py": None,
+        "rllib": "../../../rllib",
+        # Core ray packages
+        "air": None,
+        "tune": None,
+        "train": None,
+        "autoscaler": None,
+        "cloudpickle": None,
+        "data": None,
+        "scripts": None,
+        "internal": None,
+        "tests": None,
+        "experimental": None,
+        "util": None,
+        "workflow": None,
+        "serve": None,
+        "dag": None,
+        "widgets": None,
+        "cluster_utils.py": None,
+        "_private": None,
+        "dashboard": None,
+    }
+
+    # Link all packages using a for loop
+    for package, local_path in packages_to_link.items():
+        do_link(
+            package,
+            force=args.yes,
+            skip_list=args.skip,
+            allow_list=args.allow,
+            local_path=local_path,
+        )
 
     if args.extras is not None:
         for package in args.extras:
