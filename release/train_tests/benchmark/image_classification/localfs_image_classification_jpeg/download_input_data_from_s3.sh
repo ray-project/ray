@@ -15,7 +15,7 @@ if [ ! -d "$TRAIN_DIR" ]; then
 
     echo "Fetching $ZIP_URL..."
     aws s3 cp "$ZIP_URL" "$ZIP_PATH"
-    
+
     echo "Unzipping..."
     unzip -q "$ZIP_NAME"
     rm "$ZIP_NAME"
