@@ -50,6 +50,7 @@ repos:
     hooks:
       - id: pydoclint
         args: [
+          python/ray,
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
           --exclude=thirdparty,
@@ -66,6 +67,7 @@ repos:
         ]
         types: [python]
         files: '^python/ray/'
+        pass_filenames: false
 
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0
