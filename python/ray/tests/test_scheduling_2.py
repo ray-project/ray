@@ -162,6 +162,9 @@ def test_default_scheduling_strategy(ray_start_cluster):
     ]
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 def test_placement_group_scheduling_strategy(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
