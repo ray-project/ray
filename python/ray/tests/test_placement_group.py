@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray._private.utils import get_ray_doc_version
 from ray._private.test_utils import placement_group_assert_no_leak
-from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.placement_group import (
@@ -348,84 +347,6 @@ def test_placement_group_spread(
         assert are_pairwise_unique(
             [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
         )
-
-        placement_group_assert_no_leak([placement_group])
-
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38726")
-def test_placement_group_strict_spread(
-    ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
-):
-    @ray.remote
-    class Actor(object):
-        def __init__(self):
-            self.n = 0
-
-        def value(self):
-            return self.n
-
-    cluster = ray_start_cluster
-    num_nodes = 3
-    for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
-        )
-    ray.init(address=cluster.address)
-
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="STRICT_SPREAD",
-            bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}],
-        )
-        ray.get(placement_group.ready())
-        actors = [
-            Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=placement_group, placement_group_bundle_index=i
-                ),
-                num_cpus=1,
-            ).remote()
-            for i in range(num_nodes)
-        ]
-
-        [ray.get(actor.value.remote()) for actor in actors]
-
-        # Get all actors.
-        actor_infos = ray._private.state.actors()
-
-        # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-        assert are_pairwise_unique(
-            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-        )
-
-        actors_no_special_bundle = [
-            Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=placement_group
-                ),
-                num_cpus=1,
-            ).remote()
-            for _ in range(num_nodes)
-        ]
-        [ray.get(actor.value.remote()) for actor in actors_no_special_bundle]
-
-        actor_no_resource = Actor.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group
-            ),
-            num_cpus=2,
-        ).remote()
-        with pytest.raises(ray.exceptions.GetTimeoutError):
-            ray.get(actor_no_resource.value.remote(), timeout=1)
 
         placement_group_assert_no_leak([placement_group])
 

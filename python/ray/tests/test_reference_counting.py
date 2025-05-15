@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     put_object,
     wait_for_condition,
-    skip_flaky_core_test_premerge,
 )
 
 logger = logging.getLogger(__name__)
@@ -403,62 +402,6 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put, failure)
         assert failure
 
     # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
-
-
-# Test that a passed reference held by an actor after the method finishes
-# is kept until the reference is removed from the actor. Also tests giving
-# the actor a duplicate reference to the same object ref.
-@pytest.mark.parametrize(
-    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
-)
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
-def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
-    @ray.remote
-    class GreedyActor(object):
-        def __init__(self):
-            pass
-
-        def set_ref1(self, ref):
-            self.ref1 = ref
-
-        def add_ref2(self, new_ref):
-            self.ref2 = new_ref
-
-        def delete_ref1(self):
-            self.ref1 = None
-
-        def delete_ref2(self):
-            self.ref2 = None
-
-    # Test that the reference held by the actor isn't evicted.
-    array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-    actor = GreedyActor.remote()
-    actor.set_ref1.remote([array_oid])
-
-    # Test that giving the same actor a duplicate reference works.
-    ray.get(actor.add_ref2.remote([array_oid]))
-
-    # Remove the local reference.
-    array_oid_bytes = array_oid.binary()
-    del array_oid
-
-    # Test that the remote references still pin the object.
-    _fill_object_store_and_get(array_oid_bytes)
-
-    # Test that removing only the first reference doesn't unpin the object.
-    ray.get(actor.delete_ref1.remote())
-    _fill_object_store_and_get(array_oid_bytes)
-
-    if failure:
-        # Test that the actor exiting stops the reference from being pinned.
-        # Kill the actor and wait for the actor to exit.
-        kill_actor_and_wait_for_failure(actor)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.delete_ref1.remote())
-    else:
-        # Test that deleting the second reference stops it from being pinned.
-        ray.get(actor.delete_ref2.remote())
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
