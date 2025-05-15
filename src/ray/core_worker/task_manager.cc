@@ -314,7 +314,6 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   RAY_CHECK(task_deps->empty());
 
   TaskSpecification spec;
-  TaskEntry *task_entry = nullptr;
   bool resubmit = false;
   {
     absl::MutexLock lock(&mu_);
@@ -342,7 +341,6 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
         RAY_CHECK(it->second.num_retries_left == -1);
       }
       spec = it->second.spec;
-      task_entry = &(it->second);
     }
   }
 
@@ -386,7 +384,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                 << spec.AttemptNumber() << ": " << spec.DebugString();
   // We should actually detect if the actor for this task is dead, but let's just assume
   // it's not for now.
-  RetryTask(task_entry, /*object_recovery*/ true, /*delay_ms*/ 0);
+  RetryTask(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
   return true;
 }
@@ -967,7 +965,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                       const rpc::RayErrorInfo &error_info) {
   TaskSpecification spec;
-  TaskEntry *task_entry = nullptr;
   bool will_retry = false;
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
@@ -980,7 +977,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to retry task that was not pending " << task_id;
     spec = it->second.spec;
-    task_entry = &(it->second);
     num_retries_left = it->second.num_retries_left;
     num_oom_retries_left = it->second.num_oom_retries_left;
     if (task_failed_due_to_oom) {
@@ -1002,14 +998,17 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_retries_left == 0);
       }
     }
+    // Keep `num_retries_left` and `num_oom_retries_left` up to date
+    num_retries_left = it->second.num_retries_left;
+    num_oom_retries_left = it->second.num_oom_retries_left;
+
     if (will_retry) {
-      MarkTaskRetryOnFailed(*task_entry, error_info);
+      MarkTaskRetryOnFailed(it->second, error_info);
     }
   }
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  std::ostringstream stream;
   std::string num_retries_left_str =
       num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
   RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
@@ -1018,14 +1017,12 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
-    // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
-    // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
                            ? ExponentialBackoff::GetBackoffMs(
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    RetryTask(task_entry, /*object_recovery*/ false, delay_ms);
+    RetryTask(spec, /*object_recovery*/ false, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -1034,18 +1031,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   }
 }
 
-void TaskManager::RetryTask(TaskEntry *task_entry,
+void TaskManager::RetryTask(TaskSpecification &spec,
                             bool object_recovery,
                             uint32_t delay_ms) {
-  RAY_CHECK(task_entry != nullptr);
-
-  auto &spec = task_entry->spec;
-  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-  SetTaskStatus(*task_entry,
-                rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                /* state_update */ std::nullopt,
-                /* include_task_info */ true);
-
   if (!object_recovery) {
     // Retry after a delay to emulate the existing Raylet reconstruction
     // behaviour. TODO(ekl) backoff exponentially.
@@ -1460,6 +1448,17 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
       << "Only finished tasks can be resubmitted: " << task_entry.spec.TaskId();
 
   task_entry.MarkRetry();
+
+  // Mark the new status and also include task spec info for the new attempt.
+  //
+  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
+  // `retry_task_callback_` is invoked. In order to record the correct status change for
+  // the new task attempt, we pass the the attempt number explicitly.
+  SetTaskStatus(task_entry,
+                rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                /* state_update */ std::nullopt,
+                /* include_task_info */ true,
+                task_entry.spec.AttemptNumber() + 1);
 }
 
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
@@ -1471,6 +1470,13 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                 rpc::TaskStatus::FAILED,
                 worker::TaskStatusEvent::TaskStateUpdate(error_info));
   task_entry.MarkRetry();
+
+  // Mark the new status and also include task spec info for the new attempt.
+  SetTaskStatus(task_entry,
+                rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                /* state_update */ std::nullopt,
+                /* include_task_info */ true,
+                task_entry.spec.AttemptNumber() + 1);
 }
 
 void TaskManager::SetTaskStatus(

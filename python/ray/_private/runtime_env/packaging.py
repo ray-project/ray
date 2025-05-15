@@ -186,6 +186,21 @@ def _hash_directory(
     return hash_val
 
 
+def is_path(uri_or_path: str) -> bool:
+    """Returns True if uri_or_path is a URI and False otherwise."""
+    parsed = urlparse(uri_or_path)
+    return not parsed.scheme
+
+
+def parse_path(pkg_path: str) -> None:
+    """Parse the path to check it is well-formed and exists."""
+    path = Path(pkg_path)
+    try:
+        path.resolve(strict=True)
+    except OSError:
+        raise ValueError(f"{path} is not a valid path.")
+
+
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
     Parse package uri into protocol and package name based on its format.
@@ -226,7 +241,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
-
     return (protocol, package_name)
 
 
@@ -483,7 +497,7 @@ def get_uri_for_file(file: str) -> str:
         URI (str)
 
     Raises:
-        ValueError if the file doesn't exist.
+        ValueError: If the file doesn't exist.
     """
     filepath = Path(file).absolute()
     if not filepath.exists() or not filepath.is_file():
@@ -518,7 +532,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         URI (str)
 
     Raises:
-        ValueError if the directory doesn't exist.
+        ValueError: If the directory doesn't exist.
     """
     if excludes is None:
         excludes = []
@@ -942,12 +956,16 @@ async def install_wheel_package(
         # TODO(architkulkarni): Use `await check_output_cmd` or similar.
         exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
     finally:
-        if Path(wheel_uri).exists():
-            Path(wheel_uri).unlink()
+        wheel_uri_path = Path(wheel_uri)
+        if wheel_uri_path.exists():
+            if wheel_uri_path.is_dir():
+                shutil.rmtree(wheel_uri)
+            else:
+                Path(wheel_uri).unlink()
 
         if exit_code != 0:
             if Path(target_dir).exists():
-                Path(target_dir).unlink()
+                shutil.rmtree(target_dir)
             raise RuntimeError(
                 f"Failed to install py_modules wheel {wheel_uri}"
                 f"to {target_dir}:\n{output}"
