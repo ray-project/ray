@@ -359,23 +359,23 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.TASKS,
     )
     histogram_buckets_s = [
-        0.005,
-        0.01,
-        0.025,
-        0.05,
-        0.075,
         0.1,
-        0.25,
         0.5,
-        0.75,
         1,
         2.5,
         5,
         7.5,
         10,
-        20,
-        40,
-        60,
+        25,
+        50,
+        75,
+        100,
+        250,
+        500,
+        750,
+        1000,
+        2500,
+        5000
     ]
     task_completion_time: float = metric_field(
         default=0,
