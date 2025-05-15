@@ -132,7 +132,7 @@ def run_tune_pbt(smoke_test=False):
             ),
             checkpoint_config=tune.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
-                num_to_keep=2,
+                num_to_keep=4,
             ),
         ),
         tune_config=tune.TuneConfig(
