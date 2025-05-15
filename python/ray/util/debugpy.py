@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import importlib
+import random
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -59,9 +60,43 @@ def _ensure_debugger_port_open_thread_safe():
 
         debugger_port = ray._private.worker.global_worker.debugger_port
         if not debugger_port:
-            (host, port) = debugpy.listen(
-                (ray._private.worker.global_worker.node_ip_address, 0)
-            )
+            # Define the port range to use
+            port_range_start = os.environ.get("RAY_DEBUGGER_PORT_RANGE_START")
+            port_range_end = os.environ.get("RAY_DEBUGGER_PORT_RANGE_END")
+
+            if port_range_start and port_range_end:
+                # Create a list of ports in the range and shuffle it
+                port_range_start = int(port_range_start)
+                port_range_end = int(port_range_end)
+                available_ports = list(range(port_range_start, port_range_end + 1))
+                random.shuffle(available_ports)
+            else:
+                # If the port range is not set, set to 0 which means the port will be chosen by the system randomly
+                available_ports = [0]
+
+            # Try opening ports in available_ports
+            port = None
+            for attempt_port in available_ports:
+                try:
+                    (host, port) = debugpy.listen(
+                        (
+                            ray._private.worker.global_worker.node_ip_address,
+                            attempt_port,
+                        )
+                    )
+                    break
+                except Exception as e:
+                    log.debug(f"Failed to open debugger on port {attempt_port}: {e}")
+
+            if port is None:
+                if port_range_start and port_range_end:
+                    log.error(
+                        f"Failed to open debugger on any port in range {port_range_start}-{port_range_end}"
+                    )
+                else:
+                    log.error("Failed to open debugger on any port")
+                return
+
             ray._private.worker.global_worker.set_debugger_port(port)
             log.info(f"Ray debugger is listening on {host}:{port}")
         else:
