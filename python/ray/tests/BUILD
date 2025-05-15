@@ -1256,7 +1256,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "spark_plugin_tests",
+        "spark_on_ray",
         "team:core",
     ],
     deps = [
