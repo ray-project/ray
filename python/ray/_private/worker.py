@@ -1305,6 +1305,8 @@ def _maybe_modify_runtime_env(
     if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
         return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(runtime_env)
 
+    return runtime_env
+
 
 @PublicAPI
 @client_mode_hook
