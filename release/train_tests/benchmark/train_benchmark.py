@@ -8,8 +8,6 @@ import ray.train
 from ray._private.test_utils import safe_write_to_results_json
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
-from ray.train.v2._internal.execution.callback import WorkerCallback
-import torch
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
@@ -19,19 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
-
-
-class WorkerPreloadModules(WorkerCallback):
-    """Preload modules on each worker."""
-
-    def __init__(self):
-        super().__init__()
-
-    def after_init_train_context(self):
-        """Called once on each worker before training starts."""
-        mp = torch.multiprocessing.get_context("forkserver")
-        mp.set_forkserver_preload(["torch", "torchvision"])
-        logger.info("Preloaded torch/torchvision in forkserver context")
 
 
 def train_fn_per_worker(config):
@@ -122,7 +107,6 @@ def main():
             failure_config=ray.train.FailureConfig(
                 max_failures=benchmark_config.max_failures
             ),
-            callbacks=[WorkerPreloadModules()],
         ),
         datasets=factory.get_ray_datasets(),
     )
