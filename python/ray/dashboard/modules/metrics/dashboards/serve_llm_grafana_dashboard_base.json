@@ -48,15 +48,21 @@
         "datasource": "${datasource}",
         "definition": "label_values(ray_vllm:request_prompt_tokens_sum, model_name)",
         "query": {
-          "query": "label_values(ray_vllm:request_prompt_tokens_sum, model_name)"
+          "query": "label_values(ray_vllm:request_prompt_tokens_sum, model_name)",
+          "refId": "StandardVariableQuery"
         },
         "refresh": 1,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
         "current": {
-          "text": "<choose a vLLM model>",
-          "value": "<choose a vLLM model>"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         }
       },
       {
@@ -67,15 +73,21 @@
         "datasource": "${datasource}",
         "definition": "label_values(ray_serve_llm_tokens_input_total, model_id)",
         "query": {
-          "query": "label_values(ray_serve_llm_tokens_input_total, model_id)"
+          "query": "label_values(ray_serve_llm_tokens_input_total, model_id)",
+          "refId": "StandardVariableQuery"
         },
         "refresh": 1,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
         "current": {
-          "text": "<choose a Ray LLM model ID>",
-          "value": "<choose a Ray LLM model ID>"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         }
       },
       {
@@ -86,15 +98,21 @@
         "datasource": "${datasource}",
         "definition": "label_values(ray_serve_llm_tokens_input_total, WorkerId)",
         "query": {
-          "query": "label_values(ray_serve_llm_tokens_input_total, WorkerId)"
+          "query": "label_values(ray_serve_llm_tokens_input_total, WorkerId)",
+          "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "allValue": ".*",
         "includeAll": true,
         "multi": false,
+        "allValue": ".*",
         "current": {
-          "text": "<choose a worker>",
-          "value": "<choose a worker>"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         }
       }
     ]
