@@ -91,6 +91,10 @@ python/ray/util/client/
 @ python ray_client
 ;
 
+python/ray/util/spark/
+@ python spark_on_ray
+;
+
 python/
 @ ml tune train data
 # Python changes might impact cross language stack in Java.
