@@ -2056,23 +2056,6 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
-
-
 def _get_library_usages() -> Set[str]:
     return set(
         ray_usage_lib.get_library_usages_to_report(
