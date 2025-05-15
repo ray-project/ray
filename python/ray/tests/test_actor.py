@@ -852,7 +852,7 @@ def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            # NOTE: the shadowed package setproctitle cannot be pickled, 
+            # NOTE: the shadowed package setproctitle cannot be pickled,
             # so we need to import it from ray._private.
             from ray._private import setproctitle  # noqa: F401
 
