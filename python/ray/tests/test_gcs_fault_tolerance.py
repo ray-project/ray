@@ -881,6 +881,7 @@ print("DONE")
     [
         generate_system_config_map(
             enable_cluster_auth=True,
+            raylet_liveness_self_check_interval_ms=5000,
         )
     ],
     indirect=True,
@@ -906,7 +907,7 @@ def test_raylet_fate_sharing(ray_start_regular):
 
     if not external_redis_test_enabled():
         # Waiting for raylet to become unhealthy
-        wait_for_condition(lambda: not check_raylet_healthy(), timeout=70)
+        wait_for_condition(lambda: not check_raylet_healthy())
     else:
         # Waiting for raylet to stay healthy
         for i in range(10):
