@@ -464,7 +464,7 @@ steps:
       - coregpubuild
 
   - label: ":core: core: spark-on-ray tests"
-    tags: 
+    tags:
       - spark_on_ray
     instance_type: medium
     commands:
