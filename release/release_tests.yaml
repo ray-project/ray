@@ -3803,7 +3803,7 @@
   variations:
     - __suffix__: aws
 
-- name: chaos_many_actors_kill_raylet
+- name: chaos_large_object_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3828,7 +3828,7 @@
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
 
-- name: chaos_many_actors_terminate_instance
+- name: chaos_large_object_terminate_instance
   group: core-nightly-test
   working_dir: nightly_tests
 
