@@ -32,6 +32,12 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
+        global HIP_VISIBLE_DEVICES_ENV_VAR
+        hip_val = os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)
+        cuda_val = os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)
+        if hip_val is None and cuda_val is not None:
+            HIP_VISIBLE_DEVICES_ENV_VAR = CUDA_VISIBLE_DEVICES_ENV_VAR
+
         return HIP_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
@@ -43,9 +49,10 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
         hip_val = os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)
         if cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None):
-            assert (
-                hip_val == cuda_val
-            ), f"Inconsistant values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
+            if hip_val is not None:
+                assert (
+                    hip_val == cuda_val
+                ), f"Inconsistant values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
 
         amd_visible_devices = os.environ.get(
             AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
