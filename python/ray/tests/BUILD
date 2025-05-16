@@ -476,6 +476,7 @@ py_test_module_list(
         "test_mini.py",
         "test_node_death.py",
         "test_numba.py",
+        "test_open_telemetry_metric_recorder.py",
         "test_raylet_output.py",
         "test_top_level_api.py",
         "test_unhandled_error.py",

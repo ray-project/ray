@@ -21,7 +21,11 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, RAY_ENABLE_OPEN_TELEMETRY, env_integer
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS,
+    RAY_ENABLE_OPEN_TELEMETRY,
+    env_integer,
+)
 from ray._raylet import WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
@@ -1289,7 +1293,7 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            if RAY_ENABLE_OPENTELEMETRY:
+            if RAY_ENABLE_OPEN_TELEMETRY:
                 self._open_telemetry_metric_recorder.record_and_export(
                     records,
                     global_tags={
