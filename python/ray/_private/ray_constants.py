@@ -568,13 +568,13 @@ RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT"
 
 # If set, updates the runtime environment to use `uv run` if the driver was run with `uv run`.
 # This runtime environment propagates the arguments of `uv run` to all the worker
-# processes via the py_executable plugin and also set the working_dir so the
-# pyproject.toml is found. If RAY_ENABLE_UV_RUN_RUNTIME_ENV is enabled AND the driver
-# is run with `uv run`, the regular RAY_RUNTIME_ENV_HOOK will be deactivated
-# because in most cases it doesn't work unless the user specifically makes the code
-# for the runtime env hook available in their uv environment and makes sure their hook
-# is compatible with the uv runtime environment. If a user wants to combine a custom
-# RAY_RUNTIME_ENV_HOOK with `uv run`, they should flag off RAY_ENABLE_UV_RUN_RUNTIME_ENV
-# and call ray._private.runtime_env.uv_runtime_env_hook.hook manually in their hook or
-# manually set the py_executable in their runtime environment hook.
+# processes via the py_executable plugin and also sets the working_dir so uv finds the
+# pyproject.toml. If you enable RAY_ENABLE_UV_RUN_RUNTIME_ENV AND the driver
+# is run with `uv run`, Ray deactivates the regular RAY_RUNTIME_ENV_HOOK
+# because in most cases the hooks wouldn't work unless you specifically make the code
+# for the runtime env hook available in your uv environment and makes sure your hook
+# is compatible with your uv runtime environment. If you want to combine a custom
+# RAY_RUNTIME_ENV_HOOK with `uv run`, you should flag off RAY_ENABLE_UV_RUN_RUNTIME_ENV
+# and call ray._private.runtime_env.uv_runtime_env_hook.hook manually in your hook or
+# manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
