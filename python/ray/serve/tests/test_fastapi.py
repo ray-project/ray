@@ -736,6 +736,28 @@ def test_two_fastapi_in_one_application(
         assert handle.func.remote(5).result() == 6
 
 
+def test_fastapi_class_inheritance(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def method(self):
+            return "hi get"
+
+        @app.post("/")  # noqa: F811 method redefinition
+        def method(self):  # noqa: F811 method redefinition
+            return "hi post"
+
+    class B(A):
+        pass
+
+    serve.run(B.bind(), route_prefix="/b")
+    assert requests.get("http://localhost:8000/b/").json() == "hi get"
+    assert requests.post("http://localhost:8000/b/").json() == "hi post"
+
+
 @pytest.mark.parametrize(
     "is_fastapi,docs_path",
     [
