@@ -612,9 +612,14 @@ class LLMServer(_LLMServerBase):
         """
         return self._process_llm_request(request, is_chat=False)
 
-    async def check_health(self) -> bool:
-        """Check the health of the llm engine."""
-        return await self.engine.check_health()
+    async def check_health(self) -> None:
+        """Check the health of the replica. Does not return anything. Raise error when
+        the engine is dead and needs to be restarted."""
+        healthy = await self.engine.check_health()
+        if not healthy:
+            raise RuntimeError(
+                "Engine is not healthy. Please restart the engine."
+            )
 
     async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
         """Runs an embeddings request to the vllm engine, and return the response.

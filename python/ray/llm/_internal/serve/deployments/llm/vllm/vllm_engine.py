@@ -858,7 +858,6 @@ class VLLMEngine(LLMEngine):
     ) -> "VLLMInternalSamplingParams":
         # Add vLLM-Anyscale specific fields
 
-        extra_fields = {}
         if sampling_params.response_format is not None:
             extra_fields.update(
                 self._map_response_format_to_extra_fields(sampling_params)
