@@ -95,7 +95,7 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
 def _to_proto_dashboard_panel(panel: Panel) -> ProtoTrainRun.DashboardPanel:
     """Convert Dashboard Panel to protobuf format."""
     proto_panel = ProtoTrainRun.DashboardPanel(
-        id=panel.id,
+        id=str(panel.id),
         title=panel.title,
     )
 
