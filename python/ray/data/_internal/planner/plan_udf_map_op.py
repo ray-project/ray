@@ -266,15 +266,14 @@ def _parse_op_fn(op: AbstractUDFMap):
             op_fn = make_callable_class_concurrent(op_fn)
 
         def init_fn():
-            if ray.data._map_actor_context is None:
-                ray.data._map_actor_context = _MapActorContext(
-                    udf_map_cls=op_fn,
-                    udf_map_fn=op_fn(
-                        *fn_constructor_args,
-                        **fn_constructor_kwargs,
-                    ),
-                    is_async=is_async_gen,
-                )
+            ray.data._map_actor_context = _MapActorContext(
+                udf_map_cls=op_fn,
+                udf_map_fn=op_fn(
+                    *fn_constructor_args,
+                    **fn_constructor_kwargs,
+                ),
+                is_async=is_async_gen,
+            )
 
         if is_async_gen:
 
