@@ -47,26 +47,65 @@ TensorBatchType = Union[
 
 
 def _is_tensor(batch: Any) -> bool:
+    """Check if a batch is a single torch.Tensor."""
     import torch
 
     return isinstance(batch, torch.Tensor)
 
 
 def _is_tensor_sequence(batch: Any) -> bool:
+    """Check if a batch is a sequence of torch.Tensors.
+
+    >>> _is_tensor_sequence(torch.ones(1))
+    False
+    >>> _is_tensor_sequence([torch.ones(1), torch.ones(1)])
+    True
+    >>> _is_tensor_sequence((torch.ones(1), torch.ones(1)))
+    True
+    >>> _is_tensor_sequence([torch.ones(1), 1])
+    False
+    """
     return isinstance(batch, (list, tuple)) and all(_is_tensor(t) for t in batch)
 
 
 def _is_nested_tensor_sequence(batch: Any) -> bool:
+    """Check if a batch is a sequence of sequences of torch.Tensors.
+
+    Stops at one level of nesting.
+
+    >>> _is_nested_tensor_sequence([torch.ones(1), torch.ones(1)])
+    False
+    >>> _is_nested_tensor_sequence(
+    ...    ([torch.ones(1), torch.ones(1)], [torch.ones(1)])
+    ... )
+    True
+    """
     return isinstance(batch, (list, tuple)) and all(
         _is_tensor_sequence(t) for t in batch
     )
 
 
 def _is_tensor_mapping(batch: Any) -> bool:
+    """Check if a batch is a mapping of keys to torch.Tensors.
+
+    >>> _is_tensor_mapping({"a": torch.ones(1), "b": torch.ones(1)})
+    True
+    >>> _is_tensor_mapping({"a": torch.ones(1), "b": [torch.ones(1), torch.ones(1)]})
+    False
+    """
     return isinstance(batch, Mapping) and all(_is_tensor(v) for v in batch.values())
 
 
 def _is_tensor_sequence_mapping(batch: Any) -> bool:
+    """Check if a batch is a mapping of keys to sequences of torch.Tensors.
+
+    >>> _is_tensor_sequence_mapping({"a": torch.ones(1), "b": torch.ones(1)})
+    False
+    >>> _is_tensor_sequence_mapping(
+    ...    {"a": (torch.ones(1), torch.ones(1)), "b": [torch.ones(1), torch.ones(1)]}
+    ... )
+    True
+    """
     return isinstance(batch, Mapping) and all(
         _is_tensor_sequence(v) for v in batch.values()
     )
