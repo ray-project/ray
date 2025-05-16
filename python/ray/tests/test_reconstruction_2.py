@@ -2,8 +2,8 @@ import os
 import sys
 import time
 
-import numpy as np
 import pytest
+import numpy as np
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -605,6 +605,4 @@ def test_object_reconstruction_pending_creation(config, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

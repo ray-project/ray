@@ -1,8 +1,9 @@
+import sys
 from importlib import reload
+
+import pytest
 import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
-import pytest
-import sys
 
 import ray
 import ray.experimental.array.remote as ra
@@ -243,6 +244,4 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

@@ -1255,8 +1255,6 @@ class TestSetupLogRecordFactory:
 
 
 if __name__ == "__main__":
-    import sys
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

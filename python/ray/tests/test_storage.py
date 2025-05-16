@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-
 import os
 import sys
 import subprocess
 import urllib
+from packaging.version import parse as parse_version
 from pathlib import Path
 
-from packaging.version import parse as parse_version
 import pyarrow.fs
 import pytest
 
@@ -291,6 +290,4 @@ def test_add_creatable_buckets_param_if_s3_uri():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

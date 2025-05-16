@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -45,6 +47,4 @@ def test_get_runtime_context(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

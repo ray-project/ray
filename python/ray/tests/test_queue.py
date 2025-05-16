@@ -1,5 +1,7 @@
-import pytest
 import time
+import sys
+
+import pytest
 
 import ray
 from ray.exceptions import GetTimeoutError, RayActorError
@@ -273,6 +275,4 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

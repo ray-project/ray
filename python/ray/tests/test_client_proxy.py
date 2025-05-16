@@ -483,6 +483,4 @@ def test_proxy_cancelled_grpc_request_stream():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

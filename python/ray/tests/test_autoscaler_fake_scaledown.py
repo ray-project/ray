@@ -1,5 +1,6 @@
 import platform
 import re
+import sys
 
 import numpy as np
 import pytest
@@ -188,6 +189,4 @@ def test_no_scaledown_with_spilled_objects(autoscaler_v2, shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

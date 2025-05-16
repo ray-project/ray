@@ -1,10 +1,11 @@
-from collections import defaultdict
-import pytest
-from typing import Dict
-import numpy as np
 import sys
+from collections import defaultdict
+from typing import Dict
 
+import pytest
 import requests
+import numpy as np
+
 import ray
 from ray._private.test_utils import (
     raw_metrics,
@@ -386,6 +387,4 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

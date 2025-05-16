@@ -3,9 +3,10 @@ import logging
 import os
 import sys
 import tempfile
-from typing import Dict, Any
 import unittest
 import urllib
+from typing import Dict, Any
+from unittest import mock
 from unittest.mock import MagicMock, Mock, patch
 
 import jsonschema
@@ -13,7 +14,6 @@ import pytest
 import yaml
 from click.exceptions import ClickException
 
-from unittest import mock
 from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
@@ -650,6 +650,4 @@ class AutoscalingConfigTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

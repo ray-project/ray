@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 import numpy as np
@@ -377,6 +378,4 @@ def test_task_status(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

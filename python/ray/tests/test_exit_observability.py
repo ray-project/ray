@@ -4,9 +4,9 @@ import signal
 import sys
 
 import pytest
-from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
+from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.util.state import list_workers, list_nodes, list_tasks
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -448,6 +448,4 @@ def test_node_start_end_time(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

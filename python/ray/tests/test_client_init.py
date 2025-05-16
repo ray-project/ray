@@ -1,11 +1,12 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
-import pytest
 
 import time
 import random
 import sys
 import subprocess
 from unittest.mock import patch
+
+import pytest
 
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -196,6 +197,4 @@ def test_max_clients(init_and_serve):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

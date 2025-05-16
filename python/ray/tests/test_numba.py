@@ -1,4 +1,7 @@
+import pytest
+import sys
 import unittest
+
 
 from numba import njit
 import numpy as np
@@ -32,7 +35,4 @@ class NumbaTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

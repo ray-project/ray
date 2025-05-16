@@ -1,8 +1,8 @@
 import sys
 import time
 
-import numpy as np
 import pytest
+import numpy as np
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -116,6 +116,4 @@ def test_dying_worker(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

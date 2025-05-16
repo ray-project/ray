@@ -1,7 +1,8 @@
 import os
 import platform
+import sys
 
-import psutil  # We must import psutil after ray because we bundle it with ray.
+import psutil
 import pytest
 import requests
 
@@ -358,6 +359,4 @@ def test_opentelemetry_conflict(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

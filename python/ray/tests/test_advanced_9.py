@@ -1,4 +1,6 @@
 import os
+import psutil
+import subprocess
 import sys
 import time
 
@@ -17,8 +19,6 @@ from ray._private.test_utils import (
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
-import subprocess
-import psutil
 
 
 @pytest.fixture
@@ -510,6 +510,4 @@ def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

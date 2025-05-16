@@ -1,6 +1,7 @@
 import logging
 import platform
 import time
+import sys
 
 import pytest
 
@@ -114,6 +115,4 @@ def test_drain_api(autoscaler_v2, shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

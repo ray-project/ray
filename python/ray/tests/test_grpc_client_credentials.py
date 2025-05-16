@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import grpc
 
@@ -55,6 +57,4 @@ def test_grpc_client_credentials_are_generated(monkeypatch):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

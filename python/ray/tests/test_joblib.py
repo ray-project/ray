@@ -1,11 +1,11 @@
 import sys
 import time
 import os
-import pytest
 from unittest import mock
 
 import joblib
 import pickle
+import pytest
 import numpy as np
 
 from sklearn.datasets import load_digits, load_iris
@@ -240,6 +240,4 @@ def test_task_to_actor_assignment(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

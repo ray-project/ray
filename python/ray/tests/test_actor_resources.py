@@ -679,6 +679,4 @@ def test_actor_cuda_visible_devices(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

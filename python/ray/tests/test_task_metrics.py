@@ -1,12 +1,11 @@
-from collections import defaultdict
-import sys
 import copy
 import multiprocessing
+import sys
+from collections import defaultdict
 
 import pytest
 
 import ray
-
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
     raw_metrics,
@@ -704,6 +703,4 @@ time.sleep(999)
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

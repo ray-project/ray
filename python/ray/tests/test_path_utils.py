@@ -1,6 +1,5 @@
 import sys
 
-
 import pytest
 
 import ray._private.path_utils as PathUtils
@@ -34,6 +33,4 @@ def test_is_path_raises_error_for_non_string_input():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

@@ -1,4 +1,6 @@
 # coding: utf-8
+import sys
+
 import pytest
 
 import ray
@@ -80,7 +82,4 @@ def test_args_intertwined(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

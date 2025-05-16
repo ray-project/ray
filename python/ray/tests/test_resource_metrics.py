@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 
 import pytest
@@ -100,6 +101,4 @@ ray.get([f.remote() for _ in range(2)])"""
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

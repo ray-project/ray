@@ -1,5 +1,7 @@
 import sys
+
 import pytest
+
 import ray
 
 
@@ -20,6 +22,4 @@ async def test_core_worker_io_thread_stack_size(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

@@ -477,6 +477,4 @@ def test_illegal_api_calls(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

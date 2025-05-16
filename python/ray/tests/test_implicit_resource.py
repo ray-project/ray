@@ -1,5 +1,6 @@
 import sys
 import time
+
 import pytest
 
 import ray
@@ -74,6 +75,4 @@ def test_implicit_resource_autoscaling(autoscaler_v2, shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

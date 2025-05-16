@@ -1,7 +1,10 @@
-import pytest
-import ray
+import sys
 import time
+
+import pytest
 import numpy as np
+
+import ray
 from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.exceptions import OwnerDiedError
 
@@ -193,7 +196,4 @@ def test_owner_assign_inner_object(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

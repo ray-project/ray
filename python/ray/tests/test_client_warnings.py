@@ -1,10 +1,11 @@
+import sys
+import unittest
+
+import pytest
+import numpy as np
+
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.debug import _logged
-
-import numpy as np
-import pytest
-
-import unittest
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +35,4 @@ class LoggerSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

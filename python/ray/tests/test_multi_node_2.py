@@ -1,4 +1,5 @@
 import logging
+import sys
 import time
 
 import pytest
@@ -365,7 +366,4 @@ def test_multi_node_pgs(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

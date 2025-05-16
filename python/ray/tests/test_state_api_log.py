@@ -1,19 +1,16 @@
+import asyncio
 import json
 import os
 import sys
-import asyncio
+from pathlib import Path
 from typing import List
-import urllib
 from unittest.mock import MagicMock, AsyncMock
 
-import pytest
-from ray.util.state.state_cli import logs_state_cli_group
-from ray.util.state import list_jobs
-import requests
-from click.testing import CliRunner
 import grpc
-
-from pathlib import Path
+import requests
+import pytest
+import urllib
+from click.testing import CliRunner
 
 import ray
 from ray._private.test_utils import (
@@ -21,6 +18,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+from ray.util.state.state_cli import logs_state_cli_group
+from ray.util.state import list_jobs
 
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
@@ -1560,6 +1559,4 @@ def test_log_cli(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

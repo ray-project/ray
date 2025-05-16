@@ -1,15 +1,14 @@
+import json
 import os
 import sys
 import unittest.mock
 import signal
 import subprocess
+import tempfile
+from pathlib import Path
 
 import grpc
 import pytest
-import tempfile
-import json
-
-from pathlib import Path
 
 import ray
 import ray._private.services
@@ -396,8 +395,4 @@ def test_ray_init_with_runtime_env_as_object(
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

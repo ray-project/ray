@@ -1,12 +1,13 @@
 import atexit
 import asyncio
 import collections
-import numpy as np
 import os
-import pytest
 import signal
 import sys
 import time
+
+import pytest
+import numpy as np
 
 import ray
 from ray.actor import exit_actor
@@ -1244,6 +1245,4 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

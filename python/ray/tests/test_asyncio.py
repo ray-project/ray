@@ -429,6 +429,4 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

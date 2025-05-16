@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+from typing import Optional
+
 import pytest
 
 import ray
@@ -13,7 +15,6 @@ from ray._private.test_utils import (
     make_global_state_accessor,
     wait_for_condition,
 )
-from typing import Optional
 
 
 def test_replenish_resources(ray_start_regular):
@@ -714,6 +715,4 @@ def test_get_draining_nodes(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

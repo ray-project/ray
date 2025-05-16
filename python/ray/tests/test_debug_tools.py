@@ -1,15 +1,13 @@
 import os
 import subprocess
 import sys
-
-import pytest
 from pathlib import Path
 
-import ray
+import pytest
 
+import ray
 import ray._private.services as services
 import ray._private.ray_constants as ray_constants
-
 from ray._private.test_utils import wait_for_condition
 
 
@@ -133,8 +131,6 @@ def test_memory_profile_dashboard_and_agent(monkeypatch, shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

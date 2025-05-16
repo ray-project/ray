@@ -603,6 +603,4 @@ def test_actor_constructor_borrow_cancellation(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

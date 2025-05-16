@@ -1,8 +1,8 @@
 import signal
 import sys
 
-import numpy as np
 import pytest
+import numpy as np
 
 import ray
 
@@ -71,6 +71,4 @@ def test_reconstruction_stress_spill(config, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

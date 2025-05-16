@@ -1,13 +1,15 @@
+import sys
+import threading
+import time
+
+import pytest
+
 from ray.util.client.common import (
     _id_is_newer,
     ResponseCache,
     OrderedResponseCache,
     INT32_MAX,
 )
-import threading
-import time
-
-import pytest
 
 
 def test_id_is_newer():
@@ -218,6 +220,4 @@ def test_response_cache_invalidate():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

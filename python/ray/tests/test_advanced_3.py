@@ -356,6 +356,4 @@ def test_decorated_function(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

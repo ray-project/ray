@@ -244,6 +244,4 @@ def test_worker_niceness(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

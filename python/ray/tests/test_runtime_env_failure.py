@@ -1,4 +1,5 @@
 import os
+import sys
 from unittest import mock
 
 import pytest
@@ -151,6 +152,4 @@ class TestRuntimeEnvFailure:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

@@ -1,7 +1,10 @@
-from ray.autoscaler._private import cli_logger
 import io
+import sys
 from unittest.mock import patch
+
 import pytest
+
+from ray.autoscaler._private import cli_logger
 
 
 def test_colorful_mock_with_style():
@@ -25,6 +28,4 @@ def test_pathname():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

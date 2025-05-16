@@ -1,6 +1,8 @@
+import sys
 from collections import defaultdict
-import pytest
 from typing import Dict
+
+import pytest
 
 import ray
 from ray._private.test_utils import (
@@ -61,6 +63,4 @@ def test_basic_states(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))
