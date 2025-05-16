@@ -1210,6 +1210,9 @@ void CoreWorker::Exit(
           // started yet, they will not be executed.
           task_receiver_->Stop();
 
+          // XXX: TODO.
+          reference_counter_->ReleaseAllLocalReferences();
+
           bool not_actor_task = false;
           {
             absl::MutexLock lock(&mutex_);
