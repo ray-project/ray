@@ -15,7 +15,6 @@ from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
 from ray.experimental.channel.accelerator_context import (
     AcceleratorContext,
@@ -755,8 +754,7 @@ def _init_communicator(
 
     # Register accelerator context for all actors if accelerator is not default
     if accelerator_module_name and accelerator_communicator_cls:
-        if not issubclass(accelerator_communicator_cls, CPUCommunicator) and \
-            not issubclass(accelerator_communicator_cls, _NcclGroup):
+        if accelerator_module_name not in ("cpu", "cuda"):
             ray.get(
                 [
                     actor.__ray_call__.remote(
