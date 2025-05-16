@@ -84,11 +84,15 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python accelerated_dag
+@ python compiled_graphs
 ;
 
 python/ray/util/client/
 @ python ray_client
+;
+
+python/ray/util/spark/
+@ python spark_on_ray
 ;
 
 python/
@@ -213,7 +217,12 @@ ci/ci.sh
 src/
 @ core_cpp cpp
 @ java python linux_wheels macos_wheels
-@ dashboard release_tests accelerated_dag
+@ dashboard release_tests
+;
+
+src/ray/core_worker/experimental*.h
+src/ray/core_worker/experimental*.cc
+@ compiled_graphs
 ;
 
 .github/
