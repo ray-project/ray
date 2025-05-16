@@ -155,11 +155,20 @@ NodeManager::NodeManager(
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::Now(); },
           config.enable_resource_isolation),
-      client_call_manager_(io_service),
+      client_call_manager_(io_service, /*record_stats=*/true),
       worker_rpc_pool_([this](const rpc::Address &addr) {
-        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
-          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
-        });
+        return std::make_shared<rpc::CoreWorkerClient>(
+            addr,
+            client_call_manager_,
+            rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                gcs_client_.get(),
+                &worker_rpc_pool_,
+                [this](const std::string &node_manager_address, int32_t port) {
+                  return std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_manager_address, port, client_call_manager_));
+                },
+                addr));
       }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
@@ -179,8 +188,6 @@ NodeManager::NodeManager(
           gcs_client_,
           core_worker_subscriber_.get(),
           /*owner_client_pool=*/&worker_rpc_pool_,
-          /*max_object_report_batch_size=*/
-          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
@@ -1279,8 +1286,8 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::WaitForDirectActorCallArgsRequest: {
-    ProcessWaitForDirectActorCallArgsRequestMessage(client, message_data);
+  case protocol::MessageType::WaitForActorCallArgsRequest: {
+    ProcessWaitForActorCallArgsRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::PushErrorRequest: {
     ProcessPushErrorRequestMessage(message_data);
@@ -1872,11 +1879,11 @@ void NodeManager::ProcessWaitRequestMessage(
       });
 }
 
-void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
+void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message =
-      flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
+      flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
   int64_t tag = message->tag();
   // Resolve any missing objects. This will pull the objects from remote node
@@ -1901,7 +1908,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
         if (!worker) {
           RAY_LOG(ERROR) << "Lost worker for wait request " << client;
         } else {
-          worker->DirectActorCallArgWaitComplete(tag);
+          worker->ActorCallArgWaitComplete(tag);
         }
       });
 }
@@ -2449,13 +2456,12 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
 
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
-    // direct actor creation calls because this ID is used later if the actor
+    // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
     worker.AssignTaskId(TaskID::Nil());
     worker.SetOwnerAddress(rpc::Address());
   }
-  // Direct actors will be assigned tasks via the core worker and therefore are
-  // not idle.
+  // Actors will be assigned tasks via the core worker and therefore are not idle.
   return !spec.IsActorCreationTask();
 }
 

@@ -16,8 +16,7 @@ gke_tpu_accelerator_to_generation = {
 
 
 def parse_quantity(quantity):
-    """
-    Parse kubernetes canonical form quantity like 200Mi to a decimal number.
+    """Parse kubernetes canonical form quantity like 200Mi to a decimal number.
     Supported SI suffixes:
     base1024: Ki | Mi | Gi | Ti | Pi | Ei
     base1000: n | u | m | "" | k | M | G | T | P | E
@@ -25,14 +24,14 @@ def parse_quantity(quantity):
     See
     https://github.com/kubernetes/apimachinery/blob/master/pkg/api/resource/quantity.go
 
-    Input:
-    quantity: string. kubernetes canonical form quantity
+    Args:
+        quantity: string. kubernetes canonical form quantity
 
     Returns:
-    Decimal
+        Decimal: The parsed quantity as a decimal number
 
     Raises:
-    ValueError on invalid or unknown input
+        ValueError: On invalid or unknown input
     """
     if isinstance(quantity, (int, float, Decimal)):
         return Decimal(quantity)

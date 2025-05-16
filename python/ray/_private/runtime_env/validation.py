@@ -6,15 +6,18 @@ from typing import Dict, List, Optional, Union
 from collections import OrderedDict
 import yaml
 
+from ray._private.path_utils import is_path
+from ray._private.runtime_env.packaging import parse_path
+
 logger = logging.getLogger(__name__)
 
 
-def validate_uri(uri: str):
-    if not isinstance(uri, str):
-        raise TypeError(
-            "URIs for working_dir and py_modules must be " f"strings, got {type(uri)}."
-        )
+def validate_path(path: str) -> None:
+    """Parse the path to ensure it is well-formed and exists."""
+    parse_path(path)
 
+
+def validate_uri(uri: str):
     try:
         from ray._private.runtime_env.packaging import parse_uri, Protocol
 
@@ -42,33 +45,71 @@ def _handle_local_deps_requirement_file(requirements_file: str):
     return requirements_path.read_text().strip().split("\n")
 
 
+def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
+    """Parses and validates a 'py_modules' option.
+
+    Expects py_modules to be a list of URIs.
+    """
+    if not isinstance(py_modules_uris, list):
+        raise TypeError(
+            "`py_modules` must be a list of strings, got " f"{type(py_modules_uris)}."
+        )
+
+    for module in py_modules_uris:
+
+        if not isinstance(module, str):
+            raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
+
+        validate_uri(module)
+
+
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     """Parses and validates a 'py_modules' option.
 
-    This should be a list of URIs.
+    Expects py_modules to be a list of local paths or URIs.
     """
     if not isinstance(py_modules, list):
         raise TypeError(
             "`py_modules` must be a list of strings, got " f"{type(py_modules)}."
         )
 
-    for uri in py_modules:
-        validate_uri(uri)
+    for module in py_modules:
+
+        if not isinstance(module, str):
+            raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
+
+        if is_path(module):
+            validate_path(module)
+        else:
+            validate_uri(module)
 
     return py_modules
+
+
+def validate_working_dir_uri(working_dir_uri: str) -> str:
+    """Parses and validates a 'working_dir' option."""
+    if not isinstance(working_dir_uri, str):
+        raise TypeError(
+            "`working_dir` must be a string, got " f"{type(working_dir_uri)}."
+        )
+
+    validate_uri(working_dir_uri)
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a 'working_dir' option.
 
-    This should be a URI.
+    This can be a URI or a path.
     """
     assert working_dir is not None
 
     if not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got " f"{type(working_dir)}.")
 
-    validate_uri(working_dir)
+    if is_path(working_dir):
+        validate_path(working_dir)
+    else:
+        validate_uri(working_dir)
 
     return working_dir
 
@@ -384,4 +425,14 @@ OPTION_TO_VALIDATION_FN = {
     "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
+}
+
+# RuntimeEnv can be created with local paths
+# for these options. However, after the packages
+# for these options have been uploaded to GCS,
+# they must be URIs. These functions provide the ability
+# to validate that these options only contain well-formed URIs.
+OPTION_TO_NO_PATH_VALIDATION_FN = {
+    "working_dir": validate_working_dir_uri,
+    "py_modules": validate_py_modules_uris,
 }

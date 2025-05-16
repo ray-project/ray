@@ -11,7 +11,7 @@ import redis
 from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
-    enable_external_redis,
+    external_redis_test_enabled,
     find_free_port,
     generate_system_config_map,
     async_wait_for_condition,
@@ -108,8 +108,8 @@ def test_kv_timeout(ray_start_regular):
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5,"
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:25:25,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:25:25",
     )
     ray.init()
     gcs_address = ray._private.worker.global_worker.gcs_client.address
@@ -180,7 +180,8 @@ async def test_kv_timeout_aio(ray_start_regular):
 
 
 @pytest.mark.skipif(
-    not enable_external_redis(), reason="Only valid when start with an external redis"
+    not external_redis_test_enabled(),
+    reason="Only valid when start with an external redis",
 )
 def test_external_storage_namespace_isolation(shutdown_only):
     addr = ray.init(
@@ -283,7 +284,8 @@ def redis_replicas(request, monkeypatch):
 
 
 @pytest.mark.skipif(
-    not enable_external_redis(), reason="Only valid when start with an external redis"
+    not external_redis_test_enabled(),
+    reason="Only valid when start with an external redis",
 )
 def test_redis_cleanup(redis_replicas, shutdown_only):
     addr = ray.init(

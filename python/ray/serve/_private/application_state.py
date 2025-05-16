@@ -42,15 +42,13 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
+    ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import (
+    DeploymentLanguage,
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,
@@ -133,8 +131,9 @@ class StatusOverview:
         Args:
             name: Deployment's name.
 
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
+        Returns:
+            Optional[DeploymentStatusInfo]: The status of the deployment if it exists,
+                otherwise None.
         """
 
         for deployment_status in self.deployment_statuses:
@@ -263,7 +262,20 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        return self._docs_path
+        # if the docs path is set during the deploy app task, use that
+        # TODO (abrar): this can be dropped completely in favor of the
+        # deployment state manager once we have migrated all the tests
+        # to the new API.
+        if self._docs_path is not None:
+            return self._docs_path
+
+        # else get the docs path from the running deployments
+        # we are making an assumption that the docs path can only be set
+        # on ingress deployments with fastapi.
+        ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
+        return self._deployment_state_manager.get_deployment_docs_path(
+            ingress_deployment
+        )
 
     @property
     def status(self) -> ApplicationStatus:
@@ -516,7 +528,7 @@ class ApplicationState:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
-                        f"Unexpected error occured while applying config for "
+                        f"Unexpected error occurred while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
@@ -662,7 +674,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
-                f"Unexpected error occured while deploying application "
+                f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
@@ -685,7 +697,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
-                f"Unexpected error occured while applying config for application "
+                f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg

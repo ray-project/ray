@@ -141,7 +141,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # When there is no match for a multiplexed model id, we will try to fallback
         # to all replicas immediately. This set is used to make sure we only fallback
         # once for concurrent requests for the same model id.
-        # Whenever there is a match, we will remove the the model id from this set.
+        # Whenever there is a match, we will remove the model id from this set.
         self._multiplexed_model_id_fallback_match: Set[str] = set()
 
         # Tasks running the scheduling loop. The size of this set may vary over time
