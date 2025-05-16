@@ -408,7 +408,7 @@ your programs:
 
 .. note::
 
-  The uv environment is inherited by all children tasks and actors. If you want to mix environments, for example,  `pip`
+  The uv environment is inherited by all children tasks and actors. If you want to mix environments, for example, `pip`
   runtime environments with `uv run`, you need to set the Python executable back to an executable
   that's not running in the isolated uv environment like the following:
 
