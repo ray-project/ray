@@ -94,6 +94,7 @@ class TestResult:
     timestamp: int
     pull_request: str
     rayci_step_id: str
+    duration_ms: Optional[float] = None
 
     @classmethod
     def from_result(cls, result: Result):
@@ -105,6 +106,7 @@ class TestResult:
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
             rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
+            duration_ms=result.runtime,
         )
 
     @classmethod
@@ -117,6 +119,9 @@ class TestResult:
                 buildkite_url=(
                     f"{os.environ.get('BUILDKITE_BUILD_URL')}"
                     f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+                runtime=cls._to_float_or_none(
+                    event["testResult"].get("testAttemptDurationMillis")
                 ),
             )
         )
@@ -131,7 +136,15 @@ class TestResult:
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
             rayci_step_id=result.get("rayci_step_id", ""),
+            duration_ms=result.get("duration_ms"),
         )
+
+    @classmethod
+    def _to_float_or_none(cls, s: str) -> Optional[float]:
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
 
     def is_failing(self) -> bool:
         return not self.is_passing()

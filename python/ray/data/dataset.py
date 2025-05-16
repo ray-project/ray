@@ -108,7 +108,8 @@ from ray.data.block import (
     _apply_batch_format,
 )
 from ray.data.context import DataContext
-from ray.data.datasource import Connection, Datasink, FilenameProvider
+from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -603,7 +604,8 @@ class Dataset:
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
@@ -3315,6 +3317,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -3392,6 +3395,10 @@ class Dataset:
                     /arrow.apache.org/docs/python/generated/\
                         pyarrow.parquet.ParquetWriter.html>`_, which is used to write
                 out each block to a file. See `arrow_parquet_args_fn` for more detail.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -3417,6 +3424,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -3439,6 +3447,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
         **pandas_json_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
@@ -3519,6 +3528,10 @@ class Dataset:
                 which is used under the hood to write out each
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """
         if pandas_json_args_fn is None:
             pandas_json_args_fn = lambda: {}  # noqa: E731
@@ -3537,6 +3550,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -3581,7 +3595,7 @@ class Dataset:
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
             snapshot_properties: custom properties write to snapshot when committing
-            to an iceberg table.
+                to an iceberg table.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3613,6 +3627,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to images.
 
@@ -3654,6 +3669,10 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """  # noqa: E501
         datasink = ImageDatasink(
             path,
@@ -3664,6 +3683,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -3686,6 +3706,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
         **arrow_csv_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to CSV files.
@@ -3764,6 +3785,10 @@ class Dataset:
                 arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """
         if arrow_csv_args_fn is None:
             arrow_csv_args_fn = lambda: {}  # noqa: E731
@@ -3782,6 +3807,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -3804,6 +3830,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
@@ -3871,6 +3898,10 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """
         effective_min_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
@@ -3907,6 +3938,7 @@ class Dataset:
         encoder: Optional[Union[bool, str, callable, list]] = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ) -> None:
         """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
@@ -3963,6 +3995,10 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """
         effective_min_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
@@ -3999,6 +4035,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
 
@@ -4058,6 +4095,10 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
         """
         effective_min_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
@@ -4527,6 +4568,12 @@ class Dataset:
 
         try:
             datasink.on_write_start()
+            if isinstance(datasink, _FileDatasink):
+                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                    logger.info(
+                        f"Ignoring write because {datasink.path} already exists"
+                    )
+                    return
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
             # TODO: Get and handle the blocks with an iterator instead of getting
@@ -4643,7 +4690,7 @@ class Dataset:
             An iterable over batches of data.
         """
         batch_format = _apply_batch_format(batch_format)
-        return self.iterator().iter_batches(
+        return self.iterator()._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -5460,7 +5507,7 @@ class Dataset:
         Args:
             column: The name of the column to convert to numpy. If ``None``, all columns
                 are used. If multiple columns are specified, each returned
-            future represents a dict of ndarrays. Defaults to None.
+                future represents a dict of ndarrays. Defaults to None.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.

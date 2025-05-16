@@ -29,20 +29,19 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     std::shared_ptr<gcs::GcsClient> &gcs_client,
     pubsub::SubscriberInterface *object_location_subscriber,
     rpc::CoreWorkerClientPool *owner_client_pool,
-    int64_t max_object_report_batch_size,
     std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed)
     : io_service_(io_service),
       gcs_client_(gcs_client),
-      client_call_manager_(io_service),
+      client_call_manager_(io_service, /*record_stats=*/true),
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
-      kMaxObjectReportBatchSize(max_object_report_batch_size),
-      mark_as_failed_(mark_as_failed) {}
+      kMaxObjectReportBatchSize(RayConfig::instance().max_object_report_batch_size()),
+      mark_as_failed_(std::move(mark_as_failed)) {}
 
 namespace {
 
 /// Filter out the removed nodes from the object locations.
-void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
+void FilterRemovedNodes(const std::shared_ptr<gcs::GcsClient> &gcs_client,
                         std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
@@ -55,7 +54,7 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 
 /// Update object location data based on response from the owning core worker.
 bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
-                           std::shared_ptr<gcs::GcsClient> gcs_client,
+                           const std::shared_ptr<gcs::GcsClient> &gcs_client,
                            std::unordered_set<NodeID> *node_ids,
                            std::string *spilled_url,
                            NodeID *spilled_node_id,
@@ -249,29 +248,16 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   owner_client->UpdateObjectLocationBatch(
       request,
       [this, worker_id, node_id, owner_address](
-          Status status, const rpc::UpdateObjectLocationBatchReply &reply) {
-        auto in_flight_request_it = in_flight_requests_.find(worker_id);
-        RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
-        in_flight_requests_.erase(in_flight_request_it);
-
-        // TODO(sang): Handle network failures.
+          const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
+        RAY_CHECK(in_flight_requests_.erase(worker_id) > 0);
         if (!status.ok()) {
-          // Currently we consider the owner is dead if the network is failed.
-          // Clean up the metadata. No need to mark objects as failed because
-          // that's only needed for the object pulling path (and this RPC is not on
-          // pulling path).
-          RAY_LOG(DEBUG).WithField(worker_id).WithField(node_id)
-              << "Owner failed to update locations for node. The owner is most likely "
-                 "dead. Status: "
-              << status.ToString();
-          auto it = location_buffers_.find(worker_id);
-          if (it != location_buffers_.end()) {
-            location_buffers_.erase(it);
-          }
+          RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+              << "Failed to get object location update. This should only happen if the "
+                 "worker / node is dead.";
+          location_buffers_.erase(worker_id);
           owner_client_pool_->Disconnect(worker_id);
           return;
         }
-
         SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
       });
 }
@@ -303,8 +289,8 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
                                                 &it->second.pending_creation,
                                                 &it->second.object_size);
 
-  // If the lookup has failed, that means the object is lost. Trigger the callback in this
-  // case to handle failure properly.
+  // If the lookup has failed, that means the object is lost. Trigger the callback in
+  // this case to handle failure properly.
   if (location_updated || location_lookup_failed) {
     RAY_LOG(DEBUG).WithField(object_id)
         << "Pushing location updates to subscribers for object: "
@@ -462,7 +448,7 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
 void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   auto node_info = gcs_client_->Nodes().Get(connection_info.node_id);
-  if (node_info) {
+  if (node_info != nullptr) {
     NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
     RAY_CHECK(result_node_id == connection_info.node_id);
     connection_info.ip = node_info->node_manager_address();
@@ -486,7 +472,7 @@ OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
 
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &[object_id, listener] : listeners_) {
-    bool updated = listener.current_object_locations.erase(node_id);
+    bool updated = listener.current_object_locations.erase(node_id) > 0;
     if (listener.spilled_node_id == node_id) {
       listener.spilled_node_id = NodeID::Nil();
       listener.spilled_url = "";

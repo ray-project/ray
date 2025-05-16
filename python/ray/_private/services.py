@@ -329,7 +329,7 @@ def _find_address_from_flag(flag: str):
     # Indeed, we had to pull --redis-address to the front of each call to make
     # this readable.
     # As you can see, this is very long and complex, which is why we can't
-    # simply extract all the the arguments using regular expressions and
+    # simply extract all the arguments using regular expressions and
     # present a dict as if we never lost track of these arguments, for
     # example. Picking out --redis-address below looks like it might grab the
     # wrong thing, but double-checking that we're finding the correct process
@@ -785,7 +785,9 @@ def create_redis_client(redis_address, password=None, username=None):
     """Create a Redis client.
 
     Args:
-        The IP address, port, username, and password of the Redis server.
+        redis_address: The IP address and port of the Redis server.
+        password: The password for Redis authentication.
+        username: The username for Redis authentication.
 
     Returns:
         A Redis client.

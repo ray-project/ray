@@ -6,10 +6,11 @@ import pickle
 import socket
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
 
 import starlette
 import uvicorn
+from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from packaging import version
 from starlette.datastructures import MutableHeaders
@@ -466,8 +467,11 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app: ASGIApp):
-        self._asgi_app = app
+    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+        if inspect.isfunction(app_or_func):
+            self._asgi_app = app_or_func()
+        else:
+            self._asgi_app = app_or_func
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -479,6 +483,11 @@ class ASGIAppReplicaWrapper:
     @property
     def app(self) -> ASGIApp:
         return self._asgi_app
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        if isinstance(self._asgi_app, FastAPI):
+            return self._asgi_app.docs_url
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
