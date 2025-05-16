@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.physical_operator import _ActorInfo
+from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
@@ -423,7 +423,7 @@ class ActorPoolMapOperator(MapOperator):
             else:
                 self._actor_pool.update_running_actor_state(actor, False)
 
-    def get_actor_info(self) -> _ActorInfo:
+    def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
 
@@ -893,9 +893,9 @@ class _ActorPool(AutoscalingActorPool):
 
         return ref
 
-    def get_actor_info(self) -> _ActorInfo:
+    def get_actor_info(self) -> _ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
-        return _ActorInfo(
+        return _ActorPoolInfo(
             running=self.num_alive_actors(),
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),

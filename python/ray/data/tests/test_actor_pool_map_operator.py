@@ -15,7 +15,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.physical_operator import _ActorInfo
+from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
@@ -182,7 +182,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 1
-        assert pool.get_actor_info() == _ActorInfo(running=0, pending=0, restarting=1)
+        assert pool.get_actor_info() == _ActorPoolInfo(running=0, pending=0, restarting=1)
 
         # Mark the actor as alive and test pick_actor succeeds
         pool.update_running_actor_state(actor, False)
@@ -196,7 +196,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
-        assert pool.get_actor_info() == _ActorInfo(running=1, pending=0, restarting=0)
+        assert pool.get_actor_info() == _ActorPoolInfo(running=1, pending=0, restarting=0)
 
         # Return the actor
         pool.return_actor(picked_actor)
@@ -208,7 +208,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 1
-        assert pool.get_actor_info() == _ActorInfo(running=1, pending=0, restarting=0)
+        assert pool.get_actor_info() == _ActorPoolInfo(running=1, pending=0, restarting=0)
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.

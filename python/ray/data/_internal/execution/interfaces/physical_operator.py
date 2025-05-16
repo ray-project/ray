@@ -171,7 +171,7 @@ class MetadataOpTask(OpTask):
 
 
 @dataclass
-class _ActorInfo:
+class _ActorPoolInfo:
     """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
 
     running: int
@@ -633,9 +633,9 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def get_actor_info(self) -> _ActorInfo:
+    def get_actor_info(self) -> _ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return _ActorInfo(running=0, pending=0, restarting=0)
+        return _ActorPoolInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

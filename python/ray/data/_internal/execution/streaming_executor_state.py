@@ -23,7 +23,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    _ActorInfo,
+    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -708,7 +708,7 @@ def _rank_operators(
     return [_ranker(op) for op in ops]
 
 
-def _actor_info_summary_str(info: _ActorInfo) -> str:
+def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
     total = info.running + info.pending + info.restarting
     base = f"Actors: {total}"
 
