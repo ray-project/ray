@@ -68,12 +68,14 @@ def get_log_directory() -> str:
     return os.path.join(session_dir, "logs", "train")
 
 
-def get_dummy_run_context():
+@pytest.fixture
+def dummy_run_context():
     """Create dummy train run context objects for testing."""
     return TrainRunContext(run_config=RunConfig(name="test"))
 
 
-def get_dummy_train_context():
+@pytest.fixture
+def dummy_train_context():
     """Mock a dummy train context objects for testing."""
     train_context = MagicMock(spec=TrainContext)
     train_context.get_run_config.return_value = RunConfig(name="test")
@@ -90,12 +92,11 @@ def get_file_contents(file_name: str) -> str:
     return log_contents
 
 
-@pytest.mark.parametrize("context", [get_dummy_run_context()])
-def test_controller_sys_logged_to_file(controller_logging, context):
+def test_controller_sys_logged_to_file(controller_logging, dummy_run_context):
     """
     Test that system messages are logged to the correct file on Controller process.
     """
-    configure_controller_logger(context)
+    configure_controller_logger(dummy_run_context)
     worker_id = get_runtime_context().get_worker_id()
     train_logger = logging.getLogger("ray.train.spam")
     train_logger.info("ham")
@@ -104,8 +105,7 @@ def test_controller_sys_logged_to_file(controller_logging, context):
     assert "ham" in log_contents
 
 
-@pytest.mark.parametrize("context", [get_dummy_run_context()])
-def test_controller_sys_not_logged_to_file(controller_logging, context):
+def test_controller_sys_not_logged_to_file(controller_logging):
     """
     Test that system messages are not logged on Controller process when logging not configured.
     """
@@ -117,12 +117,11 @@ def test_controller_sys_not_logged_to_file(controller_logging, context):
         get_file_contents(f"ray-train-sys-controller-{worker_id}.log")
 
 
-@pytest.mark.parametrize("context", [get_dummy_train_context()])
-def test_worker_sys_logged_to_file(worker_logging, context):
+def test_worker_sys_logged_to_file(worker_logging, dummy_train_context):
     """
     Test that system messages are logged to the correct file on Worker process.
     """
-    configure_worker_logger(context)
+    configure_worker_logger(dummy_train_context)
     worker_id = get_runtime_context().get_worker_id()
     train_logger = logging.getLogger("ray.train.spam")
     train_logger.info("ham")
@@ -131,8 +130,7 @@ def test_worker_sys_logged_to_file(worker_logging, context):
     assert "ham" in log_contents
 
 
-@pytest.mark.parametrize("context", [get_dummy_train_context()])
-def test_worker_sys_not_logged_to_file(worker_logging, context):
+def test_worker_sys_not_logged_to_file(worker_logging):
     """
     Test that system messages are not logged on Worker process when logging not configured.
     """
@@ -144,13 +142,12 @@ def test_worker_sys_not_logged_to_file(worker_logging, context):
         get_file_contents(f"ray-train-sys-worker-{worker_id}.log")
 
 
-@pytest.mark.parametrize("context", [get_dummy_train_context()])
-def test_worker_app_logged_to_file(worker_logging, context):
+def test_worker_app_logged_to_file(worker_logging, dummy_train_context):
     """
     Test that worker messages are logged to the correct file.
     Only root logger on worker processes is configured with the train context.
     """
-    configure_worker_logger(context)
+    configure_worker_logger(dummy_train_context)
     worker_id = get_runtime_context().get_worker_id()
     root_logger = logging.getLogger()
     # print(root_logger.handlers)
@@ -160,10 +157,9 @@ def test_worker_app_logged_to_file(worker_logging, context):
     assert "ham" in log_contents
 
 
-@pytest.mark.parametrize("context", [get_dummy_train_context()])
-def test_worker_app_print_redirect(worker_logging, context):
+def test_worker_app_print_redirect(worker_logging, dummy_train_context):
     """Test the print statement can be captured on the worker processes."""
-    configure_worker_logger(context)
+    configure_worker_logger(dummy_train_context)
     patch_print_function()
     worker_id = get_runtime_context().get_worker_id()
     print("ham")
