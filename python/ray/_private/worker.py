@@ -1285,9 +1285,9 @@ def _maybe_modify_runtime_env(
     runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
 ) -> Dict[str, Any]:
     """
-    If RAY_ENABLE_UV_RUN_RUNTIME_ENV is set (which is the default) and the driver was run with `uv run`,
+    If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
     this function sets up a runtime environment that replicates the driver's environment to the
-    workers. Otherwise, the runtime environment is modified by the user's runtime environment hook.
+    workers. Otherwise, if a runtime environment hook is present it will modify the runtime environment.
     """
 
     if ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
