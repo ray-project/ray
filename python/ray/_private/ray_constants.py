@@ -566,7 +566,7 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
 
-# If set, use the `uv run` runtime environment in case the driver is run with `uv run`.
+# If set, updates the runtime environment to use `uv run` if the driver was run with `uv run`.
 # This runtime environment propagates the arguments of `uv run` to all the worker
 # processes via the py_executable plugin and also set the working_dir so the
 # pyproject.toml is found. If RAY_ENABLE_UV_RUN_RUNTIME_ENV is enabled AND the driver
