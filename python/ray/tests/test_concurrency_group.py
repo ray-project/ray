@@ -319,6 +319,5 @@ actor = A.remote()
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

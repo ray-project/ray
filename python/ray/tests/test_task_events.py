@@ -1,7 +1,6 @@
 from collections import defaultdict
 from typing import Dict
 
-import os
 import pytest
 import sys
 import threading

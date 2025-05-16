@@ -135,6 +135,5 @@ def test_segfault_report_streaming_generator_output(
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

@@ -158,6 +158,5 @@ def test_two_subscribers(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

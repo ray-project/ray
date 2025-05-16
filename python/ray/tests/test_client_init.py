@@ -196,7 +196,6 @@ def test_max_clients(init_and_serve):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

@@ -84,7 +84,6 @@ async def test_list_named_actors_with_normal_task(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
     # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-sv", __file__]))

@@ -103,7 +103,6 @@ def test_cache(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

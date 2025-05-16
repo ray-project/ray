@@ -641,6 +641,5 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

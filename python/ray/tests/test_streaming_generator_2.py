@@ -537,6 +537,5 @@ def test_reconstruction_generator_out_of_scope(
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

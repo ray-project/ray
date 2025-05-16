@@ -750,7 +750,6 @@ def test_scheduling_class_depth(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

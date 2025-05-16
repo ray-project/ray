@@ -49,6 +49,5 @@ def test_shuffle_multi_node_no_streaming(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

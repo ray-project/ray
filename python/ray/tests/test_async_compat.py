@@ -66,6 +66,5 @@ def test_sync_to_async_is_cached() -> None:
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

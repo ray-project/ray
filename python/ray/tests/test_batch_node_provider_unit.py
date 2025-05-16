@@ -3,7 +3,6 @@ Validates BatchingNodeProvider's book-keeping logic.
 """
 from copy import copy
 from uuid import uuid4
-import os
 import random
 import sys
 from typing import Any, Dict

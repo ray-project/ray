@@ -25,7 +25,6 @@ def test_pathname():
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

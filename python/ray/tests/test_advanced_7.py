@@ -263,7 +263,6 @@ def test_task_output_inline_bytes_limit(ray_start_cluster_enabled):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

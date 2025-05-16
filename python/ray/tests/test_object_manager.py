@@ -729,6 +729,5 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
 if __name__ == "__main__":
     import sys
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

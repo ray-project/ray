@@ -5,7 +5,6 @@ import numpy as np
 import time
 import logging
 import sys
-import os
 
 from ray._private.test_utils import client_test_enabled
 

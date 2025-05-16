@@ -405,7 +405,6 @@ def test_serialization_error_message(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

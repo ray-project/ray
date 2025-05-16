@@ -1,6 +1,5 @@
 # coding: utf-8
 import logging
-import os
 import sys
 import torch
 from typing import List, Dict, Tuple

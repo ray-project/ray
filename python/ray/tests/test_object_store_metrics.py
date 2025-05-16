@@ -387,6 +387,5 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
 
 if __name__ == "__main__":
     import sys
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

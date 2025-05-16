@@ -790,7 +790,6 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

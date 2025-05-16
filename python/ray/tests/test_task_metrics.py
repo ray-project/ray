@@ -1,6 +1,5 @@
 from collections import defaultdict
 import sys
-import os
 import copy
 import multiprocessing
 

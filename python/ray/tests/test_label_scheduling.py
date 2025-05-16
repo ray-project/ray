@@ -95,7 +95,6 @@ def test_label_selector_multiple(cluster_with_labeled_nodes):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

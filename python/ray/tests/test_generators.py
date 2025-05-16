@@ -803,6 +803,5 @@ def test_ray_client(call_ray_start_shared, store_in_plasma):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

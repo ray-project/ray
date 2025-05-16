@@ -44,6 +44,5 @@ print("Num Alive Nodes: ", sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

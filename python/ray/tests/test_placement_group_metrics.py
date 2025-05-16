@@ -62,6 +62,5 @@ def test_basic_states(shutdown_only):
 
 if __name__ == "__main__":
     import sys
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

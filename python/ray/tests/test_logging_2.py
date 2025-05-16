@@ -1,7 +1,6 @@
 import logging.config
 import pytest
 import ray
-import os
 import logging
 import sys
 import json

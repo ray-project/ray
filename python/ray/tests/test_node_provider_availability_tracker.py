@@ -1,6 +1,5 @@
 import datetime
 import dataclasses
-import os
 import sys
 import pytest
 

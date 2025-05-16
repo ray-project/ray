@@ -123,7 +123,6 @@ def test_actor_creation_node_failure(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

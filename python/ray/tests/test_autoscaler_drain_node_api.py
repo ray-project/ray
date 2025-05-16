@@ -114,7 +114,6 @@ def test_drain_api(autoscaler_v2, shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

@@ -318,6 +318,5 @@ def test_get_all_actors_info(shutdown_only):
 
 if __name__ == "__main__":
     import sys
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

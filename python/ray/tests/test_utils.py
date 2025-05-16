@@ -5,7 +5,6 @@ Unit/Integration Testing for python/_private/utils.py
 This currently expects to work for minimal installs.
 """
 import logging
-import os
 import pytest
 import sys
 from unittest.mock import patch, mock_open

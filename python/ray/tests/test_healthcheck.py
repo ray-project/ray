@@ -68,6 +68,5 @@ def test_healthcheck_ray_client_server():
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

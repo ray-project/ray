@@ -220,7 +220,6 @@ def test_autoscaler_not_kill_blocking_node(setup_cluster):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

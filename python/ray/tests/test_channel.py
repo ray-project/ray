@@ -1,7 +1,6 @@
 # coding: utf-8
 import pickle
 import logging
-import os
 import sys
 import time
 import traceback

@@ -395,6 +395,5 @@ def test_evict_secondary_copies_before_spill(ray_start_cluster, object_spilling_
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

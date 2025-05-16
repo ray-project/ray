@@ -53,7 +53,6 @@ def test_list_named_actors_basic_local_mode(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
 
     # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-sv", __file__]))

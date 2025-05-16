@@ -368,7 +368,6 @@ def test_infeasible_task_early_cancellation_actor_creation(
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

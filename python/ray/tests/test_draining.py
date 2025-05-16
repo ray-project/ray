@@ -435,6 +435,5 @@ def test_draining_reason(ray_start_cluster, graceful):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

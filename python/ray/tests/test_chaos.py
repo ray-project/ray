@@ -317,7 +317,6 @@ def test_node_killer_filter(autoscaler_v2):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

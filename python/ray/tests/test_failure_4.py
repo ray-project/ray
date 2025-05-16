@@ -803,6 +803,5 @@ def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

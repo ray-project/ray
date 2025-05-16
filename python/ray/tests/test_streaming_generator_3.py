@@ -299,6 +299,5 @@ def test_completed_next_ready_is_finished(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

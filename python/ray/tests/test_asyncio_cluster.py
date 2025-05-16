@@ -31,7 +31,6 @@ async def test_asyncio_cluster_wait():
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

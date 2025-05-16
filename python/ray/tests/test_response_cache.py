@@ -218,7 +218,6 @@ def test_response_cache_invalidate():
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

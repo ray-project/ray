@@ -141,7 +141,6 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

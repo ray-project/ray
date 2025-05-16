@@ -48,6 +48,5 @@ print(ray._private.worker._global_node.session_name)
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

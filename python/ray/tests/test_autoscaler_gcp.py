@@ -63,7 +63,6 @@ def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

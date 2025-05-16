@@ -268,6 +268,5 @@ def test_get_local_locations_generator_multi_nodes(ray_start_cluster):
 
 if __name__ == "__main__":
     import sys
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

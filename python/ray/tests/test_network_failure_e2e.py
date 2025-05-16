@@ -315,6 +315,5 @@ wait_for_condition(lambda: ray.get(counter.get.remote()) == 1)
 
 
 if __name__ == "__main__":
-    import os
 
     sys.exit(pytest.main(["-sv", __file__]))

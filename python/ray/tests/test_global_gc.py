@@ -216,7 +216,6 @@ def test_global_gc_actors(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

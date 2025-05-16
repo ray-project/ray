@@ -116,7 +116,6 @@ def test_dying_worker(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import os
     import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))
