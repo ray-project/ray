@@ -1325,10 +1325,8 @@ class CompiledDAG:
                 type_hint.set_communicator_id(communicator_id)
 
         # Second, get registered accelerator context if any.
-        accelerator_module_name = AcceleratorContext.get().get_registed_module_name()
-        accelerator_communicator_cls = (
-            AcceleratorContext.get().get_registed_communicator_cls()
-        )
+        accelerator_module_name = AcceleratorContext.get().module_name
+        accelerator_communicator_cls = AcceleratorContext.get().communicator_cls
 
         # Then, create communicators for collective operations.
         # Reuse an already created communicator for the same set of actors.

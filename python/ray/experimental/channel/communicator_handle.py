@@ -4,7 +4,8 @@ import ray
 
 class CommunicatorHandle:
     """
-    A lightweight communicator handle used to store actors in the communicator.
+    A lightweight communicator handle used by the driver to store handles to
+    the actors in the communicator.
     """
 
     def __init__(

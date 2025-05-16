@@ -11,35 +11,33 @@ if TYPE_CHECKING:
 # The accelerator context singleton on this process.
 _accelerator_context_lock = threading.Lock()
 _default_accelerator_context: Optional["AcceleratorContext"] = None
+_global_custom_context: Optional["AcceleratorContext"] = None
 
 
 class AcceleratorContext:
     """
     Provides a unified interface for managing different accelerator backends
-    This eincludes stram management, event creation, device context control,
+    This includes stram management, event creation, device context control,
     and communicator support for distributed communication.
     """
 
-    def __init__(self, torch_module_name: str, commumcator_cls: Type[Communicator]):
+    def __init__(self, torch_module_name: str, communicator_cls: Type[Communicator]):
         """
         Initializes an accelerator context with the specified torch device module
         and communicator class.
 
         Args:
             torch_module_name: Name of the torch device module (e.g., "cuda", "cpu").
-            commumcator_cls: Class used to handle communication.
+            communicator_cls: Class used to handle communication.
         """
 
         # The name of the torch module (e.g., 'cuda', 'npu')
         self._torch_module_name: str = torch_module_name
         # The Communicator class used to manage communication
-        self._communicator_cls: Type[Communicator] = commumcator_cls
+        self._communicator_cls: Type[Communicator] = communicator_cls
 
         # Save the torch module corresponding to the device module name.
         self._torch_mod = importlib.import_module(f"torch.{torch_module_name}")
-
-        # Whether the accelerator is registered.
-        self._is_registered: bool = False
 
     @staticmethod
     def get() -> "AcceleratorContext":
@@ -56,9 +54,12 @@ class AcceleratorContext:
             runtime context.
         """
 
-        global _default_accelerator_context
+        global _default_accelerator_context, _global_custom_context
 
         with _accelerator_context_lock:
+            if _global_custom_context is not None:
+                return _global_custom_context
+
             if _default_accelerator_context is None:
                 if len(ray.get_gpu_ids()) > 0:
                     from ray.experimental.channel.nccl_group import _NcclGroup
@@ -68,9 +69,8 @@ class AcceleratorContext:
                     )
                 else:
                     from ray.experimental.channel.cpu_communicator import (
-                        CPUCommunicator,
+                        CPUCommunicator
                     )
-
                     _default_accelerator_context = AcceleratorContext(
                         "cpu", CPUCommunicator
                     )
@@ -80,16 +80,15 @@ class AcceleratorContext:
     @staticmethod
     def set(accelerator_context: "AcceleratorContext") -> None:
         """
-        Sets the accelerator context to the default context.
+        Overwrites the default accelerator context.
 
         Args:
             accelerator_context: The context to register.
         """
-        global _default_accelerator_context
+        global _global_custom_context
 
         # Accelerator context is registered.
-        accelerator_context._is_registered = True
-        _default_accelerator_context = accelerator_context
+        _global_custom_context = accelerator_context
 
     def get_default_device(self) -> "torch.device":
         """
@@ -147,30 +146,24 @@ class AcceleratorContext:
         Creates a communication group for collective operations.
         """
         return self._communicator_cls(*args, **kwargs)
-
-    def get_module_name(self) -> str:
+    
+    @property
+    def module_name(self) -> str:
         """
         Gets the name of the torch module backing the accelerator.
         """
         return self._torch_module_name
 
-    def get_registed_module_name(self) -> Optional[str]:
+    @property
+    def communicator_cls(self) -> Optional[Type[Communicator]]:
         """
-        Returns the name of the module if registered. Otherwise, returns None.
+        Returns the communicator class.
         """
-        if self._is_registered:
-            return self._torch_module_name
-        return None
+        return self._communicator_cls
 
-    def get_registed_communicator_cls(self) -> Optional[Type[Communicator]]:
-        """
-        Returns the communicator class if registered. Otherwise, returns None.
-        """
-        if self._is_registered:
-            return self._communicator_cls
-        return None
 
-    def get_accelerator_count(self) -> int:
+    @property
+    def accelerator_count(self) -> int:
         """
         Returns the number of accelerators assigned by ray.
         """
@@ -191,5 +184,5 @@ def register_accelerator_context(
         torch_module_name: The name of the device module under torch.
         communicator: The communicator class associated with the device.
     """
-    accleerator_context = AcceleratorContext(torch_module_name, communicator_cls)
-    AcceleratorContext.set(accleerator_context)
+    accelerator_context = AcceleratorContext(torch_module_name, communicator_cls)
+    AcceleratorContext.set(accelerator_context)

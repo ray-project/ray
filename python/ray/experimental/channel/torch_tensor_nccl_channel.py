@@ -15,6 +15,7 @@ from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.util.annotations import DeveloperAPI
 from ray.experimental.channel.accelerator_context import (
     AcceleratorContext,
@@ -654,7 +655,7 @@ def _do_init_communicator(
 ):
     if not custom_communicator:
         assert (
-            AcceleratorContext.get().get_accelerator_count() > 0
+            AcceleratorContext.get().accelerator_count > 0
         ), "Actors participating in Communication group must have at least one Accelerator assigned"
 
     ctx = ChannelContext.get_current()
@@ -684,7 +685,7 @@ def _do_destroy_communicator(self, group_id):
 
 
 def _do_check_has_accelerators(self) -> str:
-    return AcceleratorContext.get().get_accelerator_count() > 0
+    return AcceleratorContext.get().accelerator_count > 0
 
 
 def do_register_accelerator_context(self, name: str, communicator: Type[Communicator]):
@@ -752,18 +753,20 @@ def _init_communicator(
         custom_communicator, CPUCommunicator
     )
 
-    # Register accelerator context for all actors
+    # Register accelerator context for all actors if accelerator is not default
     if accelerator_module_name and accelerator_communicator_cls:
-        ray.get(
-            [
-                actor.__ray_call__.remote(
-                    do_register_accelerator_context,
-                    accelerator_module_name,
-                    accelerator_communicator_cls,
-                )
-                for actor in actors
-            ]
-        )
+        if not issubclass(accelerator_communicator_cls, CPUCommunicator) and \
+            not issubclass(accelerator_communicator_cls, _NcclGroup):
+            ray.get(
+                [
+                    actor.__ray_call__.remote(
+                        do_register_accelerator_context,
+                        accelerator_module_name,
+                        accelerator_communicator_cls,
+                    )
+                    for actor in actors
+                ]
+            )
 
     has_accelerators = ray.get(
         [actor.__ray_call__.remote(_do_check_has_accelerators) for actor in actors]
