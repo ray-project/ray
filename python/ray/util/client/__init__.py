@@ -14,7 +14,6 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.utils import check_version_info
 
 
-# FOOBAR.
 logger = logging.getLogger(__name__)
 
 
