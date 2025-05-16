@@ -18,6 +18,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
@@ -484,11 +485,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
-                if index == 0:
+                # Add `id(self)` to the log_once key so that it will be logged once
+                # per execution.
+                if index == 0 and log_once(f"low_resource_warning_{id(self)}"):
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
                     logger.warning(
-                        f"Cluster resource are not engough to run any task from {op}."
+                        f"Cluster resources are not engough to run any task from {op}."
                         " The job may hang forever unless the cluster scales up."
                     )
 

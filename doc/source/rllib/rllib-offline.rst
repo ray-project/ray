@@ -1869,7 +1869,7 @@ You can configure experience input for an agent using the following options:
         # that exactly `train_batch_size_per_learner` experiences are sampled
         # per batch. The default is RLlib's `EpisodeReplayBuffer`.
         prelearner_buffer_class: Optional[Type],
-        # Optional keyword arguments for intializing the
+        # Optional keyword arguments for initializing the
         # `EpisodeReplayBuffer`. In most cases this is simply the `capacity`
         # for the default buffer used (`EpisodeReplayBuffer`), but it may
         # differ if the `prelearner_buffer_class` uses a custom buffer.
