@@ -69,6 +69,7 @@ class Gauge(View):
                 "Metric names cannot start with numbers."
             )
         self._measure = measure_module.MeasureInt(name, description, unit)
+        self._description = description
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
             name, description, tags, self.measure, aggregation.LastValueAggregation()
@@ -85,6 +86,10 @@ class Gauge(View):
     @property
     def name(self):
         return self.measure.name
+
+    @property
+    def description(self):
+        return self._description
 
 
 Record = namedtuple("Record", ["gauge", "value", "tags"])
