@@ -415,6 +415,39 @@ def test_async_actor_task_id(shutdown_only):
     wait_for_condition(verify)
 
 
+def test_get_node_labels(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"worker1": 1},
+        num_cpus=1,
+        labels={
+            "accelerator-type": "A100",
+            "region": "us-west4",
+            "market-type": "spot",
+        },
+    )
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+        def get_node_labels(self):
+            return ray.get_runtime_context().get_node_labels()
+
+    expected_node_labels = {
+        "accelerator-type": "A100",
+        "region": "us-west4",
+        "market-type": "spot",
+    }
+
+    a = Actor.options(label_selector={"accelerator-type": "A100"}).remote()
+    node_labels = ray.get(a.get_node_labels.remote())
+    expected_node_labels["ray.io/node_id"] = ray.get(a.get_node_id.remote())
+    assert expected_node_labels == node_labels
+
+
 if __name__ == "__main__":
     import pytest
 
