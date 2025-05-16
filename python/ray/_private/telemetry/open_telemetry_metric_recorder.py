@@ -51,6 +51,10 @@ class OpenTelemetryMetricRecorder:
                     )
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
+        # Note: Gauge is a public interface to create a metric in Ray. Currently it is
+        # wrapper of OpenCensus view. For backward compatibility with OpenCensus, we
+        # are keeping the Gauge internal implementation as is. Once OpenCensus is
+        # removed, we can simplify Gauge to only use OpenTelemetry.
         gauge_name = gauge.name
         # Store observation in our internal structure
         self._observations_by_gauge_name[gauge_name][frozenset(tags.items())] = value
@@ -60,10 +64,9 @@ class OpenTelemetryMetricRecorder:
             # features in OpenTelemetry that allow you to provide a function that will
             # compute the telemetry at collection time.
             def callback(options):
-                # Take snapshot of current observations. Reset the observations of
-                # this gauge after collecting them.
+                # Take snapshot of current observations.
                 with self._lock:
-                    observations = self._observations_by_gauge_name.pop(
+                    observations = self._observations_by_gauge_name.get(
                         gauge_name, {}
                     ).items()
                 return [
