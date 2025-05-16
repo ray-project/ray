@@ -447,7 +447,7 @@ your programs:
 
 
   While the above pattern can be useful for supporting legacy applications, the Ray Team recommends
-  also use uv for tracking nested environments. You can do this by creating a separate
+  also using uv for tracking nested environments. You can use this approach by creating a separate
   `pyproject.toml` containing the dependencies of the nested environment.
 
 
