@@ -108,7 +108,7 @@ Hash-shuffling
 Hash-shuffling is a classical hash-partitioning based shuffling where:
 
 1. **Partition phase:** rows in every block are hash-partitioned based on values in the *key columns* into a specified number of partitions, following a simple residual formula of ``hash(key-values) % N`` (used in hash-tables and pretty much everywhere).
-2. **Push phase:** partition's shards from individual blocks are then pushed into corresponding aggregating actors (called ``HashShuffleAggregator``s) handling respective partitions.
+2. **Push phase:** partition's shards from individual blocks are then pushed into corresponding aggregating actors (called ``HashShuffleAggregator``) handling respective partitions.
 3. **Reduce phase:** aggregators combine received individual partition's shards back into blocks optionally applying additional transformations before producing the resulting blocks.
 
 Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, by

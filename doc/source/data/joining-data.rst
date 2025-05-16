@@ -6,7 +6,7 @@ Joining datasets
 
 .. note:: This is a new feature released in Ray 2.46. Note, this is an experimental feature and some things might not work as expected.
 
-Ray Data allows multiple :class:`~ray.data.dataset.Dataset`s to be joined using different join types (left/right/full outer, inner, etc) based
+Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types (left/right/full outer, inner, etc) based
 on the provided key columns like following:
 
 .. testcode::

@@ -29,13 +29,12 @@ and execute operations in a pipelined, streaming fashion.
  2. Processing of the whole dataset is distributed and parallelized at the block level (ie blocks are processed in parallel and for the most
  part independently)
 
-Block is the basic unit of data that every Ray Data dataset is partitioned into and stored the object store. Data processing is parallelized
+Block is the basic unit of data that every Ray Data dataset is partitioned into and stored in the object store. Data processing is parallelized at the block level.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
 (which is usually the entrypoint of the program, referred to as the :term:`driver`)
-and stores the blocks as objects in Ray's shared-memory
-:ref:`object store <objects-in-ray>`. Internally, Ray Data can natively handle blocks either
+and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`. Internally, Ray Data can natively handle blocks either
 as Pandas ``DataFrame``s or PyArrow ``Table``s.
 
 .. image:: images/dataset-arch-with-blocks.svg
