@@ -617,9 +617,7 @@ class LLMServer(_LLMServerBase):
         the engine is dead and needs to be restarted."""
         healthy = await self.engine.check_health()
         if not healthy:
-            raise RuntimeError(
-                "Engine is not healthy. Please restart the engine."
-            )
+            raise RuntimeError("Engine is not healthy. Please restart the engine.")
 
     async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
         """Runs an embeddings request to the vllm engine, and return the response.

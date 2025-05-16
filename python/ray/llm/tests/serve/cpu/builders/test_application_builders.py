@@ -200,6 +200,7 @@ class TestBuildVllmDeployment:
         handle = serve.run(app)
         assert handle.deployment_name.startswith(_name_prefix_for_test)
 
+
 def extract_applications_from_output(output: bytes) -> dict:
     """
     Extracts the 'applications' block from mixed output and returns it as a dict.
