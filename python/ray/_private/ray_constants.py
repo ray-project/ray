@@ -571,7 +571,7 @@ RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT"
 # processes via the py_executable plugin and also set the working_dir so the
 # pyproject.toml is found. If RAY_ENABLE_UV_RUN_RUNTIME_ENV is enabled AND the driver
 # is run with `uv run`, the regular RAY_RUNTIME_ENV_HOOK will be deactivated
-# since in most cases it will not work unless the user specifically makes the code
+# because in most cases it doesn't work unless the user specifically makes the code
 # for the runtime env hook available in their UV environment and makes sure their hook
 # is compatible with the UV runtime environment. If a user wants to combine a custom
 # RAY_RUNTIME_ENV_HOOK with `uv run`, they should flag off RAY_ENABLE_UV_RUN_RUNTIME_ENV
