@@ -73,9 +73,6 @@ class DefaultAutoscaler(Autoscaler):
         # Do not scale up, if the op has enough free slots for the existing inputs.
         if op_state.total_enqueued_input_bundles() <= actor_pool.num_free_task_slots():
             return False
-        # Do not scale up, if the op has no resource budget.
-        if not self._has_resource_budget(op, actor_pool):
-            return False
         # Determine whether to scale up based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
         return util > self._actor_pool_scaling_up_threshold
@@ -98,19 +95,6 @@ class DefaultAutoscaler(Autoscaler):
         # Determine whether to scale down based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
         return util < self._actor_pool_scaling_down_threshold
-
-    def _has_resource_budget(
-        self, op: "PhysicalOperator", actor_pool: AutoscalingActorPool
-    ):
-        self._resource_manager.update_usages()
-        if self._resource_manager._op_resource_allocator is not None:
-            budget = self._resource_manager._op_resource_allocator.get_budget(op)
-            num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
-            num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
-            assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0
-            return budget.cpu >= num_cpus_per_actor and budget.gpu >= num_gpus_per_actor
-        else:
-            return True
 
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
