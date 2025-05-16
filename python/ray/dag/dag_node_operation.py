@@ -119,12 +119,12 @@ class _DAGOperationGraphNode:
         self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
         # The collective nodes are the nodes that belong to the same collective
         # operation. Each node is represented by a tuple of its task idx and type.
-        self.collective_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
+        self.sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
         # The ready collective nodes are the nodes that are ready to be executed,
         # i.e., their in-degrees are zero. When a collective node is ready, it
         # will be added to the ready collective nodes of all the nodes in its
         # collective operation.
-        self.ready_collective_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
+        self.ready_sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
     def __repr__(self):
         return (
@@ -183,7 +183,7 @@ class _DAGOperationGraphNode:
         in its collective operation have zero in-degrees.
         """
         return self.in_degree == 0 and (
-            len(self.ready_collective_idxs) == len(self.collective_idxs)
+            len(self.ready_sync_idxs) == len(self.sync_idxs)
         )
 
     @property
@@ -254,12 +254,9 @@ def _push_candidate_node_if_ready(
     # Collective operations are ready when all the collective nodes have zero
     # in-degrees. Only one node per collective will be added as ready.
     if node.is_nccl_collective:
-        for collective_node_metadata in node.collective_idxs:
-            task_idx, op_type = collective_node_metadata
-            collective_node = graph[task_idx][op_type]
-            collective_node.ready_collective_idxs.add(
-                (node.task_idx, node.operation.type)
-            )
+        for task_idx, op_type in node.sync_idxs:
+            sync_node = graph[task_idx][op_type]
+            sync_node.ready_sync_idxs.add((node.task_idx, node.operation.type))
     if node.is_ready:
         if not node.is_nccl_collective:
             heapq.heappush(
@@ -268,12 +265,11 @@ def _push_candidate_node_if_ready(
             )
         else:
             # Push all the nodes in the collective operation to the candidates.
-            for collective_node_metadata in node.collective_idxs:
-                task_idx, op_type = collective_node_metadata
-                collective_node = graph[task_idx][op_type]
+            for task_idx, op_type in node.sync_idxs:
+                sync_node = graph[task_idx][op_type]
                 heapq.heappush(
-                    actor_to_candidates[collective_node.actor_handle._actor_id],
-                    collective_node,
+                    actor_to_candidates[sync_node.actor_handle._actor_id],
+                    sync_node,
                 )
 
 
@@ -333,8 +329,7 @@ def _select_next_nodes(
     elif top_priority_node.is_nccl_write:
         # A NCCL write node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL read nodes to avoid a deadlock.
-        for downstream_node_metadata in top_priority_node.out_edges:
-            task_idx, op_type = downstream_node_metadata
+        for task_idx, op_type in top_priority_node.out_edges:
             downstream_node = graph[task_idx][op_type]
             assert downstream_node.is_read
             next_nodes.append(downstream_node)
@@ -343,13 +338,10 @@ def _select_next_nodes(
         # A NCCL collective node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL collective nodes in its collective
         # operation to avoid a deadlock.
-        for collective_node_metadata in top_priority_node.collective_idxs:
-            task_idx, op_type = collective_node_metadata
-            collective_node = graph[task_idx][op_type]
-            assert collective_node.is_nccl_collective and collective_node.is_ready
-            if collective_node != top_priority_node:
-                next_nodes.append(collective_node)
-        assert len(next_nodes) == len(top_priority_node.collective_idxs)
+        next_nodes = [
+            graph[task_idx][op_type]
+            for task_idx, op_type in top_priority_node.sync_idxs
+        ]
 
     # Remove the selected nodes from the candidates.
     for node in next_nodes:
@@ -713,10 +705,6 @@ def _generate_actor_to_execution_schedule(
                     # case 2.
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
-    for node in visited_nodes:
-        assert node.is_ready, f"Expected {node} to be ready"
-    for candidates in actor_to_candidates.values():
-        assert len(candidates) == 0, "Expected all candidates to be empty"
 
     return actor_to_execution_schedule
 

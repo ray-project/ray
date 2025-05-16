@@ -1945,7 +1945,7 @@ class CompiledDAG:
             _CollectiveOperation, Set[_DAGOperationGraphNode]
         ] = defaultdict(set)
         collective_op_to_idxs: Dict[
-            _CollectiveOperation, Tuple[int, _DAGNodeOperationType]
+            _CollectiveOperation, Set[Tuple[int, _DAGNodeOperationType]]
         ] = defaultdict(set)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
@@ -2001,7 +2001,7 @@ class CompiledDAG:
         for collective_op, nodes in collective_op_to_nodes.items():
             idxs = collective_op_to_idxs[collective_op]
             for node in nodes:
-                node.collective_idxs = idxs
+                node.sync_idxs = idxs
 
         return actor_to_operation_nodes
 
