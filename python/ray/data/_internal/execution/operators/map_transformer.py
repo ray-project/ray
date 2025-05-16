@@ -205,7 +205,8 @@ class MapTransformFn:
             return self._output_block_size_option.target_num_rows_per_block
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self._udf_context.op_fn}[{self._input_type} -> {self._output_type}])"
+        op_fn_name = self._udf_context.op_fn.__name__ if self._udf_context else None
+        return f"{self.__class__.__name__}({op_fn_name}[{self._input_type} -> {self._output_type}])"
 
     def __eq__(self, other):
         return (
@@ -305,7 +306,6 @@ class MapTransformer:
         """
         if not self._initialized:
             for transform_fn in self._transform_fns:
-                print("INITING TRANSFORM FN: ", transform_fn)
                 transform_fn.init()
             self._initialized = True
 
@@ -649,6 +649,7 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
         udf_context: MapTransformUDFContext,
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
+        map_transform_fn_type: MapTransformFnOpType,
     ):
         super().__init__(
             input_type,
@@ -690,7 +691,7 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
 
         validate_fn = (
             _validate_row_output
-            if self._udf_context.input_type == MapTransformFnDataType.Row
+            if self._input_type == MapTransformFnDataType.Row
             else _validate_batch_output
         )
         self._transform_fn = self._generate_transform_fn(fn, validate_fn)
@@ -726,7 +727,7 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
 
             async def process_all_items():
                 try:
-                    loop = self.udf_context.map_actor_context.udf_map_asyncio_loop
+                    loop = self._udf_context.map_actor_context.udf_map_asyncio_loop
                     tasks = [loop.create_task(process_item(x)) for x in input_iterable]
 
                     ctx = ray.data.DataContext.get_current()
@@ -740,7 +741,7 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
                     output_item_queue.put(sentinel)
 
             # Use the existing event loop to create and run Tasks to process each item
-            loop = self.udf_context.map_actor_context.udf_map_asyncio_loop
+            loop = self._udf_context.map_actor_context.udf_map_asyncio_loop
             asyncio.run_coroutine_threadsafe(process_all_items(), loop)
 
             # Yield results as they become available.
