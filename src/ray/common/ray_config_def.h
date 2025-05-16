@@ -540,8 +540,10 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
 RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
-/// Whether enable OpenTelemetry as the metrics collection backend.
-RAY_CONFIG(bool, enable_open_telemetry, true)
+/// Whether enable OpenTelemetry as the metrics collection backend on the driver
+/// component. This flag is only used during the migration of the  metric collection
+/// backend from OpenCensus to OpenTelemetry. It will be removed in the future.
+RAY_CONFIG(bool, enable_open_telemetry_on_driver, true)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
