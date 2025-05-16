@@ -210,7 +210,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
             node_id=req.query.get("node_id", None),
             node_ip=req.query.get("node_ip", None),
             media_type=req.match_info.get("media_type", "file"),
+            # The filename to match on the server side.
             filename=req.query.get("filename", None),
+            # The filename to download the log as on the client side.
             download_filename=req.query.get(
                 "download_filename", DEFAULT_DOWNLOAD_FILENAME
             ),
