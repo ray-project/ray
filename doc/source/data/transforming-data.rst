@@ -412,10 +412,10 @@ Each of the above methods also has a corresponding :ref:`AggregateFn <aggregatio
 
 .. _transforming_groupby:
 
-Groupby and transforming groups
-===============================
+Group-by and transforming groups
+================================
 
-To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows.
+To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values.
 This produces a :class:`~ray.data.grouped_data.GroupedData` object, which is an unmaterialized
 grouped view of the data.
 
