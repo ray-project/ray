@@ -193,6 +193,12 @@ def test_default_dashboard_utilizes_global_filters():
             assert "{global_filters}" in target.expr
 
 
+def test_default_dashboard_has_proper_graph_sizes():
+    for panel in DEFAULT_GRAFANA_PANELS:
+        assert panel.grid_pos.h > 0
+        assert panel.grid_pos.w > 0
+
+
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
