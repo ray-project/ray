@@ -128,6 +128,7 @@ Therefore, make sure to specify any sidecar containers
 in the `containers` list.
 
 #### resources
+
 It's important to specify container CPU and memory resources for each group spec. Since CPU is a
 [compressible resource], you may want to set only CPU requests and not limits to guarantee your
 workloads a minimum amount of CPU but [allow them to take advantage of unused CPU and not get
@@ -139,17 +140,18 @@ and you wish to specify a pod with access to 2 GPUs.
 See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
 KubeRay automatically configures Ray to use the CPU, memory, and GPU **limits** in the Ray container
-config. These values will be used as the logical resource capacities of Ray pods in the head or
-worker group. As of KubeRay 1.3.0, KubeRay will use the CPU request if the limit is absent.
+config. These values are the logical resource capacities of Ray pods in the head or
+worker group. As of KubeRay 1.3.0, KubeRay uses the CPU request if the limit is absent.
 KubeRay rounds up CPU quantities to the nearest integer. You can override these resource capacities
-with {ref}`rayStartParams`. KubeRay ignores memory and GPU **requests**. For this reason, it is best
-when possible to **set memory and GPU resource requests equal to their limits**.
+with {ref}`rayStartParams`. KubeRay ignores memory and GPU **requests**. So
+**set memory and GPU resource requests equal to their limits** when possible
 
 It's ideal to size each Ray pod to take up the
-entire Kubernetes node on which it is scheduled. In other words, it’s
+entire Kubernetes node. In other words, it's
 best to run one large Ray pod per Kubernetes node.
-In general, it is more efficient to use a few large Ray pods than many small ones.
+In general, it's more efficient to use a few large Ray pods than many small ones.
 The pattern of fewer large Ray pods has the following advantages:
+
 - more efficient use of each Ray pod's shared memory object store
 - reduced communication overhead between Ray pods
 - reduced redundancy of per-pod Ray control structures such as Raylets
