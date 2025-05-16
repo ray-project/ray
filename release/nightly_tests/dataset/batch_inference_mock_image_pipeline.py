@@ -1,23 +1,24 @@
 import argparse
+import copy
 import io
+import itertools
+import os
+import random
+import string
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
+import albumentations as A
 import boto3
 import numpy as np
 import pandas as pd
 import torch
 from benchmark import Benchmark
 from PIL import Image
-from torchvision.models import vit_b_16, ViT_B_16_Weights
-import albumentations as A
+from torchvision.models import ViT_B_16_Weights, vit_b_16
+
 import ray
 from ray.data import ActorPoolStrategy
-import copy
-import itertools
-from typing import List
-import string
-import random
 
 BUCKET = "anyscale-imagenet"
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -34,6 +35,9 @@ PATCH_SIZE = 256
 
 # Largest batch that can fit on a T4.
 BATCH_SIZE = 1200
+
+ray_backend_log_level = os.environ.get("RAY_BACKEND_LOG_LEVEL")
+assert ray_backend_log_level == "debug", ray_backend_log_level
 
 
 def parse_args() -> argparse.Namespace:
