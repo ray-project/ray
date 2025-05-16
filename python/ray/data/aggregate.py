@@ -139,7 +139,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
-        _safe_finalize = _null_safe_finalize(self._finalize)
+        _safe_finalize = _null_safe_finalize(self.finalize)
 
         _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
 
@@ -167,7 +167,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         partial aggregation results)"""
         ...
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AggType) -> Optional[U]:
         """Transforms partial aggregation into its final state (by default
         this is an identity transformation, ie no-op)"""
         return accumulator
@@ -330,7 +330,7 @@ class Mean(AggregateFnV2):
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AggType) -> Optional[U]:
         if accumulator[1] == 0:
             return np.nan
 
@@ -403,7 +403,7 @@ class Std(AggregateFnV2):
         M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
         return [M2, mean, count]
 
-    def _finalize(self, accumulator: List[float]) -> Optional[U]:
+    def finalize(self, accumulator: List[float]) -> Optional[U]:
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
         M2, mean, count = accumulator
@@ -504,7 +504,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def _finalize(self, accumulator: List[Any]) -> Optional[U]:
+    def finalize(self, accumulator: List[Any]) -> Optional[U]:
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
