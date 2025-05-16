@@ -143,6 +143,10 @@ def test_metrics_folder_with_dashboard_override(
                 assert global_filters in variable["definition"]
                 assert global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
+            # Check that panels have some width and height
+            for panel in contents["panels"]:
+                assert panel["gridPos"]["h"] > 0
+                assert panel["gridPos"]["w"] > 0
 
         # Serve Dashboard
         with open(f"{override_dashboard_dir}/serve_grafana_dashboard.json") as f:
@@ -191,12 +195,6 @@ def test_default_dashboard_utilizes_global_filters():
     for panel in DEFAULT_GRAFANA_PANELS:
         for target in panel.targets:
             assert "{global_filters}" in target.expr
-
-
-def test_default_dashboard_has_proper_graph_sizes():
-    for panel in DEFAULT_GRAFANA_PANELS:
-        assert panel.grid_pos.h > 0
-        assert panel.grid_pos.w > 0
 
 
 def test_serve_dashboard_utilizes_global_filters():
