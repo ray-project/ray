@@ -1,5 +1,5 @@
 # Non-learning, throughput-only benchmark used to tune and test the usage of
-# AggregationActors in IMPALA and APPO.
+# AggregatorActor in IMPALA and APPO.
 
 # With the current setup below, 27 EnvRunners (+ 2 eval EnvRunners), 0 Learners
 # 1 local A10 GPU Learner and 2 Aggregator actors, the achieved training throughput

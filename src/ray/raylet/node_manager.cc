@@ -157,9 +157,18 @@ NodeManager::NodeManager(
           config.enable_resource_isolation),
       client_call_manager_(io_service, /*record_stats=*/true),
       worker_rpc_pool_([this](const rpc::Address &addr) {
-        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
-          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
-        });
+        return std::make_shared<rpc::CoreWorkerClient>(
+            addr,
+            client_call_manager_,
+            rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                gcs_client_.get(),
+                &worker_rpc_pool_,
+                [this](const std::string &node_manager_address, int32_t port) {
+                  return std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_manager_address, port, client_call_manager_));
+                },
+                addr));
       }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
@@ -179,8 +188,6 @@ NodeManager::NodeManager(
           gcs_client_,
           core_worker_subscriber_.get(),
           /*owner_client_pool=*/&worker_rpc_pool_,
-          /*max_object_report_batch_size=*/
-          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
