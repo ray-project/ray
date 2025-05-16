@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--map-batches-sleep-ms",
         type=int,
-        default=100,
+        default=50,
         help=(
             "Sleep time in milliseconds for each map_batches call. This is useful to "
             "simulate complex computation."
