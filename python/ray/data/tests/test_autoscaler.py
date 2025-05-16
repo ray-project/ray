@@ -139,7 +139,7 @@ def test_actor_pool_scaling():
         )
 
         with patch(actor_pool, "can_scale_down", False):
-            assert_autoscaling_action(_AutoscalingAction.NO_OP, "debounced")
+            assert_autoscaling_action(_AutoscalingAction.NO_OP, "not allowed")
 
     # Should scale down since the pool is above the max size.
     with patch(actor_pool, "current_size", 16):

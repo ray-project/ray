@@ -109,7 +109,7 @@ class DefaultAutoscaler(Autoscaler):
             )
         elif util <= self._actor_pool_scaling_down_threshold:
             if not actor_pool.can_scale_down():
-                return _AutoscalingAction.NO_OP, "debounced"
+                return _AutoscalingAction.NO_OP, "not allowed"
             elif actor_pool.current_size() <= actor_pool.min_size():
                 return _AutoscalingAction.NO_OP, "reached min size"
 
