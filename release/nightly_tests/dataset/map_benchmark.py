@@ -43,12 +43,22 @@ def parse_args() -> argparse.Namespace:
             "simulate complex computation."
         ),
     )
+    parser.add_argument(
+        "--repeat-inputs",
+        type=int,
+        default=1,
+        help=(
+            "Number of times to repeat the input data. This is useful to make the "
+            "job run longer."
+        ),
+    )
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace) -> None:
     benchmark = Benchmark()
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
+    path = [path] * args.repeat_inputs
 
     def benchmark_fn():
         # Load the dataset.
