@@ -190,7 +190,10 @@ py_test_module_list(
         "test_enable_task_events.py",
         "test_kv_store.py",
         "test_long_poll.py",
-        "test_metrics.py",
+        "test_metrics_1.py",
+        "test_metrics_2.py",
+        "test_metrics_3.py",
+        "test_metrics_4.py",
         "test_regression.py",
     ],
     tags = [
