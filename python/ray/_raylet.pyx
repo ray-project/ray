@@ -2368,12 +2368,13 @@ cdef CRayStatus task_execution_handler(
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit
-                msg = f"Worker exits with an exit code {e.code}."
+                print("RETURNING FROM HERE!")
+                msg = f"The worker exited with exit code {e.code}."
                 if hasattr(e, "ray_terminate_msg"):
                     msg += (f" {e.ray_terminate_msg}")
                 return CRayStatus.IntentionalSystemExit(msg)
             else:
-                msg = f"Worker exits with an exit code {e.code}."
+                msg = f"The worker exited with exit code {e.code}."
                 # In K8s, SIGTERM likely means we hit memory limits, so print
                 # a more informative message there.
                 if "KUBERNETES_SERVICE_HOST" in os.environ:

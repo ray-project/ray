@@ -938,7 +938,7 @@ class Worker:
 
         def sigterm_handler(signum, frame):
             raise_sys_exit_with_custom_error_message(
-                "The process receives a SIGTERM.", exit_code=1
+                "The process received a SIGTERM", exit_code=1
             )
             # Note: shutdown() function is called from atexit handler.
 
