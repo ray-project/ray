@@ -3323,7 +3323,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         If pyarrow can't represent your data, this method errors.
@@ -3453,7 +3453,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         This method is only supported for datasets with records that are convertible to
@@ -3712,7 +3712,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to CSV files.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         This method is only supported for datasets with records that are convertible to
@@ -3846,7 +3846,7 @@ class Dataset:
             and will error if the dataset contains unsupported types.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         This method is only supported for datasets with records that are convertible to
@@ -4043,7 +4043,7 @@ class Dataset:
         NumPy arrays.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
 
@@ -4203,7 +4203,7 @@ class Dataset:
         This method is only supported for datasets convertible to pyarrow tables.
 
         The number of parallel writes is determined by the number of blocks in the
-        dataset. To control the number of number of blocks, call
+        dataset. To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         .. warning::
