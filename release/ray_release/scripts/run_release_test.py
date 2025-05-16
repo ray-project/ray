@@ -97,6 +97,12 @@ from ray_release.anyscale_util import LAST_LOGS_LENGTH
     type=int,
     help="Limit of log streaming in number of lines. Set to -1 to stream all logs.",
 )
+@click.option(
+    "--image",
+    default=None,
+    type=str,
+    help="Image to use for the test.",
+)
 def main(
     test_name: str,
     test_collection_file: Tuple[str],
@@ -109,6 +115,7 @@ def main(
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -167,6 +174,7 @@ def main(
             no_terminate=no_terminate,
             test_definition_root=test_definition_root,
             log_streaming_limit=log_streaming_limit,
+            image=image,
         )
         return_code = result.return_code
     except ReleaseTestError as e:
