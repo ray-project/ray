@@ -74,7 +74,7 @@ available_node_types:
                 - key: install-nvidia-driver
                   value: "True"
             scheduling:
-              - onHostMaintenance: TERMINATE
+              onHostMaintenance: TERMINATE
 
     ray_worker_gpu:
         # The minimum number of nodes of this type to launch.
@@ -110,8 +110,8 @@ available_node_types:
             # Run workers on preemtible instance by default.
             # Comment this out to use on-demand.
             scheduling:
-              - preemptible: true
-              - onHostMaintenance: TERMINATE
+              preemptible: true
+              onHostMaintenance: TERMINATE
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray_head_gpu
