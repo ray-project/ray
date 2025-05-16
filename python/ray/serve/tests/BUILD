@@ -191,7 +191,6 @@ py_test_module_list(
         "test_kv_store.py",
         "test_long_poll.py",
         "test_metrics.py",
-        "test_metrics_2.py",
         "test_regression.py",
     ],
     tags = [
