@@ -3,6 +3,7 @@
 [Cc]odec
 [Cc]omposable
 [Dd]eduplication
+[Dd]eduplicate(s)?
 [Dd]ict(s)?
 [Ee]xoshuffle
 [Gg]rafana
@@ -16,16 +17,14 @@
 Alibaba
 Alpaca
 Anyscale
-API[s]
+API(s)?
 ARM
 async
 autoscales
 breakpoint
 BTS
 CLI
-CPU[s]
-deduplicate[s]
-[Dd]eduplication
+CPU(s)
 [Aa]sync
 Raylet
 g[Rr][Pp][Cc]
@@ -39,7 +38,6 @@ deserializes
 PACK
 configs
 disable
-deduplicate(s)?
 DeepSpeed
 deserialization
 deserialize
@@ -50,7 +48,7 @@ FSDP
 GGUF
 GKE
 GPTQ
-GPU[s]
+GPU(s)?
 KTO
 Kueue
 LMs
@@ -69,5 +67,5 @@ SFT
 ShareGPT
 teardown
 uncaptured
-URI[s]
+URI(s)?
 [Vv]ision LMs
