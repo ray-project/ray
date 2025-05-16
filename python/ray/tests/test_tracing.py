@@ -224,7 +224,4 @@ def test_deserialization_works_without_opentelemetry(ray_start_regular):
 if __name__ == "__main__":
     import sys
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

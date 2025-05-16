@@ -243,7 +243,4 @@ if __name__ == "__main__":
     import os
 
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
