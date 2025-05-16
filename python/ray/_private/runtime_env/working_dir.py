@@ -37,6 +37,9 @@ def upload_working_dir_if_needed(
 
     If the working_dir is already a URI, this is a no-op.
     """
+    # we copy this object because modifications are going to be made to it
+    runtime_env = runtime_env.copy()
+
     working_dir = runtime_env.get("working_dir")
     if working_dir is None:
         return runtime_env
