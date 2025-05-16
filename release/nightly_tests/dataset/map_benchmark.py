@@ -1,5 +1,8 @@
 import argparse
 
+import functools
+import time
+import numpy
 import pyarrow as pa
 import pyarrow.compute as pc
 import pandas as pd
@@ -32,12 +35,40 @@ def parse_args() -> argparse.Namespace:
             "'map' and 'flat_map'.",
         ),
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10_000,
+        help="Batch size to use with 'map_batches'.",
+    )
+    parser.add_argument(
+        "--map-batches-sleep-ms",
+        type=int,
+        default=50,
+        help=(
+            "Sleep time in milliseconds for each map_batches call. This is useful to "
+            "simulate complex computation."
+        ),
+    )
+    parser.add_argument(
+        "--repeat-inputs",
+        type=int,
+        default=1,
+        help=(
+            "Number of times to repeat the input data. This is useful to make the "
+            "job run longer."
+        ),
+    )
     return parser.parse_args()
+
+
+MODEL_SIZE = 1024**3
 
 
 def main(args: argparse.Namespace) -> None:
     benchmark = Benchmark()
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
+    path = [path] * args.repeat_inputs
 
     def benchmark_fn():
         # Load the dataset.
@@ -48,17 +79,37 @@ def main(args: argparse.Namespace) -> None:
             ds = ds.map(increment_row)
         elif args.api == "map_batches":
             if not args.compute or args.compute == "tasks":
-                ds = ds.map_batches(increment_batch, batch_format=args.batch_format)
+                ds = ds.map_batches(
+                    functools.partial(
+                        increment_batch,
+                        map_batches_sleep_ms=args.map_batches_sleep_ms,
+                    ),
+                    batch_format=args.batch_format,
+                    batch_size=args.batch_size,
+                )
             else:
+                assert args.compute == "actors"
+
+                # Simulate the use case where a model is passed to the
+                # actors as an object ref.
+                dummy_model = numpy.zeros(MODEL_SIZE, dtype=numpy.int8)
+                model_ref = ray.put(dummy_model)
+
                 ds = ds.map_batches(
                     IncrementBatch,
+                    fn_constructor_args=[model_ref, args.map_batches_sleep_ms],
                     batch_format=args.batch_format,
+                    batch_size=args.batch_size,
                     concurrency=(1, 1024),
                 )
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)
 
-        # Iterate over the results.
+        def dummy_write(batch):
+            return {"num_rows": [len(batch["column00"])]}
+
+        ds = ds.map_batches(dummy_write)
+
         for _ in ds.iter_internal_ref_bundles():
             pass
 
@@ -79,7 +130,10 @@ def flat_increment_row(row):
     return [row]
 
 
-def increment_batch(batch):
+def increment_batch(batch, map_batches_sleep_ms=0):
+    if map_batches_sleep_ms > 0:
+        time.sleep(map_batches_sleep_ms / 1000.0)
+
     if isinstance(batch, (dict, pd.DataFrame)):
         # Avoid modifying the column in-place (i.e., +=) because NumPy arrays are
         # read-only. See https://github.com/ray-project/ray/issues/369.
@@ -95,8 +149,12 @@ def increment_batch(batch):
 
 
 class IncrementBatch:
+    def __init__(self, model_ref, map_batches_sleep_ms=0):
+        self.model = ray.get(model_ref)
+        self.map_batches_sleep_ms = map_batches_sleep_ms
+
     def __call__(self, batch):
-        return increment_batch(batch)
+        return increment_batch(batch, self.map_batches_sleep_ms)
 
 
 if __name__ == "__main__":
