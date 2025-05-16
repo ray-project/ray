@@ -715,6 +715,4 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
     if total == info.running:
         return base
     else:
-        return (
-            f"{base} ({info})"
-        )
+        return f"{base} ({info})"
