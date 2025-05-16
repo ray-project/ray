@@ -77,7 +77,7 @@ class DrainNodeOutcome(str, Enum):
     differently by the autoscaler.
     """
 
-    # Return a reponse indicating all nodes were succesfully drained.
+    # Return a reponse indicating all nodes were successfully drained.
     Succeeded = "Succeeded"
     # Return response indicating at least one node failed to be drained.
     NotAllDrained = "NotAllDrained"
@@ -3735,7 +3735,4 @@ def test_prom_null_metric_inc_fix():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
