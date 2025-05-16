@@ -325,7 +325,7 @@ class Sum(AggregateFnV2):
             # Schema: {'id': int64, 'group_key': int64}
 
             # Summing all rows per group:
-            result = ds.aggregate(Sum(on="id")).take_all()
+            result = ds.aggregate(Sum(on="id"))
             # result: {'sum(id)': 4950}
 
     Args:
