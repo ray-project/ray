@@ -7,7 +7,6 @@ from typing import (
     List,
     Mapping,
     Optional,
-    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -47,6 +46,32 @@ TensorBatchType = Union[
 ]
 
 
+def _is_tensor(batch: Any) -> bool:
+    import torch
+
+    return isinstance(batch, torch.Tensor)
+
+
+def _is_tensor_sequence(batch: Any) -> bool:
+    return isinstance(batch, (list, tuple)) and all(_is_tensor(t) for t in batch)
+
+
+def _is_nested_tensor_sequence(batch: Any) -> bool:
+    return isinstance(batch, (list, tuple)) and all(
+        _is_tensor_sequence(t) for t in batch
+    )
+
+
+def _is_tensor_mapping(batch: Any) -> bool:
+    return isinstance(batch, Mapping) and all(_is_tensor(v) for v in batch.values())
+
+
+def _is_tensor_sequence_mapping(batch: Any) -> bool:
+    return isinstance(batch, Mapping) and all(
+        _is_tensor_sequence(v) for v in batch.values()
+    )
+
+
 @DeveloperAPI
 def is_tensor_batch_type(batch: Any) -> bool:
     """Check if a batch matches any of the TensorBatchType variants.
@@ -64,35 +89,13 @@ def is_tensor_batch_type(batch: Any) -> bool:
     Returns:
         bool: True if the batch matches any TensorBatchType variant, False otherwise.
     """
-    import torch
-
-    if isinstance(batch, torch.Tensor):
-        return True
-
-    # A sequence of tensors or sequence of sequences of tensors
-    if isinstance(batch, Sequence) and not isinstance(batch, (str, bytes)):
-        return all(
-            isinstance(t, torch.Tensor)  # Direct tensor
-            or (
-                isinstance(t, Sequence)  # Nested sequence
-                and all(isinstance(tt, torch.Tensor) for tt in t)
-            )
-            for t in batch
-        )
-
-    # A mapping (e.g., dict) of keys to torch.Tensors or a mapping (e.g., dict) of
-    # keys to sequences of torch.Tensors
-    if isinstance(batch, Mapping):
-        return all(
-            isinstance(v, torch.Tensor)  # The value is a tensor
-            or (
-                isinstance(v, Sequence)  # The value is a sequence
-                and all(isinstance(t, torch.Tensor) for t in v)
-            )
-            for v in batch.values()
-        )
-
-    return False
+    return (
+        _is_tensor(batch)
+        or _is_tensor_sequence(batch)
+        or _is_nested_tensor_sequence(batch)
+        or _is_tensor_mapping(batch)
+        or _is_tensor_sequence_mapping(batch)
+    )
 
 
 TensorBatchReturnType = Union[
