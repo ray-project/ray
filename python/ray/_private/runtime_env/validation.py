@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Union
 from collections import OrderedDict
 import yaml
 
-from ray._private.runtime_env.packaging import parse_path, is_path
+from ray._private.path_utils import is_path
+from ray._private.runtime_env.packaging import parse_path
 
 logger = logging.getLogger(__name__)
 

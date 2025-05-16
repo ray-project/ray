@@ -3179,7 +3179,7 @@ class AlgorithmConfig(_Config):
                 purposes: (a) to store intermediate data in memory, and (b) to ensure
                 that RLlib samples exactly `train_batch_size_per_learner` experiences
                 per batch. The default is RLlib's `EpisodeReplayBuffer`.
-            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+            prelearner_buffer_kwargs: Optional keyword arguments for initializing the
                 `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
                 for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
                 may differ if the `prelearner_buffer_class` uses a custom buffer.
@@ -4473,7 +4473,7 @@ class AlgorithmConfig(_Config):
 
                 # The individual (single-agent) module specs have not been configured
                 # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the the default spec (which is also a RLModuleSpec in this
+                # the default spec (which is also a RLModuleSpec in this
                 # case).
                 else:
                     single_agent_spec = (

@@ -65,7 +65,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             sample = buffer.sample(2)
             assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
-        # One sample in the episode does not belong the the episode on thus
+        # One sample in the episode does not belong to the episode on thus
         # gets dropped. Full episodes are of length two.
         self.assertAlmostEqual(np.mean(results), 2 * (len(batch) - 1))
 

@@ -899,7 +899,7 @@ def make_client_id() -> str:
 def decode_exception(e: grpc.RpcError) -> Exception:
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
-        # error is serialized into the the exception details. If the code
+        # error is serialized into the exception details. If the code
         # isn't ABORTED, then return the original error since there's no
         # serialized error to decode.
         # See server.py::return_exception_in_context for details

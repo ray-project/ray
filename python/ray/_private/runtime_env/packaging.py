@@ -22,6 +22,7 @@ from ray._private.ray_constants import (
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.protocol import Protocol
 from ray._private.thirdparty.pathspec import PathSpec
+from ray._private.path_utils import is_path
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
     _internal_kv_put,
@@ -186,12 +187,6 @@ def _hash_directory(
     return hash_val
 
 
-def is_path(uri_or_path: str) -> bool:
-    """Returns True if uri_or_path is a URI and False otherwise."""
-    parsed = urlparse(uri_or_path)
-    return not parsed.scheme
-
-
 def parse_path(pkg_path: str) -> None:
     """Parse the path to check it is well-formed and exists."""
     path = Path(pkg_path)
@@ -214,6 +209,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
     """
+    if is_path(pkg_uri):
+        raise ValueError(f"Expected URI but received path {pkg_uri}")
+
     uri = urlparse(pkg_uri)
     try:
         protocol = Protocol(uri.scheme)

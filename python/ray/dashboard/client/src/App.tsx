@@ -179,7 +179,7 @@ const App = () => {
 
   useEffect(() => {
     const updateTimezone = async () => {
-      // Sets the intial timezone to localStorage value if it exists
+      // Sets the initial timezone to localStorage value if it exists
       const storedTimeZone = localStorage.getItem("timezone");
       if (storedTimeZone) {
         setCurrentTimeZone(storedTimeZone);

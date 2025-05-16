@@ -485,7 +485,7 @@ class StreamingExecutor(Executor, threading.Thread):
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
     """Raises an exception on invalid DAGs.
 
-    It checks if the the sum of min actor pool sizes are larger than the resource
+    It checks if the sum of min actor pool sizes are larger than the resource
     limit, as well as other unsupported resource configurations.
 
     This should be called prior to creating the topology from the DAG.

@@ -529,7 +529,7 @@ Windows powershell users need additional escaping:
     "--runtime-env-agent-port",
     type=int,
     default=None,
-    help="The port for the runtime enviroment agents to listen for http on.",
+    help="The port for the runtime environment agents to listen for http on.",
 )
 @click.option(
     "--block",
