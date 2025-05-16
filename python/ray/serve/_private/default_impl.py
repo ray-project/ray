@@ -155,16 +155,16 @@ def create_router(
     is_inside_ray_client_context = inside_ray_client_context()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-        deployment_id,
-        handle_options._source,
-        handle_options._prefer_local_routing,
-        RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-        node_id,
-        actor_id,
-        ray.get_runtime_context().current_actor
+        deployment_id=deployment_id,
+        handle_source=handle_options._source,
+        prefer_local_node_routing=handle_options._prefer_local_routing,
+        prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+        self_node_id=node_id,
+        self_actor_id=actor_id,
+        self_actor_handle=ray.get_runtime_context().current_actor
         if ray.get_runtime_context().get_actor_id()
         else None,
-        availability_zone,
+        self_availability_zone=availability_zone,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         use_replica_queue_len_cache=not is_inside_ray_client_context,
         create_replica_wrapper_func=lambda r: RunningReplica(r),

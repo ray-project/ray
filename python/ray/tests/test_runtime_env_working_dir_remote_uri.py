@@ -1,4 +1,3 @@
-import os
 import sys
 from typing import Dict, Optional, Tuple
 
@@ -127,7 +126,4 @@ def test_remote_package_uri_multi_node(
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

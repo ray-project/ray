@@ -1,4 +1,3 @@
-import os
 import gc
 import sys
 
@@ -103,7 +102,4 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

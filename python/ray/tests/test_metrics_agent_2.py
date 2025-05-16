@@ -1,18 +1,16 @@
-import os
-import time
 import sys
-
-import pytest
-
-import ray._private.prometheus_exporter as prometheus_exporter
-
+import time
 from typing import List
 
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
 from prometheus_client.core import REGISTRY
-from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
+import pytest
+
+import ray._private.prometheus_exporter as prometheus_exporter
+
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
 from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
@@ -24,7 +22,6 @@ from ray.core.generated.metrics_pb2 import (
     LabelValue,
 )
 from ray._raylet import WorkerID
-
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
@@ -492,10 +489,4 @@ def test_metrics_agent_export_format_correct(get_agent):
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

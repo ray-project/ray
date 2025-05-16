@@ -1,13 +1,13 @@
 import asyncio
+import json
 import logging
 import os
-from pathlib import Path
-import time
-from unittest import mock
-
+import sys
 import tempfile
-import json
+import time
+from pathlib import Path
 from typing import List
+from unittest import mock
 
 import pytest
 
@@ -770,9 +770,4 @@ class TestGC:
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
