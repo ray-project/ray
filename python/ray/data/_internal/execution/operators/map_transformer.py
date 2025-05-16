@@ -369,6 +369,15 @@ class MapTransformer:
     def udf_time(self) -> float:
         return self._udf_time
 
+    def on_exit(self):
+        for transform_fn in self._transform_fns:
+            # `_udf_context` is a variable that references the UDF object.
+            # Delete it to trigger `UDF.__del__`.
+            if transform_fn._udf_context is not None:
+                del transform_fn._udf_context
+                transform_fn._udf_context = None
+        self._initialized = False
+
 
 def create_map_transformer_from_block_fn(
     block_fn: MapTransformCallable[Block, Block],
