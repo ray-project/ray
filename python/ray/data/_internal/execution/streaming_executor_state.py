@@ -716,6 +716,5 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return base
     else:
         return (
-            f"{base} (running={info.running}, restarting={info.restarting}, "
-            f"pending={info.pending})"
+            f"{base} ({info})"
         )

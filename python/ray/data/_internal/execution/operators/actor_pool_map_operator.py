@@ -598,10 +598,8 @@ class _ActorPool(AutoscalingActorPool):
 
     def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         logger.info(
-            f"Scaling up actor pool by {num_actors} ("
-            f"running={self.num_running_actors()}, "
-            f"pending={self.num_pending_actors()}, "
-            f"restarting={self.num_restarting_actors()}; reason={reason})"
+            f"Scaling up actor pool by {num_actors} "
+            f"(reason={reason}, {self.get_actor_info()})"
         )
 
         for _ in range(num_actors):
@@ -621,10 +619,8 @@ class _ActorPool(AutoscalingActorPool):
 
         if num_released > 0:
             logger.info(
-                f"Scaled down actor pool by {num_released} ("
-                f"running={self.num_running_actors()}, "
-                f"pending={self.num_pending_actors()}, "
-                f"restarting={self.num_restarting_actors()}; reason={reason})"
+                f"Scaled down actor pool by {num_released} "
+                f"(reason={reason}; {self.get_actor_info()})"
             )
 
         return num_released

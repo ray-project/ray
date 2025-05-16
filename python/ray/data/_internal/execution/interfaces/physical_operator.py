@@ -178,6 +178,12 @@ class _ActorPoolInfo:
     pending: int
     restarting: int
 
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
+
 
 class PhysicalOperator(Operator):
     """Abstract class for physical operators.
