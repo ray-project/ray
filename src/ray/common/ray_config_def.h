@@ -958,3 +958,8 @@ RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
 // Frequency at which to check all local worker & driver sockets for unexpected
 // disconnects.
 RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
+
+/// The maximum time in seconds that an actor task can wait in the scheduling queue
+/// for tasks with smaller sequence numbers to show up. If timed out, the task will
+/// be cancelled.
+RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)

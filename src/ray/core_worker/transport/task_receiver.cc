@@ -35,6 +35,7 @@ void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
 void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleTask";
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
