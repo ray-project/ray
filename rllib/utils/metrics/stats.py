@@ -685,7 +685,7 @@ class Stats:
             self.values = new_values
 
     def _reduced_values(self, values=None) -> Tuple[Any, Any]:
-        """Runs a non-commited reduction procedure on given values (or `self.values`).
+        """Runs a non-committed reduction procedure on given values (or `self.values`).
 
         Note that this method does NOT alter any state of `self` or the possibly
         provided list of `values`. It only returns new values as they should be
