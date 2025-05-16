@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
-    """NOTE: THIS IS DEPRECATED, PLEASE USE AggregateFnV2 INSTEAD
+    """NOTE: THIS IS DEPRECATED, PLEASE USE :class:`AggregateFnV2` INSTEAD
 
     Defines how to perform a custom aggregation in Ray Data.
 
@@ -112,12 +112,12 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     perform aggregations by applying distributed aggregation algorithm:
 
     - `aggregate_block` is applied to individual blocks, producing partial
-        aggregations.
+      aggregations.
     - `combine` combines new partially aggregated value (previously returned
-        from `aggregate_block` partial aggregations into a singular partial
-        aggregation) with the previously stored accumulator.
+      from `aggregate_block` partial aggregations into a singular partial
+      aggregation) with the previously stored accumulator.
     - `finalize` transforms partial aggregation into its final state (for
-        some aggregations this is an identity transformation, ie no-op)
+      some aggregations this is an identity transformation, ie no-op)
 
     """
 

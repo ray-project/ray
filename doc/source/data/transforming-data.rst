@@ -14,9 +14,10 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Ordering of rows <ordering_of_rows>`
-* :ref:`Stateful transforms <stateful_transforms>`
-* :ref:`Groupby and transform groups <transforming_groupby>`
+* :ref:`Order rows <ordering_of_rows>`
+* :ref:`Perform Stateful transforms <stateful_transforms>`
+* :ref:`Perform Aggregations`
+* :ref:`Transform groups <transforming_groupby>`
 
 .. _transforming_rows:
 
@@ -354,6 +355,50 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
 
     # Tell Ray that the function uses 1 GiB of memory
     ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
+
+
+.. _aggregations:
+
+Aggregations
+============
+
+Ray Data offers out-of-the-box methods for performing aggregations on your data.
+
+These methods include :meth:`~ray.data.Dataset.sum`, :meth:`~ray.data.Dataset.min`, :meth:`~ray.data.Dataset.max`, :meth:`~ray.data.Dataset.mean`, and more
+(see :ref:`API Reference <...>` for the full list).
+
+To use these methods, call them on your Dataset. For example:
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    ds.sum()
+
+Each of the above methods also has a corresponding :ref:`AggregateFn <aggregations_api_ref>` object. These objects can be used in
+:meth:`Dataset.aggregate() <ray.data.Dataset.aggregate>` to compute multiple aggregations at once.
+
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    ds.aggregate(ray.data.aggregate.Sum())
+
+
+You can also perform aggregations on grouped data.
+:meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to
+compute multiple aggregations at once.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    ds = ds.add_column("label", lambda x: x % 3)
+    ds.groupby("label").aggregate(ray.data.aggregate.Sum())
 
 .. _transforming_groupby:
 
