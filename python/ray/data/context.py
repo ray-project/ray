@@ -93,7 +93,7 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False
 
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -192,7 +192,7 @@ DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 DEFAULT_S3_TRY_CREATE_DIR = False
 
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
-    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
@@ -424,6 +424,12 @@ class DataContext:
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
+    # Timeout threshold (in seconds) for how long it should take for actors in the
+    # Actor Pool to start up. Exceeding this threshold will lead to execution being
+    # terminated with exception due to inability to secure min required capacity.
+    #
+    # Setting non-positive value here (ie <= 0) disables this functionality
+    # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)

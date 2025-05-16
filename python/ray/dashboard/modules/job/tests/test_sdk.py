@@ -197,9 +197,7 @@ def get_register_agents_number(gcs_client):
     ],
     indirect=True,
 )
-def test_job_head_choose_job_agent_E2E(
-    ray_start_cluster_head_with_env_vars, call_ray_stop_only
-):
+def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url

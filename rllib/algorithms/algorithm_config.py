@@ -23,6 +23,7 @@ from packaging import version
 
 import ray
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
@@ -86,7 +87,6 @@ Space = gym.Space
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.connectors.connector_v2 import ConnectorV2
     from ray.rllib.core.learner import Learner
     from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
     from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -1002,7 +1002,12 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env=None, spaces=None, device=None):
+    def build_env_to_module_connector(
+        self,
+        env=None,
+        spaces=None,
+        device=None,
+    ) -> ConnectorV2:
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1018,8 +1023,6 @@ class AlgorithmConfig(_Config):
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
             val_ = self._env_to_module_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1091,7 +1094,7 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_module_to_env_connector(self, env=None, spaces=None):
+    def build_module_to_env_connector(self, env=None, spaces=None) -> ConnectorV2:
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
@@ -1108,8 +1111,6 @@ class AlgorithmConfig(_Config):
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
             val_ = self._module_to_env_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1195,7 +1196,7 @@ class AlgorithmConfig(_Config):
         input_observation_space,
         input_action_space,
         device=None,
-    ):
+    ) -> ConnectorV2:
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1216,8 +1217,6 @@ class AlgorithmConfig(_Config):
                 input_action_space,
                 # device,  # TODO (sven): Also pass device into custom builder.
             )
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -2674,6 +2673,7 @@ class AlgorithmConfig(_Config):
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
         offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
         num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
         custom_resources_per_offline_eval_runner: Optional[
             Dict[str, Any]
         ] = NotProvided,
@@ -2816,6 +2816,10 @@ class AlgorithmConfig(_Config):
                 their `learner_only` flag set to True.
             num_cpus_per_offline_eval_runner: Number of CPUs to allocate per
                 OfflineEvaluationRunner.
+            num_gpus_per_offline_eval_runner: Number of GPUs to allocate per
+                OfflineEvaluationRunner. This can be fractional. This is usually needed only if
+                your (custom) loss function itself requires a GPU (i.e., it contains GPU-
+                intensive computations), or model inference is unusually expensive.
             custom_resources_per_eval_runner: Any custom Ray resources to allocate per
                 OfflineEvaluationRunner.
             offline_evaluation_timeout_s: The timeout in seconds for calling `run()` on remote
@@ -2948,6 +2952,8 @@ class AlgorithmConfig(_Config):
             )
         if num_cpus_per_offline_eval_runner is not NotProvided:
             self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if num_gpus_per_offline_eval_runner is not NotProvided:
+            self.num_gpus_per_offline_eval_runner = num_gpus_per_offline_eval_runner
         if custom_resources_per_offline_eval_runner is not NotProvided:
             self.custom_resources_per_offline_eval_runner = (
                 custom_resources_per_offline_eval_runner
@@ -3173,7 +3179,7 @@ class AlgorithmConfig(_Config):
                 purposes: (a) to store intermediate data in memory, and (b) to ensure
                 that RLlib samples exactly `train_batch_size_per_learner` experiences
                 per batch. The default is RLlib's `EpisodeReplayBuffer`.
-            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+            prelearner_buffer_kwargs: Optional keyword arguments for initializing the
                 `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
                 for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
                 may differ if the `prelearner_buffer_class` uses a custom buffer.
@@ -4467,7 +4473,7 @@ class AlgorithmConfig(_Config):
 
                 # The individual (single-agent) module specs have not been configured
                 # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the the default spec (which is also a RLModuleSpec in this
+                # the default spec (which is also a RLModuleSpec in this
                 # case).
                 else:
                     single_agent_spec = (
