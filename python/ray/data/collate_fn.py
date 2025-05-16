@@ -28,17 +28,22 @@ if TYPE_CHECKING:
 
 DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
 
+TensorSequenceType = Union[
+    List["torch.Tensor"],
+    Tuple["torch.Tensor", ...],
+]
 
 TensorBatchType = Union[
     "torch.Tensor",
-    Sequence["torch.Tensor"],
+    TensorSequenceType,
     # For nested sequences of tensors, the inner sequence of tensors is combined during
     # GPU transfer in `move_tensors_to_device`.
-    Sequence[Sequence["torch.Tensor"]],
+    List[TensorSequenceType],
+    Tuple[TensorSequenceType, ...],
     Mapping[str, "torch.Tensor"],
     # For mapping (e.g., dict) of keys to sequences of tensors, the sequence of tensors
     # is combined during GPU transfer in `move_tensors_to_device`.
-    Mapping[str, Sequence["torch.Tensor"]],
+    Mapping[str, TensorSequenceType],
 ]
 
 
