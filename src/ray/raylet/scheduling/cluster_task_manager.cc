@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -36,13 +35,13 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      get_node_info_(get_node_info),
-      announce_infeasible_task_(announce_infeasible_task),
+      get_node_info_(std::move(get_node_info)),
+      announce_infeasible_task_(std::move(announce_infeasible_task)),
       local_task_manager_(local_task_manager),
       scheduler_resource_reporter_(
           tasks_to_schedule_, infeasible_tasks_, local_task_manager_),
       internal_stats_(*this, local_task_manager_),
-      get_time_ms_(get_time_ms) {}
+      get_time_ms_(std::move(get_time_ms)) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     RayTask task,
@@ -353,9 +352,9 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   cluster_resource_scheduler_.GetLocalResourceManager().PopulateResourceViewSyncMessage(
       resource_view_sync_message);
   (*data.mutable_resources_total()) =
-      std::move(resource_view_sync_message.resources_total());
+      std::move(*resource_view_sync_message.mutable_resources_total());
   (*data.mutable_resources_available()) =
-      std::move(resource_view_sync_message.resources_available());
+      std::move(*resource_view_sync_message.mutable_resources_available());
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());
