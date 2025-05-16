@@ -675,7 +675,7 @@ class WorkerState(StateSchema):
         detail=True,
         format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
-    #: The time worker is succesfully launched
+    #: The time worker is successfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
         filterable=False,

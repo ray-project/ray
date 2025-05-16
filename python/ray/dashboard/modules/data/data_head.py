@@ -142,7 +142,7 @@ class DataHead(SubprocessModule):
                 content_type="application/json",
             )
         except Exception as e:
-            logging.exception("Exception occured while getting datasets.")
+            logging.exception("Exception occurred while getting datasets.")
             return Response(
                 status=503,
                 text=str(e),

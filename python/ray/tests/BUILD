@@ -32,6 +32,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_actor_cancel.py",
+        "test_actor_group.py",
         "test_actor_lifetime.py",
         "test_actor_pool.py",
         "test_advanced.py",
@@ -43,16 +44,14 @@ py_test_module_list(
         "test_advanced_7.py",
         "test_advanced_8.py",
         "test_advanced_9.py",
-        "test_array.py",
         "test_async.py",
-        "test_async_compat.py",
-        "test_asyncio.py",
-        "test_autoscaling_policy.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
         "test_core_worker_io_thread_stack_size.py",
         "test_dashboard_profiler.py",
         "test_error_ray_not_initialized.py",
+        "test_exit_observability.py",
+        "test_failure_3.py",
         "test_gcs_pubsub.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
@@ -65,7 +64,7 @@ py_test_module_list(
         "test_multiprocessing.py",
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
-        "test_protobuf_compatibility.py",
+        "test_runtime_env_agent.py",
     ],
     tags = [
         "exclusive",
@@ -265,6 +264,8 @@ py_test_module_list(
         "accelerators/test_nvidia_gpu.py",
         "accelerators/test_tpu.py",
         "test_actor_bounded_threads.py",
+        "test_actor_retry_1.py",
+        "test_actor_retry_2.py",
         "test_actor_state_metrics.py",
         "test_autoscaler_fake_scaledown.py",
         "test_bounded_unix_sockets.py",
@@ -275,6 +276,7 @@ py_test_module_list(
         "test_memory_scheduling.py",
         "test_metrics.py",
         "test_mpi.py",
+        "test_multi_node.py",
         "test_multi_node_2.py",
         "test_multi_tenancy.py",
         "test_multinode_failures.py",
@@ -288,8 +290,6 @@ py_test_module_list(
         "test_placement_group_2.py",
         "test_placement_group_4.py",
         "test_placement_group_failover.py",
-        "test_placement_group_metrics.py",
-        "test_queue.py",
         "test_ray_debugger.py",
         "test_ray_init.py",
         "test_ray_init_2.py",
@@ -316,7 +316,6 @@ py_test_module_list(
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
         "test_task_metrics.py",
-        "test_task_metrics_reconstruction.py",
         "test_tempfile.py",
         "test_tls_auth.py",
         "test_traceback.py",
@@ -337,6 +336,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_multi_node_3.py",
         "test_object_manager.py",
         "test_resource_demand_scheduler.py",
         "test_stress.py",
@@ -346,6 +346,26 @@ py_test_module_list(
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+##### Begin 'minimal installation' tests #####
+
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_basic_3.py",
+        "test_utils.py",
+    ],
+    tags = [
+        "basic_test",
+        "exclusive",
+        "minimal",
         "team:core",
     ],
     deps = [
@@ -377,7 +397,6 @@ py_test_module_list(
     size = "large",
     files = [
         "test_basic.py",
-        "test_basic_3.py",
     ],
     tags = [
         "basic_test",
@@ -397,8 +416,8 @@ py_test_module_list(
         "test_label_scheduling.py",
         "test_label_utils.py",
         "test_minimal_install.py",
+        "test_path_utils.py",
         "test_runtime_env_ray_minimal.py",
-        "test_utils.py",
     ],
     tags = [
         "exclusive",
@@ -430,14 +449,21 @@ py_test_module_list(
     ],
 )
 
+##### End 'minimal installation' tests #####
+
 py_test_module_list(
     size = "small",
     files = [
         "accelerators/test_accelerators.py",
+        "test_actor_lineage_reconstruction.py",
         "test_actor_out_of_order.py",
         "test_annotations.py",
         "test_args.py",
+        "test_array.py",
+        "test_async_compat.py",
+        "test_asyncio.py",
         "test_asyncio_cluster.py",
+        "test_autoscaling_policy.py",
         "test_component_failures.py",
         "test_concurrency_group.py",
         "test_cross_language.py",
@@ -456,6 +482,10 @@ py_test_module_list(
         "test_mini.py",
         "test_node_death.py",
         "test_numba.py",
+        "test_object_spilling_no_asan.py",
+        "test_placement_group_metrics.py",
+        "test_protobuf_compatibility.py",
+        "test_queue.py",
         "test_raylet_output.py",
         "test_top_level_api.py",
         "test_unhandled_error.py",
@@ -480,7 +510,7 @@ py_test_module_list(
         "test_nccl_channel.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -695,7 +725,17 @@ py_test(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_actor_resources.py",
         "test_dataclient_disconnect.py",
+        "test_iter.py",
+        "test_placement_group.py",
+        "test_runtime_env_working_dir_remote_uri.py",
+        "test_scheduling_performance.py",
+        "test_state_api_2.py",
+        "test_storage.py",
+        "test_task_events.py",
+        "test_task_metrics_reconstruction.py",
+        "test_unavailable_actors.py",
     ],
     tags = [
         "exclusive",
@@ -713,19 +753,11 @@ py_test_module_list(
     files = [
         "test_actor.py",
         "test_actor_failures.py",
-        "test_actor_lineage_reconstruction.py",
-        "test_actor_resources.py",
-        "test_actor_retry_1.py",
-        "test_actor_retry_2.py",
         "test_cancel.py",
         "test_chaos.py",
-        "test_exit_observability.py",
         "test_failure.py",
         "test_failure_2.py",
-        "test_failure_3.py",
         "test_generators.py",
-        "test_multi_node.py",
-        "test_placement_group.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
         "test_reconstruction.py",
@@ -733,15 +765,9 @@ py_test_module_list(
         "test_reconstruction_stress.py",
         "test_reconstruction_stress_spill.py",
         "test_reference_counting_2.py",
-        "test_scheduling_performance.py",
         "test_state_api.py",
-        "test_state_api_2.py",
-        "test_storage.py",
-        "test_stress_failure.py",
-        "test_task_events.py",
         "test_task_events_2.py",
         "test_task_events_3.py",
-        "test_unavailable_actors.py",
     ],
     tags = [
         "exclusive",
@@ -811,11 +837,9 @@ py_test_module_list(
     size = "large",
     files = [
         "test_failure_4.py",
-        "test_iter.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
-        "test_object_spilling_no_asan.py",
         "test_placement_group_mini_integration.py",
         "test_reference_counting.py",
         "test_scheduling_2.py",
@@ -833,7 +857,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "enormous",
+    size = "medium",
     files = [
         "test_implicit_resource.py",
         "test_plasma_unlimited.py",
@@ -842,23 +866,6 @@ py_test_module_list(
     tags = [
         "exclusive",
         "large_size_python_tests_shard_1",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "large",
-    files = [
-        "test_multi_node_3.py",
-    ],
-    tags = [
-        "exclusive",
-        "large_size_python_tests_shard_1",
-        "no_windows",
         "team:core",
     ],
     deps = [
@@ -879,7 +886,6 @@ py_test_module_list(
         "test_runtime_env_working_dir_2.py",
         "test_runtime_env_working_dir_3.py",
         "test_runtime_env_working_dir_4.py",
-        "test_runtime_env_working_dir_remote_uri.py",
     ],
     tags = [
         "exclusive",
@@ -922,36 +928,6 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_actor_group",
-    size = "medium",
-    srcs = ["test_actor_group.py"],
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_runtime_env_agent",
-    size = "medium",
-    srcs = ["test_runtime_env_agent.py"],
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
         "team:core",
     ],
     deps = [
@@ -1090,7 +1066,7 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "medium",
+    size = "small",
     srcs = [
         "test_typing.py",
         "typing_files/check_typing_bad.py",
@@ -1256,7 +1232,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "spark_plugin_tests",
+        "spark_on_ray",
         "team:core",
     ],
     deps = [
