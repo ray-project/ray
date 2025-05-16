@@ -471,6 +471,7 @@ class _MapWorker:
         Note, this only ensures cleanup is performed when the job exists gracefully.
         If the driver or the actor is forcefully killed, `__del__` will not be called.
         """
+        # TODO(mowen): Make this actually delete the UDF object now that we have a wrapper.
         # `_map_actor_context` is a global variable that references the UDF object.
         # Delete it to trigger `UDF.__del__`.
         del ray.data._map_actor_context
