@@ -1519,6 +1519,20 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
+        if target_num_rows_per_block is not None:
+            if keys is not None:
+                warnings.warn(
+                    "`keys` is ignored when `target_num_rows_per_block` is set."
+                )
+            if sort is not False:
+                warnings.warn(
+                    "`sort` is ignored when `target_num_rows_per_block` is set."
+                )
+            if shuffle:
+                warnings.warn(
+                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
+                )
+
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
                 "Either `num_blocks` or `target_num_rows_per_block` must be set"
