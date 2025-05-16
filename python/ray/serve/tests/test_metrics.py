@@ -193,7 +193,6 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
     metrics = requests.get("http://127.0.0.1:9999").text
-    print("metrics", metrics)
 
     metric_dicts = []
     for line in metrics.split("\n"):
