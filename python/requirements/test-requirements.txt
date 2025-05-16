@@ -14,6 +14,7 @@ boto3==1.26.76
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0 ; python_version < "3.12"
 cloudpickle==3.0.0 ; python_version >= "3.12"
+tornado==6.1 ; python_version < "3.12"
 tornado==6.2.0 ; python_version >= "3.12"
 cython==0.29.37
 fastapi>=0.115.12
