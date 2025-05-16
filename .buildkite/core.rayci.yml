@@ -224,8 +224,10 @@ steps:
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
         "./python/ray/dashboard/tests/run_ui_tests.sh"
 
-  - label: ":ray: core: debug test"
-    tags: python
+  - label: ":ray: core: debug tests"
+    tags:
+      - python
+      - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
