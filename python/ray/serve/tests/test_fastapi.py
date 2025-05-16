@@ -739,8 +739,6 @@ def test_two_fastapi_in_one_application(
 def test_fastapi_class_inheritance(serve_instance):
     app = FastAPI()
 
-    @serve.deployment
-    @serve.ingress(app)
     class A:
         @app.get("/")
         def method(self):
@@ -750,10 +748,15 @@ def test_fastapi_class_inheritance(serve_instance):
         def method(self):  # noqa: F811 method redefinition
             return "hi post"
 
+        @classmethod
+        def as_deployment(cls):
+            ingressed = serve.ingress(app)(cls)
+            return serve.deployment(ingressed)
+
     class B(A):
         pass
 
-    serve.run(B.bind(), route_prefix="/b")
+    serve.run(B.as_deployment().bind(), route_prefix="/b")
     assert requests.get("http://localhost:8000/b/").json() == "hi get"
     assert requests.post("http://localhost:8000/b/").json() == "hi post"
 
