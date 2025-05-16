@@ -198,9 +198,7 @@ class TestBuildVllmDeployment:
         )
         assert isinstance(app, serve.Application)
         handle = serve.run(app)
-        print(handle.deployment_name)
-        print(handle.app_name)
-        assert app._bound_deployment.name.startswith(_name_prefix_for_test)
+        assert handle.deployment_name.startswith(_name_prefix_for_test)
 
 def extract_applications_from_output(output: bytes) -> dict:
     """
