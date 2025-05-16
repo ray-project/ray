@@ -16,7 +16,7 @@ This guide shows you how to:
 * :ref:`Transform batches <transforming_batches>`
 * :ref:`Order rows <ordering_of_rows>`
 * :ref:`Perform Stateful transforms <stateful_transforms>`
-* :ref:`Perform Aggregations`
+* :ref:`Perform Aggregations <aggregations>`
 * :ref:`Transform groups <transforming_groupby>`
 
 .. _transforming_rows:
@@ -365,7 +365,7 @@ Aggregations
 Ray Data offers out-of-the-box methods for performing aggregations on your data.
 
 These methods include :meth:`~ray.data.Dataset.sum`, :meth:`~ray.data.Dataset.min`, :meth:`~ray.data.Dataset.max`, :meth:`~ray.data.Dataset.mean`, and more
-(see :ref:`API Reference <...>` for the full list).
+(see :ref:`API Reference <dataset-api>` for the full list).
 
 To use these methods, call them on your Dataset. For example:
 
@@ -374,39 +374,53 @@ To use these methods, call them on your Dataset. For example:
     import ray
 
     ds = ray.data.range(10)
-    ds.sum()
-
-Each of the above methods also has a corresponding :ref:`AggregateFn <aggregations_api_ref>` object. These objects can be used in
-:meth:`Dataset.aggregate() <ray.data.Dataset.aggregate>` to compute multiple aggregations at once.
-
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    ds.aggregate(ray.data.aggregate.Sum())
+    # Schema: {"id": int64}
+    ds.sum(on="id")
+    # 45
 
 
 You can also perform aggregations on grouped data.
-:meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to
-compute multiple aggregations at once.
 
 .. testcode::
 
     import ray
 
     ds = ray.data.range(10)
+    # Schema: {"id": int64}
     ds = ds.add_column("label", lambda x: x % 3)
-    ds.groupby("label").aggregate(ray.data.aggregate.Sum())
+    # Schema: {"id": int64, "label": int64}
+    ds.groupby("label").sum(on="id").take_all()
+    # [{'label': 0, 'sum(id)': 18},
+    #  {'label': 1, 'sum(id)': 12},
+    #  {'label': 2, 'sum(id)': 15}]
+
+Each of the above methods also has a corresponding :ref:`AggregateFn <aggregations_api_ref>` object. These objects can be used in
+:meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
+
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    # Schema: {"id": int64}
+    ds = ds.add_column("label", lambda x: x % 3)
+    # Schema: {"id": int64, "label": int64}
+    ds.aggregate(ray.data.aggregate.Sum(on="id"), ray.data.aggregate.Count(on="label")).take_all()
+    # {'sum(id)': 45, 'count(label)': 10}
+
 
 .. _transforming_groupby:
 
 Groupby and transforming groups
 ===============================
 
-To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then, call
-:meth:`~ray.data.grouped_data.GroupedData.map_groups` to transform the groups.
+To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows.
+This produces a :class:`~ray.data.grouped_data.GroupedData` object, which is an unmaterialized
+grouped view of the data.
+
+Then, call
+:meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
 
 .. tab-set::
 
