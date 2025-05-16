@@ -78,8 +78,6 @@ ordering of files. See :ref:`Shuffle the ordering of files <shuffling_file_order
 Randomizing block order
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`See Key Concepts <key-concepts>`
-
 This option randomizes the order of :ref:`blocks <data_key_concepts>` in a dataset. While applying this operation alone doesn't involve heavy computation
 and communication, it requires Ray Data to materialize all blocks in memory before actually randomizing their ordering in the queue for subsequent operation.
 
