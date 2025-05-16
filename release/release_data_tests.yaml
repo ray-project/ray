@@ -286,26 +286,32 @@
 
   matrix:
     setup:
+      # Fixed-size task tests with different formats.
       format: [numpy, pandas, pyarrow]
       compute: [tasks]
       scaling: [fixed_size]
     adjustments:
-      # Include at least one test with actors.
+      # Fixed-size actor test.
       - with:
           format: numpy
           compute: actors
           scaling: fixed_size
-      # Include at least one autoscaling test.
+      # Autoscaling task test
       - with:
           format: numpy
           compute: tasks
+          scaling: autoscaling
+      # Autoscaling actor test
+      - with:
+          format: numpy
+          compute: actors
           scaling: autoscaling
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
-    timeout: 5400
+    timeout: 10800
     script: >
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000
