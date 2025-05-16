@@ -398,7 +398,7 @@ class BlocksToRowsMapTransformFn(MapTransformFn):
     def __call__(self, blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
         for block in blocks:
             block = BlockAccessor.for_block(block)
-            for row in block.iter_rows(public_row_format=True):
+            for row in block.iter_rows_public_row_format():
                 yield row
 
     @classmethod

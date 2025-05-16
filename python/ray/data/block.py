@@ -235,6 +235,10 @@ class BlockAccessor:
         """Return the number of rows contained in this block."""
         raise NotImplementedError
 
+    def iter_rows_public_row_format(self) -> Iterator[T]:
+        """Iterate over the rows of this block in public row format."""
+        raise NotImplementedError
+
     def iter_rows(self, public_row_format: bool) -> Iterator[T]:
         """Iterate over the rows of this block.
 
