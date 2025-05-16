@@ -342,6 +342,7 @@ steps:
         --build-type asan-clang --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
+      - corebuild
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
@@ -352,6 +353,7 @@ steps:
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
+      - corebuild
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
@@ -362,11 +364,13 @@ steps:
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
+      - corebuild
 
   - label: ":ray: core: flaky cpp tests"
     key: core_flaky_cpp_tests
     tags:
       - python
+      - flaky
       - skip-on-premerge
     instance_type: large
     soft_fail: true
