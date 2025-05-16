@@ -21,7 +21,11 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS,
+    RAY_ENABLE_OPEN_TELEMETRY,
+    env_integer,
+)
 from ray._raylet import WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
@@ -35,6 +39,9 @@ from ray.dashboard.consts import (
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
+)
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
 )
 
 import psutil
@@ -380,6 +387,7 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
@@ -405,6 +413,7 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -1284,13 +1293,22 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            self._metrics_agent.record_and_export(
-                records,
-                global_tags={
-                    "Version": ray.__version__,
-                    "SessionName": self._session_name,
-                },
-            )
+            if RAY_ENABLE_OPEN_TELEMETRY:
+                self._open_telemetry_metric_recorder.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
+            else:
+                self._metrics_agent.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
