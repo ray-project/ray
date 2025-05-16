@@ -473,8 +473,9 @@ class _MapWorker:
         """
         # `_map_actor_context` is a global variable that references the UDF object.
         # Delete it to trigger `UDF.__del__`.
-        del ray.data._map_actor_context
-        ray.data._map_actor_context = None
+        # del ray.data._map_actor_context
+        # ray.data._map_actor_context = None
+        pass
 
 
 @dataclass
