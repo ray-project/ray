@@ -360,7 +360,7 @@ class ReplicaScheduler(ABC):
             multiplexed_matching_timeout = random.uniform(
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
-                )
+            )
             tried_fewest_multiplexed_models = False
             tried_first_multiplexed_models = False
 
@@ -447,8 +447,8 @@ class ReplicaScheduler(ABC):
                     self._prefer_local_az_routing
                     and not tried_same_az
                     and len(
-                    self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
-                )
+                        self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
+                    )
                     > 0
                 ):
                     # Attempt to schedule requests to replicas in the same
@@ -528,7 +528,7 @@ class ReplicaScheduler(ABC):
             queue_len_response_deadline_s = min(
                 self.queue_len_response_deadline_s * (2**backoff_index),
                 max_queue_len_response_deadline_s,
-                )
+            )
         except OverflowError:
             # self.queue_len_response_deadline_s * (2**backoff_index)
             # can overflow if backoff_index gets sufficiently large (e.g.
