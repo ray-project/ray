@@ -573,6 +573,4 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

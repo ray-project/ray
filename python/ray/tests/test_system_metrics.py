@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 import pytest
@@ -43,6 +44,4 @@ def test_unintentional_worker_failures_metric(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

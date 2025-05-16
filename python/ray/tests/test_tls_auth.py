@@ -151,7 +151,4 @@ assert ray.is_initialized()
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

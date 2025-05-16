@@ -3,6 +3,7 @@ import copy
 import logging
 import yaml
 import tempfile
+import sys
 from typing import Dict, Callable, List
 import shutil
 from queue import PriorityQueue
@@ -619,6 +620,4 @@ class AutoscalingPolicyTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

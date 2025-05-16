@@ -1,6 +1,6 @@
-import numpy as np
 import sys
 
+import numpy as np
 import pytest
 
 import ray
@@ -70,6 +70,4 @@ def test_task_reconstruction(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

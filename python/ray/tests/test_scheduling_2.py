@@ -824,6 +824,4 @@ def test_negative_resource_availability(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

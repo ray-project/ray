@@ -799,6 +799,4 @@ def test_lineage_leak(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

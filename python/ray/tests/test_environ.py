@@ -1,6 +1,9 @@
 import os
-import pytest
+import sys
 import unittest
+
+import pytest
+
 import ray
 from ray._private.utils import update_envs
 
@@ -62,9 +65,6 @@ def test_update_envs():
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main(["-sv", __file__]))

@@ -178,6 +178,4 @@ def test_fake_batching_autoscaler_e2e(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

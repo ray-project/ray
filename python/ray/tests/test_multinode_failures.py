@@ -179,6 +179,4 @@ def test_raylet_failed(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

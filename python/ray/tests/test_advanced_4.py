@@ -267,6 +267,4 @@ def test_function_table_gc_actor(call_ray_start):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))
