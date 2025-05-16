@@ -15,6 +15,7 @@ import pytest
 from ray.runtime_env.runtime_env import (
     RuntimeEnvConfig,
     _merge_runtime_env,
+    _validate_no_local_paths,
 )
 import requests
 
@@ -41,6 +42,31 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray._private.ray_constants as ray_constants
+
+
+def test_validate_no_local_paths_raises_exceptions_on_type_mismatch():
+    with pytest.raises(TypeError):
+        _validate_no_local_paths(1)
+    with pytest.raises(TypeError):
+        _validate_no_local_paths({})
+
+
+def test_validate_no_local_paths_fails_if_local_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        working_dir = path / "working_dir"
+        working_dir.mkdir(parents=True)
+        working_dir_str = str(working_dir)
+        runtime_env = RuntimeEnv(working_dir=working_dir_str)
+        with pytest.raises(ValueError, match="not a valid URI"):
+            _validate_no_local_paths(runtime_env)
+
+
+def test_validate_no_local_paths_fails_if_local_py_module():
+    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
+        runtime_env = RuntimeEnv(py_modules=[tmp_file.name, "gcs://some_other_file"])
+        with pytest.raises(ValueError, match="not a valid URI"):
+            _validate_no_local_paths(runtime_env)
 
 
 def test_runtime_env_merge():

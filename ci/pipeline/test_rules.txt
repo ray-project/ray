@@ -84,7 +84,15 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python accelerated_dag
+@ python compiled_graphs
+;
+
+python/ray/util/client/
+@ python ray_client
+;
+
+python/ray/util/spark/
+@ python spark_on_ray
 ;
 
 python/
@@ -96,10 +104,6 @@ python/
 
 .buildkite/core.rayci.yml
 @ python core_cpp
-;
-
-.buildkite/serverless.rayci.yml
-@ python
 ;
 
 java/
@@ -165,6 +169,7 @@ ci/lint/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml
+bazel/tests/
 @ tools
 ;
 
@@ -212,7 +217,12 @@ ci/ci.sh
 src/
 @ core_cpp cpp
 @ java python linux_wheels macos_wheels
-@ dashboard release_tests accelerated_dag
+@ dashboard release_tests
+;
+
+src/ray/core_worker/experimental*.h
+src/ray/core_worker/experimental*.cc
+@ compiled_graphs
 ;
 
 .github/
@@ -226,7 +236,6 @@ setup_hooks.sh
 .pre-commit-config.yaml
 .isort.cfg
 .prettierrc.toml
-build.sh
 .fossa.yml
 # pass
 ;

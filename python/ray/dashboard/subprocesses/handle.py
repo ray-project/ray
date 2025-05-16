@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def filter_hop_by_hop_headers(
-    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]]
+    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]],
 ) -> dict[str, str]:
     """
     Filter out hop-by-hop headers from the headers dict.
@@ -132,6 +132,7 @@ class SubprocessModuleHandle:
             name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
+        child_conn.close()
 
     def wait_for_module_ready(self):
         """
@@ -265,6 +266,7 @@ class SubprocessModuleHandle:
             url,
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
+            allow_redirects=False,
         ) as backend_resp:
             resp_body = await backend_resp.read()
             return aiohttp.web.Response(

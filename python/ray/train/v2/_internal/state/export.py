@@ -1,14 +1,14 @@
 from ray.core.generated.export_train_state_pb2 import (
-    ExportTrainRunEventData as ProtoTrainRun,
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+    ExportTrainRunEventData as ProtoTrainRun,
 )
 from ray.train.v2._internal.state.schema import (
-    TrainRunAttempt,
-    TrainRun,
-    TrainWorker,
+    ActorStatus,
     RunAttemptStatus,
     RunStatus,
-    ActorStatus,
+    TrainRun,
+    TrainRunAttempt,
+    TrainWorker,
 )
 
 TRAIN_SCHEMA_VERSION = 1

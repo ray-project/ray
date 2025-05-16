@@ -31,10 +31,10 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState, Timer
-from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._last_debug_log_time = 0
 
-        register_dataset_logger(self._dataset_id)
+        self._data_context.set_dataset_logger_id(
+            register_dataset_logger(self._dataset_id)
+        )
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -179,7 +181,14 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            logger.debug(f"Shutting down executor for dataset {self._dataset_id}")
+            status_detail = (
+                f"failed with {exception}" if exception else "completed successfully"
+            )
+
+            logger.debug(
+                f"Shutting down executor for dataset {self._dataset_id} "
+                f"({status_detail})"
+            )
 
             _num_shutdown += 1
             self._shutdown = True
@@ -225,9 +234,12 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
                 state.close_progress_bars()
 
+            min_ = round(timer.min(), 3)
+            max_ = round(timer.max(), 3)
+            total = round(timer.get(), 3)
             logger.debug(
                 f"Shut down operator hierarchy for dataset {self._dataset_id}"
-                f" (min/max/total={timer.min()}/{timer.max()}/{timer.get()}s)"
+                f" (min/max/total={min_}/{max_}/{total}s)"
             )
 
             if exception is None:
@@ -239,13 +251,17 @@ class StreamingExecutor(Executor, threading.Thread):
 
             self._autoscaler.on_executor_shutdown()
 
-            unregister_dataset_logger(self._dataset_id)
-
             dur = time.perf_counter() - start
 
             logger.debug(
                 f"Shut down executor for dataset {self._dataset_id} "
                 f"(took {round(dur, 3)}s)"
+            )
+
+            # Unregister should be called after all operators are shut down to
+            # capture as many logs as possible.
+            self._data_context.set_dataset_logger_id(
+                unregister_dataset_logger(self._dataset_id)
             )
 
     def run(self):
@@ -294,7 +310,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
-            stats.extra_metrics = op.metrics.as_dict()
+            stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats
@@ -329,28 +345,31 @@ class StreamingExecutor(Executor, threading.Thread):
         self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
         self._report_current_usage()
-        op = select_operator_to_run(
-            topology,
-            self._resource_manager,
-            self._backpressure_policies,
-            self._autoscaler,
-            ensure_at_least_one_running=self._consumer_idling(),
-        )
 
         i = 0
-        while op is not None:
-            i += 1
-            if i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
-                self._refresh_progress_bars(topology)
-            topology[op].dispatch_next_task()
-            self._resource_manager.update_usages()
+        while True:
             op = select_operator_to_run(
                 topology,
                 self._resource_manager,
                 self._backpressure_policies,
-                self._autoscaler,
-                ensure_at_least_one_running=self._consumer_idling(),
+                # If consumer is idling (there's nothing for it to consume)
+                # enforce liveness, ie that at least a single task gets scheduled
+                ensure_liveness=self._consumer_idling(),
             )
+
+            if op is None:
+                break
+
+            topology[op].dispatch_next_task()
+
+            self._resource_manager.update_usages()
+
+            i += 1
+            if i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
+                self._refresh_progress_bars(topology)
+
+        # Trigger autoscaling
+        self._autoscaler.try_trigger_scaling()
 
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
@@ -366,7 +385,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if op.completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
-                    f"Operator Metrics:\n{op._metrics.as_dict()}"
+                    f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
                 )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
@@ -385,7 +404,7 @@ class StreamingExecutor(Executor, threading.Thread):
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
-        return len(state.outqueue) == 0
+        return len(state.output_queue) == 0
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
@@ -444,7 +463,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": op.internal_queue_size() + op_state.num_queued(),
+                    "queued_blocks": op_state.total_enqueued_input_bundles(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
@@ -466,7 +485,7 @@ class StreamingExecutor(Executor, threading.Thread):
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
     """Raises an exception on invalid DAGs.
 
-    It checks if the the sum of min actor pool sizes are larger than the resource
+    It checks if the sum of min actor pool sizes are larger than the resource
     limit, as well as other unsupported resource configurations.
 
     This should be called prior to creating the topology from the DAG.
@@ -487,7 +506,8 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
 
     base_usage = ExecutionResources(cpu=1)
     for op in walk(dag):
-        base_usage = base_usage.add(op.base_resource_usage())
+        min_resource_usage, _ = op.min_max_resource_requirements()
+        base_usage = base_usage.add(min_resource_usage)
 
     if not base_usage.satisfies_limit(limits):
         error_message = (
@@ -536,7 +556,7 @@ def _log_op_metrics(topology: Topology) -> None:
     """
     log_str = "Operator Metrics:\n"
     for op in topology:
-        log_str += f"{op.name}: {op.metrics.as_dict()}\n"
+        log_str += f"{op.name}: {op.metrics.as_dict(skip_internal_metrics=True)}\n"
     logger.debug(log_str)
 
 

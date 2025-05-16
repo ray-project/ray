@@ -2175,6 +2175,55 @@
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
+    - __suffix__: skip_training.jpeg.local_fs_multi_gpus
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs_multi_gpus.torch_dataloader
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+
+- name: training_ingest_benchmark-task=recsys
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  # TODO: Keep these manual for now -- there are a still a few issues to resolve.
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_install_torchrec.sh
+    cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
+
+  variations:
+    - __suffix__: skip_training.mock_dataloader
+      run:
+        timeout: 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=mock --num_workers=8 --train_batch_size=8192 --num_epochs=1 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.ray_data
+      run:
+        timeout: 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --num_epochs=1 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: full_training.mock_dataloader
+      run:
+        timeout: 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=mock --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
+
+    - __suffix__: full_training.ray_data
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
+
 
 - name: train_horovod_multi_node_test
   group: Train tests
@@ -4064,6 +4113,7 @@
 # LLM Serve
 ##############
 
+# Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
   python: "3.11"
@@ -4082,8 +4132,9 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+# Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
   python: "3.11"
@@ -4102,7 +4153,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
@@ -4122,7 +4173,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-serve-llm-profiler
 
 
 - name: llm_serve_llama_3dot1_8B_lora
@@ -4143,7 +4194,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
@@ -4163,7 +4214,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --run-perf-profiler false --skip-hf-token true
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
 
 
 ##############
@@ -4204,3 +4255,32 @@
     timeout: 3600
     script: >
       pytest -sv test_batch_sglang.py
+
+#######################
+# Ray examples tests
+#######################
+
+- name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir

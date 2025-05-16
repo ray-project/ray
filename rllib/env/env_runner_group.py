@@ -1240,7 +1240,7 @@ class EnvRunnerGroup:
             )
 
         def _create_new_policy_fn(worker):
-            # `foreach_env_runner` function: Adds the policy the the worker (and
+            # `foreach_env_runner` function: Adds the policy to the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(**new_policy_instance_kwargs)
 

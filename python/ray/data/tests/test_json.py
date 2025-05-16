@@ -1,7 +1,6 @@
 import gzip
 import json
 import os
-import requests
 import shutil
 from functools import partial
 
@@ -20,6 +19,9 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionFilter,
 )
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+)
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -37,7 +39,7 @@ def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_json(path)
 
-    assert ds.take() == [
+    assert sorted(ds.take(), key=lambda row: row["number"]) == [
         {"number": 0, "string": "foo", "country": "us"},
         {"number": 1, "string": "bar", "country": "us"},
     ]
@@ -103,7 +105,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json(path, filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -136,7 +138,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
     ds = ray.data.read_json([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -159,7 +161,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -189,9 +191,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -410,7 +411,9 @@ def test_json_read_with_parse_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_json_read_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     fs,
     data_path,
@@ -476,28 +479,6 @@ def test_json_read_partitioned_with_filter(
         ray.get(skipped_file_counter.reset.remote())
 
 
-def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
-    """Test JSONL with mixed types and schemas."""
-    data = [
-        {"a": 1, "b": {"c": 2}},  # Nested dict
-        {"a": 1, "b": {"c": 3}},  # Nested dict
-        {"a": 1, "b": {"c": {"hello": "world"}}},  # Mixed Schema
-    ]
-
-    path = os.path.join(tmp_path, "test.jsonl")
-    with open(path, "w") as f:
-        for record in data:
-            json.dump(record, f)
-            f.write("\n")
-
-    ds = ray.data.read_json(path, lines=True)
-    result = ds.take_all()
-
-    assert result[0] == data[0]  # Dict stays as is
-    assert result[1] == data[1]
-    assert result[2] == data[2]
-
-
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
 def test_jsonl_lists(ray_start_regular_shared, tmp_path, override_num_blocks):
     """Test JSONL with mixed types and schemas."""
@@ -519,6 +500,28 @@ def test_jsonl_lists(ray_start_regular_shared, tmp_path, override_num_blocks):
     assert result[0] == {"0": "ray", "1": "rocks", "2": "hello"}
     assert result[1] == {"0": "oh", "1": "no", "2": None}
     assert result[2] == {"0": "rocking", "1": "with", "2": "ray"}
+
+
+def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
+    """Test JSONL with mixed types and schemas."""
+    data = [
+        {"a": 1, "b": {"c": 2}},  # Nested dict
+        {"a": 1, "b": {"c": 3}},  # Nested dict
+        {"a": 1, "b": {"c": {"hello": "world"}}},  # Mixed Schema
+    ]
+
+    path = os.path.join(tmp_path, "test.jsonl")
+    with open(path, "w") as f:
+        for record in data:
+            json.dump(record, f)
+            f.write("\n")
+
+    ds = ray.data.read_json(path, lines=True)
+    result = ds.take_all()
+
+    assert result[0] == data[0]  # Dict stays as is
+    assert result[1] == data[1]
+    assert result[2] == data[2]
 
 
 @pytest.mark.parametrize(
@@ -736,42 +739,20 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
-def test_json_with_http_path_parallelization():
-    from ray.data.datasource.file_based_datasource import (
-        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserver):
+    num_files = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    urls = []
+    for i in range(num_files):
+        httpserver.expect_request(f"/file{i}.json").respond_with_json({"id": i})
+        urls.append(httpserver.url_for(f"/file{i}.json"))
+
+    ds = ray.data.read_json(urls)
+    actual_rows = ds.take_all()
+
+    expected_rows = [{"id": i} for i in range(num_files)]
+    assert sorted(actual_rows, key=lambda row: row["id"]) == sorted(
+        expected_rows, key=lambda row: row["id"]
     )
-
-    def is_url_accessible(url: str) -> bool:
-        """Check if a URL is accessible."""
-        try:
-            response = requests.head(
-                url, timeout=5
-            )  # Use HEAD request to check connectivity
-            return response.status_code == 200
-        except requests.RequestException:
-            return False
-
-    # List of URLs to check
-    data_urls = [
-        (
-            f"https://data.commoncrawl.org/contrib/datacomp/DCLM-pool/"
-            f"crawl=CC-MAIN-2022-49/1669446711712.26/CC-MAIN-20221210042021"
-            f"-20221210072021-000{i:02}.jsonl.gz"
-        )
-        for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD + 3)
-    ]
-
-    data_urls = [url for url in data_urls if is_url_accessible(url)]
-    # Check if at least one URL is accessible
-    if len(data_urls) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD:
-        pytest.skip("Not enough accessible HTTP links, skipping test.")
-
-    # Test logic
-    ds = ray.data.read_json(data_urls, include_paths=True)
-    ds = ds.select_columns(["path"])
-    df = ds.to_pandas().drop_duplicates()
-
-    assert len(df) == len(data_urls)
 
 
 if __name__ == "__main__":

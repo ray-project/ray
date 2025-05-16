@@ -32,7 +32,7 @@ from ray._private.test_utils import (
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    enable_external_redis,
+    external_redis_test_enabled,
     redis_replicas,
     get_redis_cli,
     start_redis_instance,
@@ -454,8 +454,17 @@ def _setup_redis(request, with_sentinel=False):
 
 
 @pytest.fixture
-def maybe_external_redis(request):
-    if enable_external_redis():
+def maybe_setup_external_redis(request):
+    if external_redis_test_enabled():
+        with _setup_redis(request):
+            yield
+    else:
+        yield
+
+
+@pytest.fixture(scope="module")
+def maybe_setup_external_redis_shared(request):
+    if external_redis_test_enabled():
         with _setup_redis(request):
             yield
     else:
@@ -494,7 +503,7 @@ def local_autoscaling_cluster(request, enable_v2):
 
 
 @pytest.fixture
-def shutdown_only(maybe_external_redis):
+def shutdown_only(maybe_setup_external_redis):
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -538,7 +547,7 @@ def _ray_start(**kwargs):
 
 
 @pytest.fixture
-def ray_start_with_dashboard(request, maybe_external_redis):
+def ray_start_with_dashboard(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     if param.get("num_cpus") is None:
         param["num_cpus"] = 1
@@ -569,7 +578,7 @@ def make_sure_dashboard_http_port_unused():
 
 # The following fixture will start ray with 0 cpu.
 @pytest.fixture
-def ray_start_no_cpu(request, maybe_external_redis):
+def ray_start_no_cpu(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=0, **param) as res:
         yield res
@@ -577,7 +586,7 @@ def ray_start_no_cpu(request, maybe_external_redis):
 
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
-def ray_start_regular(request, maybe_external_redis):
+def ray_start_regular(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -615,14 +624,14 @@ def ray_start_shared_local_modes(request):
 
 
 @pytest.fixture
-def ray_start_2_cpus(request, maybe_external_redis):
+def ray_start_2_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_10_cpus(request, maybe_external_redis):
+def ray_start_10_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=10, **param) as res:
         yield res
@@ -630,9 +639,9 @@ def ray_start_10_cpus(request, maybe_external_redis):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
-    if cluster_not_supported_:
+    if kwargs.pop("skip_cluster", cluster_not_supported):
         pytest.skip("Cluster not supported")
+
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -647,6 +656,7 @@ def _ray_start_cluster(**kwargs):
         do_init = True
     init_kwargs.update(kwargs)
     namespace = init_kwargs.pop("namespace")
+
     cluster = Cluster()
     remote_nodes = []
     for i in range(num_nodes):
@@ -658,6 +668,7 @@ def _ray_start_cluster(**kwargs):
         if len(remote_nodes) == 1 and do_init:
             ray.init(address=cluster.address, namespace=namespace)
     yield cluster
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
@@ -665,14 +676,22 @@ def _ray_start_cluster(**kwargs):
 
 # This fixture will start a cluster with empty nodes.
 @pytest.fixture
-def ray_start_cluster(request, maybe_external_redis):
+def ray_start_cluster(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(**param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_enabled(request, maybe_external_redis):
+def ray_start_cluster_enabled(request, maybe_setup_external_redis):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_cluster_enabled_shared(request, maybe_setup_external_redis_shared):
     param = getattr(request, "param", {})
     param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
@@ -680,14 +699,14 @@ def ray_start_cluster_enabled(request, maybe_external_redis):
 
 
 @pytest.fixture
-def ray_start_cluster_init(request, maybe_external_redis):
+def ray_start_cluster_init(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_head(request, maybe_external_redis):
+def ray_start_cluster_head(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -713,7 +732,9 @@ def ray_start_cluster_head_with_external_redis_sentinel(
 
 
 @pytest.fixture
-def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+def ray_start_cluster_head_with_env_vars(
+    request, maybe_setup_external_redis, monkeypatch
+):
     param = getattr(request, "param", {})
     env_vars = param.pop("env_vars", {})
     for k, v in env_vars.items():
@@ -723,14 +744,14 @@ def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypa
 
 
 @pytest.fixture
-def ray_start_cluster_2_nodes(request, maybe_external_redis):
+def ray_start_cluster_2_nodes(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_object_store_memory(request, maybe_external_redis):
+def ray_start_object_store_memory(request, maybe_setup_external_redis):
     # Start the Ray processes.
     store_size = request.param
     system_config = get_default_fixure_system_config()
@@ -835,16 +856,12 @@ def call_ray_stop_only():
     ray._private.utils.reset_ray_address()
 
 
-# Used to test both Ray Client and non-Ray Client codepaths.
-# Usage: In your test, call `ray.init(address)`.
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster_enabled, request):
+def _start_cluster(cluster, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
     if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
         pytest.skip("Skipping due to we don't have ray client in minimal.")
 
-    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -853,7 +870,38 @@ def start_cluster(ray_start_cluster_enabled, request):
     else:
         address = cluster.address
 
-    yield cluster, address
+    return cluster, address
+
+
+# Used to enforce that `start_cluster` and `start_cluster_shared` fixtures aren't mixed.
+_START_CLUSTER_SHARED_USED = False
+
+# Used to test both Ray Client and non-Ray Client codepaths.
+# Usage: In your test, call `ray.init(address)`.
+@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+def start_cluster(ray_start_cluster_enabled, request):
+    if _START_CLUSTER_SHARED_USED:
+        pytest.fail(
+            "Cannot mix `start_cluster` and `start_cluster_shared` "
+            "fixtures in the same session."
+        )
+    yield _start_cluster(ray_start_cluster_enabled, request)
+
+
+@pytest.fixture(scope="module", params=["ray_client", "no_ray_client"])
+def _start_cluster_shared(ray_start_cluster_enabled_shared, request):
+    global _START_CLUSTER_SHARED_USED
+    _START_CLUSTER_SHARED_USED = True
+
+    yield _start_cluster(ray_start_cluster_enabled_shared, request)
+
+
+# Same as `start_cluster` but module-scoped (shared across all tests in a file).
+# Runs ray.shutdown after each test.
+@pytest.fixture
+def start_cluster_shared(_start_cluster_shared, request):
+    yield _start_cluster_shared
+    ray.shutdown()
 
 
 @pytest.fixture(scope="function")

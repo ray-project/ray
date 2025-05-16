@@ -9,7 +9,7 @@ import logging
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple
 from unittest.mock import Mock, MagicMock, patch
 
 import colorama
@@ -17,6 +17,23 @@ import pytest
 
 import ray
 from ray._private import ray_constants
+from ray._private.ray_constants import (
+    PROCESS_TYPE_DASHBOARD,
+    PROCESS_TYPE_DASHBOARD_AGENT,
+    PROCESS_TYPE_GCS_SERVER,
+    PROCESS_TYPE_LOG_MONITOR,
+    PROCESS_TYPE_MONITOR,
+    PROCESS_TYPE_PYTHON_CORE_WORKER,
+    PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+    PROCESS_TYPE_RAYLET,
+    PROCESS_TYPE_RAY_CLIENT_SERVER,
+    PROCESS_TYPE_REAPER,
+    PROCESS_TYPE_REDIS_SERVER,
+    PROCESS_TYPE_REPORTER,
+    PROCESS_TYPE_RUNTIME_ENV_AGENT,
+    PROCESS_TYPE_WEB_UI,
+    PROCESS_TYPE_WORKER,
+)
 from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
@@ -129,7 +146,7 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
     assert config["log_rotation_backup_count"] == 0
 
 
-def test_log_file_exists(shutdown_only):
+def test_log_files_exist(shutdown_only):
     """Verify all log files exist as specified in
     https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure # noqa
     """
@@ -138,52 +155,57 @@ def test_log_file_exists(shutdown_only):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
-    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
-    # substring of "python-core-worker".
-    log_rotating_component = [
-        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
-        (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
-        (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
-        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
-        (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
+    # Run a no-op task to ensure all logs are created.
+    # Use a runtime_env to ensure that the agents are alive.
+    @ray.remote(runtime_env={"env_vars": {"FOO": "BAR"}})
+    def f() -> Tuple[str, int]:
+        return ray.get_runtime_context().get_worker_id(), os.getpid()
+
+    driver_id, driver_pid = (ray.get_runtime_context().get_worker_id(), os.getpid())
+    worker_id, worker_pid = ray.get(f.remote())
+
+    python_core_driver_filename = (
+        PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER + f"-{driver_id}_{driver_pid}"
+    )
+    python_core_worker_filename = (
+        PROCESS_TYPE_PYTHON_CORE_WORKER + f"-{worker_id}_{worker_pid}"
+    )
+    job_id = ray.get_runtime_context().get_job_id()
+    worker_filename = PROCESS_TYPE_WORKER + f"-{worker_id}-{job_id}-{worker_pid}"
+
+    component_to_extensions = [
+        (PROCESS_TYPE_DASHBOARD, [".log", ".out", ".err"]),
+        (PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
+        (PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
+        (PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
+        (PROCESS_TYPE_RAYLET, [".out", ".err"]),
+        (PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
+        (python_core_driver_filename, [".log"]),
+        (python_core_worker_filename, [".log"]),
+        (worker_filename, [".out", ".err"]),
     ]
-
-    # Run the basic workload.
-    @ray.remote
-    def f():
-        for i in range(10):
-            print(f"test {i}")
-
-    # Create a runtime env to make sure dashboard agent is alive.
-    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
     paths = list(log_dir_path.iterdir())
 
-    def component_and_suffix_exists(component, paths):
-        component, suffixes = component
+    def _assert_component_logs_exist(
+        paths: List[str], component_name: str, extensions: List[str]
+    ):
+        extensions_to_find = set(extensions)
         for path in paths:
-            filename = path.stem
-            suffix = path.suffix
-            if component in filename:
-                return suffix in suffixes
+            if path.stem != component_name:
+                continue
 
-        return False
+            if path.suffix in extensions_to_find:
+                extensions_to_find.remove(path.suffix)
 
-    for component in log_rotating_component:
-        assert component_and_suffix_exists(component, paths), (component, paths)
+        assert len(extensions_to_find) == 0, (
+            f"Missing extensions {(extensions_to_find)} for component '{component_name}'. "
+            f"All paths: {paths}."
+        )
 
-    # Special handle application log.
-    application_log_prefix = ray_constants.PROCESS_TYPE_WORKER
-    appplication_log_suffixes = [".out", ".err"]
-    for path in paths:
-        filename = path.stem
-        suffix = path.suffix
-        if filename.startswith(application_log_prefix):
-            return suffix in appplication_log_suffixes
+    for (component_name, extensions) in component_to_extensions:
+        _assert_component_logs_exist(paths, component_name, extensions)
 
 
 # Rotation is disable in the unit test.
@@ -196,17 +218,17 @@ def test_log_rotation_disable_rotation_params(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
-    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # NOTE: There's no PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
-    log_rotating_component = [
-        ray_constants.PROCESS_TYPE_DASHBOARD,
-        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
-        ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        ray_constants.PROCESS_TYPE_MONITOR,
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
-        ray_constants.PROCESS_TYPE_RAYLET,
-        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    log_rotating_components = [
+        PROCESS_TYPE_DASHBOARD,
+        PROCESS_TYPE_DASHBOARD_AGENT,
+        PROCESS_TYPE_LOG_MONITOR,
+        PROCESS_TYPE_MONITOR,
+        PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+        PROCESS_TYPE_PYTHON_CORE_WORKER,
+        PROCESS_TYPE_RAYLET,
+        PROCESS_TYPE_GCS_SERVER,
     ]
 
     # Run the basic workload.
@@ -239,7 +261,7 @@ def test_log_rotation_disable_rotation_params(shutdown_only, monkeypatch):
                 return True
         return False
 
-    for component in log_rotating_component:
+    for component in log_rotating_components:
         assert component_exist(component, paths), paths
 
     # Check if the backup count is respected.
@@ -284,17 +306,17 @@ def test_log_rotation(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
-    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # NOTE: There's no PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
-    log_rotating_component = [
-        ray_constants.PROCESS_TYPE_DASHBOARD,
-        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
-        ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        ray_constants.PROCESS_TYPE_MONITOR,
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
-        ray_constants.PROCESS_TYPE_RAYLET,
-        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    log_rotating_components = [
+        PROCESS_TYPE_DASHBOARD,
+        PROCESS_TYPE_DASHBOARD_AGENT,
+        PROCESS_TYPE_LOG_MONITOR,
+        PROCESS_TYPE_MONITOR,
+        PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+        PROCESS_TYPE_PYTHON_CORE_WORKER,
+        PROCESS_TYPE_RAYLET,
+        PROCESS_TYPE_GCS_SERVER,
     ]
 
     # Run the basic workload.
@@ -344,7 +366,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
                         found = True
         return True
 
-    for component in log_rotating_component:
+    for component in log_rotating_components:
         assert component_exist(component, paths), paths
         assert component_file_only_one_log_entry(component)
 
@@ -509,27 +531,27 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 def test_log_redirect_to_stderr(shutdown_only):
     log_components = {
-        ray_constants.PROCESS_TYPE_DASHBOARD: "Starting dashboard metrics server on port",
-        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
-        ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT: "Starting runtime env agent",
-        ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
+        PROCESS_TYPE_DASHBOARD: "Starting dashboard metrics server on port",
+        PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
+        PROCESS_TYPE_RUNTIME_ENV_AGENT: "Starting runtime env agent",
+        PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
-        ray_constants.PROCESS_TYPE_LOG_MONITOR: "",
-        ray_constants.PROCESS_TYPE_MONITOR: "Starting monitor using ray installation",
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER: "worker server started",
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER: "driver server started",
+        PROCESS_TYPE_LOG_MONITOR: "",
+        PROCESS_TYPE_MONITOR: "Starting monitor using ray installation",
+        PROCESS_TYPE_PYTHON_CORE_WORKER: "worker server started",
+        PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER: "driver server started",
         # TODO(Clark): Add coverage for Ray Client.
-        # ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "Starting Ray Client server",
-        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "",
-        ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
+        # PROCESS_TYPE_RAY_CLIENT_SERVER: "Starting Ray Client server",
+        PROCESS_TYPE_RAY_CLIENT_SERVER: "",
+        PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
-        ray_constants.PROCESS_TYPE_REAPER: "",
+        PROCESS_TYPE_REAPER: "",
         # No reporter process run.
-        ray_constants.PROCESS_TYPE_REPORTER: "",
+        PROCESS_TYPE_REPORTER: "",
         # No web UI process run.
-        ray_constants.PROCESS_TYPE_WEB_UI: "",
+        PROCESS_TYPE_WEB_UI: "",
         # Unused.
-        ray_constants.PROCESS_TYPE_WORKER: "",
+        PROCESS_TYPE_WORKER: "",
     }
 
     script = """
@@ -570,7 +592,7 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
             # Process not run or doesn't generate logs; skip.
             continue
         assert canonical_record in stderr, stderr
-        if component == ray_constants.PROCESS_TYPE_REDIS_SERVER:
+        if component == PROCESS_TYPE_REDIS_SERVER:
             # Redis doesn't expose hooks for custom log formats, so we aren't able to
             # inject the Redis server component name into the log records.
             continue
@@ -1090,18 +1112,21 @@ def test_log_with_import():
 def test_log_monitor_ip_correct(ray_start_cluster):
     cluster = ray_start_cluster
     # add first node
-    cluster.add_node(node_ip_address="127.0.0.2")
+    cluster.add_node(
+        node_ip_address="127.0.0.2",
+        resources={"pin_task": 1},
+    )
     address = cluster.address
     ray.init(address)
     # add second node
     cluster.add_node(node_ip_address="127.0.0.3")
 
-    @ray.remote
+    @ray.remote(resources={"pin_task": 1})
     def print_msg():
         print("abc")
 
     p = init_log_pubsub()
-    print_msg.remote()
+    ray.get(print_msg.remote())
     data = get_log_data(
         p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
     )

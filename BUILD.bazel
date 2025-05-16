@@ -121,8 +121,8 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/rpc_chaos.h"],
     deps = [
         "//src/ray/common:ray_config",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -156,12 +156,12 @@ ray_cc_library(
     srcs = ["src/ray/rpc/server_call.cc"],
     hdrs = ["src/ray/rpc/server_call.h"],
     deps = [
-        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/stats:stats_metric",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -184,8 +184,18 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/metrics_agent_client.h"],
     deps = [
         ":grpc_client",
-        "//src/ray/common:status",
         "//src/ray/protobuf:reporter_cc_proto",
+        "//src/ray/util:logging",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "event_aggregator_client",
+    hdrs = ["src/ray/rpc/event_aggregator_client.h"],
+    deps = [
+        ":grpc_client",
+        "//src/ray/protobuf:event_aggregator_service_cc_proto",
         "//src/ray/util:logging",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -221,6 +231,7 @@ ray_cc_library(
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
     ] + [
+        ":event_aggregator_client",
         ":grpc_client",
         ":grpc_common_base",
         ":grpc_server",
@@ -285,9 +296,9 @@ ray_cc_library(
         ":autoscaler_cc_grpc",
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
-        "//src/ray/pubsub:pubsub_lib",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/pubsub:pubsub_lib",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:btree",
@@ -311,10 +322,10 @@ ray_cc_library(
     ],
     deps = [
         ":grpc_common_lib",
-        "//src/ray/object_manager:object_manager_grpc_stub_manager",
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
+        "//src/ray/object_manager:object_manager_grpc_stub_manager",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -332,8 +343,8 @@ cc_grpc_library(
 ray_cc_library(
     name = "worker_rpc",
     srcs = [
-        "src/ray/rpc/worker/core_worker_client_pool.cc",
         "src/ray/rpc/worker/core_worker_client.cc",
+        "src/ray/rpc/worker/core_worker_client_pool.cc",
     ],
     hdrs = [
         "src/ray/rpc/worker/core_worker_client.h",
@@ -342,10 +353,12 @@ ray_cc_library(
     ],
     deps = [
         ":grpc_common_lib",
-        "//src/ray/pubsub:pubsub_lib",
         ":worker_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/pubsub:pubsub_lib",
+        "//src/ray/raylet_client:raylet_client_lib",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -427,7 +440,6 @@ cc_grpc_library(
 ray_cc_library(
     name = "ray_common",
     deps = [
-        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
         "//src/ray/common:event_stats",
@@ -443,6 +455,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/stats:stats_metric",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -453,9 +466,9 @@ ray_cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":raylet_lib",
+        "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
-        "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
@@ -473,18 +486,18 @@ ray_cc_library(
 
 ray_cc_library(
     name = "raylet_agent_manager",
-    hdrs = ["src/ray/raylet/agent_manager.h"],
     srcs = ["src/ray/raylet/agent_manager.cc"],
+    hdrs = ["src/ray/raylet/agent_manager.h"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
-        "//src/ray/util:process",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util",
         "//src/ray/util:event",
         "//src/ray/util:logging",
+        "//src/ray/util:process",
         "//src/ray/util:thread_utils",
-        "//src/ray/util",
         "@boost//:asio",
-        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
@@ -508,46 +521,46 @@ ray_cc_library(
 
 ray_cc_library(
     name = "runtime_env_agent_client",
-    hdrs = ["src/ray/raylet/runtime_env_agent_client.h"],
     srcs = ["src/ray/raylet/runtime_env_agent_client.cc"],
+    hdrs = ["src/ray/raylet/runtime_env_agent_client.h"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings:str_format",
         "//src/ray/common:asio",
-        "//src/ray/common:status",
-        "//src/ray/util:logging",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
-        "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/common:status",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/util:logging",
         "@boost//:beast",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
 ray_cc_library(
     name = "worker_pool",
-    hdrs = ["src/ray/raylet/worker_pool.h"],
     srcs = ["src/ray/raylet/worker_pool.cc"],
+    hdrs = ["src/ray/raylet/worker_pool.h"],
     deps = [
-        "@boost//:system",
-        "@com_google_absl//absl/strings",
-        "//src/ray/common:network",
+        ":runtime_env_agent_client",
+        ":worker",
         "//src/ray/common:constants",
+        "//src/ray/common:network",
         "//src/ray/common:ray_config",
         "//src/ray/common:runtime_env",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        ":runtime_env_agent_client",
-        ":worker",
         "//src/ray/core_worker:core_worker_common",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "@boost//:system",
+        "@com_google_absl//absl/strings",
     ],
 )
 
 ray_cc_library(
     name = "wait_manager",
-    hdrs = ["src/ray/raylet/wait_manager.h"],
     srcs = ["src/ray/raylet/wait_manager.cc"],
+    hdrs = ["src/ray/raylet/wait_manager.h"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/util:container_util",
@@ -556,18 +569,18 @@ ray_cc_library(
 
 ray_cc_library(
     name = "local_object_manager",
-    hdrs = ["src/ray/raylet/local_object_manager.h"],
     srcs = ["src/ray/raylet/local_object_manager.cc"],
+    hdrs = ["src/ray/raylet/local_object_manager.h"],
     deps = [
+        ":worker_pool",
+        ":worker_rpc",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager:object_directory",
-        "//src/ray/pubsub:subscriber_lib",
-        ":worker_pool",
-        ":worker_rpc",
+        "//src/ray/object_manager:object_manager_common",
         "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/pubsub:subscriber_lib",
     ],
 )
 
@@ -602,14 +615,9 @@ ray_cc_library(
         ],
     }),
     deps = [
-        "//src/ray/gcs:gcs",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
         ":local_object_manager",
         ":node_manager_fbs",
         ":node_manager_rpc",
-        "//src/ray/object_manager:object_manager",
-        "//src/ray/object_manager:ownership_object_directory",
-        "//src/ray/pubsub:pubsub_lib",
         ":raylet_agent_manager",
         ":runtime_env_agent_client",
         ":wait_manager",
@@ -618,10 +626,15 @@ ray_cc_library(
         ":worker_rpc",
         "//src/ray/common:memory_monitor",
         "//src/ray/core_worker:experimental_mutable_object_provider",
+        "//src/ray/gcs",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/object_manager",
+        "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/pubsub:pubsub_lib",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:cmd_line_utils",
@@ -685,7 +698,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":raylet_lib",
+        ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -696,10 +709,10 @@ ray_cc_test(
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/gcs/test:gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
         ":ray_mock",
+        "//src/ray/gcs/test:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -710,10 +723,10 @@ ray_cc_test(
     srcs = ["src/ray/raylet/runtime_env_agent_client_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/gcs/test:gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
         ":ray_mock",
+        "//src/ray/gcs/test:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -844,6 +857,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":worker_rpc",
         "@com_google_googletest//:gtest_main",
     ],
@@ -888,30 +902,6 @@ cc_proto_library(
     deps = [":extra_actions_base_proto_lib"],
 )
 
-filegroup(
-    name = "iwyu_sh",
-    srcs = ["ci/run/iwyu.sh"],
-)
-
-action_listener(
-    name = "iwyu_cpp",
-    extra_actions = [":iwyu_action"],
-    mnemonics = ["CppCompile"],
-)
-
-extra_action(
-    name = "iwyu_action",
-    cmd = "$(location :iwyu_sh) postbuild $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE) > $(output $(ACTION_ID).iwyu.txt)",
-    out_templates = [
-        "$(ACTION_ID).iwyu.txt",
-    ],
-    tools = [
-        ":extra_actions_base_proto",
-        ":iwyu_sh",
-        "@com_google_protobuf//:protoc",
-    ],
-)
-
 ray_cc_library(
     name = "sha256",
     srcs = [
@@ -941,7 +931,6 @@ alias(
     name = "hiredis",
     actual = "@com_github_redis_hiredis//:hiredis",
 )
-
 
 flatbuffer_cc_library(
     name = "node_manager_fbs",
@@ -979,14 +968,14 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
-        "//src/ray/gcs/gcs_client:gcs_python_callbacks",
         "//:exported_internal",
-        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//:raylet_lib",
-        "//src/ray/gcs:gcs_redis_client",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/gcs:gcs_redis_client",
+        "//src/ray/gcs/gcs_client:gcs_python_callbacks",
+        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",

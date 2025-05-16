@@ -193,7 +193,7 @@ class NodeHead(SubprocessModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.gcs_aio_client.get_all_node_info(timeout=None)
+        all_node_info = await self.gcs_client.async_get_all_node_info(timeout=None)
 
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
@@ -236,7 +236,7 @@ class NodeHead(SubprocessModule):
             # Put head node ID in the internal KV to be read by JobAgent.
             # TODO(architkulkarni): Remove once State API exposes which
             # node is the head node.
-            await self.gcs_aio_client.internal_kv_put(
+            await self.gcs_client.async_internal_kv_put(
                 ray_constants.KV_HEAD_NODE_ID_KEY,
                 node_id.encode(),
                 overwrite=True,
@@ -252,7 +252,7 @@ class NodeHead(SubprocessModule):
                 f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
             ]
             tasks = [
-                self.gcs_aio_client.internal_kv_del(
+                self.gcs_client.async_internal_kv_del(
                     key,
                     del_by_prefix=False,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -315,7 +315,7 @@ class NodeHead(SubprocessModule):
             try:
                 # here we have a sync request
                 req_time = time.time()
-                cluster_status = await self.gcs_aio_client.get_cluster_status()
+                cluster_status = await self.gcs_client.async_get_cluster_status()
                 reply_time = time.time()
                 cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
                     cluster_status,
@@ -346,7 +346,7 @@ class NodeHead(SubprocessModule):
         # Legacy autoscaler status code.
         (status_string, error) = await asyncio.gather(
             *[
-                self.gcs_aio_client.internal_kv_get(
+                self.gcs_client.async_internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -651,7 +651,7 @@ class NodeHead(SubprocessModule):
             DataSource.node_actors[node_id] = node_actors
 
     async def _get_all_actors(self) -> Dict[str, dict]:
-        actors = await self.gcs_aio_client.get_all_actor_info(
+        actors = await self.gcs_client.async_get_all_actor_info(
             timeout=GCS_RPC_TIMEOUT_SECONDS
         )
 

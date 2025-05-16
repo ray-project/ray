@@ -230,8 +230,13 @@ class _Registry:
     def register(self, category, key, value):
         """Registers the value with the global registry.
 
+        Args:
+            category: The category to register under.
+            key: The key to register under.
+            value: The value to register.
+
         Raises:
-            PicklingError if unable to pickle to provided file.
+            PicklingError: If unable to pickle to provided file.
         """
         if category not in KNOWN_CATEGORIES:
             from ray.tune import TuneError
