@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10_000,
+        help="Batch size to use with 'map_batches'.",
+    )
+    parser.add_argument(
         "--map-batches-sleep-ms",
         type=int,
         default=100,
@@ -75,12 +81,14 @@ def main(args: argparse.Namespace) -> None:
                         map_batches_sleep_ms=args.map_batches_sleep_ms,
                     ),
                     batch_format=args.batch_format,
+                    batch_size=args.batch_size,
                 )
             else:
                 ds = ds.map_batches(
                     IncrementBatch,
                     fn_constructor_args=[args.map_batches_sleep_ms],
                     batch_format=args.batch_format,
+                    batch_size=args.batch_size,
                     concurrency=(1, 1024),
                 )
         elif args.api == "flat_map":
