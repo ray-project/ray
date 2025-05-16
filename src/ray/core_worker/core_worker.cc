@@ -16,14 +16,9 @@
 
 #include <algorithm>
 #include <future>
-#include <thread>
 #include <memory>
 #include <string>
 #include <tuple>
-#include <iostream>
-#include <thread>
-#include <sys/syscall.h>
-#include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -1163,7 +1158,7 @@ void CoreWorker::Exit(
     return;
   }
 
-  RAY_LOG(ERROR) << "Exit signal received, this process will exit after all outstanding "
+  RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
@@ -1180,10 +1175,11 @@ void CoreWorker::Exit(
            "raylet disconnects the client because it kills this worker.";
   }
 
-
-	uint64_t tid;
-	pthread_threadid_np(NULL, &tid);
-  RAY_LOG(ERROR) << "Exit signal received, start draining (" << tid << ")";
+  RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
+  /// Since this core worker is exiting, it's necessary to release all local references,
+  /// otherwise the frontend code may not release its references and this worker will be
+  /// leaked. See https://github.com/ray-project/ray/issues/19639.
+  reference_counter_->ReleaseAllLocalReferences();
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -1209,18 +1205,14 @@ void CoreWorker::Exit(
     // get called by the TaskManager while the ReferenceCounter's lock is held,
     // but the callback itself must acquire the ReferenceCounter's lock to
     // drain the object references.
-    RAY_LOG(ERROR) << "Posting to the task_execution_service...";
     task_execution_service_.post(
         [this, shutdown]() {
-          RAY_LOG(ERROR) << "task_receiver_->Stop() ...";
+          RAY_LOG(INFO) << "Wait for currently executing tasks in the underlying thread "
+                           "pools to finish.";
           // Wait for currently executing tasks in the underlying thread pools to
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
           task_receiver_->Stop();
-
-          RAY_LOG(ERROR) << "task_receiver_->Stop() done!";
-          // XXX: TODO.
-          reference_counter_->ReleaseAllLocalReferences();
 
           bool not_actor_task = false;
           {
@@ -1245,7 +1237,6 @@ void CoreWorker::Exit(
         "CoreWorker.DrainAndShutdown");
   };
 
-  RAY_LOG(ERROR) << "Drain task_manager_.";
   task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
@@ -3194,7 +3185,6 @@ void CoreWorker::RunTaskExecutionLoop() {
                  nullptr);
           }
           if (status.IsUnexpectedSystemExit()) {
-            RAY_LOG(ERROR) << "EXITING FROM C++ CODE!";
             Exit(
                 rpc::WorkerExitType::SYSTEM_ERROR,
                 absl::StrCat("Worker exits unexpectedly by a signal. ", status.message()),
@@ -3463,7 +3453,6 @@ Status CoreWorker::ExecuteTask(
          absl::StrCat("Worker exits by an user request. ", status.message()),
          creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
-    RAY_LOG(ERROR) << "IN TASK EXECUTION CALLBACK???";
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);

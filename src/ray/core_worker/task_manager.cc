@@ -395,7 +395,7 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
     absl::MutexLock lock(&mu_);
     if (num_pending_tasks_ > 0) {
       has_pending_tasks = true;
-      RAY_LOG(ERROR)
+      RAY_LOG(WARNING)
           << "This worker is still managing " << submissible_tasks_.size()
           << " in flight tasks, waiting for them to finish before shutting down.";
       shutdown_hook_ = std::move(shutdown);
@@ -404,7 +404,6 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
 
   // Do not hold the lock when calling callbacks.
   if (!has_pending_tasks) {
-    RAY_LOG(ERROR) << "CALLING SHUTDOWN IMMEDIATELY";
     shutdown();
   }
 }
