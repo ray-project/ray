@@ -86,9 +86,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                          reply,
                          send_reply_callback](const Status &status) {
            if (!status.ok()) {
-             RAY_LOG(ERROR).WithField(worker_id).WithField(node_id)
-                 << "Failed to report worker failure, address = "
-                 << worker_address.ip_address();
+             RAY_LOG(ERROR).WithField(worker_id).WithField(node_id).WithField(
+                 "worker_address", worker_address.ip_address())
+                 << "Failed to report worker failure";
            } else {
              if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
                stats::UnintentionalWorkerFailures.Record(1);
