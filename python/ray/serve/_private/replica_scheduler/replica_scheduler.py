@@ -839,3 +839,9 @@ class ReplicaScheduler(ABC):
             raise e from None
 
         return replica
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        """Compatibility shim for RunningReplicaInfo datatype."""
+        return self.update_replicas(
+            [self.create_replica_wrapper(r) for r in running_replicas]
+        )
