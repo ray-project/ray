@@ -62,17 +62,17 @@ def _should_convert_to_tensor(
         # - Provided collection is already implementing Ndarray protocol like
         #   `torch.Tensor`, `pd.Series`, etc (but *excluding* `pyarrow.Array`,
         #   `pyarrow.ChunkedArray`)
-        or _is_ndarray_like_not_pyarrow_array(column_values)
+        or _is_ndarray_like_not_pa_array_not_pd_series(column_values)
         # - Provided column values is a list of a) ndarrays or b) ndarray-like objects
         #   (excluding Pyarrow arrays). This is done for compatibility with previous
         #   existing behavior where all column values were blindly converted to Numpy
         #   leading to list of ndarrays being converted a tensor):
         or isinstance(column_values[0], np.ndarray)
-        or _is_ndarray_like_not_pyarrow_array(column_values[0])
+        or _is_ndarray_like_not_pa_array_not_pd_series(column_values[0])
     )
 
 
-def _is_ndarray_like_not_pyarrow_array(column_values):
+def _is_ndarray_like_not_pa_array_not_pd_series(column_values):
     return (
         is_ndarray_like(column_values)
         and not _is_arrow_array(column_values)
