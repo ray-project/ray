@@ -71,3 +71,7 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
   For other cases, you can use it at your own risk and
   you need to implement additional mechanisms to detect the failure of GCS or the head node
   and restart it.
+
+.. note::
+
+  GCS fault tolerance can also be enabled when running Ray on `Anyscale <https://www.anyscale.com/>`_. See the Anyscale `documentation <https://docs.anyscale.com/platform/services/head-node-ft/>`_ for instructions.
