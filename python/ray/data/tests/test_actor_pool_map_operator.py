@@ -122,7 +122,7 @@ class TestActorPool(unittest.TestCase):
             pool.scale_up(1)
             # Assert we can't scale down immediately after scale up
             assert not pool.can_scale_down()
-            assert pool._last_scale_up_ts == time.time()
+            assert pool._last_scaling_up_ts == time.time()
 
             # Advance clock
             f.tick(
