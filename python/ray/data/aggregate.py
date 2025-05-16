@@ -249,26 +249,26 @@ class Count(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Count
+            import ray
+            from ray.data.aggregate import Count
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Counting all rows:
-        result = ds.aggregate(Count())
-        # result: {'count()': 100}
+            # Counting all rows:
+            result = ds.aggregate(Count())
+            # result: {'count()': 100}
 
 
-        # Counting all rows per group:
-        result = ds.groupby("group_key").aggregate(Count(on="id")).take_all()
-        # result: [{'group_key': 0, 'count(id)': 34},
-        #          {'group_key': 1, 'count(id)': 33},
-        #          {'group_key': 2, 'count(id)': 33}]
+            # Counting all rows per group:
+            result = ds.groupby("group_key").aggregate(Count(on="id")).take_all()
+            # result: [{'group_key': 0, 'count(id)': 34},
+            #          {'group_key': 1, 'count(id)': 33},
+            #          {'group_key': 2, 'count(id)': 33}]
 
 
     Args:
@@ -314,19 +314,19 @@ class Sum(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Sum
+            import ray
+            from ray.data.aggregate import Sum
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Summing all rows per group:
-        result = ds.aggregate(Sum(on="id")).take_all()
-        # result: {'sum(id)': 4950}
+            # Summing all rows per group:
+            result = ds.aggregate(Sum(on="id")).take_all()
+            # result: {'sum(id)': 4950}
 
     Args:
         on: The name of the numerical column to sum. Must be provided.
@@ -364,21 +364,21 @@ class Min(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Min
+            import ray
+            from ray.data.aggregate import Min
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Finding the minimum value per group:
-        result = ds.groupby("group_key").aggregate(Min(on="id")).take_all()
-        # result: [{'group_key': 0, 'min(id)': 0},
-        #          {'group_key': 1, 'min(id)': 1},
-        #          {'group_key': 2, 'min(id)': 2}]
+            # Finding the minimum value per group:
+            result = ds.groupby("group_key").aggregate(Min(on="id")).take_all()
+            # result: [{'group_key': 0, 'min(id)': 0},
+            #          {'group_key': 1, 'min(id)': 1},
+            #          {'group_key': 2, 'min(id)': 2}]
 
     Args:
         on: The name of the column to find the minimum value from. Must be provided.
@@ -417,21 +417,21 @@ class Max(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Max
+            import ray
+            from ray.data.aggregate import Max
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Finding the maximum value per group:
-        result = ds.groupby("group_key").aggregate(Max(on="id")).take_all()
-        # result: [{'group_key': 0, 'max(id)': ...},
-        #          {'group_key': 1, 'max(id)': ...},
-        #          {'group_key': 2, 'max(id)': ...}]
+            # Finding the maximum value per group:
+            result = ds.groupby("group_key").aggregate(Max(on="id")).take_all()
+            # result: [{'group_key': 0, 'max(id)': ...},
+            #          {'group_key': 1, 'max(id)': ...},
+            #          {'group_key': 2, 'max(id)': ...}]
 
     Args:
         on: The name of the column to find the maximum value from. Must be provided.
@@ -471,21 +471,21 @@ class Mean(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Mean
+            import ray
+            from ray.data.aggregate import Mean
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Calculating the mean value per group:
-        result = ds.groupby("group_key").aggregate(Mean(on="id")).take_all()
-        # result: [{'group_key': 0, 'mean(id)': ...},
-        #          {'group_key': 1, 'mean(id)': ...},
-        #          {'group_key': 2, 'mean(id)': ...}]
+            # Calculating the mean value per group:
+            result = ds.groupby("group_key").aggregate(Mean(on="id")).take_all()
+            # result: [{'group_key': 0, 'mean(id)': ...},
+            #          {'group_key': 1, 'mean(id)': ...},
+            #          {'group_key': 2, 'mean(id)': ...}]
 
     Args:
         on: The name of the numerical column to calculate the mean on. Must be provided.
@@ -555,21 +555,21 @@ class Std(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Std
+            import ray
+            from ray.data.aggregate import Std
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Calculating the standard deviation per group:
-        result = ds.groupby("group_key").aggregate(Std(on="id")).take_all()
-        # result: [{'group_key': 0, 'std(id)': ...},
-        #          {'group_key': 1, 'std(id)': ...},
-        #          {'group_key': 2, 'std(id)': ...}]
+            # Calculating the standard deviation per group:
+            result = ds.groupby("group_key").aggregate(Std(on="id")).take_all()
+            # result: [{'group_key': 0, 'std(id)': ...},
+            #          {'group_key': 1, 'std(id)': ...},
+            #          {'group_key': 2, 'std(id)': ...}]
 
     Args:
         on: The name of the column to calculate standard deviation on.
@@ -651,21 +651,21 @@ class AbsMax(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import AbsMax
+            import ray
+            from ray.data.aggregate import AbsMax
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Calculating the absolute maximum value per group:
-        result = ds.groupby("group_key").aggregate(AbsMax(on="id")).take_all()
-        # result: [{'group_key': 0, 'abs_max(id)': ...},
-        #          {'group_key': 1, 'abs_max(id)': ...},
-        #          {'group_key': 2, 'abs_max(id)': ...}]
+            # Calculating the absolute maximum value per group:
+            result = ds.groupby("group_key").aggregate(AbsMax(on="id")).take_all()
+            # result: [{'group_key': 0, 'abs_max(id)': ...},
+            #          {'group_key': 1, 'abs_max(id)': ...},
+            #          {'group_key': 2, 'abs_max(id)': ...}]
 
     Args:
         on: The name of the column to calculate absolute maximum on. Must be provided.
@@ -713,21 +713,21 @@ class Quantile(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Quantile
+            import ray
+            from ray.data.aggregate import Quantile
 
-        ds = ray.data.range(100)
-        # Schema: {'id': int64}
-        ds = ds.add_column("group_key", lambda x: x % 3)
-        # Schema: {'id': int64, 'group_key': int64}
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
 
-        # Calculating the 50th percentile (median) per group:
-        result = ds.groupby("group_key").aggregate(Quantile(q=0.5, on="id")).take_all()
-        # result: [{'group_key': 0, 'quantile(id)': ...},
-        #          {'group_key': 1, 'quantile(id)': ...},
-        #          {'group_key': 2, 'quantile(id)': ...}]
+            # Calculating the 50th percentile (median) per group:
+            result = ds.groupby("group_key").aggregate(Quantile(q=0.5, on="id")).take_all()
+            # result: [{'group_key': 0, 'quantile(id)': ...},
+            #          {'group_key': 1, 'quantile(id)': ...},
+            #          {'group_key': 2, 'quantile(id)': ...}]
 
     Args:
         on: The name of the column to calculate the quantile on. Must be provided.
@@ -824,19 +824,19 @@ class Unique(AggregateFnV2):
 
     Example:
 
-    .. testcode::
+        .. testcode::
 
-        import ray
-        from ray.data.aggregate import Unique
+            import ray
+            from ray.data.aggregate import Unique
 
-        ds = ray.data.range(100)
-        ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ray.data.range(100)
+            ds = ds.add_column("group_key", lambda x: x % 3)
 
-        # Calculating the unique values per group:
-        result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
-        # result: [{'group_key': 0, 'unique(id)': ...},
-        #          {'group_key': 1, 'unique(id)': ...},
-        #          {'group_key': 2, 'unique(id)': ...}]
+            # Calculating the unique values per group:
+            result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
+            # result: [{'group_key': 0, 'unique(id)': ...},
+            #          {'group_key': 1, 'unique(id)': ...},
+            #          {'group_key': 2, 'unique(id)': ...}]
 
     Args:
         on: The name of the column from which to collect unique values.
