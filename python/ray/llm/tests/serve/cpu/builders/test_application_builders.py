@@ -183,7 +183,8 @@ class TestBuildVllmDeployment:
 
         app = build_llm_deployment(llm_config_with_mock_engine)
         assert isinstance(app, serve.Application)
-        serve.run(app)
+        handle = serve.run(app)
+        assert handle.deployment_name.startswith("LLMDeployment")
 
     def test_build_llm_deployment_with_name_prefix(
         self,
