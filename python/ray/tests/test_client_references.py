@@ -1,3 +1,4 @@
+import sys
 from concurrent.futures import Future
 
 import pytest
@@ -323,8 +324,4 @@ def test_named_actor_refcount(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

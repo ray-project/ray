@@ -1,9 +1,10 @@
+import time
 import pytest
 import platform
+import sys
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
-import time
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
@@ -220,6 +221,4 @@ def test_autoscaler_not_kill_blocking_node(setup_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

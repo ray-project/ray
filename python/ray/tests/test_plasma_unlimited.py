@@ -3,9 +3,11 @@ import json
 import random
 import os
 import shutil
+import sys
 import platform
-import pytest
 import psutil
+
+import pytest
 
 import ray
 from ray._private.test_utils import (
@@ -371,6 +373,4 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

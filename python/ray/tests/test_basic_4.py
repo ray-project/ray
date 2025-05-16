@@ -1,13 +1,13 @@
 # coding: utf-8
 import logging
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-import os
+from unittest import mock
 
 import pytest
-from unittest import mock
 
 import ray
 import ray.cluster_utils
@@ -263,6 +263,4 @@ def test_fair_queueing(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
-
     sys.exit(pytest.main(["-sv", __file__]))

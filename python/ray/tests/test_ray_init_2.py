@@ -447,8 +447,4 @@ def test_can_create_task_in_multiple_sessions(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

@@ -1,3 +1,4 @@
+import sys
 import time
 import warnings
 
@@ -98,6 +99,4 @@ def test_bad_resources(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

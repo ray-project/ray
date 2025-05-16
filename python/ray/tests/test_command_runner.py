@@ -1,3 +1,7 @@
+import hashlib
+import sys
+from getpass import getuser
+
 import pytest
 
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
@@ -8,8 +12,6 @@ from ray.autoscaler._private.command_runner import (
     _with_environment_variables,
 )
 from ray.autoscaler.sdk import get_docker_host_mount_location
-from getpass import getuser
-import hashlib
 
 auth_config = {
     "ssh_user": "ray",
@@ -389,6 +391,4 @@ def test_docker_shm_override(run_option_type):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

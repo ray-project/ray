@@ -800,6 +800,4 @@ def test_update_object_location_batch_failure(
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-sv", __file__]))

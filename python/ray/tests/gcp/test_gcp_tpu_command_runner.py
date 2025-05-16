@@ -1,13 +1,15 @@
+import hashlib
+import os
+import sys
+from getpass import getuser
+from unittest.mock import patch
+
 import pytest
 
-import os
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
 from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray._private import ray_constants
-from getpass import getuser
-import hashlib
-from unittest.mock import patch
 
 _MOCK_TPU_NAME = "my-tpu"
 _MOCK_ACCELERATOR_TYPE = "v4-16"
@@ -285,6 +287,4 @@ def test_tpu_pod_resources():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

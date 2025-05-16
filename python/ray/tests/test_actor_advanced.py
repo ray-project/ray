@@ -1371,7 +1371,4 @@ assert alive_actors == 10
 
 
 if __name__ == "__main__":
-    import pytest
-
-    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-sv", __file__]))

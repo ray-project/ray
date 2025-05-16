@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 import ray
 
 test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
@@ -62,7 +66,4 @@ def test_actor_api(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))
