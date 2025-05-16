@@ -37,6 +37,9 @@ from ray.dashboard.modules.reporter.profile_manager import (
     MemoryProfilingManager,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
 
 import psutil
 
@@ -381,6 +384,7 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
@@ -406,6 +410,7 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -1325,13 +1330,22 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            self._metrics_agent.record_and_export(
-                records,
-                global_tags={
-                    "Version": ray.__version__,
-                    "SessionName": self._session_name,
-                },
-            )
+            if RAY_ENABLE_OPENTELEMETRY:
+                self._open_telemetry_metric_recorder.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
+            else:
+                self._metrics_agent.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
