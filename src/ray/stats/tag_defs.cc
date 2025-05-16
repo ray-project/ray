@@ -32,6 +32,7 @@ const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 
 const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
 
+// Keep in sync with python/ray/_private/metrics_agent.py:53
 const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
 
 const TagKeyType JobIdKey = TagKeyType::Register("JobId");
