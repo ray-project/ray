@@ -232,10 +232,14 @@ Inference of models or policies
 +++++++++++++++++++++++++++++++
 
 - `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
-   Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
+   Demonstrates performing inference using a checkpointed :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   First trains the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, creates a checkpoint, then re-loads the module from this checkpoint or ONNX file, and computes
+   actions in a simulated environment.
 
 - `Policy inference after training, with ConnectorV2 <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__:
-   Runs inference with a trained, LSTM-based policy using connectors, which preprocess observations and actions, allowing for more modular and flexible inference setups.
+   Runs inference with a trained, LSTM-based :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   Two connector pipelines, env-to-module and module-to-env, preprocess observations and LSTM-states and postprocess model outputs into actions,
+   allowing for very modular and flexible inference setups.
 
 
 Learners

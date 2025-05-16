@@ -3557,49 +3557,6 @@ py_test(
     ],
 )
 
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/onnx_tf2",
-    size = "small",
-    srcs = ["examples/checkpoints/onnx_tf.py"],
-    args = ["--framework=tf2"],
-    main = "examples/checkpoints/onnx_tf.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/onnx_torch",
-    size = "small",
-    srcs = ["examples/checkpoints/onnx_torch.py"],
-    main = "examples/checkpoints/onnx_torch.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/onnx_torch_lstm",
-    size = "small",
-    srcs = ["examples/checkpoints/onnx_torch_lstm.py"],
-    main = "examples/checkpoints/onnx_torch_lstm.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
@@ -4575,12 +4532,46 @@ py_test(
 )
 
 py_test(
+    name = "examples/inference/policy_inference_after_training_w_onnx",
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--stop-reward=100.0",
+        "--use-onnx-for-inference",
+    ],
+    main = "examples/inference/policy_inference_after_training.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "examples/inference/policy_inference_after_training_w_connector",
     size = "medium",
     srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
     args = [
         "--enable-new-api-stack",
         "--stop-reward=150.0",
+    ],
+    main = "examples/inference/policy_inference_after_training_w_connector.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/inference/policy_inference_after_training_w_connector_w_onnx",
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--stop-reward=150.0",
+        "--use-onnx-for-inference",
     ],
     main = "examples/inference/policy_inference_after_training_w_connector.py",
     tags = [
