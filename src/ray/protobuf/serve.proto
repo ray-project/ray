@@ -134,6 +134,14 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // Cloudpickled replica scheduler definition.
+  bytes serialized_replica_scheduler_cls = 15;
+
+  // The import path of the replica scheduler if user passed a string. Will be the
+  // concatenation of the replica scheduler module and the replica scheduler name
+  // if user passed a callable.
+  string replica_scheduler_class = 16;
 }
 
 // Deployment language.
