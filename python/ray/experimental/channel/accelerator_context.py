@@ -69,8 +69,9 @@ class AcceleratorContext:
                     )
                 else:
                     from ray.experimental.channel.cpu_communicator import (
-                        CPUCommunicator
+                        CPUCommunicator,
                     )
+
                     _default_accelerator_context = AcceleratorContext(
                         "cpu", CPUCommunicator
                     )
@@ -146,7 +147,7 @@ class AcceleratorContext:
         Creates a communication group for collective operations.
         """
         return self._communicator_cls(*args, **kwargs)
-    
+
     @property
     def module_name(self) -> str:
         """
@@ -160,7 +161,6 @@ class AcceleratorContext:
         Returns the communicator class.
         """
         return self._communicator_cls
-
 
     @property
     def accelerator_count(self) -> int:
