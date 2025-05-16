@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
 import threading
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.data._internal.progress_bar import ProgressBar
@@ -18,6 +18,9 @@ class TaskContext:
     # The index of task. Each task has a unique task index within the same
     # operator.
     task_idx: int
+
+    # Name of the operator that this task belongs to.
+    op_name: str
 
     # The dictionary of sub progress bar to update. The key is name of sub progress
     # bar. Note this is only used on driver side.

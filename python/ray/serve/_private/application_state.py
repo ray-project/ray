@@ -42,15 +42,13 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
+    ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import (
+    DeploymentLanguage,
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,
@@ -133,8 +131,9 @@ class StatusOverview:
         Args:
             name: Deployment's name.
 
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
+        Returns:
+            Optional[DeploymentStatusInfo]: The status of the deployment if it exists,
+                otherwise None.
         """
 
         for deployment_status in self.deployment_statuses:

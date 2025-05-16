@@ -55,14 +55,6 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-  /// On client connect/reconnect, find all the tasks which are known to be
-  /// executed out of order.
-  std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override;
-  /// Get the task's sequence number according to the internal offset.
-  uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
-  /// Mark a task has been executed on the receiver side.
-  void MarkSeqnoCompleted(uint64_t sequence_no,
-                          const TaskSpecification &task_spec) override;
   bool Empty() override;
 
  private:
@@ -78,27 +70,6 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   /// All tasks with sequence numbers less than next_send_position have already been
   /// sent to the actor.
   uint64_t next_send_position = 0;
-
-  /// If a task raised a retryable user exception, it's marked as "completed" via
-  /// `MarkSeqnoCompleted` and `next_task_reply_position` may be updated. Afterwards Ray
-  /// retries by creating another task pushed to the back of the queue, making it executes
-  /// later than all tasks pending in the queue.
-  ///
-  /// Out of the tasks sent by this worker to the actor, the number of tasks
-  /// that we will never send to the actor again. We only include
-  /// tasks that will not be sent again, to support automatic task retry on
-  /// actor failure. This value only tracks consecutive tasks that are completed.
-  /// Tasks completed out of order will be cached in out_of_completed_tasks first.
-  uint64_t next_task_reply_position = 0;
-
-  /// The temporary container for tasks completed out of order. It can happen in
-  /// async or threaded actor mode. This map is used to store the seqno and task
-  /// spec for (1) increment next_task_reply_position later when the in order tasks are
-  /// returned (2) resend the tasks to restarted actor so retried tasks can maintain
-  /// ordering.
-  // NOTE(simon): consider absl::btree_set for performance, but it requires updating
-  // abseil.
-  std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
 };
 }  // namespace core
 }  // namespace ray

@@ -60,7 +60,7 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 std::shared_ptr<StatsHandle> EventTracker::RecordStart(
-    const std::string &name, int64_t expected_queueing_delay_ns) {
+    std::string name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   int64_t cum_count = 0;
   int64_t curr_count = 0;
@@ -76,7 +76,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   }
 
   return std::make_shared<StatsHandle>(
-      name,
+      std::move(name),
       absl::GetCurrentTimeNanos() + expected_queueing_delay_ns,
       std::move(stats),
       global_stats_);

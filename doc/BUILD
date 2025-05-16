@@ -236,8 +236,7 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = [
         "source/serve/doc_code/distilbert.py",
-        # TODO: Re-enable after fixing diffusers dependency in runtime_env
-        # "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
     ],
     env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
@@ -571,4 +570,10 @@ doctest(
         ],
     ),
     tags = ["team:core"],
+)
+
+filegroup(
+    name = "example_configs",
+    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
 )

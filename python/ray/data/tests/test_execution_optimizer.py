@@ -56,7 +56,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_util import get_parquet_read_logical_op, _check_usage_record
+from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
 

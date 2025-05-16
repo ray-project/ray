@@ -188,7 +188,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // complete out of order. This ensures that we will not deadlock due to
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
-      send_pos = task_spec.ActorCounter();
+      send_pos = task_spec.SequenceNumber();
       RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
       queue->second.cur_pending_calls++;
       task_queued = true;
@@ -271,7 +271,7 @@ void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
 }
 
 void ActorTaskSubmitter::FailInflightTasks(
-    const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
@@ -288,7 +288,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   RAY_LOG(DEBUG).WithField(actor_id).WithField(WorkerID::FromBinary(address.worker_id()))
       << "Connecting to actor";
 
-  absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+  absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
 
   {
@@ -331,7 +331,6 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
 
-    ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
   }
 
@@ -373,7 +372,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
   RAY_LOG(DEBUG).WithField(actor_id) << "Disconnecting from actor, death context type="
                                      << gcs::GetActorDeathCauseString(death_cause);
 
-  absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+  absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
   std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
@@ -568,26 +567,6 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   }
 }
 
-void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id) {
-  auto it = client_queues_.find(actor_id);
-  RAY_CHECK(it != client_queues_.end());
-  if (!it->second.rpc_client) {
-    return;
-  }
-  auto &client_queue = it->second;
-  RAY_CHECK(!client_queue.worker_id.empty());
-  auto out_of_order_completed_tasks =
-      client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
-
-  for (const auto &completed_task : out_of_order_completed_tasks) {
-    // Making a copy here because we are flipping a flag and the original value is
-    // const.
-    auto task_spec = completed_task.second;
-    task_spec.GetMutableMessage().set_skip_execution(true);
-    PushActorTask(client_queue, task_spec, /*skip_queue=*/true);
-  }
-}
-
 void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                        const TaskSpecification &task_spec,
                                        bool skip_queue) {
@@ -600,13 +579,13 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
-  request->set_sequence_number(queue.actor_submit_queue->GetSequenceNumber(task_spec));
+  request->set_sequence_number(task_spec.SequenceNumber());
 
   const auto actor_id = task_spec.ActorId();
-  const auto actor_counter = task_spec.ActorCounter();
+
   const auto num_queued = queue.inflight_task_callbacks.size();
   RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
-      << "Pushing task to actor, actor counter " << actor_counter << " seq no "
+      << "Pushing task to actor, actor id " << actor_id << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
@@ -620,18 +599,19 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
-  queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
+  const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
+  queue.inflight_task_callbacks.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
+      [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
           auto &queue = it->second;
-          auto callback_it = queue.inflight_task_callbacks.find(task_id);
+          auto callback_it = queue.inflight_task_callbacks.find(task_attempt);
           if (callback_it == queue.inflight_task_callbacks.end()) {
-            RAY_LOG(DEBUG).WithField(task_id)
+            RAY_LOG(DEBUG).WithField(task_attempt.first)
                 << "The task has already been marked as failed. Ignore the reply.";
             return;
           }
@@ -654,18 +634,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
-  const auto actor_counter = task_spec.ActorCounter();
-  const auto task_skipped = task_spec.GetMessage().skip_execution();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
-  if (task_skipped) {
-    // NOTE(simon):Increment the task counter regardless of the status because the
-    // reply for a previously completed task. We are not calling CompletePendingTask
-    // because the tasks are pushed directly to the actor, not placed on any queues
-    // in task_finisher_.
-  } else if (status.ok() && !is_retryable_exception) {
+  if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
@@ -780,12 +753,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
-    // On exception-retry we update the seqno so we need to call;
-    // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || is_retryable_exception) {
-      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
-    }
     queue.cur_pending_calls--;
   }
 }
@@ -884,7 +851,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   const auto actor_id = task_spec.ActorId();
   const auto &task_id = task_spec.TaskId();
-  auto send_pos = task_spec.ActorCounter();
+  auto send_pos = task_spec.SequenceNumber();
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
