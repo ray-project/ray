@@ -137,22 +137,6 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_client_builder.py",
-    ],
-    tags = [
-        "exclusive",
-        "ray_client",
-        "team:core",
-        "use_all_core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "medium",
-    files = [
         "test_client_multi.py",
         "test_client_proxy.py",
         "test_client_references.py",
