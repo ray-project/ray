@@ -2,7 +2,7 @@ import os
 
 import ray
 
-cuda_env = ray._private.ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+cuda_env = ray._private.accelerators.nvidia_gpu.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 if os.environ.get("RAY_TEST_RESOURCES_SPECIFIED") == "1":
     assert cuda_env not in os.environ
     assert "CUDA_VISIBLE_DEVICES" in os.environ

@@ -32,3 +32,7 @@ handle: DeploymentHandle = serve.run(app)
 response: DeploymentResponse = handle.say_hello_twice.remote(name="Ray")
 assert response.result() == "Hello, Ray! Hello, Ray!"
 # __local_dev_handle_end__
+
+# __local_dev_testing_start__
+serve.run(app, _local_testing_mode=True)
+# __local_dev_testing_end__

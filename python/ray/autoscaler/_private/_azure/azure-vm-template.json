@@ -50,7 +50,7 @@
                 "description": "The size of the VM"
             }
         },
-        "vmTags": { 
+        "vmTags": {
             "type": "object",
             "metadata": {
                 "description": "Tags for the VM"
@@ -107,6 +107,13 @@
             "metadata": {
                 "descriptions": "Subnet resource id."
             }
+        },
+        "enableAcceleratedNetworking": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "descriptions": "Whether to enable accelerated networking."
+            }
         }
     },
     "variables": {
@@ -148,7 +155,8 @@
                 ],
                 "networkSecurityGroup": {
                     "id": "[parameters('nsg')]"
-                }
+                },
+                "enableAcceleratedNetworking": "[parameters('enableAcceleratedNetworking')]"
             },
             "condition": "[parameters('provisionPublicIp')]"
         },
@@ -175,7 +183,8 @@
                 ],
                 "networkSecurityGroup": {
                     "id": "[parameters('nsg')]"
-                }
+                },
+                "enableAcceleratedNetworking": "[parameters('enableAcceleratedNetworking')]"
             },
             "condition": "[not(parameters('provisionPublicIp'))]"
         },

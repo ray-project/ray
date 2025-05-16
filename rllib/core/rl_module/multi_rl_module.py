@@ -20,7 +20,6 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
@@ -130,6 +129,7 @@ class MultiRLModule(RLModule):
             action_space=action_space,
             inference_only=inference_only,
             learner_only=None,
+            catalog_class=None,
             model_config=model_config,
             **kwargs,
         )
@@ -419,17 +419,6 @@ class MultiRLModule(RLModule):
     ) -> StateDict:
         state = {}
 
-        # We store the current RLModuleSpec as well as it might have changed over time
-        # (modules added/removed from `self`).
-        if self._check_component(
-            COMPONENT_MULTI_RL_MODULE_SPEC,
-            components,
-            not_components,
-        ):
-            state[COMPONENT_MULTI_RL_MODULE_SPEC] = MultiRLModuleSpec.from_module(
-                self
-            ).to_dict()
-
         for module_id, rl_module in self.get_checkpointable_components():
             if self._check_component(module_id, components, not_components):
                 state[module_id] = rl_module.get_state(
@@ -453,27 +442,8 @@ class MultiRLModule(RLModule):
         Args:
             state: The state dict to set.
         """
-        # Check the given MultiRLModuleSpec and - if there are changes in the individual
-        # sub-modules - apply these to this MultiRLModule.
-        if COMPONENT_MULTI_RL_MODULE_SPEC in state:
-            multi_rl_module_spec = MultiRLModuleSpec.from_dict(
-                state[COMPONENT_MULTI_RL_MODULE_SPEC]
-            )
-            # Go through all of our current modules and check, whether they are listed
-            # in the given MultiRLModuleSpec. If not, erase them from `self`.
-            for module_id, module in self._rl_modules.copy().items():
-                if module_id not in multi_rl_module_spec.rl_module_specs:
-                    self.remove_module(module_id, raise_err_if_not_found=True)
-            # Go through all the modules in the given MultiRLModuleSpec and if
-            # they are not present in `self`, add them.
-            for module_id, module_spec in multi_rl_module_spec.rl_module_specs.items():
-                if module_id not in self:
-                    self.add_module(module_id, module_spec.build(), override=False)
-
         # Now, set the individual states
         for module_id, module_state in state.items():
-            if module_id == COMPONENT_MULTI_RL_MODULE_SPEC:
-                continue
             if module_id in self:
                 self._rl_modules[module_id].set_state(module_state)
 
@@ -527,23 +497,6 @@ class MultiRLModule(RLModule):
         return self
 
     @classmethod
-    def _check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
-        """Checks the module configs for validity.
-
-        The module_configs be a mapping from module_ids to RLModuleSpec
-        objects.
-
-        Args:
-            module_configs: The module configs to check.
-
-        Raises:
-            ValueError: If the module configs are invalid.
-        """
-        for module_id, module_spec in module_configs.items():
-            if not isinstance(module_spec, RLModuleSpec):
-                raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
-
-    @classmethod
     def _check_module_specs(cls, rl_module_specs: Dict[ModuleID, RLModuleSpec]):
         """Checks the individual RLModuleSpecs for validity.
 
@@ -574,47 +527,34 @@ class MultiRLModuleSpec:
     share neural networks across the modules, the build method can be overridden to
     create the shared module first and then pass it to custom module classes that would
     then use it as a shared module.
-
-    Args:
-        multi_rl_module_class: The class of the MultiRLModule to construct. By
-            default, this is the base `MultiRLModule` class.
-        observation_space: Optional global observation space for the MultiRLModule.
-            Useful for shared network components that live only inside the MultiRLModule
-            and don't have their own ModuleID and own RLModule within
-            `self._rl_modules`.
-        action_space: Optional global action space for the MultiRLModule.
-            Useful for shared network components that live only inside the MultiRLModule
-            and don't have their own ModuleID and own RLModule within
-            `self._rl_modules`.
-        inference_only: An optional global inference_only flag. If not set (None by
-            default), considers the MultiRLModule to be inference_only=True, only
-            if all submodules also have their own inference_only flags set to True.
-        model_config: An optional global model_config dict. Useful to configure shared
-            network components that only live inside the MultiRLModule and don't have
-            their own ModuleID and own RLModule within `self._rl_modules`.
-        rl_module_specs: The module specs for each individual module. It can be either a
-            RLModuleSpec used for all module_ids or a dictionary mapping
-            from module IDs to RLModuleSpecs for each individual module.
-        load_state_path: The path to the module state to load from. NOTE: This must be
-            an absolute path. NOTE: If the load_state_path of this spec is set, and
-            the load_state_path of one of the RLModuleSpecs' is also set,
-            the weights of that RL Module will be loaded from the path specified in
-            the RLModuleSpec. This is useful if you want to load the weights
-            of a MultiRLModule and also manually load the weights of some of the RL
-            modules within that MultiRLModule from other checkpoints.
-        modules_to_load: A set of module ids to load from the checkpoint. This is
-            only used if load_state_path is set. If this is None, all modules are
-            loaded.
     """
 
+    #: The class of the MultiRLModule to construct. By default,
+    #: this is the base `MultiRLModule` class.
     multi_rl_module_class: Type[MultiRLModule] = MultiRLModule
+    #: Optional global observation space for the MultiRLModule.
+    #: Useful for shared network components that live only inside the MultiRLModule
+    #: and don't have their own ModuleID and own RLModule within
+    #: `self._rl_modules`.
     observation_space: Optional[gym.Space] = None
+    #: Optional global action space for the MultiRLModule. Useful for
+    #: shared network components that live only inside the MultiRLModule and don't
+    #: have their own ModuleID and own RLModule within `self._rl_modules`.
     action_space: Optional[gym.Space] = None
+    #: An optional global inference_only flag. If not set (None by
+    #: default), considers the MultiRLModule to be inference_only=True, only if all
+    #: submodules also have their own inference_only flags set to True.
     inference_only: Optional[bool] = None
     # TODO (sven): Once we support MultiRLModules inside other MultiRLModules, we would
     #  need this flag in here as well, but for now, we'll leave it out for simplicity.
     # learner_only: bool = False
+    #: An optional global model_config dict. Useful to configure shared
+    #: network components that only live inside the MultiRLModule and don't have
+    #: their own ModuleID and own RLModule within `self._rl_modules`.
     model_config: Optional[dict] = None
+    #: The module specs for each individual module. It can be either
+    #: an RLModuleSpec used for all module_ids or a dictionary mapping from module
+    #: IDs to RLModuleSpecs for each individual module.
     rl_module_specs: Union[RLModuleSpec, Dict[ModuleID, RLModuleSpec]] = None
 
     # TODO (sven): Deprecate these in favor of using the pure Checkpointable APIs for
@@ -650,21 +590,14 @@ class MultiRLModuleSpec:
 
     @OverrideToImplementCustomLogic
     def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
-        """Builds either the multi-agent module or the single-agent module.
-
-        If module_id is None, it builds the multi-agent module. Otherwise, it builds
-        the single-agent module with the given module_id.
-
-        Note: If when build is called the module_specs is not a dictionary, it will
-        raise an error, since it should have been updated by the caller to inform us
-        about the module_ids.
+        """Builds either the MultiRLModule or a (single) sub-RLModule under `module_id`.
 
         Args:
             module_id: Optional ModuleID of a single RLModule to be built. If None
                 (default), builds the MultiRLModule.
 
         Returns:
-            The built RLModule if module_id is provided, otherwise the built
+            The built RLModule if `module_id` is provided, otherwise the built
             MultiRLModule.
         """
         self._check_before_build()

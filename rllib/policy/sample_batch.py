@@ -55,7 +55,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         and len(seq_lens) > 0
     ):
         if torch and torch.is_tensor(seq_lens):
-            return seq_lens.sum().item()
+            return int(seq_lens.sum().item())
         else:
             return int(sum(seq_lens))
 
@@ -891,12 +891,25 @@ class SampleBatch(dict):
         return self
 
     @ExperimentalAPI
-    def to_device(self, device, framework="torch"):
+    def to_device(
+        self,
+        device,
+        framework: str = "torch",
+        pin_memory: bool = False,
+        use_stream: bool = False,
+        stream: Optional[Union["torch.cuda.Stream", "torch.cuda.Stream"]] = None,
+    ):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                self[k] = convert_to_torch_tensor(v, device)
+                self[k] = convert_to_torch_tensor(
+                    v,
+                    device,
+                    pin_memory=pin_memory,
+                    use_stream=use_stream,
+                    stream=stream,
+                )
         else:
             raise NotImplementedError
         return self
@@ -1491,13 +1504,24 @@ class MultiAgentBatch:
         )
 
     @ExperimentalAPI
-    def to_device(self, device, framework="torch"):
+    def to_device(
+        self,
+        device,
+        framework="torch",
+        pin_memory: bool = False,
+        use_stream: bool = False,
+        stream: Optional[Union["torch.cuda.Stream", "torch.cuda.Stream"]] = None,
+    ):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for pid, policy_batch in self.policy_batches.items():
                 self.policy_batches[pid] = policy_batch.to_device(
-                    device, framework=framework
+                    device,
+                    framework=framework,
+                    pin_memory=pin_memory,
+                    use_stream=use_stream,
+                    stream=stream,
                 )
         else:
             raise NotImplementedError
@@ -1640,7 +1664,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
             s.max_seq_len is None or max_seq_len is None
         ) and s.max_seq_len != max_seq_len:
             raise ValueError(
-                "Samples must consistently either provide or omit " "`max_seq_len`!"
+                "Samples must consistently either provide or omit `max_seq_len`!"
             )
         elif zero_padded and s.max_seq_len != max_seq_len:
             raise ValueError(

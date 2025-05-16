@@ -74,6 +74,8 @@ extensions = [
 ]
 
 # Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
 docsearch_app_id = "LBHF0PABBL"
 docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
 docsearch_index_name = "docs-ray"
@@ -116,7 +118,11 @@ myst_heading_anchors = 3
 # arising from type annotations. See https://github.com/ray-project/ray/pull/46103
 # for additional context.
 nitpicky = True
-nitpick_ignore_regex = [("py:class", ".*")]
+nitpick_ignore_regex = [
+    ("py:class", ".*"),
+    # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
+    ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
+]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to
@@ -209,6 +215,7 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
+    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -224,6 +231,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -298,22 +306,18 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": False,
+    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a>.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
-        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
-    "navbar_persistent": [
-        "search-button-field",
-        "theme-switcher",
-    ],
     "secondary_sidebar_items": [
         "page-toc",
         "edit-on-github",
@@ -339,9 +343,11 @@ html_context = {
 
 html_sidebars = {
     "**": [
-        "main-sidebar-readthedocs"
-        if os.getenv("READTHEDOCS") == "True"
-        else "main-sidebar"
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
     ],
     "ray-overview/examples": [],
 }
@@ -556,6 +562,19 @@ def setup(app):
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
 
+    class DuplicateObjectFilter(logging.Filter):
+        def filter(self, record):
+            # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
+            # once in Ray Core API and once in Compiled Graph API
+            if (
+                "duplicate object description of ray.actor.ActorMethod.bind"
+                in record.getMessage()
+            ):
+                return False  # Don't log this specific warning
+            return True  # Log all other warnings
+
+    logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+
 
 redoc = [
     {
@@ -574,22 +593,25 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
-    "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
     "cupy",
     "dask",
     "datasets",
     "fastapi",
     "filelock",
-    "frozenlist",
     "fsspec",
     "google",
     "grpc",
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -612,11 +634,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",
@@ -684,3 +708,5 @@ intersphinx_mapping = {
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"

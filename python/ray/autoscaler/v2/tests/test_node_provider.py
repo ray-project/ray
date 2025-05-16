@@ -19,10 +19,7 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_LAUNCH_BATCH,
 )
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
-from ray.autoscaler._private.kuberay.node_provider import (
-    KUBERAY_TYPE_HEAD,
-    IKubernetesHttpApiClient,
-)
+from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
     KubeRayProvider,
 )
@@ -372,7 +369,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             cluster_name="test",
             provider_config={
                 "namespace": "default",
-                "head_node_type": KUBERAY_TYPE_HEAD,
+                "head_node_type": "headgroup",
             },
             k8s_api_client=self.mock_client,
         )
@@ -389,7 +386,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "raycluster-autoscaler-head-8zsc8": CloudInstance(
                     cloud_instance_id="raycluster-autoscaler-head-8zsc8",
                     node_kind=NodeKind.HEAD,
-                    node_type="head-group",
+                    node_type="headgroup",
                     is_running=True,
                 ),  # up-to-date status because the Ray container is in running status
                 "raycluster-autoscaler-worker-small-group-dkz2r": CloudInstance(
@@ -494,6 +491,219 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "value": {"workersToDelete": []},
             },
         ]
+
+    def test_increase_min_replicas_to_scale_up(self):
+        # Simulate the case where users manually increase the `minReplicas` field
+        # from 0 to $num_pods. KubeRay will create $num_pods worker Pods to meet the new
+        # `minReplicas`, even though the `replicas` field is still 0.
+        small_group = "small-group"
+        num_pods = 0
+        assert (
+            self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["groupName"]
+            == small_group
+        )
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                num_pods += 1
+        assert num_pods > 0
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 0
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "minReplicas"
+        ] = num_pods
+
+        # Launching a new node and `replicas` should be
+        # `max(replicas, minReplicas) + 1`.
+        self.provider.launch(shape={small_group: 1}, request_id="launch-1")
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert len(patches) == 1
+        assert patches[0] == {
+            "op": "replace",
+            "path": "/spec/workerGroupSpecs/0/replicas",
+            "value": num_pods + 1,
+        }
+
+    def test_inconsistent_pods_raycr_scale_up(self):
+        """
+        Test the case where the cluster state has not yet reached the desired state.
+        Specifically, the replicas field in the RayCluster CR does not match the actual
+        number of Pods.
+        """
+        # Check the assumptions of the test
+        small_group = "small-group"
+        num_pods = 0
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                num_pods += 1
+
+        assert (
+            self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["groupName"]
+            == small_group
+        )
+        desired_replicas = num_pods + 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "replicas"
+        ] = desired_replicas
+
+        # Launch a new node. The replicas field should be incremented by 1, even though
+        # the cluster state has not yet reached the goal state.
+        launch_request = {"small-group": 1}
+        self.provider.launch(shape=launch_request, request_id="launch-1")
+
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert len(patches) == 1
+        assert patches[0] == {
+            "op": "replace",
+            "path": "/spec/workerGroupSpecs/0/replicas",
+            "value": desired_replicas + 1,
+        }
+
+    def test_inconsistent_pods_raycr_scale_down(self):
+        """
+        Test the case where the cluster state has not yet reached the desired state.
+        Specifically, the replicas field in the RayCluster CR does not match the actual
+        number of Pods.
+        """
+        # Check the assumptions of the test
+        small_group = "small-group"
+        num_pods = 0
+        pod_to_delete = None
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                num_pods += 1
+                pod_to_delete = pod["metadata"]["name"]
+        assert pod_to_delete is not None
+
+        assert (
+            self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["groupName"]
+            == small_group
+        )
+        desired_replicas = num_pods + 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "replicas"
+        ] = desired_replicas
+
+        # Terminate a node. The replicas field should be decremented by 1, even though
+        # the cluster state has not yet reached the goal state.
+        self.provider.terminate(ids=[pod_to_delete], request_id="term-1")
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": desired_replicas - 1,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": [
+                        pod_to_delete,
+                    ]
+                },
+            },
+        ]
+
+    def test_scale_down_multiple_pods_of_node_type(self):
+        """
+        Test the case where multiple pods of the same node type are scaled
+        down on one autoscaler iteration. This test verifies that the provider
+        properly handles multiple pod deletions and counting workers_to_delete.
+        """
+        # Setup provider with multiple worker pods in podlist. We use podlist2
+        # here because podlist1 only contains one worker.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        self.mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        self.provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            k8s_api_client=self.mock_client,
+        )
+
+        # Identify all pods in the target group
+        small_group = "small-group"
+        pod_names = []
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+
+        # Terminate all pods in the group
+        self.provider._sync_with_api_server()
+        cur_instance_ids = set(self.provider.instances.keys())
+        pods_to_terminate = [name for name in pod_names if name in cur_instance_ids]
+
+        assert (
+            len(pods_to_terminate) > 1
+        ), "Expected multiple pods to terminate in the target group."
+
+        self.provider.terminate(ids=pods_to_terminate, request_id="term-2")
+
+        # Check the patches applied to the RayCluster resource
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 0,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": pods_to_terminate,
+                },
+            },
+        ]
+
+    def test_worker_to_delete_info(self):
+        """
+        Validate _get_workers_delete_info correctly returns the worker groups with pending
+        deletes, worker groups with finished deletes, and the set of workers to delete.
+        """
+        # Create a RayCluster CR and set replicas to 0 to simulate the case where the autoscaler
+        # patches the RayCluster with `replicas: 0`, but alive Pods still exist in workersToDelete.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 0
+        self.mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+
+        # Add some workers to workersToDelete.
+        small_group = "small-group"
+        pod_names = []
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
+            "workersToDelete": pod_names,
+        }
+
+        (
+            pending_deletes,
+            finished_deletes,
+            workers_to_delete,
+        ) = KubeRayProvider._get_workers_delete_info(raycluster_cr, set(pod_names))
+
+        # Validate _get_workers_delete_info populates sets as expected.
+        assert pending_deletes == {"small-group"}
+        assert finished_deletes == set()
+        assert workers_to_delete == {pod_names[0], pod_names[1]}
 
 
 if __name__ == "__main__":

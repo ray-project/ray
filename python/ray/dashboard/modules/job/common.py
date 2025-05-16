@@ -8,14 +8,18 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private import ray_constants
-from ray._private.event.export_event_logger import get_export_event_logger
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.event.export_event_logger import (
+    EventLogType,
+    check_export_api_enabled,
+    get_export_event_logger,
+)
 from ray._private.runtime_env.packaging import parse_uri
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
 from ray.util.annotations import PublicAPI
+from ray._raylet import GcsClient
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
@@ -199,7 +203,7 @@ class JobInfoStorageClient:
 
     def __init__(
         self,
-        gcs_aio_client: GcsAioClient,
+        gcs_client: GcsClient,
         export_event_log_dir_root: Optional[str] = None,
     ):
         """
@@ -209,15 +213,15 @@ class JobInfoStorageClient:
         export_event_log_dir_root doesn't need to be passed if the caller
         is not modifying data in the KV store.
         """
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         self._export_submission_job_event_logger: logging.Logger = None
         try:
             if (
-                ray_constants.RAY_ENABLE_EXPORT_API_WRITE
+                check_export_api_enabled(ExportEvent.SourceType.EXPORT_SUBMISSION_JOB)
                 and export_event_log_dir_root is not None
             ):
                 self._export_submission_job_event_logger = get_export_event_logger(
-                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB,
+                    EventLogType.SUBMISSION_JOB,
                     export_event_log_dir_root,
                 )
         except Exception:
@@ -239,7 +243,7 @@ class JobInfoStorageClient:
         Returns:
             True if a new key is added.
         """
-        added_num = await self._gcs_aio_client.internal_kv_put(
+        added_num = await self._gcs_client.async_internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             json.dumps(job_info.to_json()).encode(),
             overwrite,
@@ -294,7 +298,7 @@ class JobInfoStorageClient:
         self._export_submission_job_event_logger.send_event(submission_event_data)
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
-        serialized_info = await self._gcs_aio_client.internal_kv_get(
+        serialized_info = await self._gcs_client.async_internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,
@@ -305,7 +309,7 @@ class JobInfoStorageClient:
             return JobInfo.from_json(json.loads(serialized_info))
 
     async def delete_info(self, job_id: str, timeout: int = 30):
-        await self._gcs_aio_client.internal_kv_del(
+        await self._gcs_client.async_internal_kv_del(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             False,
             namespace=ray_constants.KV_NAMESPACE_JOB,
@@ -351,7 +355,7 @@ class JobInfoStorageClient:
             return job_info.status
 
     async def get_all_jobs(self, timeout: int = 30) -> Dict[str, JobInfo]:
-        raw_job_ids_with_prefixes = await self._gcs_aio_client.internal_kv_keys(
+        raw_job_ids_with_prefixes = await self._gcs_client.async_internal_kv_keys(
             self.JOB_DATA_KEY_PREFIX.encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,
@@ -370,12 +374,7 @@ class JobInfoStorageClient:
             job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
-        return {
-            job_id: job_info
-            for job_id, job_info in await asyncio.gather(
-                *[get_job_info(job_id) for job_id in job_ids]
-            )
-        }
+        return dict(await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids]))
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:

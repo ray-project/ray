@@ -63,6 +63,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
+        # TODO (sven): We should ideally do this in the LearnerConnector (separation of
+        #  concerns: Only do things on the EnvRunners that are required for computing
+        #  actions, do NOT do anything on the EnvRunners that's only required for a
+        #   training update).
         prev_action_dist = action_dist_class_exploration.from_logits(
             batch[Columns.ACTION_DIST_INPUTS]
         )

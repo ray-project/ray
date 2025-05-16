@@ -7,7 +7,7 @@ Requires the Nevergrad library to be installed (`pip install nevergrad`).
 
 import time
 
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.nevergrad import NevergradSearch
@@ -25,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
             scheduler=scheduler,
             num_samples=10 if args.smoke_test else 50,
         ),
-        run_config=train.RunConfig(name="nevergrad"),
+        run_config=tune.RunConfig(name="nevergrad"),
         param_space={
             "steps": 100,
             "width": tune.uniform(0, 20),

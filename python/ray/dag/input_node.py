@@ -57,11 +57,11 @@ class InputNode(DAGNode):
         # Alternatively user can also pass single data object, list or dict
         # and access them via list index, object attribute or dict key str.
         ray_dag.execute(UserDataObject(m1=1, m2=2))
-            # dag_input.m1, dag_input.m2
+        # dag_input.m1, dag_input.m2
         ray_dag.execute([1, 2])
-            # dag_input[0], dag_input[1]
+        # dag_input[0], dag_input[1]
         ray_dag.execute({"m1": 1, "m2": 2})
-            # dag_input["m1"], dag_input["m2"]
+        # dag_input["m1"], dag_input["m2"]
     """
 
     def __init__(

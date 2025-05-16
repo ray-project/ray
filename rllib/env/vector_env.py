@@ -498,10 +498,7 @@ class VectorEnvWrapper(BaseEnv):
         if not as_dict:
             return self.vector_env.get_sub_environments()
         else:
-            return {
-                _id: env
-                for _id, env in enumerate(self.vector_env.get_sub_environments())
-            }
+            return dict(enumerate(self.vector_env.get_sub_environments()))
 
     @override(BaseEnv)
     def try_render(self, env_id: Optional[EnvID] = None) -> None:

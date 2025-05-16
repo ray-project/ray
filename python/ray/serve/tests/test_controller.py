@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     SERVE_DEFAULT_APP_NAME,
@@ -15,7 +14,7 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 
 
@@ -111,7 +110,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-
     expected_json = json.dumps(
         {
             "controller_info": {
@@ -148,6 +146,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                     "message": "",
                     "last_deployed_time_s": deployment_timestamp,
                     "deployed_app_config": None,
+                    "source": "imperative",
                     "deployments": {
                         "autoscaling_app": {
                             "name": "autoscaling_app",
@@ -179,11 +178,11 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
-                                    "runtime_env": {},
                                     "num_cpus": 1.0,
                                 },
                             },
                             "target_num_replicas": 1,
+                            "required_resources": {"CPU": 1},
                             "replicas": [
                                 {
                                     "node_id": node_id,
@@ -203,6 +202,18 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 }
             },
             "target_capacity": None,
+            "target_groups": [
+                {
+                    "targets": [{"ip": node_ip, "port": 8000}],
+                    "route_prefix": "/",
+                    "protocol": "HTTP",
+                },
+                {
+                    "targets": [{"ip": node_ip, "port": 9000}],
+                    "route_prefix": "/",
+                    "protocol": "gRPC",
+                },
+            ],
         }
     )
     assert details_json == expected_json

@@ -106,7 +106,7 @@ class ObjectRef {
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
   ///
-  /// \param timeout_ms The maximum amount of time in miliseconds to wait before
+  /// \param timeout_ms The maximum amount of time in milliseconds to wait before
   /// returning.
   /// \return shared pointer of the result.
   std::shared_ptr<T> Get(const int &timeout_ms) const;
@@ -207,7 +207,7 @@ class ObjectRef<void> {
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
   ///
-  /// \param timeout_ms The maximum amount of time in miliseconds to wait before
+  /// \param timeout_ms The maximum amount of time in milliseconds to wait before
   /// returning.
   ///  \return shared pointer of the result.
   void Get(const int &timeout_ms) const {

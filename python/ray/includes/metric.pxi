@@ -6,6 +6,7 @@ from ray.includes.metric cimport (
     CSum,
     CMetric,
 )
+from libcpp.utility cimport move
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
@@ -53,7 +54,7 @@ cdef class Metric:
                     c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
         c_value = value
         with nogil:
-            self.metric.get().Record(c_value, c_tags)
+            self.metric.get().Record(c_value, move(c_tags))
 
     def get_name(self):
         return self.metric.get().GetName()

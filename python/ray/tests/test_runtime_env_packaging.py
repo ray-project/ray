@@ -14,7 +14,6 @@ import ray
 
 import pytest
 
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -492,6 +491,11 @@ class TestParseUri:
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+            (
+                "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
+                Protocol.HTTPS,
+                "package-0.0.1-py2.py3-none-any.whl",
+            ),
         ],
     )
     def test_parsing_remote_basic(self, parsing_tuple):
@@ -548,6 +552,11 @@ class TestParseUri:
                 "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
                 "file__fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
+                Protocol.FILE,
+                "file__fake_2022-10-21T13_11_35_00_00__package_.zip",
             ),
         ],
     )
@@ -620,15 +629,13 @@ class TestDownloadAndUnpackPackage:
                 await download_and_unpack_package(
                     pkg_uri=pkg_uri,
                     base_directory=temp_dir,
-                    gcs_aio_client=None,
+                    gcs_client=None,
                 )
 
     async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
         # Test downloading and unpacking a GCS package with a GCS client.
 
-        gcs_aio_client = GcsAioClient(
-            address=ray._private.worker.global_worker.gcs_client.address
-        )
+        gcs_client = ray._private.worker.global_worker.gcs_client
 
         with tempfile.TemporaryDirectory() as temp_dir:
             zipfile_path = Path(temp_dir) / "test-zip-file.zip"
@@ -644,7 +651,7 @@ class TestDownloadAndUnpackPackage:
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dir,
-                gcs_aio_client=gcs_aio_client,
+                gcs_client=gcs_client,
             )
 
             # Check that the file was extracted to the destination directory

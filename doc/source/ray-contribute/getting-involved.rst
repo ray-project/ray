@@ -241,13 +241,15 @@ We also have tests for code formatting and linting that need to pass before merg
 
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
-* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
+* If developing for C++, you will need `clang-format <https://docs.kernel.org/dev-tools/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 You can run the following locally:
 
 .. code-block:: shell
 
-    scripts/format.sh
+    pip install -U pre-commit==3.5.0
+    pre-commit install  # automatic checks before committing
+    pre-commit run ruff -a
 
 An output like the following indicates failure:
 
@@ -285,7 +287,6 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/lint/check-git-clang-tidy-output.sh
 
-You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
 Understanding CI test jobs
 --------------------------

@@ -516,7 +516,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         )
 
         # Configure subnets modifies configs in place so we need to copy
-        # the configs for comparision after passing into the method.
+        # the configs for comparison after passing into the method.
         config_subnets_configured_post = copy.deepcopy(config_subnets_configured)
         config_subnets_worker_configured_post = copy.deepcopy(
             config_subnets_worker_configured

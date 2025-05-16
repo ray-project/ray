@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 from typing import List, Tuple, Optional, TYPE_CHECKING
+from ray._private.utils import is_in_test
 
 if TYPE_CHECKING:
     import pyarrow
@@ -23,22 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Whether we have already warned the user about bloated fallback serialization.
 _serialization_fallback_set = set()
-
-# Whether we're currently running in a test, either local or CI.
-_in_test = None
-
-
-def _is_in_test():
-    global _in_test
-
-    if _in_test is None:
-        _in_test = any(
-            env_var in os.environ
-            # These environment variables are always set by pytest and Buildkite,
-            # respectively.
-            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
-        )
-    return _in_test
 
 
 def _register_custom_datasets_serializers(serialization_context):
@@ -148,7 +133,7 @@ def _arrow_table_reduce(t: "pyarrow.Table"):
             # Delegate to ChunkedArray reducer.
             reduced_column = _arrow_chunked_array_reduce(column)
         except Exception as e:
-            if not _is_dense_union(column.type) and _is_in_test():
+            if not _is_dense_union(column.type) and is_in_test():
                 # If running in a test and the column is not a dense union array
                 # (which we expect to need a fallback), we want to raise the error,
                 # not fall back.

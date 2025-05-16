@@ -14,20 +14,26 @@
 
 // clang-format off
 #include "ray/core_worker/transport/task_receiver.h"
+
+#include <memory>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/memory_store.h"
+
 // clang-format on
 
 namespace ray {
 namespace core {
-using namespace ::testing;
+using ::testing::_;
+
 class DirectTaskTransportTest : public ::testing::Test {
  public:
-  DirectTaskTransportTest() : io_work(io_context) {}
+  DirectTaskTransportTest() : io_work(io_context.get_executor()) {}
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
@@ -36,7 +42,7 @@ class DirectTaskTransportTest : public ::testing::Test {
     task_finisher = std::make_shared<MockTaskFinisherInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
-    memory_store = std::make_unique<CoreWorkerMemoryStore>();
+    memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
     reference_counter = std::make_shared<MockReferenceCounter>();
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(*client_pool,
                                                                 *memory_store,
@@ -74,7 +80,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
  protected:
   instrumented_io_context io_context;
-  boost::asio::io_service::work io_work;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;

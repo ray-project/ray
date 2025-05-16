@@ -16,7 +16,7 @@ rm -rf "$PARQUET_DIR"
 
 # Download 1GB dataset from S3 to local disk so we can preprocess with mosaic.
 aws s3 sync s3://imagenetmini1000/1gb $DIR
-# Generated with 
+# Generated with
 # https://github.com/tensorflow/tpu/blob/master/tools/datasets/imagenet_to_gcs.py.
 aws s3 sync s3://imagenetmini1000/1gb-tfrecords $TFRECORDS_DIR
 # Preprocess parquet and mosaic files.

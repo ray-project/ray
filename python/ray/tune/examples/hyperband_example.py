@@ -3,7 +3,7 @@
 import argparse
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import HyperBandScheduler
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -23,11 +23,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 1 if args.smoke_test else 200},
             verbose=1,
-            failure_config=train.FailureConfig(
+            failure_config=tune.FailureConfig(
                 fail_fast=True,
             ),
         ),

@@ -1,7 +1,10 @@
 import { Box, Typography } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
-import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
+import {
+  CodeDialogButton,
+  CodeDialogButtonWithPreview,
+} from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -86,6 +89,7 @@ const TaskPageContents = ({
     job_id,
     func_or_class_name,
     name,
+    call_site,
   } = task;
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
@@ -242,6 +246,20 @@ const TaskPageContents = ({
                 label: "",
                 content: undefined,
               },
+          {
+            label: "Call site",
+            content: (
+              <Box display="inline-block">
+                <CodeDialogButton
+                  title="Call site"
+                  code={
+                    call_site ||
+                    'Call site not recorded. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
+                  }
+                />
+              </Box>
+            ),
+          },
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>

@@ -221,7 +221,7 @@ def test_consecutive_failures(serve_instance):
     check_fails_3_times()
 
 
-def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
+def test_health_check_failure_cause_deploy_failure(serve_instance):
     """If a deployment always fails health check, the deployment should be unhealthy."""
 
     @serve.deployment
@@ -237,7 +237,8 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
 
     app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
     assert (
-        app_status.deployments["AlwaysUnhealthy"].status == DeploymentStatus.UNHEALTHY
+        app_status.deployments["AlwaysUnhealthy"].status
+        == DeploymentStatus.DEPLOY_FAILED
     )
 
 

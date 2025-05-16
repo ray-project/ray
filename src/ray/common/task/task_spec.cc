@@ -128,6 +128,10 @@ void TaskSpecification::ComputeResources() {
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
+
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 }
 
 // Task specification getter methods.
@@ -136,6 +140,10 @@ TaskID TaskSpecification::TaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->task_id());
+}
+
+TaskAttempt TaskSpecification::GetTaskAttempt() const {
+  return std::make_pair(TaskId(), AttemptNumber());
 }
 
 const std::string TaskSpecification::GetSerializedActorHandle() const {
@@ -181,15 +189,15 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-rpc::RuntimeEnvInfo TaskSpecification::RuntimeEnvInfo() const {
+const rpc::RuntimeEnvInfo &TaskSpecification::RuntimeEnvInfo() const {
   return message_->runtime_env_info();
 }
 
-std::string TaskSpecification::SerializedRuntimeEnv() const {
+const std::string &TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
-rpc::RuntimeEnvConfig TaskSpecification::RuntimeEnvConfig() const {
+const rpc::RuntimeEnvConfig &TaskSpecification::RuntimeEnvConfig() const {
   return message_->runtime_env_info().runtime_env_config();
 }
 
@@ -208,7 +216,7 @@ int TaskSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   if (!IsActorTask()) {
     // Actor task doesn't have scheudling id, so we don't need to check this.
-    RAY_CHECK(sched_cls_id_ > 0);
+    RAY_CHECK_GT(sched_cls_id_, 0);
   }
   return sched_cls_id_;
 }
@@ -304,6 +312,10 @@ const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
+}
+
+const LabelSelector &TaskSpecification::GetLabelSelector() const {
+  return *label_selector_;
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
@@ -415,6 +427,10 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+absl::flat_hash_map<std::string, std::string> TaskSpecification::GetLabels() const {
+  return MapFromProtobuf(message_->labels());
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
@@ -431,6 +447,10 @@ WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
+NodeID TaskSpecification::CallerNodeId() const {
+  return NodeID::FromBinary(message_->caller_address().raylet_id());
+}
+
 // === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {
@@ -438,9 +458,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::ActorCounter() const {
+uint64_t TaskSpecification::SequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().actor_counter();
+  return message_->actor_task_spec().sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -454,7 +474,7 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
-std::string TaskSpecification::ConcurrencyGroupName() const {
+const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
 }
@@ -508,7 +528,7 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
+           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 

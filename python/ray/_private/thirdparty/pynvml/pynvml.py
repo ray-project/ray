@@ -3668,4 +3668,3 @@ def nvmlDeviceGetIrqNum(device):
     ret = fn(device, byref(c_irqNum))
     _nvmlCheckReturn(ret)
     return c_irqNum.value
-

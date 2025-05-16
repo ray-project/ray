@@ -1,4 +1,3 @@
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.sample_batch_builder import (
     SampleBatchBuilder,
@@ -18,5 +17,4 @@ __all__ = [
     "SyncSampler",
     "compute_advantages",
     "collect_metrics",
-    "Episode",
 ]

@@ -92,11 +92,6 @@ if __name__ == "__main__":
 
     base_config = (
         PPOConfig()
-        .api_stack(
-            # This example runs only under the new pai stack.
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(
             env=ActionMaskEnv,
             env_config={
@@ -105,7 +100,7 @@ if __name__ == "__main__":
                 # `RLModule`. The environment will wrap this space into a
                 # `gym.spaces.Dict` together with an 'action_mask' that signals the
                 # `RLModule` to adapt the action distribution inputs for the underlying
-                # `PPORLModule`.
+                # `DefaultPPORLModule`.
                 "observation_space": Box(-1.0, 1.0, (5,)),
             },
         )

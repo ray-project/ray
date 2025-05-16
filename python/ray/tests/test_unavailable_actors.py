@@ -3,11 +3,13 @@ import pytest
 import sys
 import time
 import signal
+from typing import Tuple
 
 import ray
-from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, ActorDiedError
-from typing import Tuple
+from ray._private.test_utils import SignalActor
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 @ray.remote
@@ -65,6 +67,29 @@ def sigkill_actor(actor):
     os.kill(pid, signal.SIGKILL)
 
 
+def _close_common_connections(pid: int):
+    """Closes ipv2 connections between the current process and the target process."""
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+
+
 @pytest.mark.parametrize(
     "caller",
     ["actor", "task", "driver"],
@@ -79,7 +104,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         task = a.slow_increment.remote(3, 5)
         # Break the grpc connection from this process to the actor process. The
         # next `ray.get` call should fail with ActorUnavailableError.
-        close_common_connections(pid)
+        _close_common_connections(pid)
         with pytest.raises(ActorUnavailableError, match="RpcError"):
             ray.get(task)
         # Since the remote() call happens *before* the break, the actor did receive the
@@ -91,7 +116,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         # so it did not reach the actor. The actor is still in the previous state and
         # the side effects are not observable. Regardless, the method call `.remote()`
         # itself won't raise an error.
-        close_common_connections(pid)
+        _close_common_connections(pid)
         task2 = a.slow_increment.remote(5, 0.1)
         with pytest.raises(ActorUnavailableError, match="RpcError"):
             ray.get(task2)
@@ -157,6 +182,37 @@ def test_actor_unavailable_norestart(ray_start_regular, caller):
 
 
 @ray.remote(max_restarts=-1, max_task_retries=0)
+class ActorAwaitingOnCreation:
+    """
+    An actor that is awaiting for a signal to be sent to it during its init. It is used
+    to test the behavior of the actor when it is killed and restarted.
+
+    It also increments a counter during its init to keep track of the number of
+    restarts.
+    """
+
+    def __init__(
+        self, restart_counter: Counter, blocking_signal: SignalActor, restart_limit: int
+    ):
+        restart_count = ray.get(restart_counter.slow_increment.remote(1, 0.1))
+        ray.get(blocking_signal.wait.remote())  # block on signal
+        if restart_count > restart_limit:
+            msg = (
+                "Failed to restart the actor because the retry limit "
+                f"{restart_limit} was reached."
+            )
+            print(msg)
+            raise ValueError(msg)
+
+    def ping(self, name):
+        print(f"ping from {name}")
+        return f"hello {name}!"
+
+    def getpid(self):
+        return os.getpid()
+
+
+@ray.remote(max_restarts=-1, max_task_retries=0)
 class SlowCtor:
     """
     An actor that has a slow init. It performs:
@@ -192,39 +248,47 @@ class SlowCtor:
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 @pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
-    c = Counter.remote()
-    # Restart config:
-    # Initial run, Restart #1: ok.
-    # Restart #2, #3: fails, can retry.
-    # Afterwards: no more restarts, any new method call raises ActorDiedError.
-    a = SlowCtor.options(max_restarts=3).remote(
-        counter=c, init_sleep_s=2, die_range=[2, 10000]
+    counter = Counter.remote()
+    signal_actor = SignalActor.remote()
+    actor = ActorAwaitingOnCreation.options(max_restarts=3).remote(
+        restart_counter=counter, blocking_signal=signal_actor, restart_limit=2
     )
-    assert ray.get(a.ping.remote("lemon")) == "hello lemon!"
 
-    # Kill the actor process. Triggers restart #1. During its __init__, all incoming
-    # calls get ActorUnavailableError.
-    sigkill_actor(a)
+    # unblock actor creation
+    ray.get(signal_actor.send.remote())
+    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
+        pass  # just wait for the signal to be sent
+    assert ray.get(actor.ping.remote("lemon")) == "hello lemon!"
+
+    # block actor creation and kill it
+    ray.get(signal_actor.send.remote(clear=True))
+    sigkill_actor(actor)
 
     with pytest.raises(ActorUnavailableError, match="RpcError"):
-        print(ray.get(a.ping.remote("unavailable")))
+        print(ray.get(actor.ping.remote("unavailable")))
     # When the actor is restarting, any method call raises ActorUnavailableError.
     with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
-        print(ray.get(a.ping.remote("unavailable")))
+        print(ray.get(actor.ping.remote("unavailable")))
 
-    # Waits for the actor to restart.
-    time.sleep(3)
-    assert ray.get(a.ping.remote("ok")) == "hello ok!"
+    # unblock actor creation
+    ray.get(signal_actor.send.remote())
+    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
+        pass  # just wait for the signal to be sent
+    assert ray.get(actor.ping.remote("ok")) == "hello ok!"
 
-    # Kill the actor again. Triggers restart #2. However it raises ValueError in init
-    # so it consequently triggers restart #3 and also fails. Afterwards, ActorDiedError
-    # is raised.
-    sigkill_actor(a)
+    # block actor creation and kill it
+    ray.get(signal_actor.send.remote(clear=True))
+    sigkill_actor(actor)
+
     with pytest.raises(ActorUnavailableError):
-        print(ray.get(a.ping.remote("unavailable")))
-    time.sleep(4)
+        print(ray.get(actor.ping.remote("unavailable")))
+
+    # unblock actor creation, the actor still dies because it reaches the restart limit
+    ray.get(signal_actor.send.remote())
+    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
+        pass  # just wait for the signal to be sent
     with pytest.raises(ActorDiedError, match="an error raised in its creation task"):
-        print(ray.get(a.ping.remote("actor error")))
+        print(ray.get(actor.ping.remote("actor error")))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")

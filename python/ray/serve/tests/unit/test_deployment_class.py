@@ -7,7 +7,6 @@ import pytest
 
 from ray import serve
 from ray.serve._private.config import DeploymentConfig
-from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 
 
 def get_random_dict_combos(d: Dict, n: int) -> List[Dict]:
@@ -81,7 +80,6 @@ class TestDeploymentOptions:
         "name": "test",
         "version": "abcd",
         "num_replicas": 1,
-        "route_prefix": "/",
         "ray_actor_options": {},
         "user_config": {},
         "max_ongoing_requests": 10,
@@ -111,47 +109,6 @@ class TestDeploymentOptions:
         assert f._deployment_config.user_configured_option_names == set(options.keys())
 
     @pytest.mark.parametrize("options", deployment_option_combos)
-    def test_user_configured_option_names_schematized(self, options: Dict):
-        """Check user_configured_option_names after schematization.
-
-        Args:
-            options: Maps deployment option strings (e.g. "name",
-                "num_replicas", etc.) to sample inputs. Pairs come from
-                TestDeploymentOptions.deployment_options.
-        """
-
-        # Some options won't be considered user-configured after schematization
-        # since the schema doesn't track them.
-        untracked_options = ["name", "version", "init_args", "init_kwargs"]
-
-        for option in untracked_options:
-            if option in options:
-                del options[option]
-
-        @serve.deployment(**options)
-        def f():
-            pass
-
-        schematized_deployment = deployment_to_schema(f)
-        deschematized_deployment = schema_to_deployment(schematized_deployment)
-
-        # Don't track name in the deschematized deployment since it's optional
-        # in deployment decorator but required in schema, leading to
-        # inconsistent behavior.
-        if (
-            "name"
-            in deschematized_deployment._deployment_config.user_configured_option_names
-        ):
-            deschematized_deployment._deployment_config.user_configured_option_names.remove(  # noqa: E501
-                "name"
-            )
-
-        assert (
-            deschematized_deployment._deployment_config.user_configured_option_names
-            == set(options.keys())
-        )
-
-    @pytest.mark.parametrize("options", deployment_option_combos)
     def test_user_configured_option_names_serialized(self, options: Dict):
         """Check user_configured_option_names after serialization.
 
@@ -178,7 +135,6 @@ class TestDeploymentOptions:
         "option",
         [
             "num_replicas",
-            "route_prefix",
             "autoscaling_config",
             "user_config",
         ],

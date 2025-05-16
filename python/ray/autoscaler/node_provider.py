@@ -91,7 +91,7 @@ class NodeProvider:
                 public or private.
 
         Raises:
-            ValueError if not found.
+            ValueError: If not found.
         """
 
         def find_node_id():
@@ -208,18 +208,18 @@ class NodeProvider:
         """Returns the CommandRunner class used to perform SSH commands.
 
         Args:
-        log_prefix: stores "NodeUpdater: {}: ".format(<node_id>). Used
-            to print progress in the CommandRunner.
-        node_id: the node ID.
-        auth_config: the authentication configs from the autoscaler
-            yaml file.
-        cluster_name: the name of the cluster.
-        process_runner: the module to use to run the commands
-            in the CommandRunner. E.g., subprocess.
-        use_internal_ip: whether the node_id belongs to an internal ip
-            or external ip.
-        docker_config: If set, the docker information of the docker
-            container that commands should be run on.
+            log_prefix: stores "NodeUpdater: {}: ".format(<node_id>). Used
+                to print progress in the CommandRunner.
+            node_id: the node ID.
+            auth_config: the authentication configs from the autoscaler
+                yaml file.
+            cluster_name: the name of the cluster.
+            process_runner: the module to use to run the commands
+                in the CommandRunner. E.g., subprocess.
+            use_internal_ip: whether the node_id belongs to an internal ip
+                or external ip.
+            docker_config: If set, the docker information of the docker
+                container that commands should be run on.
         """
         common_args = {
             "log_prefix": log_prefix,

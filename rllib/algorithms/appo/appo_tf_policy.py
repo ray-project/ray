@@ -17,7 +17,6 @@ from ray.rllib.algorithms.impala.impala_tf_policy import (
     VTraceClipGradients,
     VTraceOptimizer,
 )
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_bootstrap_value,
     compute_gae_for_sample_batch,
@@ -362,7 +361,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             self,
             sample_batch: SampleBatch,
             other_agent_batches: Optional[SampleBatch] = None,
-            episode: Optional["Episode"] = None,
+            episode=None,
         ):
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(

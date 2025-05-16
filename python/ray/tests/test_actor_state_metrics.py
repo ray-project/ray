@@ -5,6 +5,7 @@ import time
 from typing import Dict
 
 import ray
+from ray._private.utils import hex_to_binary
 
 from ray.util.state import list_actors
 from ray._private.test_utils import (
@@ -294,8 +295,8 @@ def test_get_all_actors_info(shutdown_only):
     actors_info = ray.state.actors()
     assert len(actors_info) == 2
 
-    # To filter actors by job id
-    job_id = ray.get_runtime_context().job_id
+    job_id_hex = ray.get_runtime_context().get_job_id()
+    job_id = ray.JobID(hex_to_binary(job_id_hex))
     actors_info = ray.state.actors(job_id=job_id)
     assert len(actors_info) == 2
     actors_info = ray.state.actors(job_id=ray.JobID.from_int(100))

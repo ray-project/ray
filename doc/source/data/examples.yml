@@ -1,4 +1,4 @@
-text: Below are examples for using Ray Data for batch inference workloads with a variety of frameworks and use cases.
+text: Below are examples for using Ray Data for batch inference workloads or large-scale data processing with a variety of frameworks and use cases.
 columns_to_show:
   - frameworks
 groupby: skill_level
@@ -24,8 +24,24 @@ examples:
     use_cases:
       - computer vision
     link: examples/huggingface_vit_batch_prediction
+  - title: Batch Inference with LoRA Adapter
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: ../llm/examples/batch/vllm-with-lora
+  - title: Batch Inference with Structural Output
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: ../llm/examples/batch/vllm-with-structural-output
   - title: Tabular Data Training and Batch Inference with XGBoost
     skill_level: beginner
     frameworks:
       - xgboost
-    link: ../train/examples/xgboost/xgboost_example
+    link: ../train/examples/xgboost/distributed-xgboost-lightgbm

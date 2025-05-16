@@ -27,7 +27,8 @@ void IOServicePool::Run() {
     io_services_.emplace_back(std::make_unique<instrumented_io_context>());
     instrumented_io_context &io_service = *io_services_[i];
     threads_.emplace_back([&io_service] {
-      boost::asio::io_service::work work(io_service);
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service.get_executor());
       io_service.run();
     });
   }

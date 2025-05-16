@@ -30,6 +30,7 @@ class NumpyToTensor(ConnectorV2):
     [
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -40,6 +41,7 @@ class NumpyToTensor(ConnectorV2):
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
         AddColumnsFromEpisodesToTrainBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -57,7 +59,7 @@ class NumpyToTensor(ConnectorV2):
         input_action_space: Optional[gym.Space] = None,
         *,
         as_learner_connector: bool = False,
-        pin_mempory: Optional[bool] = None,
+        pin_memory: bool = False,
         device: Optional[str] = None,
         **kwargs,
     ):
@@ -66,7 +68,7 @@ class NumpyToTensor(ConnectorV2):
         Args:
             as_learner_connector: Whether this ConnectorV2 piece is used inside a
                 LearnerConnectorPipeline or not.
-            pin_mempory: Whether to pin memory when creating (torch) tensors.
+            pin_memory: Whether to pin memory when creating (torch) tensors.
                 If None (default), pins memory if `as_learner_connector` is True,
                 otherwise doesn't pin memory.
             device: An optional device to move the resulting tensors to. If not
@@ -79,9 +81,7 @@ class NumpyToTensor(ConnectorV2):
             **kwargs,
         )
         self._as_learner_connector = as_learner_connector
-        self._pin_memory = (
-            pin_mempory if pin_mempory is not None else self._as_learner_connector
-        )
+        self._pin_memory = pin_memory
         self._device = device
 
     @override(ConnectorV2)

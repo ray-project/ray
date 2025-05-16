@@ -1,4 +1,5 @@
 import logging
+import importlib
 
 import numpy as np
 
@@ -6,40 +7,54 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+
+@DeveloperAPI
+def is_package_installed(package_name):
+    try:
+        importlib.metadata.version(package_name)
+        return True
+    except importlib.metadata.PackageNotFoundError:
+        return False
+
+
 try:
     import cv2
 
     cv2.ocl.setUseOpenCL(False)
 
     logger.debug("CV2 found for image processing.")
-except ImportError:
+except ImportError as e:
+    if is_package_installed("opencv-python"):
+        raise ImportError(
+            f"OpenCV is installed, but we failed to import it. This may be because "
+            f"you need to install `opencv-python-headless` instead of "
+            f"`opencv-python`. Error message: {e}",
+        )
     cv2 = None
-
-if cv2 is None:
-    try:
-        from skimage import color, io, transform
-
-        logger.debug("CV2 not found for image processing, using Skimage.")
-    except ImportError:
-        raise ModuleNotFoundError("Either scikit-image or opencv is required")
 
 
 @DeveloperAPI
 def resize(img: np.ndarray, height: int, width: int) -> np.ndarray:
-    if cv2:
-        return cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
-    return transform.resize(img, (height, width))
+    if not cv2:
+        raise ModuleNotFoundError(
+            "`opencv` not installed! Do `pip install opencv-python`"
+        )
+    return cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
 
 
 @DeveloperAPI
 def rgb2gray(img: np.ndarray) -> np.ndarray:
-    if cv2:
-        return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    return color.rgb2gray(img)
+    if not cv2:
+        raise ModuleNotFoundError(
+            "`opencv` not installed! Do `pip install opencv-python`"
+        )
+    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
 
 @DeveloperAPI
 def imread(img_file: str) -> np.ndarray:
-    if cv2:
-        return cv2.imread(img_file).astype(np.float32)
-    return io.imread(img_file).astype(np.float32)
+    if not cv2:
+        raise ModuleNotFoundError(
+            "`opencv` not installed! Do `pip install opencv-python`"
+        )
+    return cv2.imread(img_file).astype(np.float32)

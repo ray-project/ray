@@ -16,7 +16,6 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.scripts import remove_ansi_escape_sequences
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
 
@@ -33,7 +32,42 @@ def assert_deployments_live(ids: List[DeploymentID]):
 
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
-    subprocess.check_output(["serve", "shutdown", "-y"])
+    # deploy a simple app
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+
+    deploy_response = subprocess.check_output(["serve", "deploy", import_path])
+    assert b"Sent deploy request successfully." in deploy_response
+
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert b"Sent shutdown request; applications will be deleted asynchronously" in ret
+
+    def check_no_apps():
+        status = subprocess.check_output(["serve", "status"])
+        return b"applications: {}" in status
+
+    wait_for_condition(check_no_apps, timeout=15)
+
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+def test_start_shutdown_without_serve_running(ray_start_stop):
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+def test_start_shutdown_without_ray_running():
+    # Test shutdown when Ray is not running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"Unable to shutdown Serve on the cluster" in ret
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
@@ -523,7 +557,7 @@ def test_status_error_msg_format(ray_start_stop):
         assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
 
         deployment_status = cli_status["deployments"]["A"]
-        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status"] == "DEPLOY_FAILED"
         assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         return True
 
@@ -598,8 +632,36 @@ def test_status_constructor_error(ray_start_stop):
         assert status["status"] == "DEPLOY_FAILED"
 
         deployment_status = status["deployments"]["A"]
-        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status"] == "DEPLOY_FAILED"
         assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
+        assert "ZeroDivisionError" in deployment_status["message"]
+        return True
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_constructor_retry_error(ray_start_stop):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    retry message is surfaced.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail_2.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        assert status["status"] == "DEPLOYING"
+
+        deployment_status = status["deployments"]["A"]
+        assert deployment_status["status"] == "UPDATING"
+        assert deployment_status["status_trigger"] == "CONFIG_UPDATE_STARTED"
         assert "ZeroDivisionError" in deployment_status["message"]
         return True
 

@@ -15,6 +15,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/task/task_spec.h"
 
@@ -35,7 +38,8 @@ class ConcurrencyGroupManager final {
  public:
   explicit ConcurrencyGroupManager(
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const int32_t max_concurrency_for_default_concurrency_group = 1);
+      const int32_t max_concurrency_for_default_concurrency_group = 1,
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr);
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
   /// function descriptor.
@@ -67,6 +71,9 @@ class ConcurrencyGroupManager final {
 
   // The default concurrency group executor. It's nullptr if its max concurrency is 1.
   std::shared_ptr<ExecutorType> default_executor_ = nullptr;
+
+  // The language-specific callback function that initializes threads.
+  std::function<std::function<void()>()> initialize_thread_callback_;
 
   friend class ConcurrencyGroupManagerTest;
 };

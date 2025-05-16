@@ -45,7 +45,7 @@ def reap_process_group(*args):
 
 
 def main():
-    # Read from stdout forever. Because stdout is a file descriptor
+    # Read from stdin forever. Because stdin is a file descriptor
     # inherited from our parent process, we will get an EOF if the parent
     # dies, which is signaled by an empty return from read().
     # We intentionally don't set any signal handlers here, so a SIGTERM from

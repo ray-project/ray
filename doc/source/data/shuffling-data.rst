@@ -91,8 +91,8 @@ To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dat
     # Randomize the block order of this dataset.
     ds = ds.randomize_block_order()
 
-Shuffle all rows
-~~~~~~~~~~~~~~~~
+Shuffle all rows (Global shuffle)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
 This is the slowest option for shuffle, and requires transferring data across
@@ -128,13 +128,7 @@ to data transfer costs. This cost can be prohibitive when using very large datas
 
 The best route for determining the best tradeoff between preprocessing time and cost and
 per-epoch shuffle quality is to measure the precision gain per training step for your
-particular model under different shuffling policies:
-
-* no shuffling,
-* local (per-shard) limited-memory shuffle buffer,
-* local (per-shard) shuffling,
-* windowed (pseudo-global) shuffling, and
-* fully global shuffling.
+particular model under different shuffling policies such as no shuffling, local shuffling, or global shuffling.
 
 As long as your data loading and shuffling throughput is higher than your training throughput, your GPU should
 be saturated. If you have shuffle-sensitive models, push the
@@ -154,7 +148,7 @@ Shuffling can be challenging to scale to large data sizes and clusters, especial
 Ray Data provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort_benchmark.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
 To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10 TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64 GB RAM).
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image

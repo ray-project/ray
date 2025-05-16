@@ -15,7 +15,7 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 

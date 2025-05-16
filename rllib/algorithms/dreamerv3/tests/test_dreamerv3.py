@@ -63,7 +63,7 @@ class TestDreamerV3(unittest.TestCase):
         for env in [
             "FrozenLake-v1",
             "CartPole-v1",
-            "ALE/MsPacman-v5",
+            "ale_py:ALE/MsPacman-v5",
             "Pendulum-v1",
         ]:
             print("Env={}".format(env))

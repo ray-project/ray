@@ -60,7 +60,8 @@ class TestSpreadScheduling:
         cluster_node_info_cache.update()
 
         scheduler = default_impl.create_deployment_scheduler(
-            cluster_node_info_cache, get_head_node_id(), ray.util.placement_group
+            cluster_node_info_cache,
+            get_head_node_id(),
         )
         dep_id = DeploymentID(name="deployment1")
         r1_id = ReplicaID(unique_id="replica1", deployment_id=dep_id)

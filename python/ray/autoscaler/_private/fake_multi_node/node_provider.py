@@ -344,6 +344,9 @@ class FakeMultiNodeProvider(NodeProvider):
     def _create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
+        # This function calls `pop`. To avoid side effects, we make a
+        # copy of `resources`.
+        resources = copy.deepcopy(resources)
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()

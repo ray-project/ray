@@ -30,6 +30,7 @@ RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
 # Global manager singleton.
 _manager: Optional["_BarManager"] = None
+_mgr_lock = threading.Lock()
 _print = builtins.print
 
 
@@ -383,13 +384,15 @@ class _BarManager:
 def instance() -> _BarManager:
     """Get or create a BarManager for this process."""
     global _manager
-    if _manager is None:
-        _manager = _BarManager()
-        if env_bool("RAY_TQDM_PATCH_PRINT", True):
-            import builtins
 
-            builtins.print = safe_print
-    return _manager
+    with _mgr_lock:
+        if _manager is None:
+            _manager = _BarManager()
+            if env_bool("RAY_TQDM_PATCH_PRINT", True):
+                import builtins
+
+                builtins.print = safe_print
+        return _manager
 
 
 if __name__ == "__main__":

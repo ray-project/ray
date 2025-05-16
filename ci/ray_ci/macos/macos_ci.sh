@@ -15,7 +15,12 @@ export TORCH_VERSION=2.0.1
 export TORCHVISION_VERSION=0.15.2
 
 filter_out_flaky_tests() {
-  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+  if [[ "${RAYCI_DISABLE_TEST_DB:-}" == "1" ]]; then
+    # Test DB is disabled, so simply passthrough and run everything.
+    cat
+  else
+    bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+  fi
 }
 
 select_flaky_tests() {
@@ -32,7 +37,7 @@ run_tests() {
 run_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2|medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
+  (bazel query 'attr(tags, "ray_client|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2|medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --runs_per_test="$RUN_PER_FLAKY_TEST" \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
@@ -42,7 +47,7 @@ run_flaky_tests() {
 run_small_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+  (bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42

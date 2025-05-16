@@ -24,7 +24,7 @@ from supersuit import (
     resize_v1,
 )
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.utils.metrics import (
@@ -34,7 +34,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.tune.registry import register_env
 from ray import tune
-from ray import air
 
 
 parser = argparse.ArgumentParser()
@@ -116,7 +115,7 @@ config = (
 tune.Tuner(
     "PPO",
     param_space=config.to_dict(),
-    run_config=air.RunConfig(
+    run_config=tune.RunConfig(
         stop={
             TRAINING_ITERATION: args.stop_iters,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,

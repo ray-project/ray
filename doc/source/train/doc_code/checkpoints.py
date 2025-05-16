@@ -155,14 +155,6 @@ trainer = TorchTrainer(
     run_config=train.RunConfig(failure_config=train.FailureConfig(max_failures=1)),
 )
 result = trainer.fit()
-
-# Seed a training run with a checkpoint using `resume_from_checkpoint`
-trainer = TorchTrainer(
-    train_func,
-    train_loop_config={"num_epochs": 5},
-    scaling_config=ScalingConfig(num_workers=2),
-    resume_from_checkpoint=result.checkpoint,
-)
 # __pytorch_restore_end__
 
 # __checkpoint_from_single_worker_start__
@@ -249,7 +241,7 @@ class CustomRayTrainReportCallback(Callback):
         should_checkpoint = trainer.current_epoch % 3 == 0
 
         with TemporaryDirectory() as tmpdir:
-            # Fetch metrics
+            # Fetch metrics from `self.log(..)` in the LightningModule
             metrics = trainer.callback_metrics
             metrics = {k: v.item() for k, v in metrics.items()}
 
@@ -289,21 +281,18 @@ def train_func():
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as ckpt_dir:
-            ckpt_path = os.path.join(ckpt_dir, "checkpoint.ckpt")
+            ckpt_path = os.path.join(ckpt_dir, RayTrainReportCallback.CHECKPOINT_NAME)
             trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
     else:
         trainer.fit(model, datamodule=datamodule)
 
 
-# Build a Ray Train Checkpoint
-# Suppose we have a Lightning checkpoint at `s3://bucket/ckpt_dir/checkpoint.ckpt`
-checkpoint = Checkpoint("s3://bucket/ckpt_dir")
-
-# Resume training from checkpoint file
 ray_trainer = TorchTrainer(
     train_func,
     scaling_config=train.ScalingConfig(num_workers=2),
-    resume_from_checkpoint=checkpoint,
+    run_config=train.RunConfig(
+        checkpoint_config=train.CheckpointConfig(num_to_keep=2),
+    ),
 )
 # __lightning_restore_example_end__
 

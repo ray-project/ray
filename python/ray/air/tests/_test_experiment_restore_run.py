@@ -101,7 +101,7 @@ def train_fn(config: dict, data: Optional[dict] = None):
             train.report({"score": random.random()}, checkpoint=checkpoint)
 
 
-def tuner(experiment_path: str, run_config: train.RunConfig) -> tune.ResultGrid:
+def tuner(experiment_path: str, run_config: tune.RunConfig) -> tune.ResultGrid:
     trainable = tune.with_resources(train_fn, resources={"CPU": 1})
     trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
 

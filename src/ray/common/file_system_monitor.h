@@ -70,7 +70,7 @@ class FileSystemMonitor {
   std::atomic<bool> over_capacity_;
   instrumented_io_context io_context_;
   std::thread monitor_thread_;
-  PeriodicalRunner runner_;
+  std::shared_ptr<PeriodicalRunner> runner_;
 };
 
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config);

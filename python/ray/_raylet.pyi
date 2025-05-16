@@ -1,4 +1,4 @@
-from typing import Any, Awaitable, TypeVar
+from typing import Awaitable, TypeVar
 
 R = TypeVar("R")
 

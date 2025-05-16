@@ -73,9 +73,11 @@ Policy NOT using curiosity:
 """
 from collections import defaultdict
 
+import numpy as np
+
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
     DQNTorchLearnerWithCuriosity,
@@ -108,7 +110,7 @@ parser = add_rllib_example_script_args(
 parser.set_defaults(enable_new_api_stack=True)
 
 
-class MeasureMaxDistanceToStart(DefaultCallbacks):
+class MeasureMaxDistanceToStart(RLlibCallback):
     """Callback measuring the dist of the agent to its start position in FrozenLake-v1.
 
     Makes the naive assumption that the start position ("S") is in the upper left
@@ -132,9 +134,9 @@ class MeasureMaxDistanceToStart(DefaultCallbacks):
         rl_module,
         **kwargs,
     ):
-        obs = episode.get_observations(-1)
         num_rows = env.envs[0].unwrapped.nrow
         num_cols = env.envs[0].unwrapped.ncol
+        obs = np.argmax(episode.get_observations(-1))
         row = obs // num_cols
         col = obs % num_rows
         curr_dist = (row**2 + col**2) ** 0.5
@@ -298,7 +300,7 @@ if __name__ == "__main__":
 
     success_key = f"{ENV_RUNNER_RESULTS}/max_dist_travelled_across_running_episodes"
     stop = {
-        success_key: 8.0,
+        success_key: 12.0,
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }

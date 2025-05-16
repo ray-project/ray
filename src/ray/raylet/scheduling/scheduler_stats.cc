@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/scheduling/scheduler_stats.h"
+
+#include <deque>
+#include <string>
+#include <utility>
+
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/stats/metric_defs.h"
 
@@ -40,10 +46,10 @@ void SchedulerStats::ComputeStats() {
   size_t num_infeasible_tasks =
       std::accumulate(cluster_task_manager_.infeasible_tasks_.begin(),
                       cluster_task_manager_.infeasible_tasks_.end(),
-                      (size_t)0,
+                      static_cast<size_t>(0),
                       accumulator);
 
-  // TODO(sang): Normally, the # of queued tasks are not large, so this is less likley to
+  // TODO(sang): Normally, the # of queued tasks are not large, so this is less likely to
   // be an issue that we iterate all of them. But if it uses lots of CPU, consider
   // optimizing by updating live instead of iterating through here.
   auto per_work_accumulator = [&num_waiting_for_resource,
@@ -87,12 +93,12 @@ void SchedulerStats::ComputeStats() {
   size_t num_tasks_to_schedule =
       std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
                       cluster_task_manager_.tasks_to_schedule_.end(),
-                      (size_t)0,
+                      static_cast<size_t>(0),
                       per_work_accumulator);
   size_t num_tasks_to_dispatch =
       std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
                       local_task_manager_.GetTaskToDispatch().end(),
-                      (size_t)0,
+                      static_cast<size_t>(0),
                       per_work_accumulator);
 
   /// Update the internal states.
@@ -152,8 +158,8 @@ void SchedulerStats::RecordMetrics() const {
 std::string SchedulerStats::ComputeAndReportDebugStr() {
   ComputeStats();
   if (num_tasks_to_schedule_ + num_tasks_to_dispatch_ + num_infeasible_tasks_ > 1000) {
-    RAY_LOG(WARNING)
-        << "More than 1000 tasks are queued in this node. This can cause slow down.";
+    RAY_LOG(WARNING) << "More than 1000 tasks are queued for scheduling on this node. "
+                        "This can slow down the raylet.";
   }
 
   std::stringstream buffer;
@@ -173,7 +179,7 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
   buffer << "num_tasks_waiting_for_workers: " << num_tasks_waiting_for_workers_ << "\n";
   buffer << "num_cancelled_tasks: " << num_cancelled_tasks_ << "\n";
   buffer << "cluster_resource_scheduler state: "
-         << cluster_task_manager_.cluster_resource_scheduler_->DebugString() << "\n";
+         << cluster_task_manager_.cluster_resource_scheduler_.DebugString() << "\n";
   local_task_manager_.DebugStr(buffer);
 
   buffer << "==================================================\n";

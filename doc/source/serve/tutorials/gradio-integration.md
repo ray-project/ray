@@ -5,39 +5,43 @@ orphan: true
 # Scale a Gradio App with Ray Serve
 
 This guide shows how to scale up your [Gradio](https://gradio.app/) application using Ray Serve. Keep the internal architecture of your Gradio app intact, with no code changes. Simply wrap the app within Ray Serve as a deployment and scale it to access more resources.
+
+This tutorial uses Gradio apps that run text summarization and generation models and use [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models.
+
+:::{note} 
+Remember you can substitute this app with your own Gradio app if you want to try scaling up your own Gradio app.
+:::
+
 ## Dependencies
 
-To follow this tutorial, you need Ray Serve and Gradio. If you haven't already, install them by running:
+To follow this tutorial, you need Ray Serve, Gradio, and transformers. If you haven't already, install them by running:
 ```console
-$ pip install "ray[serve]"
-$ pip install gradio==3.50.2
-```
-This tutorial uses Gradio apps that run text summarization and generation models and use [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models. **Note that you can substitute this Gradio app for any Gradio app of your own.**
-
-First, install the transformers module.
-```console
-$ pip install transformers
+$ pip install "ray[serve]" gradio==3.50.2 torch transformers
 ```
 
-## Quickstart: Deploy your Gradio app with Ray Serve
 
-This section shows an easy way to deploy your app onto Ray Serve. First, create a new Python file named `demo.py`. Second, import `GradioServer` from Ray Serve to deploy your Gradio app later, `gradio`, and `transformers.pipeline` to load text summarization models.
+## Example 1: Scaling up your Gradio app with `GradioServer`
+
+The first example summarizes text using the [T5 Small](https://huggingface.co/t5-small) model and uses [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access that model. It demonstrates one easy way to deploy Gradio apps onto Ray Serve: using the simple `GradioServer` wrapper. Example 2 shows how to use `GradioIngress` for more customized use-cases.
+
+
+First, create a new Python file named `demo.py`. Second, import `GradioServer` from Ray Serve to deploy your Gradio app later, `gradio`, and `transformers.pipeline` to load text summarization models.
+
+
 ```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
-Then, write a builder function that constructs the Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
-:::{note} 
-Remember you can substitute this app with your own Gradio app if you want to try scaling up your own Gradio app.
-:::
+Then, write a builder function that constructs the Gradio app `io`. 
+
 ```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_gradio_app_begin__
 :end-before: __doc_gradio_app_end__
 ```
 
 ### Deploying Gradio Server
-In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests. 
+To deploy your Gradio app onto Ray Serve, you need to wrap the Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests.
 
 By wrapping your application in `GradioServer`, you can increase the number of CPUs and/or GPUs available to the application.
 :::{note}
@@ -59,7 +63,7 @@ Using either the Gradio app `io`, which the builder function constructed, or you
 :end-before: __doc_app_end__
 ```
 
-Finally, deploy your Gradio Server. Run the following in your terminal:
+Finally, deploy your Gradio Server. Run the following in your terminal, assuming that you saved the file as `demo.py`:
 ```console
 $ serve run demo:app
 ```
@@ -70,15 +74,19 @@ Access your Gradio app at `http://localhost:8000` The output should look like th
 See the [Production Guide](serve-in-production) for more information on how to deploy your app in production.
 
 
-## Parallelizing models with Ray Serve
+## Example 2: Parallelizing models with Ray Serve
 You can run multiple models in parallel with Ray Serve by using [model composition](serve-model-composition) in Ray Serve.
 
-### Original approach
 Suppose you want to run the following program.
 
 1. Take two text generation models, [`gpt2`](https://huggingface.co/gpt2) and [`distilgpt2`](https://huggingface.co/distilgpt2).
 2. Run the two models on the same input text, so that the generated text has a minimum length of 20 and maximum length of 100.
 3. Display the outputs of both models using Gradio.
+
+The following is a comparison of an unparallelized approach using vanilla Gradio to a parallelized approach using Ray Serve.
+
+### Vanilla Gradio
+
 
 This code is a typical implementation:
 

@@ -1,0 +1,22 @@
+# This should be the same as `autoscaling_gpu_compute.yaml`, except without
+# autoscaling.
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node_type:
+    name: head-node
+    instance_type: m5.2xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: worker-node
+      # Anyscale workspaces use m5.2xlarge worker nodes by default. For consistency, we
+      # use GPU nodes with the same number of vCPUs and memory.
+      instance_type: g4dn.2xlarge
+      min_workers: 10
+      max_workers: 10
+      use_spot: false

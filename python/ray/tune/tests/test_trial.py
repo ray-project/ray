@@ -5,7 +5,7 @@ import pytest
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tests.conftest import propagate_logs  # noqa
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE

@@ -17,6 +17,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
@@ -36,8 +37,8 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
@@ -67,10 +68,38 @@ def _take_outputs(op: PhysicalOperator) -> List[Any]:
     return output
 
 
+def test_name_and_repr(ray_start_regular_shared):
+    inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+    map_op1 = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op,
+        DataContext.get_current(),
+        name="map1",
+    )
+
+    assert map_op1.name == "map1"
+    assert map_op1.dag_str == "InputDataBuffer[Input] -> TaskPoolMapOperator[map1]"
+    assert str(map_op1) == "TaskPoolMapOperator[map1]"
+
+    map_op2 = MapOperator.create(
+        _mul2_map_data_prcessor,
+        map_op1,
+        DataContext.get_current(),
+        name="map2",
+    )
+    assert map_op2.name == "map2"
+    assert (
+        map_op2.dag_str
+        == "InputDataBuffer[Input] -> TaskPoolMapOperator[map1] -> TaskPoolMapOperator[map2]"
+    )
+    assert str(map_op2) == "TaskPoolMapOperator[map2]"
+
+
 def test_input_data_buffer(ray_start_regular_shared):
     # Create with bundles.
     inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
-    op = InputDataBuffer(inputs)
+    op = InputDataBuffer(DataContext.get_current(), inputs)
 
     # Check we return all bundles in order.
     assert not op.completed()
@@ -84,10 +113,13 @@ def test_all_to_all_operator():
         assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
     op = AllToAllOperator(
         dummy_all_transform,
-        input_op=input_op,
+        input_op,
+        DataContext.get_current(),
         target_max_block_size=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
@@ -115,14 +147,17 @@ def test_all_to_all_operator():
 
 def test_num_outputs_total():
     # The number of outputs is always known for InputDataBuffer.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
     assert input_op.num_outputs_total() == 100
 
     # Prior to execution, the number of outputs is unknown
     # for Map/AllToAllOperator operators.
     op1 = MapOperator.create(
         _mul2_map_data_prcessor,
-        input_op=input_op,
+        input_op,
+        DataContext.get_current(),
         name="TestMapper",
     )
     assert op1.num_outputs_total() is None
@@ -133,6 +168,7 @@ def test_num_outputs_total():
     op2 = AllToAllOperator(
         dummy_all_transform,
         input_op=op1,
+        data_context=DataContext.get_current(),
         target_max_block_size=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
@@ -157,12 +193,14 @@ def test_num_outputs_total():
 def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(
-        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
+        DataContext.get_current(),
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)]),
     )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_map_data_prcessor,
-        input_op=input_op,
+        input_op,
+        DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -202,9 +240,15 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
     # so we can test the output order of `OutputSplitter.get_next`.
     num_add_input_blocks = 10
     input_op = InputDataBuffer(
-        make_ref_bundles([[i] * chunk_size for i in range(num_input_blocks)])
+        DataContext.get_current(),
+        make_ref_bundles([[i] * chunk_size for i in range(num_input_blocks)]),
     )
-    op = OutputSplitter(input_op, num_splits, equal=equal)
+    op = OutputSplitter(
+        input_op,
+        num_splits,
+        equal=equal,
+        data_context=DataContext.get_current(),
+    )
 
     # Feed data and implement streaming exec.
     output_splits = [[] for _ in range(num_splits)]
@@ -245,8 +289,10 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
     random.seed(random_seed)
     inputs = make_ref_bundles([[i] * random.randint(0, 10) for i in range(100)])
     num_inputs = sum(x.num_rows() for x in inputs)
-    input_op = InputDataBuffer(inputs)
-    op = OutputSplitter(input_op, 3, equal=equal)
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+    op = OutputSplitter(
+        input_op, 3, equal=equal, data_context=DataContext.get_current()
+    )
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
@@ -268,8 +314,16 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
 
 
 def test_split_operator_locality_hints(ray_start_regular_shared):
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    op = OutputSplitter(input_op, 2, equal=False, locality_hints=["node1", "node2"])
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
+    op = OutputSplitter(
+        input_op,
+        2,
+        equal=False,
+        data_context=DataContext.get_current(),
+        locality_hints=["node1", "node2"],
+    )
 
     def get_fake_loc(item):
         assert isinstance(item, int), item
@@ -281,9 +335,9 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     def get_bundle_loc(bundle):
         block = ray.get(bundle.blocks[0][0])
         fval = list(block["id"])[0]
-        return get_fake_loc(fval)
+        return [get_fake_loc(fval)]
 
-    op._get_location = get_bundle_loc
+    op._get_locations = get_bundle_loc
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
@@ -315,12 +369,14 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
     input_op = InputDataBuffer(
-        make_ref_bundles([[np.ones(100) * i] for i in range(100)])
+        DataContext.get_current(),
+        make_ref_bundles([[np.ones(100) * i] for i in range(100)]),
     )
     compute_strategy = ActorPoolStrategy()
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -362,11 +418,14 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
             yield block
 
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_check_batch),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
         min_rows_per_bundle=5,
@@ -395,11 +454,14 @@ def test_map_operator_output_unbundling(
             yield block
 
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         create_map_transformer_from_block_fn(noop),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
         # Send the everything in a single bundle of 10 blocks.
@@ -431,11 +493,14 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     ray.shutdown()
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
     compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
         ray_remote_args={"num_cpus": 0, "num_gpus": 1},
@@ -462,11 +527,14 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         time.sleep(999)
 
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
     compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_sleep),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
         ray_remote_args={"num_cpus": 0, "num_gpus": 1},
@@ -479,16 +547,19 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown()
+    op.shutdown(timer=Timer())
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
 
 
-def test_actor_pool_map_operator_init(ray_start_regular_shared):
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
     from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
@@ -496,12 +567,15 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
     def _fail():
         raise ValueError("init_failed")
 
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
     compute_strategy = ActorPoolStrategy(min_size=1)
 
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_sleep, init_fn=_fail),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -516,12 +590,15 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
 
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
     compute_strategy = ActorPoolStrategy(size=1)
 
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_sleep),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -552,7 +629,9 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
         ray.get(signal_actor.wait.remote())
         yield from block_iter
 
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(num_actors)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(num_actors)])
+    )
     compute_strategy = ActorPoolStrategy(min_size=num_actors, max_size=2 * num_actors)
 
     # Create an operator with [num_actors, 2 * num_actors] actors.
@@ -560,6 +639,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_map_transfom_fn),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -611,10 +691,13 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
 def test_map_operator_pool_delegation(compute, expected):
     # Test that the MapOperator factory delegates to the appropriate pool
     # implementation.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=compute,
     )
@@ -630,10 +713,10 @@ def test_limit_operator(ray_start_regular_shared):
     limits = list(range(0, total_rows + 2))
     for limit in limits:
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
-        input_op = InputDataBuffer(refs)
-        limit_op = LimitOperator(limit, input_op)
-        limit_op.mark_execution_completed = MagicMock(
-            wraps=limit_op.mark_execution_completed
+        input_op = InputDataBuffer(DataContext.get_current(), refs)
+        limit_op = LimitOperator(limit, input_op, DataContext.get_current())
+        limit_op.mark_execution_finished = MagicMock(
+            wraps=limit_op.mark_execution_finished
         )
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
@@ -644,7 +727,7 @@ def test_limit_operator(ray_start_regular_shared):
         while input_op.has_next() and not limit_op._limit_reached():
             loop_count += 1
             assert not limit_op.completed(), limit
-            assert not limit_op._execution_completed, limit
+            assert not limit_op._execution_finished, limit
             limit_op.add_input(input_op.get_next(), 0)
             while limit_op.has_next():
                 # Drain the outputs. So the limit operator
@@ -652,16 +735,16 @@ def test_limit_operator(ray_start_regular_shared):
                 limit_op.get_next()
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
-                assert limit_op.mark_execution_completed.call_count == 1, limit
+                assert limit_op.mark_execution_finished.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
-                assert limit_op._execution_completed, limit
+                assert limit_op._execution_finished, limit
             else:
-                assert limit_op.mark_execution_completed.call_count == 0, limit
+                assert limit_op.mark_execution_finished.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
-                assert not limit_op._execution_completed, limit
-        limit_op.mark_execution_completed()
+                assert not limit_op._execution_finished, limit
+        limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit
@@ -671,130 +754,141 @@ def test_limit_operator(ray_start_regular_shared):
 def _get_bundles(bundle: RefBundle):
     output = []
     for block_ref in bundle.block_refs:
-        output.extend(list(ray.get(block_ref)["id"]))
+        output.append(list(ray.get(block_ref)["id"]))
     return output
 
 
-@pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_operator(ray_start_regular_shared, preserve_order):
-    """Test basic functionalities of UnionOperator."""
-    execution_options = ExecutionOptions(preserve_order=preserve_order)
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options = execution_options
+def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
+    rbs = []
+    for raw_bundle in raw_bundles:
+        blocks = []
 
-    num_rows_per_block = 3
-    data0 = make_ref_bundles([[i] * num_rows_per_block for i in range(3)])
-    data1 = make_ref_bundles([[i] * num_rows_per_block for i in range(2)])
-    data2 = make_ref_bundles([[i] * num_rows_per_block for i in range(1)])
+        for raw_block in raw_bundle:
+            print(f">>> {raw_block=}")
 
-    op0 = InputDataBuffer(data0)
-    op1 = InputDataBuffer(data1)
-    op2 = InputDataBuffer(data2)
-    union_op = UnionOperator(op0, op1, op2)
-    union_op.start(execution_options)
+            block = pd.DataFrame({"id": raw_block})
+            blocks.append(
+                (ray.put(block), BlockAccessor.for_block(block).get_metadata())
+            )
 
-    assert not union_op.has_next()
-    union_op.add_input(op0.get_next(), 0)
-    assert union_op.has_next()
+        rb = RefBundle(blocks=blocks, owns_blocks=True)
 
-    assert union_op.get_next() == data0[0]
-    assert not union_op.has_next()
+        rbs.append(rb)
 
-    union_op.add_input(op0.get_next(), 0)
-    union_op.add_input(op0.get_next(), 0)
-    assert union_op.get_next() == data0[1]
-    assert union_op.get_next() == data0[2]
-
-    union_op.input_done(0)
-    assert not union_op.completed()
-    if preserve_order:
-        assert union_op._input_idx_to_output == 1
-
-    if preserve_order:
-        union_op.add_input(op1.get_next(), 1)
-        union_op.add_input(op2.get_next(), 2)
-        assert union_op._input_idx_to_output == 1
-
-        assert union_op.get_next() == data1[0]
-        assert not union_op.has_next()
-
-        # Check the case where an input op which is not the op
-        # corresponding to _input_idx_to_output finishes first.
-        union_op.input_done(2)
-        assert union_op._input_idx_to_output == 1
-
-        union_op.add_input(op1.get_next(), 1)
-        assert union_op.has_next()
-        assert union_op.get_next() == data1[1]
-        assert not union_op.has_next()
-        # Marking the current output buffer source op will
-        # increment _input_idx_to_output to the next source.
-        union_op.input_done(1)
-        assert union_op._input_idx_to_output == 2
-        assert union_op.has_next()
-        assert union_op.get_next() == data2[0]
-    else:
-        union_op.add_input(op1.get_next(), 1)
-        union_op.add_input(op2.get_next(), 2)
-        union_op.add_input(op1.get_next(), 1)
-        # The output will be in the same order as the inputs
-        # were added with `add_input()`.
-        assert union_op.get_next() == data1[0]
-        assert union_op.get_next() == data2[0]
-        assert union_op.get_next() == data1[1]
-
-    assert all([len(b) == 0 for b in union_op._input_buffers])
-
-    _take_outputs(union_op)
-    union_op.all_inputs_done()
-    assert union_op.completed()
+    return rbs
 
 
 @pytest.mark.parametrize(
     "target,in_bundles,expected_bundles",
     [
         (
-            1,  # Unit target, should leave unchanged.
-            [[1], [2], [3, 4], [5]],
-            [[1], [2], [3, 4], [5]],
+            # Unit target, should leave unchanged.
+            1,
+            [
+                # Input bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
+            [
+                # Output bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
         ),
         (
-            None,  # No target, should leave unchanged.
-            [[1], [2], [3, 4], [5]],
-            [[1], [2], [3, 4], [5]],
+            # No target, should leave unchanged.
+            None,
+            [
+                # Input bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
+            [
+                # Output bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
         ),
         (
-            2,  # Empty blocks should be handled.
-            [[1], [], [2, 3], []],
-            [[1], [2, 3]],
+            # Proper handling of empty blocks
+            2,
+            [
+                # Input bundles
+                [[1]],
+                [[]],
+                [[]],
+                [[2, 3]],
+                [[]],
+                [[]],
+            ],
+            [
+                # Output bundles
+                [[1], [], [], [2, 3]],
+                [[], []],
+            ],
         ),
         (
-            2,  # Test bundling, finalizing, passing, leftovers, etc.
-            [[1], [2], [3, 4, 5], [6], [7], [8], [9, 10], [11]],
-            [[1, 2], [3, 4, 5], [6, 7], [8], [9, 10], [11]],
+            # Test bundling, finalizing, passing, leftovers, etc.
+            2,
+            [
+                # Input bundles
+                [[1], [2]],
+                [[3, 4, 5]],
+                [[6], [7]],
+                [[8]],
+                [[9, 10], [11]],
+            ],
+            [[[1], [2]], [[3, 4, 5]], [[6], [7]], [[8], [9, 10], [11]]],
         ),
         (
-            3,  # Test bundling, finalizing, passing, leftovers, etc.
-            [[1], [2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
-            [[1, 2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
+            # Test bundling, finalizing, passing, leftovers, etc.
+            3,
+            [
+                # Input bundles
+                [[1]],
+                [[2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
+            ],
+            [
+                # Output bundles
+                [[1], [2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
+            ],
         ),
     ],
 )
 def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Test that the bundler creates the expected output bundles.
     bundler = _BlockRefBundler(target)
-    bundles = make_ref_bundles(in_bundles)
+    bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
-            out_bundle = _get_bundles(bundler.get_next_bundle())
+            out_bundle = _get_bundles(bundler.get_next_bundle()[1])
             out_bundles.append(out_bundle)
+
     bundler.done_adding_bundles()
+
     if bundler.has_bundle():
-        out_bundle = _get_bundles(bundler.get_next_bundle())
+        out_bundle = _get_bundles(bundler.get_next_bundle()[1])
         out_bundles.append(out_bundle)
-    assert len(out_bundles) == len(expected_bundles)
+
+    # Assert expected output
+    assert out_bundles == expected_bundles
+    # Assert that all bundles have been ingested
+    assert bundler.num_bundles() == 0
+
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
 
@@ -803,7 +897,7 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     "target,n,num_bundles,num_out_bundles,out_bundle_size",
     [
         (5, 20, 20, 4, 5),
-        (5, 20, 10, 5, 4),
+        (5, 24, 10, 4, 6),
         (8, 16, 4, 2, 8),
     ],
 )
@@ -820,10 +914,12 @@ def test_block_ref_bundler_uniform(
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
-            out_bundles.append(bundler.get_next_bundle())
+            _, out_bundle = bundler.get_next_bundle()
+            out_bundles.append(out_bundle)
     bundler.done_adding_bundles()
     if bundler.has_bundle():
-        out_bundles.append(bundler.get_next_bundle())
+        _, out_bundle = bundler.get_next_bundle()
+        out_bundles.append(out_bundle)
     assert len(out_bundles) == num_out_bundles
     for out_bundle in out_bundles:
         assert out_bundle.num_rows() == out_bundle_size
@@ -842,7 +938,7 @@ def test_operator_metrics():
     MIN_ROWS_PER_BUNDLE = 10
 
     inputs = make_ref_bundles([[i] for i in range(NUM_INPUTS)])
-    input_op = InputDataBuffer(inputs)
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
 
     def map_fn(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
         for i in range(NUM_BLOCKS_PER_TASK):
@@ -851,6 +947,7 @@ def test_operator_metrics():
     op = MapOperator.create(
         create_map_transformer_from_block_fn(map_fn),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocks",
         min_rows_per_bundle=MIN_ROWS_PER_BUNDLE,
     )
@@ -905,7 +1002,9 @@ def test_operator_metrics():
 
 def test_map_estimated_num_output_bundles():
     # Test map operator estimation
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
 
     def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
         for i in range(5):
@@ -915,6 +1014,7 @@ def test_map_estimated_num_output_bundles():
     op = MapOperator.create(
         create_map_transformer_from_block_fn(yield_five),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocks",
         min_rows_per_bundle=min_rows_per_bundle,
     )
@@ -940,10 +1040,13 @@ def test_map_estimated_blocks_split():
             yield pd.DataFrame({"id": [i]})
 
     min_rows_per_bundle = 10
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
     op = MapOperator.create(
         create_map_transformer_from_block_fn(yield_five),
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocksSplit",
         min_rows_per_bundle=min_rows_per_bundle,
     )
@@ -962,10 +1065,53 @@ def test_map_estimated_blocks_split():
     assert op._estimated_num_output_bundles == 100
 
 
+@pytest.mark.parametrize("use_actors", [False, True])
+def test_map_kwargs(ray_start_regular_shared, use_actors):
+    """Test propagating additional kwargs to map tasks."""
+    foo = 1
+    bar = np.random.random(1024 * 1024)
+    kwargs = {
+        "foo": foo,  # Pass by value
+        "bar": ray.put(bar),  # Pass by ObjectRef
+    }
+
+    def map_fn(block_iter: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        nonlocal foo, bar
+        assert ctx.kwargs["foo"] == foo
+        # bar should be automatically deref'ed.
+        assert np.array_equal(ctx.kwargs["bar"], bar)
+
+        yield from block_iter
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(),
+        make_ref_bundles([[i] for i in range(10)]),
+    )
+    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(map_fn),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+    op.add_map_task_kwargs_fn(lambda: kwargs)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+
+    _take_outputs(op)
+    assert op.completed()
+
+
 def test_limit_estimated_num_output_bundles():
     # Test limit operator estimation
-    input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
-    op = LimitOperator(100, input_op)
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i, i] for i in range(100)])
+    )
+    op = LimitOperator(100, input_op, DataContext.get_current())
 
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
@@ -978,8 +1124,10 @@ def test_limit_estimated_num_output_bundles():
     assert op._estimated_num_output_bundles == 50
 
     # Test limit operator estimation where: limit > # of rows
-    input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
-    op = LimitOperator(300, input_op)
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i, i] for i in range(100)])
+    )
+    op = LimitOperator(300, input_op, DataContext.get_current())
 
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
@@ -994,7 +1142,9 @@ def test_limit_estimated_num_output_bundles():
 
 def test_all_to_all_estimated_num_output_bundles():
     # Test all to all operator
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
 
     def all_transform(bundles: List[RefBundle], ctx):
         return bundles, {}
@@ -1003,11 +1153,15 @@ def test_all_to_all_estimated_num_output_bundles():
     op1 = AllToAllOperator(
         all_transform,
         input_op,
+        DataContext.get_current(),
         DataContext.get_current().target_max_block_size,
         estimated_output_blocks,
     )
     op2 = AllToAllOperator(
-        all_transform, op1, DataContext.get_current().target_max_block_size
+        all_transform,
+        op1,
+        DataContext.get_current(),
+        DataContext.get_current().target_max_block_size,
     )
 
     while input_op.has_next():
@@ -1031,7 +1185,8 @@ def test_input_data_buffer_does_not_free_inputs():
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
     op = InputDataBuffer(
-        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)]
+        DataContext.get_current(),
+        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)],
     )
 
     op.get_next()

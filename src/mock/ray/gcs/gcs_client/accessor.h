@@ -137,10 +137,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncDrainNode,
-              (const NodeID &node_id, const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
               AsyncCheckSelfAlive,
               (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
@@ -152,7 +148,9 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::GcsNodeInfo> &callback, int64_t timeout_ms),
+              (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+               int64_t timeout_ms,
+               std::optional<NodeID> node_id),
               (override));
   MOCK_METHOD(Status,
               AsyncSubscribeToNodeChange,
@@ -327,7 +325,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &value,
                bool overwrite,
                const int64_t timeout_ms,
-               const OptionalItemCallback<int> &callback),
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVExists,

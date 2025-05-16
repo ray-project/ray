@@ -177,7 +177,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
         os.environ["RELEASE_FREQUENCY"] = "nightly"
         os.environ["RAY_TEST_REPO"] = "https://github.com/user/ray.git"
         os.environ["RAY_TEST_BRANCH"] = "sub/branch"
-        os.environ["RAY_WHEELS"] = "custom-wheels"
         os.environ["TEST_NAME"] = "name_filter"
         os.environ["RELEASE_PRIORITY"] = "manual"
         updated_settings = settings.copy()
@@ -189,7 +188,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "frequency": Frequency.NIGHTLY,
                 "prefer_smoke_tests": False,
                 "test_attr_regex_filters": {"name": "name_filter"},
-                "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
@@ -205,7 +203,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "frequency": Frequency.ANY,
                 "prefer_smoke_tests": True,
                 "test_attr_regex_filters": {"name": "name_filter"},
-                "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
@@ -342,7 +339,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
             self.buildkite.update(buildkite)
             self.buildkite["release-frequency"] = "nightly"
             self.buildkite["release-ray-test-repo-branch"] = "user:sub/branch"
-            self.buildkite["release-ray-wheels"] = "custom-wheels"
             self.buildkite["release-test-name"] = "name_filter"
             self.buildkite["release-priority"] = "manual"
             updated_settings = settings.copy()
@@ -354,7 +350,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": Frequency.NIGHTLY,
                     "prefer_smoke_tests": False,
                     "test_attr_regex_filters": {"name": "name_filter"},
-                    "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
@@ -371,7 +366,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": Frequency.ANY,
                     "prefer_smoke_tests": True,
                     "test_attr_regex_filters": {"name": "name_filter"},
-                    "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,

@@ -14,6 +14,11 @@
 
 #include "ray/pubsub/subscriber.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace ray {
 
 namespace pubsub {

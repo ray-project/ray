@@ -56,7 +56,6 @@ from pathlib import Path
 import gymnasium as gym
 
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
@@ -70,7 +69,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.train.constants import TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S, TRAINING_ITERATION
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
@@ -101,6 +100,11 @@ if __name__ == "__main__":
         )
         .offline_data(
             input_=offline_file,
+            # The number of iterations to be run per learner when in multi-learner
+            # mode in a single RLlib training iteration. Leave this to `None` to
+            # run an entire epoch on the dataset during a single RLlib training
+            # iteration. For single-learner mode, 1 is the only option.
+            dataset_num_iters_per_learner=1 if not args.num_learners else None,
         )
         .multi_agent(
             policies={"main"},

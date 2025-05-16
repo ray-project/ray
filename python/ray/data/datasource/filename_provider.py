@@ -61,7 +61,7 @@ class FilenameProvider:
 
         Args:
             block: The block that will be written to a file.
-            task_index: The index of the the write task.
+            task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
         """
         raise NotImplementedError
@@ -86,7 +86,7 @@ class FilenameProvider:
 
         Args:
             row: The row that will be written to a file.
-            task_index: The index of the the write task.
+            task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
             row_index: The index of the row *within* the block.
         """

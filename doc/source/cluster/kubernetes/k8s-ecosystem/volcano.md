@@ -19,23 +19,23 @@ See [Quick Start Guide](https://github.com/volcano-sh/volcano#quick-start-guide)
 
 ### Step 3: Install the KubeRay Operator with batch scheduling
 
-Deploy the KubeRay Operator with the `--enable-batch-scheduler` flag to enable Volcano batch scheduling support.
+Deploy the KubeRay Operator with the `--batch-scheduler=volcano` flag to enable Volcano batch scheduling support.
 
 When installing KubeRay Operator using Helm, you should use one of these two options:
 
-* Set `batchScheduler.enabled` to `true` in your
+* Set `batchScheduler.name` to `volcano` in your
 [`values.yaml`](https://github.com/ray-project/kuberay/blob/753dc05dbed5f6fe61db3a43b34a1b350f26324c/helm-chart/kuberay-operator/values.yaml#L48)
 file:
 ```shell
 # values.yaml file
 batchScheduler:
-    enabled: true
+    name: volcano
 ```
 
-* Pass the `--set batchScheduler.enabled=true` flag when running on the command line:
+* Pass the `--set batchScheduler.name=volcano` flag when running on the command line:
 ```shell
-# Install the Helm chart with --enable-batch-scheduler flag set to true
-helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2 --set batchScheduler.enabled=true
+# Install the Helm chart with the --batch-scheduler=volcano flag
+helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0 --set batchScheduler.name=volcano
 ```
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
@@ -45,7 +45,7 @@ The RayCluster custom resource must include the `ray.io/scheduler-name: volcano`
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes label `ray.io/scheduler-name: volcano` in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
 kubectl apply -f ray-cluster.volcano-scheduler.yaml
 
 # Check the RayCluster
@@ -113,7 +113,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes  the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
 kubectl apply -f ray-cluster.volcano-scheduler-queue.yaml
 ```
 

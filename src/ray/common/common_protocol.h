@@ -97,7 +97,7 @@ template <typename ID>
 const std::vector<ID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
   std::vector<ID> ids;
-  for (int64_t i = 0; i < vector.Length(); i++) {
+  for (int64_t i = 0; i < vector.size(); i++) {
     ids.push_back(from_flatbuf<ID>(*vector.Get(i)));
   }
   return ids;

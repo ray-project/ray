@@ -10,7 +10,6 @@ from unittest import mock
 import pytest
 
 import ray
-from ray._private import gcs_utils
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
@@ -46,11 +45,36 @@ def insert_test_dir_in_pythonpath():
 
 
 @pytest.mark.asyncio
+async def test_working_dir_cleanup(tmpdir, ray_start_regular):
+    gcs_client = ray.worker.global_worker.gcs_client
+
+    plugin = WorkingDirPlugin(tmpdir, gcs_client)
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    # Iterate over the files and storing creation metadata.
+    creation_metadata = {}
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time = file_metadata.st_ctime
+        creation_metadata[file] = creation_time
+
+    time.sleep(1)
+
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time_after = file_metadata.st_ctime
+        assert creation_metadata[file] != creation_time_after
+
+
+@pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
-    gcs_aio_client = gcs_utils.GcsAioClient(
-        address=ray.worker.global_worker.gcs_client.address
-    )
+    gcs_client = ray.worker.global_worker.gcs_client
     # Create an arbitrary nonempty directory to upload.
     path = Path(tmpdir)
     dir_to_upload = path / "dir_to_upload"
@@ -65,7 +89,7 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
     assert uploaded
 
-    manager = WorkingDirPlugin(tmpdir, gcs_aio_client)
+    manager = WorkingDirPlugin(tmpdir, gcs_client)
 
     created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)

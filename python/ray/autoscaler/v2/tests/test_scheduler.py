@@ -70,7 +70,7 @@ def sched_request(
         cluster_resource_constraints=(
             [
                 ClusterResourceConstraint(
-                    min_bundles=ResourceRequestUtil.group_by_count(
+                    resource_requests=ResourceRequestUtil.group_by_count(
                         cluster_resource_constraints
                     )
                 )
@@ -559,6 +559,100 @@ def test_max_workers_per_type():
                 "r1",
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
             ),
+        ]
+    )
+
+
+def test_terminate_max_allocated_workers_per_type():
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+    )
+
+    reply = scheduler.schedule(request)
+
+    # No instances created, no-op.
+    expected_to_terminate = []
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert sorted(actual_to_terminate) == sorted(expected_to_terminate)
+
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_0",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r0",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.ALLOCATED,
+                instance_id="0",
+                node_id="r0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_id="r1",
+            ),
+        ),
+    ]
+
+    # 2 nodes in allocated state with max of 2 allowed for type 1.
+    # Scheduler should leave all of the allocated instances.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+    )
+
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert actual_to_terminate == []
+
+    # Max nodes is now 0 for type 1, scheduler should terminate
+    # both allocated instances to conform with max num nodes per type.
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=0,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+    )
+
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert sorted(actual_to_terminate) == sorted(
+        [
+            (
+                "0",
+                "",
+                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+            ),  # allocated instance
+            ("1", "", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),
         ]
     )
 
@@ -1247,7 +1341,14 @@ def test_outdated_nodes(disable_launch_config_check):
 
 @pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
 @pytest.mark.parametrize("has_resource_constraints", [True, False])
-def test_idle_termination(idle_timeout_s, has_resource_constraints):
+@pytest.mark.parametrize("has_resource_requests", [True, False])
+@pytest.mark.parametrize("has_gang_resource_requests", [True, False])
+def test_idle_termination(
+    idle_timeout_s,
+    has_resource_constraints,
+    has_resource_requests,
+    has_gang_resource_requests,
+):
     """
     Test that idle nodes are terminated.
     """
@@ -1271,11 +1372,23 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
     }
 
     idle_time_s = 5
-    constraints = (
-        []
-        if not has_resource_constraints
-        else [ResourceRequestUtil.make({"CPU": 1})] * 2
-    )
+    constraints = []
+    if has_resource_constraints:
+        constraints = [ResourceRequestUtil.make({"CPU": 1})] * 2
+
+    resource_requests = []
+    if has_resource_requests:
+        resource_requests = [ResourceRequestUtil.make({"CPU": 1})] * 2
+
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    gang_resource_requests = []
+    if has_gang_resource_requests:
+        gang_resource_requests = [
+            [  # This is a strict spread placement group that requires 2 nodes.
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+            ]
+        ]
 
     request = sched_request(
         node_type_configs=node_type_configs,
@@ -1338,11 +1451,179 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
         ],
         idle_timeout_s=idle_timeout_s,
         cluster_resource_constraints=constraints,
+        resource_requests=resource_requests,
+        gang_resource_requests=gang_resource_requests,
     )
 
     reply = scheduler.schedule(request)
     _, to_terminate = _launch_and_terminate(reply)
-    if idle_timeout_s <= idle_time_s and not has_resource_constraints:
+    if (
+        idle_timeout_s <= idle_time_s
+        and not has_resource_constraints
+        and not has_resource_requests
+        and not has_gang_resource_requests
+    ):
+        assert len(to_terminate) == 1
+        assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
+    else:
+        assert len(to_terminate) == 0
+
+
+@pytest.mark.parametrize("min_workers", [0, 1])
+def test_idle_termination_with_min_worker(min_workers):
+    """
+    Test that idle nodes are terminated.
+    """
+    idle_timeout_s = 1
+
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=min_workers,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    idle_time_s = 5
+    constraints = []
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-1",
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    node_id="r-1",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    node_id=b"r-1",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=idle_time_s * 1000,
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-1",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-2",
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash2",
+                    node_kind=NodeKind.HEAD,
+                    node_id="r-2",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    node_id=b"r-2",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    idle_duration_ms=999 * 1000,  # idle
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-2",
+            ),
+        ],
+        idle_timeout_s=idle_timeout_s,
+        cluster_resource_constraints=constraints,
+    )
+
+    reply = scheduler.schedule(request)
+    _, to_terminate = _launch_and_terminate(reply)
+    assert idle_timeout_s <= idle_time_s
+    if min_workers == 0:
+        assert len(to_terminate) == 1
+        assert to_terminate == [("i-1", "r-1", TerminationRequest.Cause.IDLE)]
+    else:
+        assert min_workers > 0
+        assert len(to_terminate) == 0
+
+
+@pytest.mark.parametrize("node_type_idle_timeout_s", [1, 2, 10])
+def test_idle_termination_with_node_type_idle_timeout(node_type_idle_timeout_s):
+    """
+    Test that idle nodes are terminated when idle_timeout_s is set for node type.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_cpu_with_idle_timeout": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            idle_timeout_s=node_type_idle_timeout_s,
+            launch_config_hash="hash1",
+        ),
+    }
+
+    idle_time_s = 5
+    constraints = []
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu_with_idle_timeout",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    instance_id="i-1",
+                    node_id="r-1",
+                ),
+                ray_node=NodeState(
+                    node_id=b"r-1",
+                    ray_node_type_name="type_cpu_with_idle_timeout",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=0,  # Non idle
+                    status=NodeStatus.RUNNING,
+                ),
+                cloud_instance_id="c-1",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-2",
+                    instance_type="type_cpu_with_idle_timeout",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    node_id="r-2",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu_with_idle_timeout",
+                    node_id=b"r-2",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=idle_time_s * 1000,
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-2",
+            ),
+        ],
+        # Set autoscaler idle_timeout_s to a value greater than
+        # node_type_idle_timeout_s and idle_time_s.
+        idle_timeout_s=idle_time_s * 1000,
+        cluster_resource_constraints=constraints,
+    )
+
+    reply = scheduler.schedule(request)
+    _, to_terminate = _launch_and_terminate(reply)
+    if node_type_idle_timeout_s <= idle_time_s:
         assert len(to_terminate) == 1
         assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
     else:

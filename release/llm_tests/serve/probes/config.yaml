@@ -1,0 +1,11 @@
+defaults:
+  rate_limiting_models:
+    - mistralai/Mixtral-8x7B-Instruct-v0.1
+  completions_only_models: []
+  speculative_decoding_models:
+    - meta-llama/Llama-2-70b-chat-hf
+    - mistralai/Mistral-7B-Instruct-v0.1
+  long_context_models:
+    - mistralai/Mistral-7B-Instruct-v0.1
+    - mistralai/Mixtral-8x22B-Instruct-v0.1
+    - mistralai/Mixtral-8x7B-Instruct-v0.1

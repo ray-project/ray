@@ -2,8 +2,6 @@ import abc
 import logging
 from typing import Tuple, Union
 
-import numpy as np
-
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.utils.annotations import override
@@ -80,18 +78,25 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     @override(Model)
     def get_num_parameters(self) -> Tuple[int, int]:
-        num_all_params = sum(int(np.prod(p.size())) for p in self.parameters())
-        trainable_params = filter(lambda p: p.requires_grad, self.parameters())
-        num_trainable_params = sum(int(np.prod(p.size())) for p in trainable_params)
-        return (
-            num_trainable_params,
-            num_all_params - num_trainable_params,
-        )
+        num_trainable_parameters = 0
+        num_frozen_parameters = 0
+        for p in self.parameters():
+            n = p.numel()
+            if p.requires_grad:
+                num_trainable_parameters += n
+            else:
+                num_frozen_parameters += n
+        return num_trainable_parameters, num_frozen_parameters
 
     @override(Model)
     def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
-        trainable_weights = [p for p in self.parameters() if p.requires_grad]
-        non_trainable_weights = [p for p in self.parameters() if not p.requires_grad]
+        trainable_weights = []
+        non_trainable_weights = []
+        for p in self.parameters():
+            if p.requires_grad:
+                trainable_weights.append(p)
+            else:
+                non_trainable_weights.append(p)
         for i, w in enumerate(trainable_weights + non_trainable_weights):
             fill_val = value_sequence[i % len(value_sequence)]
             with torch.no_grad():

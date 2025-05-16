@@ -31,6 +31,7 @@ class ProcessHelper {
   void RayStop();
   void StartRayNode(const std::string node_id_address,
                     const int port,
+                    const std::string redis_username,
                     const std::string redis_password,
                     const std::vector<std::string> &head_args = {});
   void StopRayNode();

@@ -53,8 +53,3 @@ TEST(EventStatsTest, TestRecordExecution) {
   ASSERT_GE(event_stats.cum_execution_time, 200000000);
   ASSERT_GE(event_stats.cum_queue_time, 100000000);
 }
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

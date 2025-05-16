@@ -1,0 +1,43 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "src/ray/protobuf/common.proto";
+
+package ray.rpc.events;
+
+// Message containing the execution information of a task.
+message TaskExecutionEvent {
+  // task_id and task_attempt form the unique identifier of a task.
+  bytes task_id = 1;
+  int32 task_attempt = 2;
+
+  // The task execution information
+
+  // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
+  // Value is the timestamp when status changes to the target status indicated by the key.
+  map<int32, google.protobuf.Timestamp> task_state = 3;
+  UserErrorInfo user_error_info = 4;
+  RayErrorInfo ray_error_info = 5;
+
+  // The correlation ids of the task that can be used to correlate the task with
+  // other events.
+  bytes node_id = 6;
+  bytes worker_id = 7;
+  int32 worker_pid = 8;
+  bytes parent_task_id = 9;
+  bytes placement_group_id = 10;
+}

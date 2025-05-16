@@ -63,10 +63,6 @@ parser.set_defaults(enable_new_api_stack=True)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     if args.num_agents == 0:
         register_env("env", lambda cfg: StatelessCartPole())
     else:

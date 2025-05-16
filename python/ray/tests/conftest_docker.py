@@ -79,7 +79,7 @@ redis_image = fetch(repository="redis:latest")
 redis = container(
     image="{redis_image.id}",
     network="{gcs_network.name}",
-    command=("redis-server --save 60 1 --loglevel" " warning"),
+    command=("redis-server --save 60 1 --loglevel warning"),
 )
 
 head_node_vol = volume()

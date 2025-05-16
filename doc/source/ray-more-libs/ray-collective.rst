@@ -131,7 +131,7 @@ Collective functions operate on collective groups.
 A collective group contains a number of processes (in Ray, they are usually Ray-managed actors or tasks) that will together enter the collective function calls.
 Before making collective calls, users need to declare a set of actors/tasks, statically, as a collective group.
 
-Below is an example code snippet that uses the two APIs ``init_collective_group()`` and ``declare_collective_group()`` to initialize collective groups among a few
+Below is an example code snippet that uses the two APIs ``init_collective_group()`` and ``create_collective_group()`` to initialize collective groups among a few
 remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions of the two APIs.
 
 .. code-block:: python
@@ -181,7 +181,7 @@ remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions o
       "ranks": [0, 1],
       "backend": "nccl"
    }
-   collective.declare_collective_group(workers, **_options)
+   collective.create_collective_group(workers, **_options)
    results = ray.get([w.compute.remote() for w in workers])
 
 Note that for the same set of actors/task processes, multiple collective groups can be constructed, with ``group_name`` as their unique identifier.
@@ -198,7 +198,7 @@ Note that the current set of collective communication API are imperative, and ex
 * All the collective APIs are synchronous blocking calls
 * Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
   Upon all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
-* The APIs are imperative and the communication happends out-of-band --- they need to be used inside the collective process (actor/task) code.
+* The APIs are imperative and the communication happens out-of-band --- they need to be used inside the collective process (actor/task) code.
 
 An example of using ``ray.util.collective.allreduce`` is below:
 
@@ -266,7 +266,7 @@ and must successfully rendezvous with each other to proceed. See the code exampl
    B = Worker.remote()
 
    # Put A and B in a collective group
-   col.declare_collective_group([A, B], options={rank=[0, 1], ...})
+   col.create_collective_group([A, B], options={rank=[0, 1], ...})
 
    # let A to send a message to B; a send/recv has to be specified once at each worker
    ray.get([A.do_send.remote(target_rank=1), B.do_recv.remote(src_rank=0)])
