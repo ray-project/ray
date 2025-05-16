@@ -27,6 +27,11 @@ void BundleSpecification::ComputeResources() {
   } else {
     unit_resource_ = std::make_shared<ResourceRequest>(ResourceMapToResourceRequest(
         unit_resource, /*requires_object_store_memory=*/false));
+
+    // Set LabelSelector required for scheduling this bundle if specified.
+    // Parses string map from proto to LabelSelector data type.
+    LabelSelector selector(message_->label_selector());
+    unit_resource_->SetLabelSelector(selector);
   }
 
   // Generate placement group bundle labels.

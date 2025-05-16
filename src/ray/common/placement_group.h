@@ -82,6 +82,8 @@ class PlacementGroupSpecBuilder {
       const PlacementGroupID &placement_group_id,
       std::string name,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<std::unordered_map<std::string, std::string>>
+          &bundle_label_selector,
       const rpc::PlacementStrategy strategy,
       const bool is_detached,
       double max_cpu_fraction_per_node,
@@ -120,6 +122,13 @@ class PlacementGroupSpecBuilder {
           resources.erase(current);
         } else {
           mutable_unit_resources->insert({current->first, current->second});
+        }
+      }
+      // Set the label selector for this bundle if provided in bundle_label_selector.
+      if (bundle_label_selector.size() > i) {
+        auto *mutable_label_selector = message_bundle->mutable_label_selector();
+        for (const auto &pair : bundle_label_selector[i]) {
+          (*mutable_label_selector)[pair.first] = pair.second;
         }
       }
     }

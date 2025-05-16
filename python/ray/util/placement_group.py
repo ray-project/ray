@@ -9,6 +9,7 @@ from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.ray_constants as ray_constants
+from ray._private.label_utils import validate_label_selector
 
 bundle_reservation_check = None
 
@@ -144,6 +145,7 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
 @client_mode_wrap
 def placement_group(
     bundles: List[Dict[str, float]],
+    bundle_label_selector: List[Dict[str, str]] = None,
     strategy: str = "PACK",
     name: str = "",
     lifetime: Optional[str] = None,
@@ -155,6 +157,8 @@ def placement_group(
     Args:
         bundles: A list of bundles which
             represent the resources requirements.
+        bundle_label_selector: A list of label selectors to apply to a
+            placement group on a per-bundle level.
         strategy: The strategy to create the placement group.
 
          - "PACK": Packs Bundles into as few nodes as possible.
@@ -197,11 +201,15 @@ def placement_group(
 
     validate_placement_group(
         bundles=bundles,
+        bundle_label_selector=bundle_label_selector,
         strategy=strategy,
         lifetime=lifetime,
         _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
         _soft_target_node_id=_soft_target_node_id,
     )
+
+    if bundle_label_selector is None:
+        bundle_label_selector = []
 
     if lifetime == "detached":
         detached = True
@@ -211,6 +219,7 @@ def placement_group(
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
+        bundle_label_selector,
         strategy,
         detached,
         _max_cpu_fraction_per_node,
@@ -343,6 +352,7 @@ def check_placement_group_index(
 
 def validate_placement_group(
     bundles: List[Dict[str, float]],
+    bundle_label_selector: List[Dict[str, str]] = None,
     strategy: str = "PACK",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
@@ -374,6 +384,14 @@ def validate_placement_group(
         )
 
     _validate_bundles(bundles)
+
+    if bundle_label_selector is not None:
+        if len(bundles) < len(bundle_label_selector):
+            raise ValueError(
+                f"Invalid bundle label selector {bundle_label_selector}. "
+                f"More label selectors than bundles provided to placement group."
+            )
+        _validate_bundle_label_selector(bundle_label_selector)
 
     if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
@@ -432,6 +450,39 @@ def _validate_bundles(bundles: List[Dict[str, float]]):
                 "instead to bypass the object store memory size limitation.",
                 DeprecationWarning,
                 stacklevel=1,
+            )
+
+
+def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]]):
+    """Validates each label selector and raises a ValueError if any label selector is invalid."""
+
+    if not isinstance(bundle_label_selector, list):
+        raise ValueError(
+            "Placement group bundle_label_selector must be a list, "
+            f"got {type(bundle_label_selector)}."
+        )
+
+    if len(bundle_label_selector) == 0:
+        # No label selectors provided, no-op.
+        return
+
+    for label_selector in bundle_label_selector:
+        if (
+            not isinstance(label_selector, dict)
+            or not all(isinstance(k, str) for k in label_selector.keys())
+            or not all(isinstance(v, str) for v in label_selector.values())
+        ):
+            raise ValueError(
+                "Bundle label selector must be a list of string dictionary"
+                " label selectors. For example: "
+                '`[{ray.io/market_type": "spot"}, {"ray.io/accelerator-type": "A100"}]`.'
+            )
+        # Call helper function to validate label selector key-value syntax.
+        error_message = validate_label_selector(label_selector)
+        if error_message:
+            raise ValueError(
+                f"Invalid label selector provided in bundle_label_selector list."
+                f" Detailed error: '{error_message}'"
             )
 
 
