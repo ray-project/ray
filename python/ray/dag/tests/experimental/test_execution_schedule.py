@@ -59,7 +59,7 @@ def set_collective_idxs(
 ) -> None:
     collective_idxs = {(dag_idx, _DAGNodeOperationType.COMPUTE) for dag_idx in dag_idxs}
     for dag_idx in dag_idxs:
-        graph[dag_idx][_DAGNodeOperationType.COMPUTE].collective_idxs = collective_idxs
+        graph[dag_idx][_DAGNodeOperationType.COMPUTE].sync_idxs = collective_idxs
 
 
 def set_ready_collective_idxs(
@@ -72,7 +72,7 @@ def set_ready_collective_idxs(
     for dag_idx in dag_idxs:
         graph[dag_idx][
             _DAGNodeOperationType.COMPUTE
-        ].ready_collective_idxs = ready_collective_idxs
+        ].ready_sync_idxs = ready_collective_idxs
 
 
 def _generate_and_extract_execution_schedule(graph):

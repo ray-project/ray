@@ -1956,12 +1956,13 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl = dag_node.type_hint.requires_nccl()
-                upstream_requires_nccl = False
+                requires_nccl_read = False
                 for upstream_node in dag_node._upstream_nodes:
                     if upstream_node.type_hint.requires_nccl():
-                        upstream_requires_nccl = True
+                        requires_nccl_read = True
                         break
+                requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
+                requires_nccl_write = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1969,7 +1970,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    upstream_requires_nccl,
+                    requires_nccl_read,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1977,7 +1978,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    isinstance(dag_node, CollectiveOutputNode),
+                    requires_nccl_compute,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1985,7 +1986,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl,
+                    requires_nccl_write,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
