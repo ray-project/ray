@@ -240,6 +240,7 @@ steps:
   - label: ":ray: core: asan tests"
     tags:
       - python
+      - skip-on-premerge
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
