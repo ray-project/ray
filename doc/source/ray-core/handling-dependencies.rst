@@ -427,7 +427,8 @@ your programs:
       "virtualenv",
     ]
 
-  .. code-block:: python
+  .. testcode::
+    :skipif: True
 
     import ray
 
