@@ -40,7 +40,7 @@ Ray Data provides following levers to allow to tune up performance of joins for 
 -   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out :ref:`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
 -   `partition_size_hint`: (optional) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). If not specified, defaults to DataContext.target_max_block_size (128Mb by default).
     -   Note that, `num_partitions * partition_size_hint` should ideally be approximating actual dataset size, ie `partition_size_hint` could be estimated as dataset size divided by `num_partitions` (assuming relatively evenly sized partitions)
-    -   However, in cases when dataset partitioning is expected to be heavily skewed partition_size_hint should approximate largest partition to prevent OOMs
+    -   However, in cases when dataset partitioning is expected to be heavily skewed `partition_size_hint` should approximate largest partition to prevent out-of-memory (OOM) errors
 
 .. note:: Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all
     Ray Data workloads, but especially so for ones utilizing joins.
@@ -58,9 +58,9 @@ Configuring number of partitions
 
 Number of partitions (also referred to as blocks) provide an important trade-off between the size of individual batch of rows handled by individual tasks against memory requirements of the operation performed on them
 
-**Rule of thumb**: *keep partitions large, but not too large to OOM*
+**Rule of thumb**: *keep partitions large, but not too large to cause Out-of-Memory (OOM) errors*
 
-1.  It’s important to not “oversize” partitions for joins as that could lead to OOMs (if joined partitions might be too large to fit in memory)
+1.  It’s important to not “oversize” partitions for joins as that could lead to OOM errors (if joined partitions might be too large to fit in memory)
 2.  It’s also important to not create too many small partitions as this creates an overhead of passing large amount of smaller objects
 
 Configuring number of Aggregators

@@ -26,7 +26,7 @@ and execute operations in a pipelined, streaming fashion.
  are the basic unit of data processing in Ray Data:
 
  1. Every dataset is partitioned into a number of blocks, then
- 2. Processing of the whole dataset is distributed and parallelized at the block level (ie blocks are processed in parallel and for the most
+ 2. Processing of the whole dataset is distributed and parallelized at the block level ()blocks are processed in parallel and for the most
  part independently)
 
 Block is the basic unit of data that every Ray Data dataset is partitioned into and stored in the object store. Data processing is parallelized at the block level.
