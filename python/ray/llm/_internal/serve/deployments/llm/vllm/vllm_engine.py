@@ -20,6 +20,7 @@ from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
+from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStatTracker,
@@ -190,6 +191,12 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+
+        # Pick a random port in P/D case.
+        if llm_config.engine_kwargs.get("kv_transfer_config", None) is not None:
+            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                port: int = vllm.utils.get_open_port()
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
         assert isinstance(
             llm_config, LLMConfig
@@ -573,6 +580,12 @@ class VLLMEngine(LLMEngine):
         }
         if mm_data:
             request_params["multi_modal_data"] = mm_data
+        if (
+            kv_transfer_params := prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None)
+        ) is not None:
+            request_params["internal_parameters"] = {
+                KV_TRANSFER_PARAMS_KEY: kv_transfer_params
+            }
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
@@ -610,10 +623,22 @@ class VLLMEngine(LLMEngine):
                 multi_modal_data=request.multi_modal_data,
             )
 
+        _sampling_params = self._parse_sampling_params(
+            request.sampling_params,
+            extra_args={
+                KV_TRANSFER_PARAMS_KEY: request.internal_parameters[
+                    KV_TRANSFER_PARAMS_KEY
+                ]
+            }
+            if request.internal_parameters is not None
+            and KV_TRANSFER_PARAMS_KEY in request.internal_parameters
+            else {},
+        )
+
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=prompt,
-            sampling_params=self._parse_sampling_params(request.sampling_params),
+            sampling_params=_sampling_params,
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
         )
@@ -661,6 +686,9 @@ class VLLMEngine(LLMEngine):
                     preprocessing_time=0,
                     generation_time=clock.reset_interval(),
                     finish_reason=finish_reason,
+                    internal_parameters={
+                        KV_TRANSFER_PARAMS_KEY: request_output.kv_transfer_params,
+                    },
                 )
 
             if request_output is not None:
@@ -799,7 +827,8 @@ class VLLMEngine(LLMEngine):
             return False
 
         try:
-            return await asyncio.wait_for(self.engine.check_health(), timeout=15)
+            await asyncio.wait_for(self.engine.check_health(), timeout=15)
+            return True
         except BaseException as e:
             logger.exception("Healthcheck failed. The replica will be restarted")
             raise e from None
