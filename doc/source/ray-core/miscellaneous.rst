@@ -67,10 +67,9 @@ And specify a name for tasks (and actor methods too) at task submission time:
 
 .. testcode::
 
-   import setproctitle
-
    @ray.remote
    def f(x):
+      from ray._private import setproctitle
       assert setproctitle.getproctitle() == "ray::special_f"
       return x + 1
 

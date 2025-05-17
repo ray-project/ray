@@ -1,12 +1,13 @@
+#!/usr/bin/env python
+import logging
+import sys
+from ray._private import setproctitle
 import abc
 import asyncio
 import aiohttp
 import inspect
-import logging
-import sys
 import os
 from dataclasses import dataclass
-import setproctitle
 import multiprocessing
 import multiprocessing.connection
 
