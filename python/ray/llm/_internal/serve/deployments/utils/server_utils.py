@@ -17,7 +17,7 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
 from ray.llm._internal.serve.observability.logging import get_logger
 import asyncio
 from functools import partial
-from typing import Awaitable, Callable, TypeVar, List
+from typing import Awaitable, Callable, TypeVar, List, AsyncGenerator, Tuple
 
 logger = get_logger(__name__)
 
@@ -147,3 +147,17 @@ def floats_to_base64(float_list: List[float]) -> str:
     binary = struct.pack(f"{len(float_list)}f", *float_list)
     encoded = base64.b64encode(binary).decode("utf-8")
     return encoded
+
+
+async def peek_at_generator(gen: AsyncGenerator[T, None]) -> Tuple[T, AsyncGenerator[T, None]]:
+    # Peek at the first element
+    first_item = await gen.__anext__()
+
+    async def new_generator() -> AsyncGenerator[T, None]:
+        # Yield the peeked item first
+        yield first_item
+        async for item in gen:
+            yield item
+
+    return first_item, new_generator()
+
