@@ -247,10 +247,9 @@ def request_resources(
             for bundle in bundles:
                 if isinstance(bundle, Dict):
                     for key in bundle.keys():
-                        # resource with label can be float
-                        if not isinstance(key, str):
+                        if not (isinstance(key, str) and isinstance(bundle[key], (float, int))):
                             raise TypeError(
-                                "each bundle key should be str"
+                                "each bundle key should be str and value as int or float"
                             )
                 else:
                     raise TypeError("each bundle should be a Dict.")
