@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
@@ -65,11 +66,19 @@ class AutoscalingActorPool(ABC):
         )
 
     @abstractmethod
-    def scale_up(self, num_actors: int) -> int:
+    def can_scale_down(self):
+        ...
+
+    @abstractmethod
+    def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         """Request the actor pool to scale up by the given number of actors.
 
         The number of actually added actors may be less than the requested
         number.
+
+        Args:
+            num_actors: Number of additional actors to be added to the pool
+            reason: (Optional) Reason for action
 
         Returns:
             The number of actors actually added.
@@ -77,11 +86,15 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def scale_down(self, num_actors: int) -> int:
+    def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         """Request actor pool to scale down by the given number of actors.
 
         The number of actually removed actors may be less than the requested
         number.
+
+        Args:
+            num_actors: Number of additional actors to be removed from the pool
+            reason: (Optional) Reason for action
 
         Returns:
             The number of actors actually removed.
