@@ -16,10 +16,47 @@ from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_call_method,
 )
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 from ray.serve.tests.test_metrics_1 import get_metric_dictionaries
+
+
+@pytest.fixture
+def serve_start_shutdown(request):
+    serve.shutdown()
+    ray.shutdown()
+    ray._private.utils.reset_ray_address()
+
+    param = request.param if hasattr(request, "param") else None
+    request_timeout_s = param if param else None
+    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 100,
+            "task_retry_delay_ms": 50,
+        },
+    )
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+    yield serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+            request_timeout_s=request_timeout_s,
+        ),
+        http_options=HTTPOptions(
+            request_timeout_s=request_timeout_s,
+        ),
+    )
+    serve.shutdown()
+    ray.shutdown()
+    ray._private.utils.reset_ray_address()
 
 
 class TestRequestContextMetrics:

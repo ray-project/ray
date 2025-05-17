@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import grpc
 import pytest
@@ -11,7 +11,6 @@ import ray
 from ray import serve
 from ray._private.test_utils import (
     SignalActor,
-    fetch_prometheus_metrics,
     wait_for_condition,
 )
 from ray.serve._private.test_utils import (
@@ -20,8 +19,6 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import HTTPOptions, gRPCOptions
-
-TEST_METRICS_EXPORT_PORT = 9999
 
 
 @pytest.fixture
@@ -34,7 +31,7 @@ def serve_start_shutdown(request):
     request_timeout_s = param if param else None
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
-        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
+        _metrics_export_port=9999,
         _system_config={
             "metrics_report_interval_ms": 100,
             "task_retry_delay_ms": 50,
@@ -58,97 +55,6 @@ def serve_start_shutdown(request):
     serve.shutdown()
     ray.shutdown()
     ray._private.utils.reset_ray_address()
-
-
-def extract_tags(line: str) -> Dict[str, str]:
-    """Extracts any tags from the metrics line."""
-
-    try:
-        tags_string = line.replace("{", "}").split("}")[1]
-    except IndexError:
-        # No tags were found in this line.
-        return {}
-
-    detected_tags = {}
-    for tag_pair in tags_string.split(","):
-        sanitized_pair = tag_pair.replace('"', "")
-        tag, value = sanitized_pair.split("=")
-        detected_tags[tag] = value
-
-    return detected_tags
-
-
-def contains_tags(line: str, expected_tags: Optional[Dict[str, str]] = None) -> bool:
-    """Checks if the metrics line contains the expected tags.
-
-    Does nothing if expected_tags is None.
-    """
-
-    if expected_tags is not None:
-        detected_tags = extract_tags(line)
-
-        # Check if expected_tags is a subset of detected_tags
-        return expected_tags.items() <= detected_tags.items()
-    else:
-        return True
-
-
-def get_metric_float(
-    metric: str, expected_tags: Optional[Dict[str, str]] = None
-) -> float:
-    """Gets the float value of metric.
-
-    If tags is specified, searched for metric with matching tags.
-
-    Returns -1 if the metric isn't available.
-    """
-
-    metrics = requests.get("http://127.0.0.1:9999").text
-    metric_value = -1
-    for line in metrics.split("\n"):
-        if metric in line and contains_tags(line, expected_tags):
-            metric_value = line.split(" ")[-1]
-    return metric_value
-
-
-def check_metric_float_eq(
-    metric: str, expected: float, expected_tags: Optional[Dict[str, str]] = None
-) -> bool:
-    metric_value = get_metric_float(metric, expected_tags)
-    assert float(metric_value) == expected
-    return True
-
-
-def check_sum_metric_eq(
-    metric_name: str,
-    expected: float,
-    tags: Optional[Dict[str, str]] = None,
-) -> bool:
-    if tags is None:
-        tags = {}
-
-    metrics = fetch_prometheus_metrics([f"localhost:{TEST_METRICS_EXPORT_PORT}"])
-    metric_samples = metrics.get(metric_name, None)
-    if metric_samples is None:
-        metric_sum = 0
-    else:
-        metric_samples = [
-            sample for sample in metric_samples if tags.items() <= sample.labels.items()
-        ]
-        metric_sum = sum(sample.value for sample in metric_samples)
-
-    # Check the metrics sum to the expected number
-    assert float(metric_sum) == float(
-        expected
-    ), f"The following metrics don't sum to {expected}: {metric_samples}. {metrics}"
-
-    # # For debugging
-    if metric_samples:
-        print(f"The following sum to {expected} for '{metric_name}' and tags {tags}:")
-        for sample in metric_samples:
-            print(sample)
-
-    return True
 
 
 def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
