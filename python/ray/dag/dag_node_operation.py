@@ -117,13 +117,13 @@ class _DAGOperationGraphNode:
         # the edge is a control dependency.
         self.in_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
         self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
-        # The collective nodes are the nodes that belong to the same collective
+        # The synchronous nodes are all the nodes that belong to the same NCCL
         # operation. Each node is represented by a tuple of its task idx and type.
         self.sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
-        # The ready collective nodes are the nodes that are ready to be executed,
-        # i.e., their in-degrees are zero. When a collective node is ready, it
-        # will be added to the ready collective nodes of all the nodes in its
-        # collective operation.
+        # The ready synchronous nodes are the nodes that are ready to be executed,
+        # i.e., their in-degrees are zero. When a synchronous node is ready, it
+        # will be added to the ready synchronous nodes of all the nodes in the
+        # NCCL operation.
         self.ready_sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
     def __repr__(self):
@@ -198,9 +198,9 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ and self.requires_nccl
 
     @property
-    def is_nccl_collective(self) -> bool:
+    def is_nccl_compute(self) -> bool:
         """
-        A node is a NCCL collective if it is a compute node and requires NCCL.
+        A node is a NCCL compute if it is a compute node and requires NCCL.
         """
         return (
             self.operation.type == _DAGNodeOperationType.COMPUTE and self.requires_nccl
@@ -215,7 +215,7 @@ class _DAGOperationGraphNode:
 
     @property
     def is_nccl_op(self) -> bool:
-        return self.is_nccl_read or self.is_nccl_collective or self.is_nccl_write
+        return self.is_nccl_read or self.is_nccl_compute or self.is_nccl_write
 
     def viz_str(self):
         """
