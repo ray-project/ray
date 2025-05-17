@@ -1,4 +1,4 @@
-Raylet
+[Rr]aylet(s)?
 stderr
 [Ss]tdout
 job_id
