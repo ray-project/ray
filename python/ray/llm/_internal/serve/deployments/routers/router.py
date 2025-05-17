@@ -21,6 +21,7 @@ from ray import serve
 from ray._common.utils import get_or_create_event_loop
 from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
+from ray.llm._internal.serve.deployments.utils.server_utils import peek_at_generator
 
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ROUTER_HTTP_TIMEOUT,
@@ -140,21 +141,6 @@ def _apply_openai_json_format(
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
     raise ValueError(f"Unexpected response type: {type(response)}")
-
-
-async def _peek_at_generator(
-    gen: AsyncGenerator[T, None]
-) -> Tuple[T, AsyncGenerator[T, None]]:
-    # Peek at the first element
-    first_item = await gen.__anext__()
-
-    # Create a new generator that yields the peeked item first
-    async def new_generator() -> AsyncGenerator[T, None]:
-        yield first_item
-        async for item in gen:
-            yield item
-
-    return first_item, new_generator()
 
 
 async def _openai_json_wrapper(
@@ -373,7 +359,7 @@ class LLMRouter:
             gen = self._get_response(body=body, call_method=call_method)
 
             # In streaming with batching enabled, this first response can be a list of chunks.
-            initial_response, gen = await _peek_at_generator(gen)
+            initial_response, gen = await peek_at_generator(gen)
 
             if isinstance(initial_response, list):
                 first_chunk = initial_response[0]
