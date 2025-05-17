@@ -19,7 +19,7 @@ from ray.serve._private.test_utils import (
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.serve.tests.test_metrics import get_metric_dictionaries
+from ray.serve.tests.test_metrics_1 import get_metric_dictionaries
 
 
 class TestRequestContextMetrics:

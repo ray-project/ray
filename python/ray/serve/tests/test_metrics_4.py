@@ -14,7 +14,7 @@ from ray._private.test_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.test_metrics import check_metric_float_eq, check_sum_metric_eq
+from ray.serve.tests.test_metrics_1 import check_metric_float_eq, check_sum_metric_eq
 
 
 @serve.deployment

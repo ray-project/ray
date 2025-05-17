@@ -21,7 +21,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_call_method,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.test_metrics import get_metric_dictionaries
+from ray.serve.tests.test_metrics_1 import get_metric_dictionaries
 
 
 def test_proxy_disconnect_metrics(serve_start_shutdown):
