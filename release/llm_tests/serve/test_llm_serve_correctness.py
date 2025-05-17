@@ -1,16 +1,19 @@
 import subprocess
 import time
 import requests
+import torch
 from openai import OpenAI
 from ray import serve
 
-from ray.serve.llm import LLMConfig, build_openai_app
+from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
 
-MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
-RAY_MODEL_ID = "qwen-1.5b"
+MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+RAY_MODEL_ID = "qwen-0.5b"
+MAX_OUTPUT_TOKENS = 256
+SEED=42
 
 llm_config = LLMConfig(
-    model_loading_config=dict(
+    model_loading_config=ModelLoadingConfig(
         model_id=RAY_MODEL_ID,
         model_source=MODEL_ID,
     ),
@@ -19,6 +22,7 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=1,
         )
     ),
+    runtime_env=None
     # log_engine_metrics=True,
     # Pass the desired accelerator type (e.g. A10G, L4, etc.)
     # accelerator_type="A10G",
@@ -47,7 +51,7 @@ def generate_with_ray(test_prompt, ray_serve_llm_url):
     openai_api_base = f"{ray_serve_llm_url}/v1"
     client = OpenAI(base_url=openai_api_base, api_key="fake-key")
 
-    response = client.completions.create(model=RAY_MODEL_ID, prompt=test_prompt, temperature=0.0)
+    response = client.completions.create(model=RAY_MODEL_ID, prompt=test_prompt, temperature=0.0, max_tokens=MAX_OUTPUT_TOKENS, seed=SEED)
     return response.choices[0].text
 
 
@@ -58,7 +62,7 @@ def generate_with_vllm(test_prompt, vllm_server_url):
         api_key=openai_api_key,
         base_url=openai_api_base,
     )
-    response = client.completions.create(model=MODEL_ID, prompt=test_prompt, temperature=0.0)
+    response = client.completions.create(model=MODEL_ID, prompt=test_prompt, temperature=0.0, max_tokens=MAX_OUTPUT_TOKENS, seed=SEED)
     return response.choices[0].text
 
 
@@ -83,9 +87,9 @@ if __name__ == "__main__":
 
     ray_url = "http://localhost:8000"
     start_ray_serve()
-    vllm_url, vllm_process = start_vllm_server()
-
     wait_for_server_ready(ray_url)
+
+    vllm_url, vllm_process = start_vllm_server()
     wait_for_server_ready(vllm_url)
 
     ray_output = generate_with_ray(test_prompt, ray_url)
@@ -102,40 +106,14 @@ if __name__ == "__main__":
 
     serve.shutdown()
     vllm_process.terminate()
+    time.sleep(5)
 
-# Next step: Need to increase max tokens for vLLM
+# Same result with and without seed. Next step: check vLLM generation_config.json
 # Ray and vLLM outputs do not match
-# vLLM output:  I'm a beginner in Python and I'm trying to understand how to use the
-# Ray output:  I'm a beginner in Python and I'm trying to understand how to use the `map()` function. I have a list of numbers and I want to apply a function to each element in the list. I've seen examples where `map()` is used with a lambda function, but I'm not sure how to use it with a regular function. Can someone provide an example of how to use `map()` with a regular function in Python? Additionally, I'm curious about the difference between using `map()` with a lambda function and using a regular function. Could you explain that as well? Sure, I can help with that! Let's start by looking at an example of using `map()` with a lambda function. Here's a simple example:
+# Ray output:  I'm a software engineer at a startup that builds a platform for people to share their stories and experiences. We're looking for a full-time position to join our team. We're a fast-paced, dynamic company that values innovation and collaboration. We're looking for someone who is passionate about helping people connect with others and share their stories. If you're a creative, problem-solver, and thrive in a fast-paced, collaborative environment, we'd love to hear from you! We offer a competitive salary, benefits package, and a great work-life balance. If you're interested in joining our team, please send your resume and cover letter to [insert email address]. We look forward to hearing from you! [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address] [insert email address]
+# vLLM output:  I'm a software engineer at a startup that builds AI-powered chatbots for businesses. We're currently working on an AI project that involves training a model to predict customer churn based on their purchase history and other factors.
 
-# ```python
-# # Define a list of numbers
-# numbers = [1, 2, 3, 4, 5]
-
-# # Use map() with a lambda function to square each number
-# squared_numbers = map(lambda x: x ** 2, numbers)
-
-# # Convert the map object to a list to see the results
-# squared_numbers_list = list(squared_numbers)
-# print(squared_numbers_list)  # Output: [1, 4, 9, 16, 25]
-# ```
-
-# In this example, we're using a lambda function to square each number in the list. The `map()` function applies this lambda function to each element in the `numbers` list, and the result is a map object. We then convert this map object to a list to see the results.
-
-# Now, let's look at an example of using `map()` with a regular function. Here's an example where we're using a regular function to calculate the square root of each number in the list:
-
-# ```python
-# # Define a list of numbers
-# numbers = [1, 4, 9, 16, 25]
-
-# # Use map() with a regular function to calculate the square root of each number
-# square_roots = map(lambda x: x ** 0.5, numbers)
-
-# # Convert the map object to a list to see the results
-# square_roots_list = list(square_roots)
-# print(square_roots_list)  # Output: [1.0, 2.0, 3.0, 4.0, 5.0]
-# ```
-
-# In this example, we're using a lambda function to calculate the square root of each number in the list. The `map()` function applies this lambda function to each element in the `numbers` list, and the result is a map object. We then convert this map object to a list to see the results.
-
-# The main difference between using `map()` with a lambda function and using a regular function is that the lambda function is a one-line function that takes a single argument and returns the result of the operation. The regular function, on the other hand, is a full function that takes a single argument and returns the result of the operation. In this case, both examples use the same lambda function to perform the same operation on each element in the list. However, if you have a more complex operation that you want to perform on each element in the list, you would need to define a regular function instead of using a lambda function.
+# I've been using TensorFlow.js for my project, but I'm not sure if it's the best choice for this type of task. Can you provide some insights into why TensorFlow.js might be better suited for this specific use case compared to traditional machine learning libraries like TensorFlow or PyTorch? Additionally, could you suggest any resources or tutorials that would help me get started with TensorFlow.js?
+# Certainly! TensorFlow.js is a JavaScript library that allows developers to build machine learning models in the browser. It provides a simple API for building neural networks and supports a wide range of deep learning architectures, including convolutional neural networks (CNNs), recurrent neural networks (RNNs), and transformers.
+# One advantage of TensorFlow.js over traditional machine learning libraries like TensorFlow or PyTorch is its simplicity and ease of use. With TensorFlow.js, developers can quickly create and train models without having to write complex code or deal with dependencies. This makes it easier to deploy and scale your models across different devices and environments.
+# Another benefit of TensorFlow.js is its support for large-scale deployment. TensorFlow.js
