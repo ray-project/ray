@@ -586,7 +586,7 @@ class VLLMEngine(LLMEngine):
         if mm_data:
             request_params["multi_modal_data"] = mm_data
         if (kv_transfer_params := prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None)) is not None:
-            request_params[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
+            request_params["internal_parameters"] = {KV_TRANSFER_PARAMS_KEY: kv_transfer_params}
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
@@ -624,11 +624,11 @@ class VLLMEngine(LLMEngine):
                 multi_modal_data=request.multi_modal_data,
             )
 
-        _sampling_params = self._parse_sampling_params(request.sampling_params, extra_args={KV_TRANSFER_PARAMS_KEY: request.kv_transfer_params}
-            if getattr(request, KV_TRANSFER_PARAMS_KEY, None) is not None else {})
-        logger.info(f"request.kv_transfer_params: {getattr(request, KV_TRANSFER_PARAMS_KEY, None)}")
-        logger.info(f"Sampling params: {_sampling_params}")
-        logger.info(f"{type(self.engine)=}")
+        _sampling_params = self._parse_sampling_params(request.sampling_params, extra_args={KV_TRANSFER_PARAMS_KEY: request.internal_parameters[KV_TRANSFER_PARAMS_KEY]}
+            if request.internal_parameters is not None and KV_TRANSFER_PARAMS_KEY in request.internal_parameters else {})
+        logger.info(f"clkbp request.kv_transfer_params: {request.internal_parameters.get(KV_TRANSFER_PARAMS_KEY, None)}")
+        logger.info(f"clkbp Sampling params: {_sampling_params}")
+        logger.info(f"clkbp {type(self.engine)=}")
 
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
@@ -682,7 +682,7 @@ class VLLMEngine(LLMEngine):
                     generation_time=clock.reset_interval(),
                     finish_reason=finish_reason,
                     internal_parameters={
-                        KV_TRANSFER_PARAMS_KEY: request.kv_transfer_params,
+                        KV_TRANSFER_PARAMS_KEY: request_output.kv_transfer_params,
                     },
                 )
 
@@ -822,7 +822,8 @@ class VLLMEngine(LLMEngine):
             raise RuntimeError(f"{type(self.engine)} does not support health check.")
 
         try:
-            return await asyncio.wait_for(self.engine.check_health(), timeout=15)
+            await asyncio.wait_for(self.engine.check_health(), timeout=15)
+            return True
         except BaseException as e:
             logger.exception("Healthcheck failed. The replica will be restarted")
             raise e from None
