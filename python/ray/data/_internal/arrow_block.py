@@ -7,11 +7,11 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Mapping,
     Optional,
     Tuple,
     TypeVar,
     Union,
+    Mapping,
 )
 
 import numpy as np
@@ -385,12 +385,29 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def block_type(self) -> BlockType:
         return BlockType.ARROW
 
-    def iter_rows_public_row_format(self) -> Iterator[Mapping]:
-        """Iterate over the rows of this block in public row format."""
-        for batch in self._table.to_batches():
-            rows = batch.to_pylist()
-            for row in rows:
-                yield row
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        outer = self
+
+        class Iter:
+            def __init__(self):
+                self._cur = -1
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self._cur += 1
+                if self._cur < outer.num_rows():
+                    row = outer._get_row(self._cur)
+                    if public_row_format and isinstance(row, TableRow):
+                        return row.as_pydict()
+                    else:
+                        return row
+                raise StopIteration
+
+        return Iter()
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):

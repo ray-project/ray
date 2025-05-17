@@ -7,11 +7,11 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Mapping,
     Optional,
     Tuple,
     TypeVar,
     Union,
+    Mapping,
 )
 
 import numpy as np
@@ -571,8 +571,15 @@ class PandasBlockAccessor(TableBlockAccessor):
     def block_type(self) -> BlockType:
         return BlockType.PANDAS
 
-    def iter_rows_public_row_format(self) -> Iterator[Mapping]:
-        pd = lazy_import_pandas()
-        if isinstance(self._table, pd.DataFrame):
-            for _, row in self._table.iterrows():
-                yield row.to_dict()
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        for i in range(len(self._table)):
+            row = self._table.iloc[i]
+            if public_row_format:
+                yield {
+                    k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                    for k, v in row.items()
+                }
+            else:
+                yield row

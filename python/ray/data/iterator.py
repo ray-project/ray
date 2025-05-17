@@ -244,7 +244,7 @@ class DataIterator(abc.ABC):
         def _wrapped_iterator():
             for batch in batch_iterable:
                 batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-                for row in batch.iter_rows_public_row_format():
+                for row in batch.iter_rows(public_row_format=True):
                     yield row
 
         return _IterableFromIterator(_wrapped_iterator)

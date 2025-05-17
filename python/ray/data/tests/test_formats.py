@@ -77,11 +77,7 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(
-            extract_values(
-                "id", BlockAccessor.for_block(b).iter_rows_public_row_format()
-            )
-        )
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
     out = sorted(out)
     assert out == list(range(10)), out
 
@@ -96,11 +92,7 @@ def test_iter_internal_ref_bundles(ray_start_regular_shared):
     for ref_bundle in iter_ref_bundles:
         for block_ref, block_md in ref_bundle.blocks:
             b = ray.get(block_ref)
-            out.extend(
-                extract_values(
-                    "id", BlockAccessor.for_block(b).iter_rows_public_row_format()
-                )
-            )
+            out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
         ref_bundle_count += 1
     out = sorted(out)
     assert ref_bundle_count == n

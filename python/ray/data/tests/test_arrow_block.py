@@ -510,7 +510,7 @@ def test_build_block_with_null_column(ray_start_regular_shared):
     builder.add_block(block2)
     block = builder.build()
 
-    rows = list(BlockAccessor.for_block(block).iter_rows_public_row_format())
+    rows = list(BlockAccessor.for_block(block).iter_rows(True))
     assert len(rows) == 2
     assert rows[0]["string"] is None
     assert rows[1]["string"] == "spam"
