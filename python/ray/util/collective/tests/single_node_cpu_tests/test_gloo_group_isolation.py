@@ -40,6 +40,13 @@ def test_two_groups_in_one_cluster(ray_start_regular_shared):
     assert ray.get(w2.get_gloo_timeout.remote(name2)) == time2
 
 
+def test_multi_simultaneous_groups_creation_in_one_cluster(ray_start_regular_shared):
+    num = 8
+    workers = [Worker.remote() for _ in range(num)]
+    rets = [workers[i].init_gloo_group.remote(1, 0, f"name_{i}") for i in range(num)]
+    assert all(ray.get(ret) for ret in rets)
+
+
 def test_failure_when_initializing(shutdown_only):
     # job1
     ray.init()
