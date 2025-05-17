@@ -191,6 +191,13 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ
 
     @property
+    def is_nccl_read(self) -> bool:
+        """
+        A node is a NCCL read if it is a read node and requires NCCL.
+        """
+        return self.operation.type == _DAGNodeOperationType.READ and self.requires_nccl
+
+    @property
     def is_nccl_collective(self) -> bool:
         """
         A node is a NCCL collective if it is a compute node and requires NCCL.
@@ -208,7 +215,7 @@ class _DAGOperationGraphNode:
 
     @property
     def is_nccl_op(self) -> bool:
-        return self.is_nccl_collective or self.is_nccl_write
+        return self.is_nccl_read or self.is_nccl_collective or self.is_nccl_write
 
     def viz_str(self):
         """
@@ -246,25 +253,46 @@ def _add_edge(
     )
 
 
+def _update_ready_sync_idxs(
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+    node: _DAGOperationGraphNode,
+) -> None:
+    """
+    Update the readiness of the synchronous nodes.
+    """
+    for task_idx, op_type in node.sync_idxs:
+        sync_node = graph[task_idx][op_type]
+        sync_node.ready_sync_idxs.add((node.task_idx, node.operation.type))
+
+
 def _push_candidate_node_if_ready(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
-    # Collective operations are ready when all the collective nodes have zero
-    # in-degrees. Only one node per collective will be added as ready.
-    if node.is_nccl_collective:
-        for task_idx, op_type in node.sync_idxs:
-            sync_node = graph[task_idx][op_type]
-            sync_node.ready_sync_idxs.add((node.task_idx, node.operation.type))
+    """
+    Push the node to the candidates if ready. If it has synchronous nodes, push them
+    together to the candidates if ready.
+    """
+    # Update the NCCL read nodes.
+    if node.is_nccl_write:
+        for task_idx, op_type in node.out_edges:
+            read_node = graph[task_idx][op_type]
+            read_node.in_edges.pop((node.task_idx, node.operation.type))
+            assert read_node.is_nccl_read and len(read_node.in_edges) == 0
+            _update_ready_sync_idxs(graph, read_node)
+    # Update the NCCL collective nodes.
+    if len(node.sync_idxs) != 0:
+        _update_ready_sync_idxs(graph, node)
+    # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
+    # node in the operation is ready, push all the nodes to the candidates.
     if node.is_ready:
-        if not node.is_nccl_collective:
+        if len(node.sync_idxs) == 0:
             heapq.heappush(
                 actor_to_candidates[node.actor_handle._actor_id],
                 node,
             )
         else:
-            # Push all the nodes in the collective operation to the candidates.
             for task_idx, op_type in node.sync_idxs:
                 sync_node = graph[task_idx][op_type]
                 heapq.heappush(
@@ -323,33 +351,18 @@ def _select_next_nodes(
         return None
     next_nodes = [top_priority_node]
 
-    if not top_priority_node.is_nccl_op:
-        # A non-NCCL operation node is picked.
-        assert len(next_nodes) == 1
-    elif top_priority_node.is_nccl_write:
-        # A NCCL write node is picked. NCCL is a blocking operation, so we need
-        # to pick all the corresponding NCCL read nodes to avoid a deadlock.
-        for task_idx, op_type in top_priority_node.out_edges:
-            downstream_node = graph[task_idx][op_type]
-            assert downstream_node.is_read
-            next_nodes.append(downstream_node)
-        assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
-    elif top_priority_node.is_nccl_collective:
-        # A NCCL collective node is picked. NCCL is a blocking operation, so we need
-        # to pick all the corresponding NCCL collective nodes in its collective
-        # operation to avoid a deadlock.
-        next_nodes = [
-            graph[task_idx][op_type]
-            for task_idx, op_type in top_priority_node.sync_idxs
-        ]
+    # Select all the synchronous nodes in the NCCL operation.
+    if len(top_priority_node.sync_idxs) != 0:
+        for task_idx, op_type in top_priority_node.sync_idxs:
+            node = graph[task_idx][op_type]
+            if node != top_priority_node:
+                next_nodes.append(node)
 
     # Remove the selected nodes from the candidates.
     for node in next_nodes:
         candidates = actor_to_candidates[node.actor_handle._actor_id]
-        #  The NCCL read nodes are not added to the candidates.
-        if node in candidates:
-            candidates.remove(node)
-            heapq.heapify(candidates)
+        candidates.remove(node)
+        heapq.heapify(candidates)
 
     return next_nodes
 
@@ -419,8 +432,10 @@ def _build_dag_node_operation_graph(
 
     # Import `ray.dag` here to avoid circular import.
     from ray.dag import ClassMethodNode, CollectiveOutputNode, MultiOutputNode
+    from ray.dag.collective_node import _CollectiveOperation
 
     # Add an edge from WRITE of the writer task to READ of the reader task.
+    # Set synchronous nodes for NCCL P2P operations.
     for task_idx, task in idx_to_task.items():
         if not (
             isinstance(task.dag_node, ClassMethodNode)
@@ -441,6 +456,7 @@ def _build_dag_node_operation_graph(
             downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
+            write_node = graph[task_idx][_DAGNodeOperationType.WRITE]
             if (
                 isinstance(downstream_dag_node, ClassMethodNode)
                 and downstream_dag_node.is_class_method_output
@@ -448,23 +464,46 @@ def _build_dag_node_operation_graph(
                 consumer_idxs = idx_to_task[downstream_task_idx].downstream_task_idxs
                 for consumer_idx in consumer_idxs:
                     if consumer_idx in graph:
+                        read_node = graph[consumer_idx][_DAGNodeOperationType.READ]
                         _add_edge(
-                            graph[task_idx][_DAGNodeOperationType.WRITE],
-                            graph[consumer_idx][_DAGNodeOperationType.READ],
-                            "nccl"
-                            if graph[task_idx][
-                                _DAGNodeOperationType.WRITE
-                            ].requires_nccl
-                            else "shm",
+                            write_node,
+                            read_node,
+                            "nccl" if write_node.requires_nccl else "shm",
                         )
+                        if write_node.requires_nccl:
+                            idxs = {
+                                (task_idx, _DAGNodeOperationType.WRITE),
+                                (consumer_idx, _DAGNodeOperationType.READ),
+                            }
+                            for node in [write_node, read_node]:
+                                node.sync_idxs.update(idxs)
                 continue
+            read_node = graph[downstream_task_idx][_DAGNodeOperationType.READ]
             _add_edge(
-                graph[task_idx][_DAGNodeOperationType.WRITE],
-                graph[downstream_task_idx][_DAGNodeOperationType.READ],
-                "nccl"
-                if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
-                else "shm",
+                write_node,
+                read_node,
+                "nccl" if write_node.requires_nccl else "shm",
             )
+            if write_node.requires_nccl:
+                idxs = {
+                    (task_idx, _DAGNodeOperationType.WRITE),
+                    (downstream_task_idx, _DAGNodeOperationType.READ),
+                }
+                for node in [write_node, read_node]:
+                    node.sync_idxs.update(idxs)
+
+    # Set synchronous nodes for NCCL collective operations.
+    collective_op_to_idxs: Dict[
+        _CollectiveOperation, Set[Tuple[int, _DAGNodeOperationType]]
+    ] = defaultdict(set)
+    for task_idx, task in idx_to_task.items():
+        if isinstance(task.dag_node, CollectiveOutputNode):
+            collective_op_to_idxs[task.dag_node.collective_op].add(
+                (task_idx, _DAGNodeOperationType.COMPUTE)
+            )
+    for idxs in collective_op_to_idxs.values():
+        for task_idx, op_type in idxs:
+            graph[task_idx][op_type].sync_idxs = idxs
 
     return graph
 
@@ -681,14 +720,9 @@ def _generate_actor_to_execution_schedule(
         #    read operations are also returned.
         # 3. If a selected node is a NCCL collective operation, all the nodes in
         #    its collective operation are returned.
-        # In cases 1 and 3, all the selected nodes are ready. In case 2, the NCCL
-        # write node is ready, while the NCCL read nodes are not ready until their
-        # in-degrees are updated.
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
             break
-        # Filter out the visited nodes.
-        nodes = [node for node in nodes if node not in visited_nodes]
         # Add the selected nodes to the execution schedule.
         for node in nodes:
             assert node not in visited_nodes
@@ -696,6 +730,9 @@ def _generate_actor_to_execution_schedule(
             actor_to_execution_schedule[node.actor_handle].append(node)
         # Update the in-degree of the downstream nodes.
         for node in nodes:
+            # The downstream NCCL read nodes are already updated.
+            if node.is_nccl_write:
+                continue
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
                 out_node.in_edges.pop((node.task_idx, node.operation.type))
