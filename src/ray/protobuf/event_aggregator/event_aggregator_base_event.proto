@@ -14,13 +14,13 @@
 
 syntax = "proto3";
 
-package ray.rpc.events;
+package ray.rpc.event_aggregator;
 
 import "google/protobuf/timestamp.proto";
-import "src/ray/protobuf/events/task_events/actor_task_definition_event.proto";
-import "src/ray/protobuf/events/task_events/actor_task_execution_event.proto";
-import "src/ray/protobuf/events/task_events/task_definition_event.proto";
-import "src/ray/protobuf/events/task_events/task_execution_event.proto";
+import "src/ray/protobuf/event_aggregator/event_aggregator_actor_task_definition_event.proto";
+import "src/ray/protobuf/event_aggregator/event_aggregator_actor_task_execution_event.proto";
+import "src/ray/protobuf/event_aggregator/event_aggregator_task_definition_event.proto";
+import "src/ray/protobuf/event_aggregator/event_aggregator_task_execution_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {

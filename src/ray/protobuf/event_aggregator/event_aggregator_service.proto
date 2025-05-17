@@ -15,9 +15,9 @@
 syntax = "proto3";
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/events/base.proto";
+import "src/ray/protobuf/event_aggregator/event_aggregator_base_event.proto";
 
-package ray.rpc.events;
+package ray.rpc.event_aggregator;
 
 message TaskEventsMetadata {
   // A list of task attempts that were dropped on the worker.
