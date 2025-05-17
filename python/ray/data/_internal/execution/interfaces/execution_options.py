@@ -147,10 +147,9 @@ class ExecutionResources:
     def __repr__(self):
         return (
             f"ExecutionResources(cpu={self.cpu:.1f}, gpu={self.gpu:.1f}, "
-            f"resources={self._resources}, "
-            f"object_store_memory={self.object_store_memory_str()})"
             f"object_store_memory={self.object_store_memory_str()}, "
-            f"memory={self.memory_str()})"
+            f"memory={self.memory_str()}, "
+            f"resources={self._resources})"
         )
 
     def __eq__(self, other: "ExecutionResources") -> bool:
@@ -165,9 +164,7 @@ class ExecutionResources:
     @classmethod
     def zero(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with zero resources."""
-        return ExecutionResources(
-            0.0, 0.0, 0.0, 0.0, {}
-        )
+        return ExecutionResources(0.0, 0.0, 0.0, 0.0, {})
 
     @classmethod
     def inf(cls) -> "ExecutionResources":
@@ -273,7 +270,7 @@ class ExecutionResources:
         """Returns the minimum for each resource type."""
         merged_resources = self._resources.copy()
         for k, v in other.resources.items():
-            merged_resources[k] = min(merged_resources.get(k, float('inf')), v)
+            merged_resources[k] = min(merged_resources.get(k, float("inf")), v)
 
         return ExecutionResources(
             cpu=min(self.cpu, other.cpu),

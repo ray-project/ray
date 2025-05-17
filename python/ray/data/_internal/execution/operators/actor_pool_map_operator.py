@@ -330,6 +330,7 @@ class ActorPoolMapOperator(MapOperator):
         num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
         num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
         memory_per_actor = self._ray_remote_args.get("memory", 0)
+        resources_per_actor = self._ray_remote_args.get("resources", {})
 
         min_resource_usage = ExecutionResources(
             cpu=num_cpus_per_actor * min_actors,
@@ -339,6 +340,9 @@ class ActorPoolMapOperator(MapOperator):
             # to launch one task for each worker.
             object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
             * min_actors,
+            resources={
+                key: value * min_actors for key, value in resources_per_actor.items()
+            },
         )
 
         return min_resource_usage, ExecutionResources.for_limits()
@@ -370,6 +374,7 @@ class ActorPoolMapOperator(MapOperator):
             gpu=0,
             object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
             or 0,
+            resources=self._ray_remote_args.get("resources", {}),
         )
 
     def _extra_metrics(self) -> Dict[str, Any]:
