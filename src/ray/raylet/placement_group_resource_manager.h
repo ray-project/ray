@@ -39,10 +39,12 @@ enum CommitState {
 
 struct BundleTransactionState {
   BundleTransactionState(CommitState state,
-                         std::shared_ptr<TaskResourceInstances> &resources)
-      : state_(state), resources_(resources) {}
+                         std::shared_ptr<TaskResourceInstances> &resources,
+                         BundleSpecification bundle_spec)
+      : state_(state), resources_(resources), bundle_spec_(std::move(bundle_spec)) {}
   CommitState state_;
   std::shared_ptr<TaskResourceInstances> resources_;
+  BundleSpecification bundle_spec_;
 };
 
 /// `PlacementGroupResourceManager` responsible for managing the resources that
@@ -55,8 +57,7 @@ class PlacementGroupResourceManager {
   ///
   /// \param bundle_specs A set of bundles that waiting to be prepared.
   /// \return bool True if all bundles successfully reserved resources, otherwise false.
-  virtual bool PrepareBundles(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
+  virtual bool PrepareBundles(const std::vector<BundleSpecification> bundle_specs) = 0;
 
   /// Convert the required resources to placement group resources(like CPU ->
   /// CPU_group_i). This is phase two of 2PC.
@@ -71,19 +72,17 @@ class PlacementGroupResourceManager {
   /// \return ok status if it succeeds to return a bundle. Invalid if it is
   /// in a transient state that cannot return a bundle. The caller should
   /// retry in this case.
-  virtual Status ReturnBundle(const BundleSpecification &bundle_spec) = 0;
+  virtual Status ReturnBundle(const BundleID &bundle_id) = 0;
+
+  virtual void RemovePlacementGroup(const PlacementGroupID &placement_group_id) = 0;
 
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec A set of bundles which in use.
-  void ReturnUnusedBundle(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
+  virtual void ReturnUnusedBundle(
+      const std::unordered_set<BundleID, pair_hash> &in_use_bundles) = 0;
 
   virtual ~PlacementGroupResourceManager() {}
-
- protected:
-  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
-      bundle_spec_map_;
 };
 
 /// Associated with new scheduler.
@@ -97,13 +96,17 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
-  bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
-                          &bundle_specs) override;
+  bool PrepareBundles(std::vector<BundleSpecification> bundle_specs) override;
 
   void CommitBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
                          &bundle_specs) override;
 
-  Status ReturnBundle(const BundleSpecification &bundle_spec) override;
+  Status ReturnBundle(const BundleID &bundle_id) override;
+
+  void RemovePlacementGroup(const PlacementGroupID &placement_group_id) override;
+
+  void ReturnUnusedBundle(
+      const std::unordered_set<BundleID, pair_hash> &in_use_bundles) override;
 
   const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
     return cluster_resource_scheduler_;
@@ -114,15 +117,14 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleTransactionState>, pair_hash>
-      pg_bundles_;
+  absl::flat_hash_map<BundleID, BundleTransactionState, pair_hash> pg_bundles_;
 
   /// Lock the required resources from local available resources. Note that this is phase
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
   ///
   /// \param bundle_spec Specification of a bundle whose resources will be prepared.
   /// \return bool True if the bundle successfully reserved resources, otherwise false.
-  bool PrepareBundle(const BundleSpecification &bundle_spec);
+  bool PrepareBundle(BundleSpecification bundle_spec);
 
   /// Convert the normal original resources that were locked in the preparation phase
   /// to the placement group customer resources.

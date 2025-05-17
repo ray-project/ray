@@ -77,9 +77,16 @@ class MockRayletClientInterface : public RayletClientInterface {
       (override));
   MOCK_METHOD(
       void,
-      CancelResourceReserve,
+      CancelPreparedBundleResources,
       (const BundleSpecification &bundle_spec,
-       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback),
+       const ray::rpc::ClientCallback<ray::rpc::CancelPreparedBundleResourcesReply>
+           &callback),
+      (override));
+  MOCK_METHOD(
+      void,
+      RemovePlacementGroupResources,
+      (const PlacmentGroupID &placement_group_id,
+       const rpc::ClientCallback<rpc::RemovePlacementGroupResourcesReply> &callback),
       (override));
   MOCK_METHOD(void,
               ReleaseUnusedBundles,

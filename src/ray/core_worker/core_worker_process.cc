@@ -268,8 +268,13 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
     rpc::ClientCallManager client_call_manager(io_service);
-    auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
+    auto grpc_client = rpc::NodeManagerWorkerClient::Create(
+        options_.raylet_ip_address,
+        options_.node_manager_port,
+        client_call_manager,
+        []() {
+          RAY_LOG(FATAL) << "Core worker doesn't call any retryable raylet grpc methods.";
+        });
     raylet::RayletClient raylet_client(grpc_client);
 
     std::function<void(int64_t)> get_once = [this,

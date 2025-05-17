@@ -61,7 +61,11 @@ class NodeManagerClientPool {
   /// deprecated and brought internal to the pool, so this is our bridge.
   RayletClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
     return [&](const rpc::Address &addr) {
-      auto nm_client = NodeManagerWorkerClient::make(addr.ip_address(), addr.port(), ccm);
+      auto nm_client =
+          NodeManagerWorkerClient::Create(addr.ip_address(), addr.port(), ccm, []() {
+            RAY_LOG(FATAL)
+                << "Default NodeManagerClient doesn't call any retryable grpc methods.";
+          });
       std::shared_ptr<ray::RayletClientInterface> raylet_client =
           std::make_shared<ray::raylet::RayletClient>(nm_client);
       return raylet_client;

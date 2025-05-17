@@ -64,7 +64,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
-          std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
+          std::make_unique<rpc::NodeManagerClientPool>([this](const rpc::Address addr) {
+            auto nm_client = rpc::NodeManagerWorkerClient::Create(
+                addr.ip_address(), addr.port(), client_call_manager_, [this, addr]() {
+                  const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+                  if (!gcs_node_manager_->GetAliveNode(node_id).has_value()) {
+                    RAY_LOG(INFO).WithField(node_id)
+                        << "Disconnect raylet client since the node is dead";
+                    raylet_client_pool_->Disconnect(node_id);
+                  }
+                });
+            std::shared_ptr<ray::RayletClientInterface> raylet_client =
+                std::make_shared<ray::raylet::RayletClient>(nm_client);
+            return raylet_client;
+          })),
       pubsub_periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
       periodical_runner_(

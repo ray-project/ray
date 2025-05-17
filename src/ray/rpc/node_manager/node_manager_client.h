@@ -22,6 +22,7 @@
 
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -42,7 +43,7 @@ class NodeManagerClient {
                     ClientCallManager &client_call_manager) {
     grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(
         address, port, client_call_manager);
-  };
+  }
 
   /// Get current node stats.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
@@ -71,14 +72,15 @@ class NodeManagerWorkerClient
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  static std::shared_ptr<NodeManagerWorkerClient> make(
+  static std::shared_ptr<NodeManagerWorkerClient> Create(
       const std::string &address,
       const int port,
-      ClientCallManager &client_call_manager) {
+      ClientCallManager &client_call_manager,
+      std::function<void()> raylet_unavailable_timeout_callback) {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
     // invoke private constructors.
-    auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
-    return std::shared_ptr<NodeManagerWorkerClient>(instance);
+    return std::shared_ptr<NodeManagerWorkerClient>(new NodeManagerWorkerClient(
+        address, port, client_call_manager, raylet_unavailable_timeout_callback));
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
@@ -165,11 +167,20 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Return resource lease.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         CancelResourceReserve,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+  /// Cancel a PREPARED but not COMMITTED bundle and return resources back to raylet.
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   NodeManagerService,
+                                   CancelPreparedBundleResources,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1, )
+
+  /// Remove all bundles of a placement group due to the removal of that placement group
+  /// and return resources back to raylet.
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   NodeManagerService,
+                                   RemovePlacementGroupResources,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1, )
 
   /// Notify the raylet to pin the provided object IDs.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
@@ -224,13 +235,30 @@ class NodeManagerWorkerClient
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerWorkerClient(const std::string &address,
                           const int port,
-                          ClientCallManager &client_call_manager) {
-    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(
+                          ClientCallManager &client_call_manager,
+                          std::function<void()> raylet_unavailable_timeout_callback) {
+    grpc_client_ = std::make_shared<GrpcClient<NodeManagerService>>(
         address, port, client_call_manager);
+
+    retryable_grpc_client_ = RetryableGrpcClient::Create(
+        grpc_client_->Channel(),
+        client_call_manager.GetMainService(),
+        /*max_pending_requests_bytes=*/
+        std::numeric_limits<uint64_t>::max(),
+        /*check_channel_status_interval_milliseconds=*/
+        ::RayConfig::instance()
+            .grpc_client_check_connection_status_interval_milliseconds(),
+        /*server_unavailable_timeout_seconds=*/
+        ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
+        /*server_unavailable_timeout_callback=*/
+        raylet_unavailable_timeout_callback,
+        /*server_name=*/"Raylet " + address);
   };
 
   /// The RPC client.
-  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
+  std::shared_ptr<GrpcClient<NodeManagerService>> grpc_client_;
+
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 };
 
 }  // namespace rpc

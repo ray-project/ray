@@ -47,7 +47,8 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)        \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)        \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelPreparedBundleResources) \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RemovePlacementGroupResources) \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)               \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)             \
@@ -131,9 +132,14 @@ class NodeManagerServiceHandler {
       rpc::CommitBundleResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelResourceReserve(
-      rpc::CancelResourceReserveRequest request,
-      rpc::CancelResourceReserveReply *reply,
+  virtual void HandleCancelPreparedBundleResources(
+      rpc::CancelPreparedBundleResourcesRequest request,
+      rpc::CancelPreparedBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemovePlacementGroupResources(
+      rpc::RemovePlacementGroupResourcesRequest request,
+      rpc::RemovePlacementGroupResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePinObjectIDs(PinObjectIDsRequest request,

@@ -125,12 +125,18 @@ message CommitBundleResourcesRequest {
 
 message CommitBundleResourcesReply {}
 
-message CancelResourceReserveRequest {
+message CancelPreparedBundleResourcesRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReserveReply {}
+message CancelPreparedBundleResourcesReply {}
+
+message RemovePlacementGroupResourcesRequest {
+   bytes placement_group_id = 1;
+}
+
+message RemovePlacementGroupResourcesReply {}
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
@@ -428,9 +434,13 @@ service NodeManagerService {
   // This is the second phase of 2PC protocol for atomic placement group creation.
   rpc CommitBundleResources(CommitBundleResourcesRequest)
       returns (CommitBundleResourcesReply);
-  // Return resource for the raylet.
-  rpc CancelResourceReserve(CancelResourceReserveRequest)
-      returns (CancelResourceReserveReply);
+  // Cancel a PREPARED but not COMMITTED bundle and return resources back to raylet.
+  rpc CancelPreparedBundleResources(CancelPreparedBundleResourcesRequest)
+      returns (CancelPreparedBundleResourcesReply);
+  // Remove all bundles of a placement group due to the removal of that placement group
+  // and return resources back to raylet.
+  rpc RemovePlacementGroupResources(RemovePlacementGroupResourcesRequest)
+      returns (RemovePlacementGroupResourcesReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);

@@ -446,8 +446,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
-  auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
+  auto grpc_client = rpc::NodeManagerWorkerClient::Create(
+      options_.raylet_ip_address,
+      options_.node_manager_port,
+      *client_call_manager_,
+      []() {
+        RAY_LOG(FATAL) << "Core worker doesn't call any retryable raylet grpc methods.";
+      });
 
   if (options_.worker_type != WorkerType::DRIVER) {
     periodical_runner_->RunFnPeriodically(
@@ -568,10 +573,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                 return;
               }
 
-              raylet::RayletClient raylet_client(
-                  rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                                     node_info->node_manager_port(),
-                                                     *client_call_manager_));
+              raylet::RayletClient raylet_client(rpc::NodeManagerWorkerClient::Create(
+                  node_info->node_manager_address(),
+                  node_info->node_manager_port(),
+                  *client_call_manager_,
+                  []() {
+                    RAY_LOG(FATAL) << "Core worker doesn't call "
+                                      "any retryable raylet grpc "
+                                      "methods.";
+                  }));
               raylet_client.IsLocalWorkerDead(
                   worker_id,
                   [this, worker_id](const Status &status,
@@ -692,10 +702,14 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
         auto node_info = gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        auto grpc_client =
-            rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                               node_info->node_manager_port(),
-                                               client_call_manager);
+        auto grpc_client = rpc::NodeManagerWorkerClient::Create(
+            node_info->node_manager_address(),
+            node_info->node_manager_port(),
+            client_call_manager,
+            []() {
+              RAY_LOG(FATAL) << "Core worker doesn't call any "
+                                "retryable raylet grpc methods.";
+            });
         return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
       };
   experimental_mutable_object_provider_ =
@@ -781,8 +795,10 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    auto grpc_client =
-        rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
+    auto grpc_client = rpc::NodeManagerWorkerClient::Create(
+        ip_address, port, *client_call_manager_, []() {
+          RAY_LOG(FATAL) << "Core worker doesn't call any retryable raylet grpc methods.";
+        });
     return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
   };
 

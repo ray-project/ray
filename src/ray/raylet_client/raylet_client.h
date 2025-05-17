@@ -146,9 +146,15 @@ class ResourceReserveInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
-  virtual void CancelResourceReserve(
+  virtual void CancelPreparedBundleResources(
       const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::CancelPreparedBundleResourcesReply>
+          &callback) = 0;
+
+  virtual void RemovePlacementGroupResources(
+      const PlacementGroupID &placement_group_id,
+      const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupResourcesReply>
+          &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,
@@ -480,11 +486,15 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
       override;
 
-  /// Implements CancelResourceReserveInterface.
-  void CancelResourceReserve(
+  void CancelPreparedBundleResources(
       const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-      override;
+      const ray::rpc::ClientCallback<ray::rpc::CancelPreparedBundleResourcesReply>
+          &callback) override;
+
+  void RemovePlacementGroupResources(
+      const PlacementGroupID &placement_group_id,
+      const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupResourcesReply>
+          &callback) override;
 
   /// Implements ReleaseUnusedBundlesInterface.
   void ReleaseUnusedBundles(

@@ -417,9 +417,14 @@ std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
   const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
   RAY_CHECK(node_info) << "No GCS info for node " << node_id;
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
-      rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                         node_info->node_manager_port(),
-                                         client_call_manager);
+      rpc::NodeManagerWorkerClient::Create(node_info->node_manager_address(),
+                                           node_info->node_manager_port(),
+                                           client_call_manager,
+                                           []() {
+                                             RAY_LOG(FATAL)
+                                                 << "Raylet doesn't call any retryable "
+                                                    "raylet grpc methods.";
+                                           });
   return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
 };
 
@@ -2083,14 +2088,14 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::PrepareBundleResourcesRequest request,
     rpc::PrepareBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+  std::vector<BundleSpecification> bundle_specs;
   for (int index = 0; index < request.bundle_specs_size(); index++) {
-    bundle_specs.emplace_back(
-        std::make_shared<BundleSpecification>(request.bundle_specs(index)));
+    bundle_specs.emplace_back(request.bundle_specs(index));
   }
   RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
-  auto prepared = placement_group_resource_manager_->PrepareBundles(bundle_specs);
+  auto prepared =
+      placement_group_resource_manager_->PrepareBundles(std::move(bundle_specs));
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2112,26 +2117,37 @@ void NodeManager::HandleCommitBundleResources(
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::HandleCancelResourceReserve(
-    rpc::CancelResourceReserveRequest request,
-    rpc::CancelResourceReserveReply *reply,
+void NodeManager::HandleCancelPreparedBundleResources(
+    rpc::CancelPreparedBundleResourcesRequest request,
+    rpc::CancelPreparedBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
+  RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec.BundleId()));
+  cluster_task_manager_->ScheduleAndDispatchTasks();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleRemovePlacementGroupResources(
+    rpc::RemovePlacementGroupResourcesRequest request,
+    rpc::RemovePlacementGroupResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   // The PG bundle resource must be committed before a lease request asking for it
   // can be added to local_task_manager and the only reason why we cancel
   // a committed bundle is when the placement group is removed.
-  local_task_manager_->CancelTasks(
+  const PlacementGroupID placement_group_id =
+      PlacementGroupID::FromBinary(request.placement_group_id());
+
+  cluster_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return (bundle_id.first == bundle_spec.PlacementGroupId());
+        return (bundle_id.first == placement_group_id);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      absl::StrCat("Required placement group ",
-                   bundle_spec.PlacementGroupId().Hex(),
-                   " is removed."));
+      absl::StrCat(
+          "Required placement group ", placement_group_id.Hex(), " is removed."));
 
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
@@ -2140,7 +2156,7 @@ void NodeManager::HandleCancelResourceReserve(
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
+    if (worker->GetBundleId().first == placement_group_id) {
       workers_associated_with_pg.emplace_back(worker);
     }
   }
@@ -2148,9 +2164,7 @@ void NodeManager::HandleCancelResourceReserve(
     std::ostringstream stream;
     stream
         << "Destroying worker since its placement group was removed. Placement group id: "
-        << worker->GetBundleId().first
-        << ", bundle index: " << bundle_spec.BundleId().second
-        << ", task id: " << worker->GetAssignedTaskId()
+        << placement_group_id << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
     const auto &message = stream.str();
@@ -2158,7 +2172,7 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));
+  placement_group_resource_manager_->RemovePlacementGroup(placement_group_id);
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

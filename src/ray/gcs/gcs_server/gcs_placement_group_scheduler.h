@@ -402,11 +402,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node The node that the worker will be returned for.
   /// \param max_retry The maximum times cancel request can be retried.
   /// \param retry_cnt The number of times the cancel request is retried.
-  void CancelResourceReserve(
+  void CancelPreparedBundleResources(
       const std::shared_ptr<const BundleSpecification> &bundle_spec,
-      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
-      int max_retry,
-      int current_retry_cnt);
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node);
+
+  void RemovePlacementGroupResources(
+      const PlacementGroupID &placement_group_id,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
@@ -439,7 +441,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The id of a placement group to destroy all prepared
   /// bundles.
-  void DestroyPlacementGroupPreparedBundleResources(
+  void CancelPlacementGroupPreparedBundleResources(
+      const PlacementGroupID &placement_group_id);
+
+  void DestroyRemovedPlacementGroupPreparedBundleResources(
       const PlacementGroupID &placement_group_id);
 
   /// Destroy the committed bundle resources with this placement group.
@@ -448,7 +453,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The id of a placement group to destroy all committed
   /// bundles.
-  void DestroyPlacementGroupCommittedBundleResources(
+  void DestroyRemovedPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
   /// Acquire the bundle resources from the cluster resources.

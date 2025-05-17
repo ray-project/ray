@@ -198,7 +198,15 @@ std::string GetDebugStringForBundles(
     debug_info << "{" << bundle->DebugString() << "},";
   }
   return debug_info.str();
-};
+}
+
+std::string GetDebugStringForBundles(const std::vector<BundleSpecification> &bundles) {
+  std::ostringstream debug_info;
+  for (const auto &bundle : bundles) {
+    debug_info << "{" << bundle.DebugString() << "},";
+  }
+  return debug_info.str();
+}
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,

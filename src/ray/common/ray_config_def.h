@@ -706,6 +706,8 @@ RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
 /// Timeout for core worker grpc server reconnection in seconds.
 RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
+/// Timeout for raylet grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)

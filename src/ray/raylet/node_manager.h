@@ -548,10 +548,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                    rpc::CommitBundleResourcesReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ResourcesReturn` request.
-  void HandleCancelResourceReserve(rpc::CancelResourceReserveRequest request,
-                                   rpc::CancelResourceReserveReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `CancelPreparedBundleResources` request.
+  void HandleCancelPreparedBundleResources(
+      rpc::CancelPreparedBundleResourcesRequest request,
+      rpc::CancelPreparedBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRemovePlacementGroupResources(
+      rpc::RemovePlacementGroupResourcesRequest request,
+      rpc::RemovePlacementGroupResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,

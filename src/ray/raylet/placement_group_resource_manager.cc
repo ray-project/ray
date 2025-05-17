@@ -24,15 +24,16 @@ namespace ray {
 
 namespace raylet {
 
-void PlacementGroupResourceManager::ReturnUnusedBundle(
+void NewPlacementGroupResourceManager::ReturnUnusedBundle(
     const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
-  for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
-    if (0 == in_use_bundles.count(iter->first)) {
-      RAY_CHECK_OK(ReturnBundle(*iter->second));
-      bundle_spec_map_.erase(iter++);
-    } else {
-      iter++;
+  std::vector<BundleID> unused_bundle_ids;
+  for (const auto &[bundle_id, _] : pg_bundles_) {
+    if (in_use_bundles.count(bundle_id) == 0) {
+      unused_bundle_ids.emplace_back(bundle_id);
     }
+  }
+  for (const auto &unused_bundle_id : unused_bundle_ids) {
+    RAY_CHECK_OK(ReturnBundle(unused_bundle_id));
   }
 }
 
@@ -40,11 +41,10 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler)
     : cluster_resource_scheduler_(cluster_resource_scheduler) {}
 
-bool NewPlacementGroupResourceManager::PrepareBundle(
-    const BundleSpecification &bundle_spec) {
+bool NewPlacementGroupResourceManager::PrepareBundle(BundleSpecification bundle_spec) {
   auto iter = pg_bundles_.find(bundle_spec.BundleId());
   if (iter != pg_bundles_.end()) {
-    if (iter->second->state_ == CommitState::COMMITTED) {
+    if (iter->second.state_ == CommitState::COMMITTED) {
       // If the bundle state is already committed, it means that prepare request is just
       // stale.
       RAY_LOG(DEBUG) << "Duplicate prepare bundle request, skip it directly. This should "
@@ -53,7 +53,8 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
       // return bundle resources so that we can start from the prepare phase again.
-      RAY_CHECK_OK(ReturnBundle(bundle_spec));
+      RAY_CHECK_OK(ReturnBundle(bundle_spec.BundleId()));
+      // TODO (jjyao) return false;
     }
   }
 
@@ -62,7 +63,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   }
 
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  bool allocated =
+  const bool allocated =
       cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
           bundle_spec.GetRequiredResources(), resource_instances);
 
@@ -70,38 +71,33 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     return false;
   }
 
-  auto bundle_state =
-      std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
-  pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-  bundle_spec_map_.emplace(
+  pg_bundles_.emplace(
       bundle_spec.BundleId(),
-      std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
+      BundleTransactionState(
+          CommitState::PREPARED, resource_instances, std::move(bundle_spec)));
 
   return true;
 }
 
 bool NewPlacementGroupResourceManager::PrepareBundles(
-    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
-  std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
-  for (const auto &bundle_spec : bundle_specs) {
-    if (PrepareBundle(*bundle_spec)) {
-      prepared_bundles.emplace_back(bundle_spec);
+    const std::vector<BundleSpecification> bundle_specs) {
+  const size_t num_bundles = bundle_specs.size();
+  std::vector<BundleID> prepared_bundle_ids;
+  for (auto &bundle_spec : bundle_specs) {
+    const BundleID bundle_id = bundle_spec.BundleId();
+    if (PrepareBundle(std::move(bundle_spec))) {
+      prepared_bundle_ids.emplace_back(bundle_id);
     } else {
       // Terminate the preparation phase if any of bundle cannot be prepared.
       break;
     }
   }
 
-  if (prepared_bundles.size() != bundle_specs.size()) {
+  if (prepared_bundle_ids.size() != num_bundles) {
     RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will "
                       "release the requested resources before.";
-    for (const auto &bundle : prepared_bundles) {
-      RAY_CHECK_OK(ReturnBundle(*bundle));
-      // Erase from `bundle_spec_map_`.
-      const auto &iter = bundle_spec_map_.find(bundle->BundleId());
-      if (iter != bundle_spec_map_.end()) {
-        bundle_spec_map_.erase(iter);
-      }
+    for (const auto &prepared_bundle_id : prepared_bundle_ids) {
+      RAY_CHECK_OK(ReturnBundle(prepared_bundle_id));
     }
     return false;
   }
@@ -120,16 +116,16 @@ void NewPlacementGroupResourceManager::CommitBundle(
     return;
   } else {
     // Ignore request If the bundle state is already committed.
-    if (it->second->state_ == CommitState::COMMITTED) {
+    if (it->second.state_ == CommitState::COMMITTED) {
       RAY_LOG(DEBUG) << "Duplicate commit bundle request, skip it directly.";
       return;
     }
   }
 
-  const auto &bundle_state = it->second;
-  bundle_state->state_ = CommitState::COMMITTED;
+  auto &bundle_state = it->second;
+  bundle_state.state_ = CommitState::COMMITTED;
 
-  const auto &task_resource_instances = *bundle_state->resources_;
+  const auto &task_resource_instances = *bundle_state.resources_;
 
   const auto &resources = bundle_spec.GetFormattedResources();
   for (const auto &resource : resources) {
@@ -154,16 +150,29 @@ void NewPlacementGroupResourceManager::CommitBundles(
   }
 }
 
-Status NewPlacementGroupResourceManager::ReturnBundle(
-    const BundleSpecification &bundle_spec) {
-  auto it = pg_bundles_.find(bundle_spec.BundleId());
+void NewPlacementGroupResourceManager::RemovePlacementGroup(
+    const PlacementGroupID &placement_group_id) {
+  std::vector<BundleID> bundle_ids;
+  for (const auto &[bundle_id, _] : pg_bundles_) {
+    if (bundle_id.first == placement_group_id) {
+      bundle_ids.emplace_back(bundle_id);
+    }
+  }
+  for (const auto &bundle_id : bundle_ids) {
+    RAY_CHECK_OK(ReturnBundle(bundle_id));
+  }
+}
+
+Status NewPlacementGroupResourceManager::ReturnBundle(const BundleID &bundle_id) {
+  auto it = pg_bundles_.find(bundle_id);
   if (it == pg_bundles_.end()) {
     RAY_LOG(DEBUG) << "Duplicate cancel request, skip it directly.";
     return Status::OK();
   }
 
   const auto &bundle_state = it->second;
-  if (bundle_state->state_ == CommitState::PREPARED) {
+  const BundleSpecification &bundle_spec = bundle_state.bundle_spec_;
+  if (bundle_state.state_ == CommitState::PREPARED) {
     // Commit bundle first so that we can remove the bundle with consistent
     // implementation.
     CommitBundle(bundle_spec);
@@ -185,7 +194,7 @@ Status NewPlacementGroupResourceManager::ReturnBundle(
     return Status::Invalid("Bundle resources are still in use. Retry again.");
   } else {
     // Return original resources to resource allocator `ClusterResourceScheduler`.
-    auto original_resources = it->second->resources_;
+    auto original_resources = it->second.resources_;
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         original_resources);
   }

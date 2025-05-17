@@ -426,12 +426,21 @@ void RayletClient::CommitBundleResources(
   grpc_client_->CommitBundleResources(request, callback);
 }
 
-void RayletClient::CancelResourceReserve(
+void RayletClient::CancelPreparedBundleResources(
     const BundleSpecification &bundle_spec,
-    const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
-  rpc::CancelResourceReserveRequest request;
+    const ray::rpc::ClientCallback<ray::rpc::CancelPreparedBundleResourcesReply>
+        &callback) {
+  rpc::CancelPreparedBundleResourcesRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  grpc_client_->CancelResourceReserve(request, callback);
+  grpc_client_->CancelPreparedBundleResources(request, callback);
+}
+
+void RayletClient::RemovePlacementGroupResources(
+    const PlacementGroupID &placement_group_id,
+    const rpc::ClientCallback<rpc::RemovePlacementGroupResourcesReply> &callback) {
+  rpc::RemovePlacementGroupResourcesRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  grpc_client_->RemovePlacementGroupResources(request, callback);
 }
 
 void RayletClient::ReleaseUnusedBundles(

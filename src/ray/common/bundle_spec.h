@@ -147,6 +147,8 @@ std::optional<PgFormattedResourceData> ParsePgFormattedResource(
 std::string GetDebugStringForBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
 
+std::string GetDebugStringForBundles(const std::vector<BundleSpecification> &bundles);
+
 /// Format the placement group resource set, e.g., CPU -> CPU_group_YYY_i
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
