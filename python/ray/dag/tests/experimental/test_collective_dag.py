@@ -2,22 +2,98 @@
 import logging
 import os
 import sys
-import ray.experimental.collective as collective
-
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
 import pytest
+
+import ray
+import ray.experimental.collective as collective
 from ray.dag import InputNode, MultiOutputNode
+from ray.experimental.channel import CPUCommunicator
 from ray.experimental.collective.conftest import (
     AbstractNcclGroup,
     CPUTorchTensorWorker,
     check_nccl_group_init,
     check_nccl_group_teardown,
 )
+from ray.experimental.util.types import ReduceOp
 from ray.tests.conftest import *  # noqa
+
+if TYPE_CHECKING:
+    import cupy as cp
+    import torch
+
 
 logger = logging.getLogger(__name__)
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
+
+
+class MockCommunicator(CPUCommunicator):
+    """
+    Use a mock communicator to test the actor schedules.
+    """
+
+    def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
+        self._world_size = world_size
+        self._actor_handles = actor_handles
+
+    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+        raise NotImplementedError
+
+    def recv(
+        self,
+        shape: Tuple[int],
+        dtype: "torch.dtype",
+        peer_rank: int,
+        allocator: Optional[
+            Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
+        ] = None,
+    ) -> "torch.Tensor":
+        raise NotImplementedError
+
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        raise NotImplementedError
+
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        raise NotImplementedError
+
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        raise NotImplementedError
+
+    @property
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        raise NotImplementedError
+
+    @property
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        raise NotImplementedError
+
+    def destroy(self) -> None:
+        raise NotImplementedError
+
+
+@ray.remote
+class DDPWorker:
+    def __init__(self):
+        return
+
+    def backward(self, _):
+        return 0
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -290,6 +366,36 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize("num_workers", [2, 4])
+def test_exec_schedules_ddp(ray_start_regular, num_workers):
+    """
+    Test the execution schedules for the DDP strategy. Each worker should have
+    identical schedules.
+    """
+    actor_cls = DDPWorker.options(num_cpus=1)
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+    comm = MockCommunicator(num_workers, workers)
+
+    outputs = []
+    with InputNode() as inp:
+        grads = [worker.backward.bind(inp) for worker in workers]
+        grads_reduced = collective.allreduce.bind(grads, transport=comm)
+        outputs.extend(grads_reduced)
+        grads = [worker.backward.bind(grad) for worker, grad in zip(workers, grads)]
+        grads_reduced = collective.allreduce.bind(grads, transport=comm)
+        outputs.extend(grads_reduced)
+        dag = MultiOutputNode(outputs)
+
+    compiled_dag = dag.experimental_compile(_default_communicator=comm)
+    actor_to_execution_schedule = list(
+        compiled_dag.actor_to_execution_schedule.values()
+    )
+    expected_schedule = actor_to_execution_schedule[0]
+    for schedule in actor_to_execution_schedule[1:]:
+        assert schedule == expected_schedule
 
 
 if __name__ == "__main__":
