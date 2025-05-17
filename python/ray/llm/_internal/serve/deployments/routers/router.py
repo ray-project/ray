@@ -10,7 +10,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )

@@ -149,7 +149,9 @@ def floats_to_base64(float_list: List[float]) -> str:
     return encoded
 
 
-async def peek_at_generator(gen: AsyncGenerator[T, None]) -> Tuple[T, AsyncGenerator[T, None]]:
+async def peek_at_generator(
+    gen: AsyncGenerator[T, None]
+) -> Tuple[T, AsyncGenerator[T, None]]:
     # Peek at the first element
     first_item = await gen.__anext__()
 
@@ -160,4 +162,3 @@ async def peek_at_generator(gen: AsyncGenerator[T, None]) -> Tuple[T, AsyncGener
             yield item
 
     return first_item, new_generator()
-
