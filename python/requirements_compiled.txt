@@ -532,7 +532,7 @@ flask==2.1.3
     #   flask-cors
     #   mlflow
     #   moto
-flask-cors==4.0.0
+flask-cors==6.0.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
