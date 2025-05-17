@@ -107,7 +107,7 @@ class AutoscalingRequester:
                 avg_delta = delta // len(grouped_cpu_crd)
                 for cpu_crd, count in grouped_cpu_crd.items():
                     cpu_crd = eval(cpu_crd)
-                    req.extend([cpu_crd] * (avg_delta  // cpu_crd["CPU"]))
+                    req.extend([cpu_crd] * (avg_delta // cpu_crd["CPU"]))
         return req
 
     def _test_set_timeout(self, ttl):

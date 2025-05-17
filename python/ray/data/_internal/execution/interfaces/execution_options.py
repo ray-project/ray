@@ -58,7 +58,15 @@ class ExecutionResources:
             resources={
                 k: v
                 for k, v in resource_dict.items()
-                if k not in ["CPU", "GPU", "object_store_memory", "memory", "num_cpus", "num_gpus"]
+                if k
+                not in [
+                    "CPU",
+                    "GPU",
+                    "object_store_memory",
+                    "memory",
+                    "num_cpus",
+                    "num_gpus",
+                ]
             },
         )
 
@@ -85,7 +93,7 @@ class ExecutionResources:
             object_store_memory=object_store_memory,
             memory=memory,
             default_to_inf=True,
-            resources=resources
+            resources=resources,
         )
 
     @property
@@ -158,11 +166,7 @@ class ExecutionResources:
     def zero(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with zero resources."""
         return ExecutionResources(
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            resources={key: 0.0 for key in cls.resources.keys()}
+            0.0, 0.0, 0.0, 0.0, resources={key: 0.0 for key in cls.resources.keys()}
         )
 
     @classmethod
@@ -177,8 +181,7 @@ class ExecutionResources:
             and self.gpu == 0.0
             and self.object_store_memory == 0.0
             and self.memory == 0.0
-            and (self.resources == {} or
-                 all(v == 0.0 for v in self.resources.values()))
+            and (self.resources == {} or all(v == 0.0 for v in self.resources.values()))
         )
 
     def is_non_negative(self) -> bool:
@@ -188,8 +191,7 @@ class ExecutionResources:
             and self.gpu >= 0
             and self.object_store_memory >= 0
             and self.memory >= 0
-            and (self.resources == {} or
-                 all(v >= 0 for v in self.resources.values()))
+            and (self.resources == {} or all(v >= 0 for v in self.resources.values()))
         )
 
     def object_store_memory_str(self) -> str:
@@ -232,8 +234,8 @@ class ExecutionResources:
             cpu=self.cpu + other.cpu,
             gpu=self.gpu + other.gpu,
             object_store_memory=self.object_store_memory + other.object_store_memory,
-            memory= self.memory + other.memory,
-            resources= merged_resources,
+            memory=self.memory + other.memory,
+            resources=merged_resources,
         )
 
     def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -249,13 +251,12 @@ class ExecutionResources:
                 raise KeyError("Resource key not matched.")
             merged_resources[k] = t_v - v
 
-
         return ExecutionResources(
             cpu=self.cpu - other.cpu,
             gpu=self.gpu - other.gpu,
             object_store_memory=self.object_store_memory - other.object_store_memory,
             memory=self.memory - other.memory,
-            resources= merged_resources,
+            resources=merged_resources,
         )
 
     def max(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -287,7 +288,6 @@ class ExecutionResources:
                 raise KeyError("Resource key not matched.")
             merged_resources[k] = min(t_v, v)
 
-
         return ExecutionResources(
             cpu=min(self.cpu, other.cpu),
             gpu=min(self.gpu, other.gpu),
@@ -314,7 +314,7 @@ class ExecutionResources:
                 limit when checking if this resource struct meets the limits.
         """
         for k, v in self.resources.items():
-            limit_value = limit.resources.get(k, float('inf'))
+            limit_value = limit.resources.get(k, float("inf"))
             if v > limit_value:
                 return False
 

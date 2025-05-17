@@ -19,7 +19,7 @@ def create_or_update_cluster(
     *,
     no_restart: bool = False,
     restart_only: bool = False,
-    no_config_cache: bool = False
+    no_config_cache: bool = False,
 ) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
@@ -85,7 +85,7 @@ def run_on_cluster(
     stop: bool = False,
     no_config_cache: bool = False,
     port_forward: Optional[commands.Port_forward] = None,
-    with_output: bool = False
+    with_output: bool = False,
 ) -> Optional[str]:
     """Runs a command on the specified cluster.
 
@@ -131,7 +131,7 @@ def rsync(
     ip_address: Optional[str] = None,
     use_internal_ip: bool = False,
     no_config_cache: bool = False,
-    should_bootstrap: bool = True
+    should_bootstrap: bool = True,
 ):
     """Rsyncs files to or from the cluster.
 
@@ -247,7 +247,10 @@ def request_resources(
             for bundle in bundles:
                 if isinstance(bundle, Dict):
                     for key in bundle.keys():
-                        if not (isinstance(key, str) and isinstance(bundle[key], (float, int))):
+                        if not (
+                            isinstance(key, str)
+                            and isinstance(bundle[key], (float, int))
+                        ):
                             raise TypeError(
                                 "each bundle key should be str and value as int or float"
                             )
