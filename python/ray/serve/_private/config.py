@@ -6,6 +6,7 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private import ray_option_utils
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -14,6 +15,7 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    root_validator,
     validator,
 )
 from ray._private.serialization import pickle_dumps
@@ -24,6 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_REPLICA_SCHEDULER_PATH,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
@@ -165,7 +168,7 @@ class DeploymentConfig(BaseModel):
     is_cross_language: bool = False
 
     # This flag is used to let controller know which language does
-    # the deploymnent use.
+    # the deployment use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = Field(
@@ -180,6 +183,14 @@ class DeploymentConfig(BaseModel):
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
+
+    # Cloudpickled replica scheduler class.
+    serialized_replica_scheduler_cls: bytes = Field(default=b"")
+
+    # Custom replica scheduler config. Defaults to the power of two replica scheduler.
+    replica_scheduler_class: Union[str, Callable] = Field(
+        default=DEFAULT_REPLICA_SCHEDULER_PATH
+    )
 
     class Config:
         validate_assignment = True
@@ -223,6 +234,33 @@ class DeploymentConfig(BaseModel):
             )
 
         return v
+
+    @root_validator
+    def import_and_serialize_replica_scheduler_cls(cls, values) -> Dict[str, Any]:
+        """Import and serialize replica scheduler class with cloudpickle.
+
+        Import the replica scheduler if it's passed in as a string import path.
+        Then cloudpickle the replica scheduler and set to
+        `serialized_replica_scheduler_cls`.
+        """
+        replica_scheduler_class = values.get("replica_scheduler_class")
+        if isinstance(replica_scheduler_class, Callable):
+            replica_scheduler_class = f"{replica_scheduler_class.__module__}.{replica_scheduler_class.__name__}"
+
+        replica_scheduler_path = (
+            replica_scheduler_class or DEFAULT_REPLICA_SCHEDULER_PATH
+        )
+        replica_scheduler_class = import_attr(replica_scheduler_path)
+
+        values["serialized_replica_scheduler_cls"] = cloudpickle.dumps(
+            replica_scheduler_class
+        )
+        values["replica_scheduler_class"] = replica_scheduler_path
+        return values
+
+    def get_replica_scheduler_class(self) -> Callable:
+        """Deserialize replica scheduler from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_replica_scheduler_cls)
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
