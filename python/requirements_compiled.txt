@@ -2319,7 +2319,7 @@ torchvision==0.18.0
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.1
+tornado==6.4.2
     # via
     #   bokeh
     #   distributed
