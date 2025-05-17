@@ -38,7 +38,7 @@ class ClassNode(DAGNode):
 
         if self._contains_input_node():
             raise ValueError(
-                "InputNode handles user dynamic input the the DAG, and "
+                "InputNode handles user dynamic input the DAG, and "
                 "cannot be used as args, kwargs, or other_args_to_resolve "
                 "in ClassNode constructor because it is not available at "
                 "class construction or binding time."

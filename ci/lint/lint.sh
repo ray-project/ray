@@ -38,12 +38,17 @@ pre_commit() {
     cpplint
     buildifier
     buildifier-lint
-    pydoclint
   )
 
   for HOOK in "${HOOKS[@]}"; do
     pre-commit run "$HOOK" --all-files --show-diff-on-failure
   done
+}
+
+pre_commit_pydoclint() {
+  # Run pre-commit pydoclint on all files
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+  pre-commit run pydoclint --all-files --show-diff-on-failure
 }
 
 code_format() {

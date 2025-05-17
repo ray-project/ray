@@ -111,11 +111,11 @@ async def test_streaming_error_handler_prompt_too_long(handler):
         last_response = response
     assert (
         last_response.error.message
-        == f"ray.llm._internal.serve.configs.error_handling.PromptTooLongError: Input too long. Recieved 2 tokens, but the maximum input length is 1 tokens. (Request ID: {request_id})"
+        == f"ray.llm._internal.serve.configs.error_handling.PromptTooLongError: Input too long. Received 2 tokens, but the maximum input length is 1 tokens. (Request ID: {request_id})"
     )
     assert (
         last_response.error.internal_message
-        == f"ray.llm._internal.serve.configs.error_handling.PromptTooLongError: Input too long. Recieved 2 tokens, but the maximum input length is 1 tokens. (Request ID: {request_id})"
+        == f"ray.llm._internal.serve.configs.error_handling.PromptTooLongError: Input too long. Received 2 tokens, but the maximum input length is 1 tokens. (Request ID: {request_id})"
     )
     assert last_response.error.type == "PromptTooLongError"
     assert last_response.error.code == 400
