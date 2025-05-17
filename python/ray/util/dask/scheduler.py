@@ -1,3 +1,5 @@
+import warnings
+
 import atexit
 import threading
 from collections import defaultdict
@@ -11,7 +13,14 @@ import ray
 
 import dask
 from dask.core import istask, ishashable
-from dask._task_spec import Task, Alias, TaskRef, convert_legacy_graph
+
+try:
+    from dask._task_spec import Task, Alias, TaskRef, convert_legacy_graph
+except ImportError:
+    warnings.warn(
+        "Dask on Ray is available only on dask>=2024.11.0, "
+        f"you are on version {dask.__version__}."
+    )
 from dask.system import CPU_COUNT
 from dask.threaded import pack_exception, _thread_get_id
 

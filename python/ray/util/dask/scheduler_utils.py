@@ -4,10 +4,19 @@ The following is adapted from Dask release 2021.03.1:
 """
 
 import os
+import warnings
 from queue import Queue, Empty
 
+import dask
 from dask import config
-from dask._task_spec import DataNode, DependenciesMapping
+
+try:
+    from dask._task_spec import DataNode, DependenciesMapping
+except ImportError:
+    warnings.warn(
+        "Dask on Ray is available only on dask>=2024.11.0, "
+        f"you are on version {dask.__version__}."
+    )
 from dask.callbacks import local_callbacks, unpack_callbacks
 from dask.core import flatten, get_dependencies, reverse_dict
 from dask.order import order
@@ -222,7 +231,7 @@ def get_async(
     callbacks=None,
     dumps=identity,
     loads=identity,
-    **kwargs
+    **kwargs,
 ):
     """Asynchronous get function
     This is a general version of various asynchronous schedulers for dask.  It
