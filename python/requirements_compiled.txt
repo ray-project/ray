@@ -339,7 +339,9 @@ configspace==0.7.1 ; python_version < "3.12"
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
 contextlib2==21.6.0
-    # via ml-collections
+    # via
+    #   ml-collections
+    #   pytest-shutil
 contourpy==1.1.1
     # via matplotlib
 coverage==7.6.12
@@ -1064,6 +1066,8 @@ mlflow-skinny==2.22.0
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
+mock==5.2.0
+    # via pytest-shutil
 modin==0.22.2 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
@@ -1452,6 +1456,10 @@ parso==0.8.3
     # via jedi
 partd==1.4.1
     # via dask
+path==17.1.0
+    # via path-py
+path-py==12.5.0
+    # via pytest-shutil
 pathable==0.4.3
     # via jsonschema-path
 pathspec==0.11.2
@@ -1749,8 +1757,10 @@ pytest-repeat==0.9.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pytest-rerunfailures==11.1.2
     # via -r python/requirements/test-requirements.txt
-pytest-shutil==1.8.1
-    # via pytest-virtualenv
+pytest-shutil==1.7.0 ; python_version < "3.12"
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   pytest-virtualenv
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
     # via -r python/requirements/test-requirements.txt
 pytest-sugar==0.9.5
