@@ -533,6 +533,7 @@ class AsyncioRouter:
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
+        print(f"[[AsyncioRouter.schedule_and_send_request]] pr: {pr}")
         r = await self._replica_scheduler.choose_replica_for_request(pr)
 
         # If the queue len cache is disabled or we're sending a request to Java,
@@ -547,7 +548,9 @@ class AsyncioRouter:
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
-                self._replica_scheduler.on_request_scheduled(pr, r.replica_id, result)
+                await self._replica_scheduler.on_request_scheduled(
+                    pr, r.replica_id, result
+                )
                 if queue_info.accepted:
                     return result, r.replica_id
             except asyncio.CancelledError:

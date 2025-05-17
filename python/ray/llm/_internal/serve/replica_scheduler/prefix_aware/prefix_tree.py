@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 import os
 from threading import RLock
@@ -525,24 +526,25 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def get_smallest_tenant(self) -> Optional[str]:
+    def get_smallest_tenants(self) -> Optional[List[str]]:
         """
-        Get the tenant with the smallest total character count.
+        Get the tenants with the smallest total character count.
 
         Returns:
-            Tenant with smallest character count, or None if no tenants
+            Tenants with smallest character count, or None if no tenants
         """
         with self.lock:
             if not self.tenant_to_char_count:
                 return None
 
-            return min(
-                self.tenant_to_char_count,
-                key=self.tenant_to_char_count.get,
-                default=None,
-            )
+            min_count = min(self.tenant_to_char_count.values())
+            return [
+                tenant
+                for tenant, count in self.tenant_to_char_count.items()
+                if count == min_count
+            ]
 
-
+    
 @ray.remote
 class PrefixTreeActor(PrefixTree):
     def getattr(self, attribute: str) -> Any:
@@ -551,3 +553,32 @@ class PrefixTreeActor(PrefixTree):
         Note: This method is intended to be used only in tests.
         """
         return getattr(self, attribute)
+    
+    def setattr(self, attribute: str, value: Any) -> None:
+        setattr(self, attribute, value)
+
+# class DualPrefixTree:
+#     def __init__(self):
+#         self.active_tree = PrefixTree()
+#         self.updating_tree = PrefixTree()
+
+#     def copy_tree_to_tree(self, copy_from, copy_to):
+#         # copyable_attrs = ["root", "tenant_to_char_count", "tenant_to_lru_tail"]
+#         copy_to.root = copy.deepcopy(copy_from.root)
+#         copy_to.tenant_to_char_count = copy.deepcopy(copy_from.tenant_to_char_count)
+#         copy_to.tenant_to_lru_tail = copy.deepcopy(copy_from.tenant_to_lru_tail)
+
+#     def copy_active_to_updating(self) -> None:
+#         self.copy_tree_to_tree(self.active_tree, self.updating_tree)
+    
+#     def copy_updating_to_active(self) -> None:
+#         self.copy_tree_to_tree(self.updating_tree, self.active_tree)
+
+# @ray.remote
+# class DualPrefixTreeActor(DualPrefixTree):
+#     def getattr(self, attribute: str) -> Any:
+#         """
+#         Get an attribute of the DualPrefixTree.
+#         Note: This method is intended to be used only in tests.
+#         """
+#         return getattr(self, attribute)
