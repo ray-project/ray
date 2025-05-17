@@ -49,7 +49,7 @@ def test_time(start_ray, tmpdir, monkeypatch):
     def train_fn(config):
         for i in range(3):
             with create_dict_checkpoint({"dummy": "data"}) as checkpoint:
-                ray.train.report(
+                ray.tune.report(
                     {
                         "epoch": i,
                         "a": random.random(),
@@ -63,7 +63,7 @@ def test_time(start_ray, tmpdir, monkeypatch):
         train_fn,
         param_space={f"hp{i}": tune.uniform(0, 1) for i in range(100)},
         tune_config=tune.TuneConfig(num_samples=num_samples),
-        run_config=ray.train.RunConfig(name=experiment_name),
+        run_config=ray.tune.RunConfig(name=experiment_name),
     )
     results = tuner.fit()
     times = []

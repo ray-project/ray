@@ -43,7 +43,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 # Install both CRDs and KubeRay operator.
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2
+helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
@@ -116,7 +116,7 @@ It is optional.
 # Create the KubeRay operator
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2
+helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml

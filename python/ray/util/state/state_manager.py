@@ -1,7 +1,6 @@
 import dataclasses
 import inspect
 import logging
-from collections import defaultdict
 from functools import wraps
 from typing import List, Optional, Tuple
 import json
@@ -14,9 +13,8 @@ import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import ActorID, JobID, TaskID, NodeID
+from ray._raylet import GcsClient, ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
@@ -82,10 +80,13 @@ def handle_grpc_network_errors(func):
         Returns:
             If RPC succeeds, it returns what the original function returns.
             If RPC fails, it raises exceptions.
-        Exceptions:
+
+        Raises:
             DataSourceUnavailable: if the source is unavailable because it is down
                 or there's a slow network issue causing timeout.
-            Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
+
+            Exception: Otherwise, the raw network exceptions (e.g., gRPC) will be
+                raised.
         """
         try:
             return await func(*args, **kwargs)
@@ -97,45 +98,12 @@ def handle_grpc_network_errors(func):
                 raise DataSourceUnavailable(
                     "Failed to query the data source. "
                     "It is either there's a network issue, or the source is down."
-                )
+                ) from e
             else:
                 logger.exception(e)
                 raise e
 
     return api_with_network_error_handler
-
-
-class IdToIpMap:
-    def __init__(self):
-        # Node IP to node ID mapping.
-        self._ip_to_node_id = defaultdict(str)
-        # Node ID to node IP mapping.
-        self._node_id_to_ip = defaultdict(str)
-
-    def put(self, node_id: str, address: str):
-        self._ip_to_node_id[address] = node_id
-        self._node_id_to_ip[node_id] = address
-
-    def get_ip(self, node_id: str):
-        return self._node_id_to_ip.get(node_id)
-
-    def get_node_id(self, address: str):
-        return self._ip_to_node_id.get(address)
-
-    def pop(self, node_id: str):
-        """Pop the given node id.
-
-        Returns:
-            False if the corresponding node id doesn't exist.
-            True if it pops correctly.
-        """
-        ip = self._node_id_to_ip.get(node_id)
-        if not ip:
-            return None
-        assert ip in self._ip_to_node_id
-        self._node_id_to_ip.pop(node_id)
-        self._ip_to_node_id.pop(ip)
-        return True
 
 
 class StateDataSourceClient:
@@ -152,13 +120,10 @@ class StateDataSourceClient:
     - throw a ValueError if it cannot find the source.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_aio_client: GcsAioClient):
+    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_client: GcsClient):
         self.register_gcs_client(gcs_channel)
-        self._raylet_stubs = {}
-        self._runtime_env_agent_addresses = {}  # {node_id -> url}
-        self._job_client = JobInfoStorageClient(gcs_aio_client)
-        self._id_ip_map = IdToIpMap()
-        self._gcs_aio_client = gcs_aio_client
+        self._job_client = JobInfoStorageClient(gcs_client)
+        self._gcs_client = gcs_client
         self._client_session = aiohttp.ClientSession()
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
@@ -178,43 +143,16 @@ class StateDataSourceClient:
             gcs_channel
         )
 
-    def register_raylet_client(
-        self, node_id: str, address: str, port: int, runtime_env_agent_port: int
-    ):
-        full_addr = f"{address}:{port}"
+    def get_raylet_stub(self, ip: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
-            full_addr, options, asynchronous=True
+            f"{ip}:{port}", options, asynchronous=True
         )
-        self._raylet_stubs[node_id] = NodeManagerServiceStub(channel)
-        # TODO(ryw): runtime env agent is on the raylet's address, not node manager's.
-        # So the correct way is to use
-        # f"http://{raylet_ip_address}:{runtime_env_agent_port}".
-        # However we don't have a good way to get *all* node's raylet_ip_address, as
-        # this value is not exposed in GcsNodeInfo and hence isn't available via
-        # GetClusterInfo. In practice, this should not matter a lot until we see a
-        # raylet ip != node manager ip case, which should break more thing than just
-        # runtime env agent connectivity.
-        self._runtime_env_agent_addresses[
-            node_id
-        ] = f"http://{address}:{runtime_env_agent_port}"
-        self._id_ip_map.put(node_id, address)
+        return NodeManagerServiceStub(channel)
 
-    def unregister_raylet_client(self, node_id: str):
-        self._raylet_stubs.pop(node_id)
-        self._runtime_env_agent_addresses.pop(node_id)
-        self._id_ip_map.pop(node_id)
-
-    def get_all_registered_raylet_ids(self) -> List[str]:
-        return self._raylet_stubs.keys()
-
-    # Returns all node_ids who has runtime_env_agent listening.
-    def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
-        return self._runtime_env_agent_addresses.keys()
-
-    async def get_log_service_stub(self, node_id: NodeID) -> Optional[LogServiceStub]:
+    async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
         """Returns None if the agent on the node is not registered in Internal KV."""
-        agent_addr = await self._gcs_aio_client.internal_kv_get(
+        agent_addr = await self._gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
@@ -228,8 +166,8 @@ class StateDataSourceClient:
         )
         return LogServiceStub(channel)
 
-    def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
-        """Return the node id that corresponds to the given ip.
+    async def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
+        """Return the node id in hex that corresponds to the given ip.
 
         Args:
             ip: The ip address.
@@ -241,7 +179,16 @@ class StateDataSourceClient:
         """
         if not ip:
             return None
-        return self._id_ip_map.get_node_id(ip)
+        # Uses the dashboard agent keys to find ip -> id mapping.
+        agent_addr = await self._gcs_client.async_internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not agent_addr:
+            return None
+        node_id, http_port, grpc_port = json.loads(agent_addr)
+        return node_id
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
@@ -359,6 +306,8 @@ class StateDataSourceClient:
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllNodeInfoReply]:
+        # TODO(ryw): move this to GcsClient.async_get_all_node_info, i.e.
+        # InnerGcsClient.async_get_all_node_info
 
         if filters is None:
             filters = []
@@ -427,7 +376,7 @@ class StateDataSourceClient:
         # Cannot use @handle_grpc_network_errors because async def is not supported yet.
 
         driver_jobs, submission_job_drivers = await get_driver_jobs(
-            self._gcs_aio_client, timeout=timeout
+            self._gcs_client, timeout=timeout
         )
         submission_jobs = await self._job_client.get_all_jobs(timeout=timeout)
         submission_jobs = [
@@ -448,14 +397,12 @@ class StateDataSourceClient:
     @handle_grpc_network_errors
     async def get_object_info(
         self,
-        node_id: str,
+        node_manager_ip: str,
+        node_manager_port: int,
         timeout: int = None,
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetObjectsInfoReply]:
-
-        stub = self._raylet_stubs.get(node_id)
-        if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
+        stub = self.get_raylet_stub(node_manager_ip, node_manager_port)
 
         reply = await stub.GetObjectsInfo(
             GetObjectsInfoRequest(limit=limit),
@@ -465,18 +412,17 @@ class StateDataSourceClient:
 
     async def get_runtime_envs_info(
         self,
-        node_id: str,
+        node_ip: str,
+        runtime_env_agent_port: int,
         timeout: int = None,
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetRuntimeEnvsInfoReply]:
-
-        address = self._runtime_env_agent_addresses.get(node_id)
-        if not address:
+        if not node_ip or not runtime_env_agent_port:
             raise ValueError(
-                f"Runtime Env Agent for a node id, {node_id} doesn't exist."
+                f"Expected non empty node ip and runtime env agent port, got {node_ip} and {runtime_env_agent_port}."
             )
         timeout = aiohttp.ClientTimeout(total=timeout)
-        url = f"{address}/get_runtime_envs_info"
+        url = f"http://{node_ip}:{runtime_env_agent_port}/get_runtime_envs_info"
         request = GetRuntimeEnvsInfoRequest(limit=limit)
         data = request.SerializeToString()
         async with self._client_session.post(url, data=data, timeout=timeout) as resp:

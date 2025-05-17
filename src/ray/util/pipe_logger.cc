@@ -19,12 +19,19 @@
 #include <deque>
 #include <future>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_split.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/spdlog_fd_sink.h"
+#include "ray/util/spdlog_newliner_sink.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -56,24 +63,39 @@ void StartStreamDump(
                stream_dumper = stream_dumper]() {
     SetThreadName("PipeReaderThd");
 
-    std::string newline;
+    const size_t buf_size = RayConfig::instance().pipe_logger_read_buf_size();
+    // Pre-allocate stream buffer to avoid excessive syscall.
+    // TODO(hjiang): Should resize without initialization.
+    std::string readsome_buffer(buf_size, '\0');
 
-    // Exit at pipe read EOF.
-    while (std::getline(*pipe_instream, newline)) {
-      // Backfill newliner for current segment.
-      if (!pipe_instream->eof()) {
-        newline += '\n';
+    std::string cur_segment{"a"};
+    while (pipe_instream->read(cur_segment.data(), /*count=*/1)) {
+      // Read available bytes in non-blocking style.
+      while (true) {
+        auto bytes_read =
+            pipe_instream->readsome(readsome_buffer.data(), readsome_buffer.length());
+        if (bytes_read == 0) {
+          break;
+        }
+        std::string_view cur_readsome_buffer{readsome_buffer.data(),
+                                             static_cast<uint64_t>(bytes_read)};
+        cur_segment += cur_readsome_buffer;
       }
 
-      absl::MutexLock lock(&stream_dumper->mu);
-      stream_dumper->content.emplace_back(std::move(newline));
+      // Already read all we have at the moment, stream into logger.
+      {
+        absl::MutexLock lock(&stream_dumper->mu);
+        stream_dumper->content.emplace_back(std::move(cur_segment));
+        cur_segment.clear();
+      }
+
+      // Read later bytes in blocking style.
+      cur_segment = "a";
     }
 
-    RAY_CHECK(pipe_instream->eof());
-    {
-      absl::MutexLock lock(&stream_dumper->mu);
-      stream_dumper->stopped = true;
-    }
+    // Reached EOF.
+    absl::MutexLock lock(&stream_dumper->mu);
+    stream_dumper->stopped = true;
   }).detach();
 
   std::thread([stream_dumper = stream_dumper,
@@ -112,12 +134,11 @@ void StartStreamDump(
 // Create a spdlog logger with all sinks specified by the given option.
 std::shared_ptr<spdlog::logger> CreateLogger(
     const StreamRedirectionOption &stream_redirect_opt) {
-  // TODO(hjiang): Could optimize to reduce heap allocation.
-  std::vector<spdlog::sink_ptr> sinks;
+  absl::InlinedVector<spdlog::sink_ptr, 3> sinks;
 
   // Setup file sink.
   spdlog::sink_ptr file_sink = nullptr;
-  if (stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
+  if (stream_redirect_opt.rotation_max_size != 0) {
     file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         stream_redirect_opt.file_path,
         stream_redirect_opt.rotation_max_size,
@@ -127,7 +148,13 @@ std::shared_ptr<spdlog::logger> CreateLogger(
         stream_redirect_opt.file_path);
   }
   file_sink->set_level(spdlog::level::info);
-  sinks.emplace_back(std::move(file_sink));
+  // Spdlog logger's formatter only applies for its sink (which is newliner sink here),
+  // but not internal sinks recursively (aka, rotation file sink won't be set); so have to
+  // manually set formatter here.
+  file_sink->set_formatter(std::make_unique<spdlog::pattern_formatter>(
+      "%v", spdlog::pattern_time_type::local, std::string("")));
+  auto newliner_sink = std::make_shared<spdlog_newliner_sink_st>(std::move(file_sink));
+  sinks.emplace_back(std::move(newliner_sink));
 
   // Setup fd sink for stdout and stderr.
 #if defined(__APPLE__) || defined(__linux__)
@@ -186,11 +213,10 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 }
 
 // Pipe streamer is only used in certain cases:
-// 1. Log roration is requested;
+// 1. Log rotation is requested;
 // 2. Multiple sinks are involved.
 bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
-  const bool need_rotation =
-      stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
+  const bool need_rotation = stream_redirect_opt.rotation_max_size != 0;
   return need_rotation || stream_redirect_opt.tee_to_stdout ||
          stream_redirect_opt.tee_to_stderr;
 }

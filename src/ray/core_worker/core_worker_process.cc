@@ -12,9 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/core_worker_process.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
+#include "ray/util/env.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
+#include "ray/util/stream_redirection.h"
+#include "ray/util/stream_redirection_options.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -22,6 +32,36 @@ namespace core {
 namespace {
 
 std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
+
+// Get out and error filepath for worker.
+// It's worth noticing that filepath format should be kept in sync with function
+// `get_worker_log_file_name` under file
+// "ray/python/ray/_private/ray_logging/__init__.py".
+std::string GetWorkerOutputFilepath(WorkerType worker_type,
+                                    const JobID &job_id,
+                                    const WorkerID &worker_id,
+                                    const std::string &suffix) {
+  std::string parsed_job_id = "";
+  if (job_id.IsNil()) {
+    char *job_id_env = ::getenv("RAY_JOB_ID");
+    if (job_id_env != nullptr) {
+      parsed_job_id = job_id_env;
+    }
+  }
+  std::string worker_name;
+  if (worker_type == WorkerType::WORKER) {
+    worker_name = "worker";
+  } else {
+    parsed_job_id = "";
+    worker_name = "io_worker";
+  }
+
+  if (!parsed_job_id.empty()) {
+    return absl::StrFormat(
+        "%s-%s-%s-%d.%s", worker_name, worker_id.Hex(), parsed_job_id, GetPID(), suffix);
+  }
+  return absl::StrFormat("%s-%s-%d.%s", worker_name, worker_id.Hex(), GetPID(), suffix);
+}
 
 }  // namespace
 
@@ -79,20 +119,58 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
-    std::stringstream app_name_ss;
-    app_name_ss << LanguageString(options_.language) << "-core-"
-                << WorkerTypeString(options_.worker_type);
-    if (!worker_id_.IsNil()) {
-      app_name_ss << "-" << worker_id_;
+    // Setup logging for worker system logging.
+    {
+      std::stringstream app_name_ss;
+      app_name_ss << LanguageString(options_.language) << "-core-"
+                  << WorkerTypeString(options_.worker_type);
+      if (!worker_id_.IsNil()) {
+        app_name_ss << "-" << worker_id_;
+      }
+      const std::string app_name = app_name_ss.str();
+      const std::string log_filepath =
+          RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+      RayLog::StartRayLog(app_name,
+                          RayLogLevel::INFO,
+                          log_filepath,
+                          /*err_log_filepath=*/"",
+                          ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+                          ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     }
-    const std::string app_name = app_name_ss.str();
-    const std::string log_filepath =
-        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
-    RayLog::StartRayLog(app_name,
-                        RayLogLevel::INFO,
-                        log_filepath,
-                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
+
+    // Setup logging for worker application logging.
+    if (options_.worker_type != WorkerType::DRIVER && !IsEnvTrue("RAY_LOG_TO_STDERR")) {
+      // Setup redirection for stdout.
+      {
+        const std::string fname = GetWorkerOutputFilepath(
+            options_.worker_type, options_.job_id, worker_id_, /*suffix=*/"out");
+        const std::string worker_output_filepath = JoinPaths(options_.log_dir, fname);
+
+        ray::StreamRedirectionOption stdout_redirection_options;
+        stdout_redirection_options.file_path = worker_output_filepath;
+        stdout_redirection_options.rotation_max_size =
+            ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+        stdout_redirection_options.rotation_max_file_count =
+            ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+        ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
+      }
+
+      // Setup redirection for stderr.
+      {
+        const std::string fname = GetWorkerOutputFilepath(
+            options_.worker_type, options_.job_id, worker_id_, /*suffix=*/"err");
+        const std::string worker_error_filepath = JoinPaths(options_.log_dir, fname);
+
+        ray::StreamRedirectionOption stderr_redirection_options;
+        stderr_redirection_options.file_path = worker_error_filepath;
+        stderr_redirection_options.rotation_max_size =
+            ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+        stderr_redirection_options.rotation_max_file_count =
+            ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+        ray::RedirectStderrOncePerProcess(stderr_redirection_options);
+      }
+    }
+
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols
@@ -113,7 +191,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
-  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
+  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this
+  // line.
   InitializeSystemConfig();
 
   // Assume stats module will be initialized exactly once in once process.
@@ -137,8 +216,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   {
     // Initialize global worker instance.
     auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_ = worker;
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get() = worker;
   }
 
   // Initialize event framework.
@@ -180,14 +259,15 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
 }
 
 void CoreWorkerProcessImpl::InitializeSystemConfig() {
-  // We have to create a short-time thread here because the RPC request to get the system
-  // config from Raylet is asynchronous, and we need to synchronously initialize the
-  // system config in the constructor of `CoreWorkerProcessImpl`.
+  // We have to create a short-time thread here because the RPC request to get the
+  // system config from Raylet is asynchronous, and we need to synchronously initialize
+  // the system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
     instrumented_io_context io_service;
-    boost::asio::io_service::work work(io_service);
-    rpc::ClientCallManager client_call_manager(io_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        io_service.get_executor());
+    rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
@@ -244,8 +324,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
@@ -255,8 +335,8 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   core_worker->RunTaskExecutionLoop();
   RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
   {
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_.reset();
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get().reset();
   }
 }
 
@@ -269,22 +349,22 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
   {
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_.reset();
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get().reset();
   }
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  return core_worker_;
+  const auto read_locked = core_worker_.LockForRead();
+  return read_locked.Get();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  if (!core_worker_) {
+  const auto read_locked = core_worker_.LockForRead();
+  if (!read_locked.Get()) {
     // This could only happen when the worker has already been shutdown.
     // In this case, we should exit without crashing.
-    // TODO (scv119): A better solution could be returning error code
+    // TODO(scv119): A better solution could be returning error code
     // and handling it at language frontend.
     if (options_.worker_type == WorkerType::DRIVER) {
       RAY_LOG(ERROR) << "The core worker has already been shutdown. This happens when "
@@ -297,8 +377,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
     }
     QuickExit();
   }
-  RAY_CHECK(core_worker_) << "core_worker_ must not be NULL";
-  return core_worker_;
+  RAY_CHECK(read_locked.Get()) << "core_worker_ must not be NULL";
+  return read_locked.Get();
 }
 
 }  // namespace core

@@ -90,7 +90,7 @@ class AggregatorActor(FaultAwareApply):
         env_steps = sum(len(e) for e in episodes)
 
         # If we have enough episodes collected to create a single train batch, pass
-        # them at once through the connector to recieve a single train batch.
+        # them at once through the connector to receive a single train batch.
         batch = self._learner_connector(
             episodes=episodes,
             rl_module=self._module,
@@ -109,3 +109,77 @@ class AggregatorActor(FaultAwareApply):
 
     def get_metrics(self):
         return self.metrics.reduce()
+
+
+def _get_env_runner_bundles(config):
+    return [
+        {
+            "CPU": config.num_cpus_per_env_runner,
+            "GPU": config.num_gpus_per_env_runner,
+            **config.custom_resources_per_env_runner,
+        }
+        for _ in range(config.num_env_runners)
+    ]
+
+
+def _get_offline_eval_runner_bundles(config):
+    return [
+        {
+            "CPU": config.num_cpus_per_offline_eval_runner,
+            "GPU": config.num_gpus_per_offline_eval_runner,
+            **config.custom_resources_per_offline_eval_runner,
+        }
+        for _ in range(config.num_offline_eval_runners)
+    ]
+
+
+def _get_learner_bundles(config):
+    try:
+        from ray.rllib.extensions.algorithm_utils import _get_learner_bundles as func
+
+        return func(config)
+    except Exception:
+        pass
+
+    if config.num_learners == 0:
+        if config.num_aggregator_actors_per_learner > 0:
+            return [{"CPU": config.num_aggregator_actors_per_learner}]
+        else:
+            return []
+
+    num_cpus_per_learner = (
+        config.num_cpus_per_learner
+        if config.num_cpus_per_learner != "auto"
+        else 1
+        if config.num_gpus_per_learner == 0
+        else 0
+    )
+
+    bundles = [
+        {
+            "CPU": config.num_learners
+            * (num_cpus_per_learner + config.num_aggregator_actors_per_learner),
+            "GPU": config.num_learners * config.num_gpus_per_learner,
+        }
+    ]
+
+    return bundles
+
+
+def _get_main_process_bundle(config):
+    if config.num_learners == 0:
+        num_cpus_per_learner = (
+            config.num_cpus_per_learner
+            if config.num_cpus_per_learner != "auto"
+            else 1
+            if config.num_gpus_per_learner == 0
+            else 0
+        )
+        bundle = {
+            "CPU": max(num_cpus_per_learner, config.num_cpus_for_main_process),
+            "GPU": config.num_gpus_per_learner,
+        }
+    else:
+        bundle = {"CPU": config.num_cpus_for_main_process, "GPU": 0}
+
+    return bundle

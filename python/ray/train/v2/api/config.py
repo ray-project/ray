@@ -1,9 +1,12 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
-from ray.air.config import FailureConfig as FailureConfigV1
-from ray.air.config import RunConfig as RunConfigV1
-from ray.air.config import ScalingConfig as ScalingConfigV1
+from ray.air.config import (
+    FailureConfig as FailureConfigV1,
+    RunConfig as RunConfigV1,
+    ScalingConfig as ScalingConfigV1,
+)
+from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import _DEPRECATED
 from ray.train.v2._internal.migration_utils import (
     FAIL_FAST_DEPRECATION_MESSAGE,
@@ -12,11 +15,7 @@ from ray.train.v2._internal.migration_utils import (
 from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
-    from ray.train import SyncConfig, UserCallback
-    from ray.tune.experimental.output import AirVerbosity
-    from ray.tune.progress_reporter import ProgressReporter
-    from ray.tune.stopper import Stopper
-    from ray.tune.utils.log import Verbosity
+    from ray.train import UserCallback
 
 
 @dataclass
@@ -116,16 +115,18 @@ class RunConfig(RunConfigV1):
         checkpoint_config: Checkpointing configuration.
         callbacks: [DeveloperAPI] A list of callbacks that the Ray Train controller
             will invoke during training.
+        worker_runtime_env: [DeveloperAPI] Runtime environment configuration
+            for all Ray Train worker actors.
     """
 
     callbacks: Optional[List["UserCallback"]] = None
-    sync_config: Union[Optional["SyncConfig"], str] = _DEPRECATED
-    verbose: Union[Optional[Union[int, "AirVerbosity", "Verbosity"]], str] = _DEPRECATED
-    stop: Union[
-        Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]], str
-    ] = _DEPRECATED
-    progress_reporter: Union[Optional["ProgressReporter"], str] = _DEPRECATED
-    log_to_file: Union[bool, str, Tuple[str, str]] = _DEPRECATED
+    worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
+
+    sync_config: str = _DEPRECATED
+    verbose: str = _DEPRECATED
+    stop: str = _DEPRECATED
+    progress_reporter: str = _DEPRECATED
+    log_to_file: str = _DEPRECATED
 
     def __post_init__(self):
         super().__post_init__()
@@ -156,6 +157,7 @@ class RunConfig(RunConfigV1):
             self.name = f"ray_train_run-{date_str()}"
 
         self.callbacks = self.callbacks or []
+        self.worker_runtime_env = self.worker_runtime_env or {}
 
         from ray.train.v2.api.callback import RayTrainCallback
 

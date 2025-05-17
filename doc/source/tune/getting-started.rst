@@ -64,7 +64,7 @@ Below, we define a function that trains the Pytorch model for multiple epochs.
 This function will be executed on a separate :ref:`Ray Actor (process) <actor-guide>` underneath the hood,
 so we need to communicate the performance of the model back to Tune (which is on the main Python process).
 
-To do this, we call :func:`train.report() <ray.train.report>` in our training function,
+To do this, we call :func:`tune.report() <ray.tune.report>` in our training function,
 which sends the performance value back to Tune. Since the function is executed on the separate process,
 make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
 
@@ -162,6 +162,6 @@ Next Steps
 ----------
 
 * Check out the :ref:`Tune tutorials <tune-guides>` for guides on using Tune with your preferred machine learning library.
-* Browse our :doc:`gallery of examples <examples/other-examples>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
+* Browse our :ref:`gallery of examples <tune-examples-others>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
 * `Let us know <https://github.com/ray-project/ray/issues>`__ if you ran into issues or have any questions by opening an issue on our Github.
 * To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.

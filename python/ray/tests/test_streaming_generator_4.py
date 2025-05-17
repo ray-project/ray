@@ -73,12 +73,10 @@ def test_caller_death(monkeypatch, shutdown_only):
 @pytest.mark.parametrize("backpressure", [False, True])
 @pytest.mark.parametrize("delay_latency", [0.1, 1])
 @pytest.mark.parametrize("threshold", [1, 3])
-def test_ray_datasetlike_mini_stress_test(
+def test_many_tasks_lineage_reconstruction_mini_stress_test(
     monkeypatch, ray_start_cluster, backpressure, delay_latency, threshold
 ):
-    """
-    Test a workload that's like ray dataset + lineage reconstruction.
-    """
+    """Test a workload that spawns many tasks and relies on lineage reconstruction."""
     if not backpressure:
         if delay_latency == 0.1 and threshold == 1:
             return
@@ -92,7 +90,7 @@ def test_ray_datasetlike_mini_stress_test(
         )
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5",
+            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5:25:25",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -301,7 +299,4 @@ def test_cancel(shutdown_only, use_asyncio):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

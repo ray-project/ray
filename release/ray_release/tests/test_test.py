@@ -71,6 +71,7 @@ def _stub_test_result(
         timestamp=0,
         pull_request="1",
         rayci_step_id=rayci_step_id,
+        duration_ms=5.0,
     )
 
 
@@ -112,6 +113,19 @@ def test_get_ray_image():
             }
         ).get_ray_image()
         == "rayproject/ray-ml:123456-py39-gpu"
+    )
+    assert (
+        _stub_test(
+            {
+                "python": "3.11",
+                "cluster": {
+                    "byod": {
+                        "type": "llm-cu124",
+                    }
+                },
+            }
+        ).get_ray_image()
+        == "rayproject/ray-llm:123456-py311-cu124"
     )
     os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
@@ -214,19 +228,21 @@ def test_is_stable() -> None:
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
-            "testResult": {"status": "PASSED"},
+            "testResult": {"status": "PASSED", "testAttemptDurationMillis": "5"},
         }
     )
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
     assert result.rayci_step_id == "g4_s5"
+    assert result.duration_ms == 5
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
         }
     )
     assert result.is_failing()
+    assert result.duration_ms is None
 
 
 def test_from_bazel_event() -> None:

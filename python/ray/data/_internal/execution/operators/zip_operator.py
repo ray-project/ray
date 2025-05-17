@@ -4,6 +4,9 @@ from typing import List, Optional, Tuple
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
@@ -18,7 +21,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 
-class ZipOperator(PhysicalOperator):
+class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that zips its inputs together.
 
     NOTE: the implementation is bulk for now, which materializes all its inputs in
@@ -69,30 +72,48 @@ class ZipOperator(PhysicalOperator):
         else:
             return right_num_rows
 
+    def internal_queue_size(self) -> int:
+        return len(self._left_buffer) + len(self._right_buffer)
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0 or input_index == 1, input_index
         if input_index == 0:
             self._left_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
         else:
             self._right_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
         self._output_buffer, self._stats = self._zip(
             self._left_buffer, self._right_buffer
         )
-        self._left_buffer.clear()
-        self._right_buffer.clear()
+
+        while self._left_buffer:
+            refs = self._left_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
+        while self._right_buffer:
+            refs = self._right_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
+        for ref in self._output_buffer:
+            self._metrics.on_output_queued(ref)
+
         super().all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        return self._output_buffer.pop(0)
+        refs = self._output_buffer.pop(0)
+        self._metrics.on_output_dequeued(refs)
+        return refs
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def implements_accurate_memory_accounting(self):
+        return True
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]

@@ -14,13 +14,12 @@
 
 #include "ray/core_worker/transport/task_receiver.h"
 
-#include <thread>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/task/task.h"
-#include "ray/gcs/pb_util.h"
-
-using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
@@ -29,33 +28,17 @@ void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
                         DependencyWaiter *dependency_waiter) {
   waiter_ = dependency_waiter;
-  rpc_address_ = rpc_address;
-  client_pool_ = client_pool;
+  rpc_address_ = std::move(rpc_address);
+  client_pool_ = std::move(client_pool);
 }
 
-void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
+void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
-  // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
-  // which doesn't work with std::move.
-  TaskSpecification task_spec(
-      std::move(*(const_cast<rpc::PushTaskRequest &>(request).mutable_task_spec())));
-
-  // If GCS server is restarted after sending an actor creation task to this core worker,
-  // the restarted GCS server will send the same actor creation task to the core worker
-  // again. We just need to ignore it and reply ok.
-  if (task_spec.IsActorCreationTask() &&
-      worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
-                  << task_spec.ActorCreationId()
-                  << ". This is likely due to a GCS server restart.";
-    return;
-  }
+  TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
   if (task_spec.IsActorCreationTask()) {
-    worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
                task_spec.ExecuteOutOfOrder());
@@ -78,25 +61,15 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
 
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
                              const TaskSpecification &task_spec,
-                             rpc::SendReplyCallback send_reply_callback) {
-    if (task_spec.GetMessage().skip_execution()) {
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
-    }
-
+                             const rpc::SendReplyCallback &send_reply_callback) mutable {
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask()) {
-      // Decrease to account for the dummy object id returned by the actor
-      // creation task.
-      num_returns--;
-    }
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
     std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
-    std::string application_error = "";
+    std::string application_error;
     auto status = task_handler_(task_spec,
                                 std::move(resource_ids),
                                 &return_objects,
@@ -138,7 +111,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
 
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
-      if (return_object.second == NULL) {
+      if (return_object.second == nullptr) {
         objects_valid = false;
       }
     }
@@ -169,15 +142,19 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        /// The default max concurrency for creating PoolManager should
-        /// be 0 if this is an asyncio actor.
-        const int default_max_concurrency =
-            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-            task_spec.ConcurrencyGroups(), default_max_concurrency);
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+              task_spec.ConcurrencyGroups(),
+              fiber_max_concurrency_,
+              initialize_thread_callback_);
+        } else {
+          // If the actor is an asyncio actor, then this concurrency group manager
+          // for BoundedExecutor will never be used, so we don't need to initialize it.
+          const int default_max_concurrency = task_spec.MaxActorConcurrency();
+          pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+              task_spec.ConcurrencyGroups(),
+              default_max_concurrency,
+              initialize_thread_callback_);
         }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
@@ -219,7 +196,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
 
   auto cancel_callback = [reply](const TaskSpecification &task_spec,
                                  const Status &status,
-                                 rpc::SendReplyCallback send_reply_callback) {
+                                 const rpc::SendReplyCallback &send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(status, nullptr, nullptr);
@@ -240,7 +217,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_main_io_service_,
+                              new OutOfOrderActorSchedulingQueue(task_execution_service_,
                                                                  *waiter_,
                                                                  task_event_buffer_,
                                                                  pool_manager_,
@@ -253,7 +230,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
-                              new ActorSchedulingQueue(task_main_io_service_,
+                              new ActorSchedulingQueue(task_execution_service_,
                                                        *waiter_,
                                                        task_event_buffer_,
                                                        pool_manager_,
@@ -296,13 +273,16 @@ void TaskReceiver::RunNormalTasksFromQueue() {
 
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
                                          const TaskID &task_id) {
+  bool task_found = false;
   auto it = actor_scheduling_queues_.find(caller_worker_id);
   if (it != actor_scheduling_queues_.end()) {
-    return it->second->CancelTaskIfFound(task_id);
-  } else {
-    // Queue doesn't exist. It can happen if a task hasn't been received yet.
-    return false;
+    task_found = it->second->CancelTaskIfFound(task_id);
   }
+
+  // Return false if either:
+  //   (1) there is no scheduling queue for the caller
+  //   (2) the specified task_id was not found in the scheduling queue
+  return task_found;
 }
 
 bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {

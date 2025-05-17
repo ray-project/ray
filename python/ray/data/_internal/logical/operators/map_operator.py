@@ -6,7 +6,6 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
@@ -38,8 +37,8 @@ class AbstractMap(AbstractOneToOne):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
+            min_rows_per_bundled_input: Min number of rows a single bundle of blocks
+                passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -65,6 +64,7 @@ class AbstractUDFMap(AbstractMap):
         name: str,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        *,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -148,7 +148,7 @@ class MapBatches(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[int] = None,
         batch_format: str = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -177,7 +177,6 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -210,7 +209,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -222,6 +220,10 @@ class Filter(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: Optional[UserDefinedFunction] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         filter_expr: Optional["pa.dataset.Expression"] = None,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -236,12 +238,15 @@ class Filter(AbstractUDFMap):
             "Filter",
             input_op,
             fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -263,9 +268,9 @@ class Project(AbstractMap):
             ray_remote_args=ray_remote_args,
             compute=compute,
         )
-        self._batch_size = DEFAULT_BATCH_SIZE
-        self._cols = cols or []
-        self._cols_rename = cols_rename or {}
+        self._batch_size = None
+        self._cols = cols
+        self._cols_rename = cols_rename
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
 
@@ -277,7 +282,6 @@ class Project(AbstractMap):
     def cols_rename(self) -> Optional[Dict[str, str]]:
         return self._cols_rename
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -310,6 +314,28 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+
+class StreamingRepartition(AbstractMap):
+    """Logical operator for streaming repartition operation.
+    Args:
+        target_num_rows_per_block: The target number of rows per block granularity for
+           streaming repartition.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        target_num_rows_per_block: int,
+    ):
+        super().__init__("StreamingRepartition", input_op)
+        self._target_num_rows_per_block = target_num_rows_per_block
+
+    @property
+    def target_num_rows_per_block(self) -> int:
+        return self._target_num_rows_per_block
+
+    def can_modify_num_rows(self) -> bool:
+        return False

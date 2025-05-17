@@ -15,6 +15,8 @@
 #include "ray/core_worker/actor_handle.h"
 
 #include <memory>
+#include <string>
+#include <unordered_map>
 
 namespace ray {
 namespace core {
@@ -33,7 +35,7 @@ rpc::ActorHandle CreateInnerActorHandle(
     const std::string &ray_namespace,
     int32_t max_pending_calls,
     bool execute_out_of_order,
-    absl::optional<bool> enable_task_events,
+    std::optional<bool> enable_task_events,
     const std::unordered_map<std::string, std::string> &labels) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
@@ -103,7 +105,7 @@ ActorHandle::ActorHandle(
     const std::string &ray_namespace,
     int32_t max_pending_calls,
     bool execute_out_of_order,
-    absl::optional<bool> enable_task_events,
+    std::optional<bool> enable_task_events,
     const std::unordered_map<std::string, std::string> &labels)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
@@ -150,7 +152,7 @@ void ActorHandle::SetActorTaskSpec(
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
-  mutable_spec->set_actor_counter(task_counter_++);
+  mutable_spec->set_sequence_number(task_counter_++);
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }

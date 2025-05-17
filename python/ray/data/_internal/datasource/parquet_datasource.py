@@ -15,11 +15,9 @@ from typing import (
 )
 
 import numpy as np
-from packaging.version import parse as parse_version
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -29,7 +27,7 @@ from ray.data._internal.util import (
     call_with_retry,
     iterate_with_retry,
 )
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -199,9 +197,11 @@ class ParquetDatasource(Datasource):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._unresolved_paths = paths
+        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
-            filesystem, context=DataContext.get_current()
+            self._filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
         )
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
@@ -493,7 +493,9 @@ def read_fragments(
         ):
             table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:
-                table = table.append_column("path", [[fragment.path]] * len(table))
+                table = BlockAccessor.for_block(table).fill_column(
+                    "path", fragment.path
+                )
             if partitions:
                 table = _add_partitions_to_table(partitions, table)
 
@@ -623,20 +625,11 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
         paths = paths[0]
 
     try:
-        # The `use_legacy_dataset` parameter is deprecated in Arrow 15.
-        if parse_version(_get_pyarrow_version()) >= parse_version("15.0.0"):
-            dataset = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-            )
-        else:
-            dataset = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-                use_legacy_dataset=False,
-            )
+        dataset = pq.ParquetDataset(
+            paths,
+            **dataset_kwargs,
+            filesystem=filesystem,
+        )
     except OSError as e:
         _handle_read_os_error(e, paths)
 
@@ -697,13 +690,11 @@ def sample_fragments(
 def _add_partitions_to_table(
     partitions: Dict[str, PartitionDataType], table: "pyarrow.Table"
 ) -> "pyarrow.Table":
-    import pyarrow as pa
 
     for field_name, value in partitions.items():
-        column = pa.array([value] * len(table))
         field_index = table.schema.get_field_index(field_name)
         if field_index == -1:
-            table = table.append_column(field_name, column)
+            table = BlockAccessor.for_block(table).fill_column(field_name, value)
 
     return table
 

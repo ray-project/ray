@@ -304,8 +304,8 @@ class ImageProcessor:
 
 
 class PrepareImageUDF(StatefulStageUDF):
-    def __init__(self, data_column: str):
-        super().__init__(data_column)
+    def __init__(self, data_column: str, expected_input_keys: List[str]):
+        super().__init__(data_column, expected_input_keys)
         self.Image = importlib.import_module("PIL.Image")
         self.image_processor = ImageProcessor()
 
@@ -342,30 +342,39 @@ class PrepareImageUDF(StatefulStageUDF):
         flat_all_image_info = [img for imgs in all_image_info for img in imgs]
         flat_all_images = await self.image_processor.process(flat_all_image_info)
 
-        idx = 0
+        # TODO: We now use asyncio.gather to process all images in this batch,
+        # so the outputs here must be in order. However, it is more efficient
+        # to support out-of-order outputs so that we won't be blocked by slow
+        # downloaded images.
+        img_start_idx = 0
+        idx_in_batch = 0
         for image_info_per_req in all_image_info:
             num_images_in_req = len(image_info_per_req)
-            if num_images_in_req == 0:
-                yield {}
-            else:
-                images = flat_all_images[idx : idx + num_images_in_req]
-                yield {
-                    "image": images,
-                    "image_sizes": [(img.width, img.height) for img in images],
-                }
-                idx += num_images_in_req
-
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-        return ["messages"]
+            ret = {self.IDX_IN_BATCH_COLUMN: idx_in_batch}
+            idx_in_batch += 1
+            if num_images_in_req > 0:
+                images = flat_all_images[
+                    img_start_idx : img_start_idx + num_images_in_req
+                ]
+                ret.update(
+                    {
+                        "image": images,
+                        "image_sizes": [(img.width, img.height) for img in images],
+                    }
+                )
+                img_start_idx += num_images_in_req
+            yield ret
 
 
 class PrepareImageStage(StatefulStage):
     """A stage to prepare images from OpenAI chat template messages."""
 
     fn: StatefulStageUDF = PrepareImageUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {
+            "messages": "A list of messages in OpenAI chat format. "
+            "See https://platform.openai.com/docs/api-reference/chat/create "
+            "for details."
+        }

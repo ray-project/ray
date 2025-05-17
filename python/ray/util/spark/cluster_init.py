@@ -19,7 +19,7 @@ import ray
 import ray._private.services
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._private.storage import _load_class
+from ray._private.utils import load_class
 
 from .utils import (
     exec_cmd,
@@ -457,7 +457,7 @@ def _get_default_ray_tmp_dir():
 
 def _create_hook_entry(is_global):
     if RAY_ON_SPARK_START_HOOK in os.environ:
-        return _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+        return load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
     elif is_in_databricks_runtime():
         return DefaultDatabricksRayOnSparkStartHook(is_global)
     else:
@@ -1204,7 +1204,7 @@ def _setup_ray_cluster_internal(
                 shutdown_ray_cluster()
             except Exception:
                 pass
-            raise RuntimeError("Launch Ray-on-Saprk cluster failed") from e
+            raise RuntimeError("Launch Ray-on-Spark cluster failed") from e
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"

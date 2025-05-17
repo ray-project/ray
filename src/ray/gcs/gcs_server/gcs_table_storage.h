@@ -15,7 +15,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -24,15 +26,6 @@
 
 namespace ray {
 namespace gcs {
-
-using rpc::ActorTableData;
-using rpc::ErrorTableData;
-using rpc::GcsNodeInfo;
-using rpc::JobTableData;
-using rpc::PlacementGroupTableData;
-using rpc::ResourceUsageBatchData;
-using rpc::TaskSpec;
-using rpc::WorkerTableData;
 
 /// \class GcsTable
 ///
@@ -158,30 +151,30 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   absl::flat_hash_map<JobID, absl::flat_hash_set<Key>> index_ ABSL_GUARDED_BY(mutex_);
 };
 
-class GcsJobTable : public GcsTable<JobID, JobTableData> {
+class GcsJobTable : public GcsTable<JobID, rpc::JobTableData> {
  public:
   explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::JOB);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::JOB);
   }
 };
 
-class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
+class GcsActorTable : public GcsTableWithJobId<ActorID, rpc::ActorTableData> {
  public:
   explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::ACTOR);
   }
 
  private:
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
 };
 
-class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
+class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, rpc::TaskSpec> {
  public:
   explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR_TASK_SPEC);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::ACTOR_TASK_SPEC);
   }
 
  private:
@@ -189,27 +182,27 @@ class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
 };
 
 class GcsPlacementGroupTable
-    : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
+    : public GcsTable<PlacementGroupID, rpc::PlacementGroupTableData> {
  public:
   explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::PLACEMENT_GROUP);
   }
 };
 
-class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
+class GcsNodeTable : public GcsTable<NodeID, rpc::GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::NODE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::NODE);
   }
 };
 
-class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
+class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
  public:
   explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::WORKERS);
   }
 };
 

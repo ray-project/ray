@@ -5,38 +5,16 @@ import random
 from typing import Tuple, List
 
 import grpc
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
-
+from grpc import aio as aiogrpc
 import ray._private.gcs_utils as gcs_utils
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
-from ray.core.generated import common_pb2
 from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)
-
-# Max retries for GCS publisher connection error
-MAX_GCS_PUBLISH_RETRIES = 60
-
-
-class _PublisherBase:
-    @staticmethod
-    def _create_node_resource_usage_request(key: str, json: str):
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
-                    key_id=key.encode(),
-                    node_resource_usage_message=common_pb2.NodeResourceUsage(json=json),
-                )
-            ]
-        )
 
 
 class _SubscriberBase:
@@ -89,23 +67,6 @@ class _SubscriberBase:
         if e.code() == grpc.StatusCode.UNAVAILABLE:
             return True
         return False
-
-
-class GcsAioPublisher(_PublisherBase):
-    """Publisher to GCS. Uses async io."""
-
-    def __init__(self, address: str = None, channel: aiogrpc.Channel = None):
-        if address:
-            assert channel is None, "address and channel cannot both be specified"
-            channel = gcs_utils.create_gcs_channel(address, aio=True)
-        else:
-            assert channel is not None, "One of address and channel must be specified"
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
-
-    async def publish_resource_usage(self, key: str, json: str) -> None:
-        """Publishes logs to GCS."""
-        req = self._create_node_resource_usage_request(key, json)
-        await self._stub.GcsPublish(req)
 
 
 class _AioSubscriber(_SubscriberBase):

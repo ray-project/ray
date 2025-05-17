@@ -41,20 +41,6 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=2,
-        title="Bytes Allocated",
-        description="Amount allocated by dataset operators.",
-        unit="bytes",
-        targets=[
-            Target(
-                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Allocated: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
         id=3,
         title="Bytes Freed",
         description="Amount freed by dataset operators.",
@@ -285,6 +271,38 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=43,
+        title="Output Bytes from Finished Tasks / Second (by Node)",
+        description=(
+            "Byte size of output blocks from finished tasks per second, grouped by node."
+        ),
+        unit="Bps",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
+                legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=48,
+        title="Blocks from Finished Tasks / Second (by Node)",
+        description=(
+            "Number of output blocks from finished tasks per second, grouped by node."
+        ),
+        unit="blocks/s",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
+                legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     # Ray Data Metrics (Tasks)
     Panel(
         id=29,
@@ -337,6 +355,20 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_num_tasks_finished{{{global_filters}}}) by (dataset, operator)",
                 legend="Finished Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=46,
+        title="Task Throughput (by Node)",
+        description="Number of finished tasks per second, grouped by node.",
+        unit="tasks/s",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
+                legend="Finished Tasks: {{dataset}}, {{node_ip}}",
             )
         ],
         fill=0,

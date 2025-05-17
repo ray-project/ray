@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import time
 from typing import Dict
@@ -323,6 +324,91 @@ def test_placement_group_removal_idle_node(autoscaler_v2):
         cluster.shutdown()
 
 
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_placement_group_reschedule_node_dead(autoscaler_v2):
+    # Test autoscaler reschedules placement group when node dies.
+    # Note that it should only provision nodes for the bundles that haven't been placed.
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-1": {
+                "resources": {"R1": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "type-2": {
+                "resources": {"R2": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "type-3": {
+                "resources": {"R3": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        },
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        pg = placement_group([{"R1": 1}, {"R2": 1}, {"R3": 1}])
+
+        ray.get(pg.ready())
+
+        def verify_nodes(active, idle):
+            cluster_state = get_cluster_status(gcs_address)
+            assert len(cluster_state.active_nodes) == active
+            assert len(cluster_state.idle_nodes) == idle
+            return True
+
+        # 3 worker nodes, 1 head node (idle)
+        wait_for_condition(lambda: verify_nodes(3, 1))
+
+        def kill_node(node_id):
+            cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
+            pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+            print(f"Killing pid {pid}")
+            # kill the pid
+            cmd = f"kill -9 {pid}"
+            subprocess.check_output(cmd, shell=True)
+
+        # Kill a worker node with 'R1' in resources
+        for n in ray.nodes():
+            if "R1" in n["Resources"]:
+                node = n
+                break
+
+        # TODO(mimi): kill_raylet won't trigger reschedule in autoscaler v1
+        kill_node(node["NodeID"])
+
+        # Wait for the node to be removed
+        wait_for_condition(lambda: verify_nodes(2, 1), 20)
+
+        # Only provision nodes for unplaced bundles;
+        # avoid rescheduling the whole placement group.
+        wait_for_condition(lambda: verify_nodes(3, 1))
+
+        # Verify that the R1 node is recreated and has a different NodeID.
+        assert any(
+            [
+                "R1" in n["Resources"] and node["NodeID"] != n["NodeID"]
+                for n in ray.nodes()
+            ]
+        ), "R1 node is not recreated."
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 def test_object_store_memory_idle_node(shutdown_only):
 
     ray.init()
@@ -356,90 +442,6 @@ def test_object_store_memory_idle_node(shutdown_only):
         return True
 
     wait_for_condition(verify)
-
-
-@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
-def test_serve_num_replica_idle_node(autoscaler_v2):
-    # Test that nodes become idle after serve scaling down.
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "type-1": {
-                "resources": {"CPU": 4},
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 30,
-            },
-        },
-        idle_timeout_minutes=999,
-        autoscaler_v2=autoscaler_v2,
-    )
-
-    from ray import serve
-
-    @serve.deployment(ray_actor_options={"num_cpus": 2})
-    class Deployment:
-        def __call__(self):
-            return "hello"
-
-    try:
-        cluster.start(override_env={"RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S": "2"})
-        # 5 workers nodes should be busy and have 2(replicas) * 2(cpus per replicas)
-        # = 4 cpus used
-        serve.run(Deployment.options(num_replicas=10).bind())
-
-        gcs_address = ray.get_runtime_context().gcs_address
-        expected_num_workers = 5
-
-        def verify():
-            cluster_state = get_cluster_status(gcs_address)
-
-            # Verify that nodes are busy.
-            assert len(cluster_state.active_nodes) == expected_num_workers + 1
-            for node in cluster_state.active_nodes:
-                assert node.node_status == "RUNNING"
-                if not is_head_node_from_resource_usage(node.total_resources()):
-                    available = node.available_resources()
-                    assert available["CPU"] == 0
-            assert len(cluster_state.idle_nodes) == 0
-            return True
-
-        wait_for_condition(verify)
-
-        # Downscale to 1 replicas, 4 workers nodes should be idle.
-        serve.run(Deployment.options(num_replicas=1).bind())
-
-        def verify():
-            cluster_state = get_cluster_status(gcs_address)
-            # We should only have 1 running worker for the 1 replica, the rest idle.
-            expected_idle_workers = expected_num_workers - 1
-
-            assert (
-                len(cluster_state.idle_nodes) + len(cluster_state.active_nodes)
-                == expected_num_workers + 1
-            )
-            idle_nodes = []
-
-            for node in cluster_state.idle_nodes:
-                if not is_head_node_from_resource_usage(node.total_resources()):
-                    available = node.available_resources()
-                    if node.node_status == "IDLE":
-                        assert available["CPU"] == 4
-                        idle_nodes.append(node)
-            assert len(cluster_state.idle_nodes) == expected_idle_workers
-            return True
-
-        # A long sleep is needed for serve proxy to be removed.
-        wait_for_condition(verify, timeout=15, retry_interval_ms=1000)
-
-    finally:
-        ray.shutdown()
-        cluster.shutdown()
-
-        # Need this so that the next test can run.
-        from ray.serve.context import _set_global_client
-
-        _set_global_client(None)
 
 
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])

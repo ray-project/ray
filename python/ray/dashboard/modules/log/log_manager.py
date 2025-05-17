@@ -20,7 +20,7 @@ if BaseModel is None:
 
 logger = logging.getLogger(__name__)
 
-WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+WORKER_LOG_PATTERN = re.compile(r".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
 
 
 class ResolvedStreamFileInfo(BaseModel):
@@ -47,8 +47,8 @@ class LogsManager:
     def data_source_client(self) -> StateDataSourceClient:
         return self.client
 
-    def ip_to_node_id(self, node_ip: Optional[str]):
-        """Resolve the node id from a given node ip.
+    async def ip_to_node_id(self, node_ip: Optional[str]) -> Optional[str]:
+        """Resolve the node id in hex from a given node ip.
 
         Args:
             node_ip: The node ip.
@@ -57,7 +57,7 @@ class LogsManager:
             node_id if there's a node id that matches the given node ip and is alive.
             None otherwise.
         """
-        return self.client.ip_to_node_id(node_ip)
+        return await self.client.ip_to_node_id(node_ip)
 
     async def list_logs(
         self, node_id: str, timeout: int, glob_filter: str = "*"
@@ -91,7 +91,9 @@ class LogsManager:
         Return:
             Async generator of streamed logs in bytes.
         """
-        node_id = options.node_id or self.ip_to_node_id(options.node_ip)
+        node_id = options.node_id
+        if node_id is None:
+            node_id = await self.ip_to_node_id(options.node_ip)
 
         res = await self.resolve_filename(
             node_id=node_id,
@@ -199,18 +201,19 @@ class LogsManager:
         suffix: str,
         timeout: int,
     ):
-        """
-        Resolve actor log file
-            Args:
-                actor_id: The actor id.
-                get_actor_fn: The function to get actor information.
-                suffix: The suffix of the log file.
-                timeout: Timeout in seconds.
-            Returns:
-                The log file name and node id.
+        """Resolve actor log file.
 
-            Raises:
-                ValueError if actor data is not found or get_actor_fn is not provided.
+        Args:
+            actor_id: The actor id.
+            get_actor_fn: The function to get actor information.
+            suffix: The suffix of the log file.
+            timeout: Timeout in seconds.
+
+        Returns:
+            The log file name and node id.
+
+        Raises:
+            ValueError: If actor data is not found or get_actor_fn is not provided.
         """
         if get_actor_fn is None:
             raise ValueError("get_actor_fn needs to be specified for actor_id")
@@ -247,13 +250,12 @@ class LogsManager:
     async def _resolve_task_filename(
         self, task_id: str, attempt_number: int, suffix: str, timeout: int
     ):
-        """
-        Resolve log file for a task.
+        """Resolve log file for a task.
 
         Args:
             task_id: The task id.
             attempt_number: The attempt number.
-            suffix: The suffix of the log file, e.g. out or err
+            suffix: The suffix of the log file, e.g. out or err.
             timeout: Timeout in seconds.
 
         Returns:
@@ -261,9 +263,8 @@ class LogsManager:
             corresponding task log in the file.
 
         Raises:
-            FileNotFoundError if the log file is not found.
-            ValueError if the suffix is not out or err.
-
+            FileNotFoundError: If the log file is not found.
+            ValueError: If the suffix is not out or err.
         """
         log_filename = None
         node_id = None

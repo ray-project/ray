@@ -26,6 +26,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
 
@@ -141,74 +142,74 @@ struct hash<ray::rpc::LabelOperator> {
 template <>
 struct hash<ray::rpc::LabelMatchExpression> {
   size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
-    size_t hash = std::hash<std::string>()(expression.key());
-    hash ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
-    return hash;
+    size_t hash_val = std::hash<std::string>()(expression.key());
+    hash_val ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::rpc::LabelMatchExpressions> {
   size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
-    size_t hash = 0;
+    size_t hash_val = 0;
     for (const auto &expression : expressions.expressions()) {
-      hash ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
+      hash_val ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
     }
-    return hash;
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::rpc::SchedulingStrategy> {
   size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
-    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    size_t hash_val = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
     if (scheduling_strategy.scheduling_strategy_case() ==
         ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
+      hash_val ^= std::hash<std::string>()(
           scheduling_strategy.node_affinity_scheduling_strategy().node_id());
       // soft returns a bool
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().fail_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
+      hash_val ^= std::hash<std::string>()(
           scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_bundle_index();
+      hash_val ^= scheduling_strategy.placement_group_scheduling_strategy()
+                      .placement_group_bundle_index();
       // placement_group_capture_child_tasks returns a bool
-      hash ^=
+      hash_val ^=
           static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
                                   .placement_group_capture_child_tasks());
     } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
       if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
           0) {
-        hash ^= std::hash<std::string>()("hard");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+        hash_val ^= std::hash<std::string>()("hard");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
             scheduling_strategy.node_label_scheduling_strategy().hard());
       }
       if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
           0) {
-        hash ^= std::hash<std::string>()("soft");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+        hash_val ^= std::hash<std::string>()("soft");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
             scheduling_strategy.node_label_scheduling_strategy().soft());
       }
     }
-    return hash;
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::SchedulingClassDescriptor> {
   size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash ^= sched_cls.function_descriptor->Hash();
-    hash ^= sched_cls.depth;
-    hash ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
-    return hash;
+    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash_val ^= sched_cls.function_descriptor->Hash();
+    hash_val ^= sched_cls.depth;
+    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
+    return hash_val;
   }
 };
 }  // namespace std
@@ -377,6 +378,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// task.
   const ResourceSet &GetRequiredResources() const;
 
+  /// Return the labels that are required for the node to execute
+  /// this task on.
+  ///
+  /// \return The labels that are required for the execution of this task on a node.
+  const LabelSelector &GetLabelSelector() const;
+
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
   bool IsNodeAffinitySchedulingStrategy() const;
@@ -444,6 +451,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
 
+  absl::flat_hash_map<std::string, std::string> GetLabels() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;
@@ -456,7 +465,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   WorkerID CallerWorkerId() const;
 
-  uint64_t ActorCounter() const;
+  NodeID CallerNodeId() const;
+
+  uint64_t SequenceNumber() const;
 
   ObjectID ActorCreationDummyObjectId() const;
 
@@ -504,6 +515,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
 
+  TaskAttempt GetTaskAttempt() const;
+
  private:
   void ComputeResources();
 
@@ -517,6 +530,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   SchedulingClass sched_cls_id_ = 0;
   int runtime_env_hash_ = 0;
 
+  // Field storing label selector for scheduling Task on a node. Initialized in constuctor
+  // in ComputeResources() call.
+  std::shared_ptr<LabelSelector> label_selector_;
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;

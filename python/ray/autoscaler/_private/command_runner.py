@@ -7,7 +7,7 @@ import sys
 import time
 from getpass import getuser
 from shlex import quote
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import click
 
@@ -244,12 +244,16 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.warning("{}", str(e))  # todo: msg
 
     def _run_helper(
-        self, final_cmd, with_output=False, exit_on_fail=False, silent=False
+        self,
+        final_cmd: List[str],
+        with_output: bool = False,
+        exit_on_fail: bool = False,
+        silent: bool = False,
     ):
         """Run a command that was already setup with SSH and `bash` settings.
 
         Args:
-            cmd (List[str]):
+            final_cmd (List[str]):
                 Full command to run. Should include SSH options and other
                 processing that we do.
             with_output (bool):
@@ -258,11 +262,12 @@ class SSHCommandRunner(CommandRunnerInterface):
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
+            silent: If true, the command output will be silenced.
 
         Raises:
-            ProcessRunnerError if using new log style and disabled
+            ProcessRunnerError: If using new log style and disabled
                 login shells.
-            click.ClickException if using login shells.
+            click.ClickException: If using login shells.
         """
         try:
             # For now, if the output is needed we just skip the new logic.
@@ -304,17 +309,17 @@ class SSHCommandRunner(CommandRunnerInterface):
 
     def run(
         self,
-        cmd,
-        timeout=120,
-        exit_on_fail=False,
-        port_forward=None,
-        with_output=False,
-        environment_variables: Dict[str, object] = None,
-        run_env="auto",  # Unused argument.
-        ssh_options_override_ssh_key="",
-        shutdown_after_run=False,
-        silent=False,
-    ):
+        cmd: Optional[str] = None,
+        timeout: int = 120,
+        exit_on_fail: bool = False,
+        port_forward: Optional[List[Tuple[int, int]]] = None,
+        with_output: bool = False,
+        environment_variables: Optional[Dict[str, object]] = None,
+        run_env: str = "auto",  # Unused argument.
+        ssh_options_override_ssh_key: str = "",
+        shutdown_after_run: bool = False,
+        silent: bool = False,
+    ) -> str:
         if shutdown_after_run:
             cmd += "; sudo shutdown -h now"
 
@@ -454,16 +459,16 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run(
         self,
-        cmd,
-        timeout=120,
-        exit_on_fail=False,
-        port_forward=None,
-        with_output=False,
-        environment_variables: Dict[str, object] = None,
-        run_env="auto",
-        ssh_options_override_ssh_key="",
-        shutdown_after_run=False,
-    ):
+        cmd: Optional[str] = None,
+        timeout: int = 120,
+        exit_on_fail: bool = False,
+        port_forward: Optional[List[Tuple[int, int]]] = None,
+        with_output: bool = False,
+        environment_variables: Optional[Dict[str, object]] = None,
+        run_env: str = "auto",
+        ssh_options_override_ssh_key: str = "",
+        shutdown_after_run: bool = False,
+    ) -> str:
         if run_env == "auto":
             run_env = (
                 "host"

@@ -1,10 +1,14 @@
+import logging
 import threading
 import traceback
 from typing import Callable, Optional, TypeVar
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
+from ray.train.v2._internal.util import get_callable_name
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class ThreadRunner:
@@ -35,13 +39,14 @@ class ThreadRunner:
                     self._ret = result
             except BaseException as e:
                 with self._lock:
-                    # Exclude the the first 2 frames from the traceback, which are
+                    # Exclude the first 2 frames from the traceback, which are
                     # the `ThreadRunner._run_target` and `construct_train_func` calls.
                     # TODO(justinvyu): This is brittle and may break if the call stack
                     # changes. Figure out a more robust way to exclude these frames.
                     exc_traceback_str = traceback.format_exc(
                         limit=-(len(traceback.extract_tb(e.__traceback__)) - 2)
                     )
+                    logger.error(f"Error in training function:\n{exc_traceback_str}")
                     self._exc = UserExceptionWithTraceback(
                         e, traceback_str=exc_traceback_str
                     )
@@ -49,7 +54,11 @@ class ThreadRunner:
             with self._lock:
                 self._is_running = False
 
-        self._thread = threading.Thread(target=_run_target, daemon=True)
+        self._thread = threading.Thread(
+            target=_run_target,
+            daemon=True,
+            name=f"TrainingThread({get_callable_name(target)})",
+        )
         self._thread.start()
 
     def is_running(self) -> bool:

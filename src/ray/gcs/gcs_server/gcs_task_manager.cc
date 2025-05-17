@@ -17,9 +17,14 @@
 #include <algorithm>
 #include <boost/range/adaptor/reversed.hpp>
 #include <cstddef>
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -27,9 +32,22 @@
 namespace ray {
 namespace gcs {
 
+GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
+    : io_service_(io_service),
+      task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
+          RayConfig::instance().task_events_max_num_task_in_gcs(),
+          stats_counter_,
+          std::make_unique<FinishedTaskActorTaskGcPolicy>())),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+  periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
+                                        5 * 1000,
+                                        "GcsTaskManager.GcJobSummary");
+}
+
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;
+  ret.reserve(gc_policy_->MaxPriority());
   // From the higher priority to the lower priority list.
   for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
     // Reverse iterate the list to get the latest task events.
@@ -69,6 +87,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
+  result.reserve(task_locators.size());
   for (const auto &task_attempt_loc : task_locators) {
     // Copy the task event to the output.
     result.push_back(task_attempt_loc->GetTaskEventsMutable());
@@ -266,7 +285,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
     rpc::TaskEvents &&events_by_task) {
   const TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
   int32_t attempt_number = events_by_task.attempt_number();
-  TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
+  TaskAttempt task_attempt = std::make_pair(task_id, attempt_number);
 
   auto loc_itr = primary_index_.find(task_attempt);
   if (loc_itr != primary_index_.end()) {
@@ -361,6 +380,8 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 }
 
+namespace {
+
 template <typename T>
 bool apply_predicate(const T &lhs, rpc::FilterPredicate predicate, const T &rhs) {
   switch (predicate) {
@@ -391,6 +412,8 @@ bool apply_predicate_ignore_case(std::string_view lhs,
                                 rpc::FilterPredicate_Name(predicate));
   }
 }
+
+}  // namespace
 
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
@@ -580,7 +603,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     reply->set_num_total_stored(task_events->size());
     reply->set_num_truncated(num_limit_truncated);
     reply->set_num_filtered_on_gcs(num_filtered);
-
   } catch (std::invalid_argument &e) {
     // When encounter invalid filter predicate
     status = Status::InvalidArgument(e.what());
@@ -588,7 +610,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  return;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
@@ -598,12 +619,12 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     auto attempt_number = dropped_attempt.attempt_number();
     auto job_id = task_id.JobId();
     job_task_summary_[job_id].RecordTaskAttemptDropped(
-        std::make_pair<>(task_id, attempt_number));
+        std::make_pair(task_id, attempt_number));
     stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
 
     // We will also remove any existing task events for this task attempt from the storage
     // since we want to make data loss at task attempt granularity.
-    const auto &loc_iter = primary_index_.find(std::make_pair<>(task_id, attempt_number));
+    const auto &loc_iter = primary_index_.find(std::make_pair(task_id, attempt_number));
     if (loc_iter != primary_index_.end()) {
       RemoveTaskAttempt(loc_iter->second);
     }
@@ -620,7 +641,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  auto data = std::move(request.data());
+  auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
@@ -664,7 +685,7 @@ void GcsTaskManager::RecordMetrics() {
 
   {
     absl::MutexLock lock(&mutex_);
-    if (usage_stats_client_) {
+    if (usage_stats_client_ != nullptr) {
       usage_stats_client_->RecordExtraUsageCounter(
           usage::TagKey::NUM_ACTOR_CREATION_TASKS, counters[kTotalNumActorCreationTask]);
       usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_ACTOR_TASKS,
@@ -686,11 +707,10 @@ void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
 
-  std::shared_ptr<boost::asio::deadline_timer> timer =
-      std::make_shared<boost::asio::deadline_timer>(
-          io_service_,
-          boost::posix_time::milliseconds(
-              RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service_,
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
 
   timer->async_wait(
       [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
@@ -705,11 +725,10 @@ void GcsTaskManager::OnWorkerDead(
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
-  std::shared_ptr<boost::asio::deadline_timer> timer =
-      std::make_shared<boost::asio::deadline_timer>(
-          io_service_,
-          boost::posix_time::milliseconds(
-              RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service_,
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
 
   timer->async_wait([this, timer, job_id, job_finish_time_ms](
                         const boost::system::error_code &error) {

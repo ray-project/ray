@@ -7,13 +7,12 @@ from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
 from ray._private.serialization import pickle_dumps
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 
-_VER = _get_pyarrow_version()
-PYARROW_VERSION = None if _VER is None else parse_version(_VER)
+PYARROW_VERSION = get_pyarrow_version()
 
 
 def _object_extension_type_allowed() -> bool:
@@ -77,7 +76,7 @@ class ArrowPythonObjectType(pa.ExtensionType):
 class ArrowPythonObjectScalar(pa.ExtensionScalar):
     """Scalar class for ArrowPythonObjectType"""
 
-    def as_py(self) -> typing.Any:
+    def as_py(self, **kwargs) -> typing.Any:
         if not isinstance(self.value, pa.LargeBinaryScalar):
             raise RuntimeError(
                 f"{type(self.value)} is not the expected LargeBinaryScalar"

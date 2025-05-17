@@ -3,9 +3,10 @@ import posixpath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
-from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
+from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
@@ -38,6 +39,7 @@ class _FileDatasink(Datasink[None]):
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ):
         """Initialize this datasink.
 
@@ -66,7 +68,7 @@ class _FileDatasink(Datasink[None]):
         self.unresolved_path = path
         paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
         self.filesystem = RetryingPyFileSystem.wrap(
-            self.filesystem, context=self._data_context
+            self.filesystem, retryable_errors=self._data_context.retried_io_errors
         )
         assert len(paths) == 1, len(paths)
         self.path = paths[0]
@@ -76,13 +78,29 @@ class _FileDatasink(Datasink[None]):
         self.filename_provider = filename_provider
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
-
+        self.mode = mode
         self.has_created_dir = False
 
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
     def on_write_start(self) -> None:
+        from pyarrow.fs import FileType
+
+        dir_exists = (
+            self.filesystem.get_file_info(self.path).type is not FileType.NotFound
+        )
+        if dir_exists:
+            if self.mode == SaveMode.ERROR:
+                raise ValueError(
+                    f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files"
+                )
+            if self.mode == SaveMode.IGNORE:
+                logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
+                return
+            if self.mode == SaveMode.OVERWRITE:
+                logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")
+                self.filesystem.delete_dir_contents(self.path)
         self.has_created_dir = self._create_dir(self.path)
 
     def _create_dir(self, dest) -> bool:
@@ -111,7 +129,7 @@ class _FileDatasink(Datasink[None]):
             if self.filesystem.get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
-                tmp = _add_creatable_buckets_param_if_s3_uri(dest)
+                tmp = add_creatable_buckets_param_if_s3_uri(dest)
                 self.filesystem.create_dir(tmp, recursive=True)
                 return True
 

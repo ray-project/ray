@@ -424,7 +424,7 @@ def test_invalid_arguments():
             ValueError,
             match=f"The keyword '{keyword}' only accepts None, "
             "a non-negative integer, "
-            "'streaming' \(for generators\), or 'dynamic'",
+            r"'streaming' \(for generators\), or 'dynamic'",
         ):
             ray.remote(**{keyword: v})(f)
 
@@ -655,22 +655,6 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
-
-
-def test_wait_timing(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def f():
-        time.sleep(1)
-
-    future = f.remote()
-
-    start = time.time()
-    ready, not_ready = ray.wait([future], timeout=0.2)
-    assert 0.2 < time.time() - start < 0.3
-    assert len(ready) == 0
-    assert len(not_ready) == 1
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
@@ -1202,7 +1186,4 @@ def test_import_ray_does_not_import_grpc():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

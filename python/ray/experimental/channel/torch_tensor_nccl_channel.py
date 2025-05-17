@@ -396,7 +396,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         ctx = ChannelContext.get_current()
         assert isinstance(
             typ.communicator_id, str
-        ), "NCCL group ID ({nccl_group_id}) must be a str."
+        ), f"NCCL group ID ({typ.communicator_id}) must be a str."
         self._typ = typ
 
         assert self._typ.communicator_id is not None, "No NCCL group specified."
@@ -679,7 +679,7 @@ def _do_check_has_gpu(self) -> bool:
     return bool(ray.get_gpu_ids())
 
 
-def _do_get_unique_nccl_id(self) -> bool:
+def _do_get_unique_nccl_id(self) -> tuple:
     from cupy.cuda import nccl
 
     return nccl.get_unique_id()
@@ -732,7 +732,7 @@ def _init_communicator(
         custom_communicator: A custom NCCL group to initialize.
         use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
-                can be overlapped to improve perfomrance.
+                can be overlapped to improve performance.
     """
     ctx = ChannelContext.get_current()
 

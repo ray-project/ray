@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._private.test_utils import (
@@ -226,7 +226,4 @@ ray.init(runtime_env={{"working_dir": "{tmp_working_dir}"}})
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

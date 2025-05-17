@@ -30,7 +30,7 @@ class ScopedTemporaryDirectory {
   // If unspecified, new directory will be created under system temporary directory.
   //
   // If creation or deletion fails, the program will exit after logging error message.
-  ScopedTemporaryDirectory(const std::string &dir = "");
+  explicit ScopedTemporaryDirectory(const std::string &dir = "");
   ~ScopedTemporaryDirectory();
 
   const std::filesystem::path &GetDirectory() const { return temporary_directory_; }

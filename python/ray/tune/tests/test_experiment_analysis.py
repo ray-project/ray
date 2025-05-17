@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ray import train, tune
+from ray import tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
 from ray.train._internal.storage import _delete_fs_path
@@ -28,9 +28,9 @@ def train_fn(config):
     def report(metrics, should_checkpoint=True):
         if should_checkpoint:
             with create_dict_checkpoint(metrics) as checkpoint:
-                train.report(metrics, checkpoint=checkpoint)
+                tune.report(metrics, checkpoint=checkpoint)
         else:
-            train.report(metrics)
+            tune.report(metrics)
 
     id = config["id"]
 

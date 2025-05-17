@@ -39,7 +39,10 @@ enum MessageType:int {
   AnnounceWorkerPortReply,
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
-  DisconnectClient,
+  DisconnectClientRequest,
+  // Notify the client that the raylet has deregistered this client.
+  // The client should block until it receives this message before closing the socket.
+  DisconnectClientReply,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -60,7 +63,7 @@ enum MessageType:int {
   // remaining.
   WaitReply,
   // Wait for objects asynchronously. The reply will be sent back via gRPC push.
-  WaitForDirectActorCallArgsRequest,
+  WaitForActorCallArgsRequest,
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
@@ -84,10 +87,6 @@ table Task {
   task_specification: string;
 }
 
-table SubmitTaskRequest {
-  task_spec: string;
-}
-
 // This message describes a given resource that is reserved for a worker.
 table ResourceIdSetInfo {
   // The name of the resource.
@@ -101,13 +100,16 @@ table ResourceIdSetInfo {
 }
 
 // This message is sent from a worker to the node manager.
-table DisconnectClient {
+table DisconnectClientRequest {
+  // Populated with a WorkerExitType enum.
   disconnect_type: int;
   disconnect_detail: string;
   // Creation task exception serialized by protobuf.
   // Contains a RayException defined in common.pb
   creation_task_exception_pb: [ubyte];
 }
+
+table DisconnectClientReply {}
 
 table ResourceIdSetInfos {
   resource_infos: [ResourceIdSetInfo];
@@ -180,11 +182,6 @@ table AnnounceWorkerPortReply {
   failure_reason: string;
 }
 
-table RegisterNodeManagerRequest {
-  // GCS ClientID of the connecting node manager.
-  client_id: string;
-}
-
 // Mimics the Address protobuf.
 table Address {
   raylet_id: string;
@@ -211,7 +208,6 @@ table NotifyUnblocked {
 }
 
 table NotifyDirectCallTaskBlocked {
-  release_resources: bool;
 }
 
 table NotifyDirectCallTaskUnblocked {
@@ -222,8 +218,9 @@ table WaitRequest {
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
-  // Number of objects expected to be returned, if available.
-  num_ready_objects: int;
+  // Minimum number of objects to wait for before returning.
+  // At most this many objects will be returned even if more are ready.
+  num_required_objects: int;
   // timeout
   timeout: long;
   // The current task ID.
@@ -237,7 +234,7 @@ table WaitReply {
   remaining: [string];
 }
 
-table WaitForDirectActorCallArgsRequest {
+table WaitForActorCallArgsRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
@@ -272,26 +269,9 @@ table ConnectClient {
   client_id: string;
 }
 
-table SetResourceRequest {
-  // Name of the resource to be set.
-  resource_name: string;
-  // Capacity of the resource to be set.
-  capacity: double;
-  // Node ID where this resource will be set.
-  node_id: string;
-}
-
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
   // The owner address for the ObjectID
   owner_address: Address;
-}
-
-table ForceSpillObjectsRequest {
-  // List of object IDs to be spilled to external storage.
-  object_ids: [string];
-}
-
-table ForceSpillObjectsReply {
 }

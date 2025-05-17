@@ -90,6 +90,8 @@ class Repartition(AbstractAllToAll):
         input_op: LogicalOperator,
         num_outputs: int,
         shuffle: bool,
+        keys: Optional[List[str]] = None,
+        sort: bool = False,
     ):
         if shuffle:
             sub_progress_bar_names = [
@@ -107,6 +109,8 @@ class Repartition(AbstractAllToAll):
             sub_progress_bar_names=sub_progress_bar_names,
         )
         self._shuffle = shuffle
+        self._keys = keys
+        self._sort = sort
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
@@ -147,6 +151,7 @@ class Aggregate(AbstractAllToAll):
         input_op: LogicalOperator,
         key: Optional[str],
         aggs: List[AggregateFn],
+        num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
@@ -160,4 +165,5 @@ class Aggregate(AbstractAllToAll):
         )
         self._key = key
         self._aggs = aggs
+        self._num_partitions = num_partitions
         self._batch_format = batch_format

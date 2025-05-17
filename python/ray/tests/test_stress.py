@@ -1,6 +1,8 @@
-import numpy as np
-import pytest
 import time
+import sys
+
+import pytest
+import numpy as np
 
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -14,7 +16,7 @@ def ray_start_combination(request):
     # Start the Ray processes.
     cluster = Cluster(
         initialize_head=True,
-        head_node_args={"num_cpus": 10, "redis_max_memory": 10**8},
+        head_node_args={"num_cpus": 10},
     )
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
@@ -99,11 +101,4 @@ def test_wait(ray_start_combination):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

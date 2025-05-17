@@ -14,6 +14,13 @@
 
 #include "ray/core_worker/transport/dependency_resolver.h"
 
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
@@ -104,7 +111,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
+  std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
     return task;
   }

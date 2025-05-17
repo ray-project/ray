@@ -1,12 +1,13 @@
 import copy
 from pathlib import Path
+import platform
 import requests
+import sys
 from typing import Any, Dict, Optional
 from unittest import mock
-
-import platform
-import pytest
 import yaml
+
+import pytest
 
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
@@ -15,7 +16,6 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _get_num_tpus,
     _get_custom_resources,
 )
-
 from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -109,7 +109,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "max_workers": 4,
+                "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
                 "resources": {
@@ -131,7 +131,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
-        "max_workers": 504,
+        "max_workers": 508,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
@@ -553,6 +553,4 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -51,6 +51,10 @@ def test_key_with_value_none():
 
 
 class TestValidateWorkingDir:
+    def test_validate_bad_path(self):
+        with pytest.raises(ValueError, match="a valid path"):
+            parse_and_validate_working_dir("/does/not/exist")
+
     def test_validate_bad_uri(self):
         with pytest.raises(ValueError, match="a valid URI"):
             parse_and_validate_working_dir("unknown://abc")
@@ -79,11 +83,21 @@ class TestValidateWorkingDir:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
 
+    def test_validate_path_valid_input(self, test_directory):
+        test_dir, _, _, _ = test_directory
+        valid_working_dir_path = str(test_dir)
+        working_dir = parse_and_validate_working_dir(str(valid_working_dir_path))
+        assert working_dir == valid_working_dir_path
+
 
 class TestValidatePyModules:
     def test_validate_not_a_list(self):
         with pytest.raises(TypeError, match="must be a list of strings"):
             parse_and_validate_py_modules(".")
+
+    def test_validate_bad_path(self):
+        with pytest.raises(ValueError, match="a valid path"):
+            parse_and_validate_py_modules(["/does/not/exist"])
 
     def test_validate_bad_uri(self):
         with pytest.raises(ValueError, match="a valid URI"):
@@ -115,6 +129,26 @@ class TestValidatePyModules:
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
+
+    def test_validate_path_valid_input(self, test_directory):
+        test_dir, _, _, _ = test_directory
+        paths = [str(test_dir)]
+        py_modules = parse_and_validate_py_modules(paths)
+        assert py_modules == paths
+
+    def test_validate_path_and_uri_valid_input(self, test_directory):
+        test_dir, _, _, _ = test_directory
+        uris_and_paths = [
+            str(test_dir),
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.whl",
+            "s3://bucket/file.whl",
+            "gs://bucket/file.whl",
+        ]
+        py_modules = parse_and_validate_py_modules(uris_and_paths)
+        assert py_modules == uris_and_paths
 
 
 class TestValidateExcludes:
@@ -332,7 +366,4 @@ class TestRuntimeEnvPluginSchemaManager:
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

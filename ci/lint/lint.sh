@@ -16,6 +16,7 @@ pre_commit() {
   pip install -c python/requirements_compiled.txt pre-commit clang-format
 
   HOOKS=(
+    python-no-log-warn
     ruff
     check-added-large-files
     check-ast
@@ -27,15 +28,27 @@ pre_commit() {
     rst-inline-touching-normal
     python-check-mock-methods
     clang-format
+    shellcheck
     docstyle
     check-import-order
     check-cpp-files-inclusion
     end-of-file-fixer
+    check-json
+    trailing-whitespace
+    cpplint
+    buildifier
+    buildifier-lint
   )
 
   for HOOK in "${HOOKS[@]}"; do
     pre-commit run "$HOOK" --all-files --show-diff-on-failure
   done
+}
+
+pre_commit_pydoclint() {
+  # Run pre-commit pydoclint on all files
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+  pre-commit run pydoclint --all-files --show-diff-on-failure
 }
 
 code_format() {
@@ -94,6 +107,7 @@ api_policy_check() {
   # install ray and compile doc to generate API files
   make -C doc/ html
   RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+
   # validate the API files
   bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }

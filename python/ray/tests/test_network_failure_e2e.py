@@ -260,7 +260,7 @@ class AsyncActor:
       # first attempt
       await self.counter.inc.remote()
       while len(list_tasks(
-            filters=[("name", "=", "AsyncActor.run")])) != 2:
+            filters=[("name", "=", "AsyncActor.run")])) < 2:
         # wait for second attempt to be made
         await asyncio.sleep(1)
       # wait until the second attempt reaches the actor
@@ -315,9 +315,5 @@ wait_for_condition(lambda: ray.get(counter.get.remote()) == 1)
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

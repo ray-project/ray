@@ -6,12 +6,13 @@ import pickle
 import socket
 from collections import deque
 from dataclasses import dataclass
-from packaging import version
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
 
 import starlette
 import uvicorn
+from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -19,10 +20,10 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
-from ray.serve.config import HTTPOptions
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.utils import serve_encoders, generate_request_id
+from ray.serve._private.utils import generate_request_id, serve_encoders
+from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -466,8 +467,11 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app: ASGIApp):
-        self._asgi_app = app
+    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+        if inspect.isfunction(app_or_func):
+            self._asgi_app = app_or_func()
+        else:
+            self._asgi_app = app_or_func
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -479,6 +483,11 @@ class ASGIAppReplicaWrapper:
     @property
     def app(self) -> ASGIApp:
         return self._asgi_app
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        if isinstance(self._asgi_app, FastAPI):
+            return self._asgi_app.docs_url
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy

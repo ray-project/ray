@@ -1,9 +1,11 @@
-from typing import TYPE_CHECKING, List, Union, Dict
+import logging
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -14,6 +16,34 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
+
+
+MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
+
+
+# pyarrow.Table.slice is slow when the table has many chunks
+# so we combine chunks into a single one to make slice faster
+# with the cost of an extra copy.
+#
+# The decision to combine chunks is based on a threshold for the number
+# of chunks, set by `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`. To make
+# this more flexible, we have made this threshold configurable via the
+# `RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS` environment variable.
+#
+# This configurability is important because the size of each chunk can vary
+# greatly depending on the dataset and the operations performed previously.
+# A fixed threshold might not be optimal for all scenarios, as in some cases,
+# a smaller number of large chunks could behave differently from a larger
+# number of smaller chunks. By making this threshold tunable, users have
+# the ability to optimize for their specific case, adjusting based on their
+# chunk sizes and available memory.
+# See https://github.com/ray-project/ray/issues/31108 for more details.
+# TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
+MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = env_integer(
+    "RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 10
+)
+
+logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
@@ -27,9 +57,69 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
+def _create_empty_table(schema: "pyarrow.Schema"):
+    import pyarrow as pa
+
+    arrays = [pa.array([], type=t) for t in schema.types]
+
+    return pa.table(arrays, schema=schema)
+
+
+def hash_partition(
+    table: "pyarrow.Table",
+    *,
+    hash_cols: List[str],
+    num_partitions: int,
+) -> Dict[int, "pyarrow.Table"]:
+    """Hash-partitions provided Pyarrow `Table` into `num_partitions` based on
+    hash of the composed tuple of values from the provided columns list
+
+    NOTE: Since some partitions could be empty (due to skew in the table) this returns a
+          dictionary, rather than a list
+    """
+
+    import numpy as np
+
+    assert num_partitions > 0
+
+    if table.num_rows == 0:
+        return {}
+    elif num_partitions == 1:
+        return {0: table}
+
+    projected_table = table.select(hash_cols)
+
+    partitions = np.zeros((projected_table.num_rows,))
+    for i in range(projected_table.num_rows):
+        _tuple = tuple(c[i] for c in projected_table.columns)
+        partitions[i] = hash(_tuple) % num_partitions
+
+    # Convert to ndarray to compute hash partition indices
+    # more efficiently
+    partitions_array = np.asarray(partitions)
+    # For every partition compile list of indices of rows falling
+    # under that partition
+    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+
+    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
+    #       chunks w/in the individual columns, and therefore to improve performance
+    #       we attempt to defragment the table to potentially combine some of those
+    #       chunks into contiguous arrays.
+    table = try_combine_chunked_columns(table)
+
+    return {
+        p: table.take(idx)
+        # NOTE: Since some of the partitions might be empty, we're filtering out
+        #       indices of the length 0 to make sure we're not passing around
+        #       empty tables
+        for p, idx in enumerate(indices)
+        if len(idx) > 0
+    }
+
+
 def take_table(
     table: "pyarrow.Table",
-    indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
 ) -> "pyarrow.Table":
     """Select rows from the table.
 
@@ -57,7 +147,7 @@ def take_table(
 
 
 def unify_schemas(
-    schemas: List["pyarrow.Schema"],
+    schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas.
@@ -174,8 +264,24 @@ def unify_schemas(
             schemas_to_unify.append(schema)
     else:
         schemas_to_unify = schemas
-    # Let Arrow unify the schema of non-tensor extension type columns.
-    return pyarrow.unify_schemas(schemas_to_unify)
+
+    try:
+        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+            return pyarrow.unify_schemas(schemas_to_unify)
+
+        # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
+        #       allowing only promotion b/w nullable and non-nullable ones
+        arrow_promote_types_mode = "permissive" if promote_types else "default"
+
+        return pyarrow.unify_schemas(
+            schemas_to_unify, promote_options=arrow_promote_types_mode
+        )
+    except Exception as e:
+        schemas_str = "\n-----\n".join([str(s) for s in schemas_to_unify])
+
+        logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
+
+        raise
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
@@ -375,7 +481,22 @@ def _align_struct_fields(
     return aligned_blocks
 
 
-def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
+def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Table":
+    """Shuffles provided Arrow table"""
+
+    if len(block) == 0:
+        return block
+
+    indices = np.arange(block.num_rows)
+    # Shuffle indices
+    np.random.RandomState(seed).shuffle(indices)
+
+    return take_table(block, indices)
+
+
+def concat(
+    blocks: List["pyarrow.Table"], *, promote_types: bool = False
+) -> "pyarrow.Table":
     """Concatenate provided Arrow Tables into a single Arrow Table. This has special
     handling for extension types that pyarrow.concat_tables does not yet support.
     """
@@ -393,7 +514,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 
     if not blocks:
         # Short-circuit on empty list of blocks.
-        return blocks
+        return pa.table([])
 
     if len(blocks) == 1:
         return blocks[0]
@@ -401,7 +522,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
-        schema = unify_schemas(schemas_to_unify)
+        schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
     except Exception as e:
         raise ArrowConversionError(str(blocks)) from e
 
@@ -487,24 +608,65 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         table.validate()
     else:
         # No extension array columns, so use built-in pyarrow.concat_tables.
-        if parse_version(_get_pyarrow_version()) >= parse_version("14.0.0"):
-            # `promote` was superseded by `promote_options='default'` in Arrow 14. To
-            # prevent `FutureWarning`s, we manually check the Arrow version and use the
-            # appropriate parameter.
-            table = pyarrow.concat_tables(blocks, promote_options="default")
-        else:
+
+        # When concatenating tables we allow type promotions to occur, since
+        # no schema enforcement is currently performed, therefore allowing schemas
+        # to vary b/w blocks
+        #
+        # NOTE: Type promotions aren't available in Arrow < 14.0
+        if get_pyarrow_version() < parse_version("14.0.0"):
             table = pyarrow.concat_tables(blocks, promote=True)
+        else:
+            arrow_promote_types_mode = "permissive" if promote_types else "default"
+            table = pyarrow.concat_tables(
+                blocks, promote_options=arrow_promote_types_mode
+            )
+
     return table
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], sort_key: "SortKey"
+    blocks: List["pyarrow.Table"],
+    sort_key: "SortKey",
+    *,
+    promote_types: bool = False,
 ) -> "pyarrow.Table":
+    import pyarrow as pa
     import pyarrow.compute as pac
 
-    ret = concat(blocks)
+    if len(blocks) == 0:
+        return pa.table([])
+
+    ret = concat(blocks, promote_types=promote_types)
     indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
+
     return take_table(ret, indices)
+
+
+def table_to_numpy_dict_chunked(
+    table: "pyarrow.Table",
+) -> Dict[str, List[np.ndarray]]:
+    """Convert a PyArrow table to a dictionary of lists of numpy arrays.
+
+    Args:
+        table: The PyArrow table to convert.
+
+    Returns:
+        A dictionary mapping column names to lists of numpy arrays. For chunked columns,
+        the list will contain multiple arrays (one per chunk). For non-chunked columns,
+        the list will contain a single array.
+    """
+
+    numpy_batch = {}
+    for col_name in table.column_names:
+        col = table[col_name]
+        if isinstance(col, pyarrow.ChunkedArray):
+            numpy_batch[col_name] = [
+                to_numpy(chunk, zero_copy_only=False) for chunk in col.chunks
+            ]
+        else:
+            numpy_batch[col_name] = [to_numpy(col, zero_copy_only=False)]
+    return numpy_batch
 
 
 def to_numpy(
@@ -518,8 +680,12 @@ def to_numpy(
     import pyarrow as pa
 
     if isinstance(array, pa.Array):
+        if pa.types.is_null(array.type):
+            return np.full(len(array), np.nan, dtype=np.float32)
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
+        if pa.types.is_null(array.type):
+            return np.full(array.length(), np.nan, dtype=np.float32)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:
@@ -530,23 +696,55 @@ def to_numpy(
         )
 
 
-def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+    """This method attempts to coalesce table by combining any of its
+    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
+    chunks in its `ChunkedArray`.
+
+    This is necessary to improve performance for some operations (like `take`, etc)
+    when dealing with `ChunkedArrays` w/ large number of chunks
+
+    For more details check out https://github.com/apache/arrow/issues/35126
+    """
+
+    if table.num_columns == 0:
+        return table
+
+    new_column_values_arrays = []
+
+    for col in table.columns:
+        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+            new_col = combine_chunked_array(col)
+        else:
+            new_col = col
+
+        new_column_values_arrays.append(new_col)
+
+    return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table":
     """This is counterpart for Pyarrow's `Table.combine_chunks` that's using
     extended `ChunkedArray` combination protocol.
 
     For more details check out `combine_chunked_array` py-doc
+
+    Args:
+        table: Table with chunked columns to be combined into contiguous arrays.
+        copy: Skip copying when copy is False and there is exactly 1 chunk.
     """
 
     new_column_values_arrays = []
 
     for col in table.columns:
-        new_column_values_arrays.append(combine_chunked_array(col))
+        new_column_values_arrays.append(combine_chunked_array(col, copy))
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
 def combine_chunked_array(
     array: "pyarrow.ChunkedArray",
+    ensure_copy: bool = False,
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
 
@@ -558,6 +756,11 @@ def combine_chunked_array(
            most of its native types, other than "large" kind).
 
     For more details check py-doc of `_try_combine_chunks_safe` method.
+
+    Args:
+        array: The chunked array to be combined into a single contiguous array.
+        ensure_copy: Skip copying when ensure_copy is False and there's exactly
+           1 chunk.
     """
 
     import pyarrow as pa
@@ -574,12 +777,15 @@ def combine_chunked_array(
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
-        return _concatenate_extension_column(array)
+        return _concatenate_extension_column(array, ensure_copy)
     elif len(array.chunks) == 0:
         # NOTE: In case there's no chunks, we need to explicitly create
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
+    elif len(array.chunks) == 1 and not ensure_copy:
+        # Skip copying
+        return array
     else:
         return _try_combine_chunks_safe(array)
 

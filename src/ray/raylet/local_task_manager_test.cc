@@ -17,8 +17,13 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/id.h"
@@ -28,8 +33,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 
-namespace ray {
-namespace raylet {
+namespace ray::raylet {
 
 using ::testing::_;
 
@@ -51,6 +55,16 @@ class MockWorkerPool : public WorkerPoolInterface {
       bool filter_dead_workers, bool filter_io_workers) const {
     RAY_CHECK(false) << "Not used.";
     return {};
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  };
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
   }
 
   void TriggerCallbacksWithNotOKStatus(
@@ -181,7 +195,7 @@ class MockObjectManager : public ObjectManagerInterface {
 
 class LocalTaskManagerTest : public ::testing::Test {
  public:
-  LocalTaskManagerTest(double num_cpus = 3.0)
+  explicit LocalTaskManagerTest(double num_cpus = 3.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
@@ -190,8 +204,7 @@ class LocalTaskManagerTest : public ::testing::Test {
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
             *scheduler_,
-            dependency_manager_, /* is_owner_alive= */
-            [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
+            dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {
@@ -336,5 +349,4 @@ int main(int argc, char **argv) {
   return RUN_ALL_TESTS();
 }
 
-}  // namespace raylet
-}  // namespace ray
+}  // namespace ray::raylet

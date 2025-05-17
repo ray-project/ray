@@ -3,8 +3,8 @@ import sys
 import threading
 
 import pytest
-import ray
 
+import ray
 from ray.exceptions import RayTaskError, RayActorError
 
 """This module tests stacktrace of Ray.
@@ -31,13 +31,13 @@ def scrub_traceback(ex):
     print(ex)
     ex = ex.strip("\n")
     ex = re.sub("pid=[0-9]+,", "pid=XXX,", ex)
-    ex = re.sub("ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
-    ex = re.sub("repr=.*\)", "repr=ZZZ)", ex)
+    ex = re.sub(r"ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
+    ex = re.sub(r"repr=.*\)", "repr=ZZZ)", ex)
     ex = re.sub("line .*,", "line ZZ,", ex)
     ex = re.sub('".*"', '"FILE"', ex)
     # These are used to coloring the string.
-    ex = re.sub("\\x1b\[36m", "", ex)
-    ex = re.sub("\\x1b\[39m", "", ex)
+    ex = re.sub(r"\x1b\[36m", "", ex)
+    ex = re.sub(r"\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
     # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.
@@ -50,10 +50,10 @@ def scrub_traceback(ex):
     ex = re.sub("object at .*?>", "object at ADDRESS>", ex)
     # This is from ray.util.inspect_serializability()
     ex = re.sub(
-        "=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
+        r"=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
     )
     # Clean up underscore in stack trace, which is new in python 3.12
-    ex = re.sub("^\s+~*\^+~*\n", "", ex, flags=re.MULTILINE)
+    ex = re.sub("^\\s+~*\\^+~*\n", "", ex, flags=re.MULTILINE)
     return ex
 
 
@@ -404,11 +404,4 @@ def test_serialization_error_message(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

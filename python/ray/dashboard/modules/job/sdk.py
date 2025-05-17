@@ -18,6 +18,7 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.utils import strip_keys_with_value_none
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.runtime_env import RuntimeEnv
+from ray.runtime_env.runtime_env import _validate_no_local_paths
 from ray.util.annotations import PublicAPI
 
 try:
@@ -222,7 +223,9 @@ class JobSubmissionClient(SubmissionClient):
             )
 
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
-        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+        runtime_env = RuntimeEnv(**runtime_env)
+        _validate_no_local_paths(runtime_env)
+        runtime_env = runtime_env.to_dict()
 
         submission_id = submission_id or job_id
         req = JobSubmitRequest(
@@ -352,7 +355,13 @@ class JobSubmissionClient(SubmissionClient):
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobDetails(**r.json())
+            if JobDetails is None:
+                raise RuntimeError(
+                    "The Ray jobs CLI & SDK require the ray[default] "
+                    "installation: `pip install 'ray[default]'`"
+                )
+            else:
+                return JobDetails(**r.json())
         else:
             self._raise_error(r)
 

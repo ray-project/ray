@@ -16,7 +16,7 @@ from ray.train.torch import TorchTrainer
 
 def get_dataloaders(batch_size):
     # Transform to normalize the input images
-    transform = transforms.Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+    transform = transforms.Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
 
     with FileLock(os.path.expanduser("~/data.lock")):
         # Download training data from open datasets

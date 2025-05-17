@@ -880,7 +880,7 @@ Tuning the **Post-Processing (Pre-Learner)** layer is generally more straightfor
 Actor pool size
 ~~~~~~~~~~~~~~~
 Internally, the **Post-Processing (PreLearner)** layer is defined by a :py:meth:`~ray.data.Dataset.map_batches` operation that starts an :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`
-instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's
+instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the previous layer's
 throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``map_batches_kwargs`` parameter to define this pool size:
 
 .. code-block:: python
@@ -1869,7 +1869,7 @@ You can configure experience input for an agent using the following options:
         # that exactly `train_batch_size_per_learner` experiences are sampled
         # per batch. The default is RLlib's `EpisodeReplayBuffer`.
         prelearner_buffer_class: Optional[Type],
-        # Optional keyword arguments for intializing the
+        # Optional keyword arguments for initializing the
         # `EpisodeReplayBuffer`. In most cases this is simply the `capacity`
         # for the default buffer used (`EpisodeReplayBuffer`), but it may
         # differ if the `prelearner_buffer_class` uses a custom buffer.

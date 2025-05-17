@@ -16,7 +16,7 @@ from ray import serve
 class VLLMPredictDeployment:
     def __init__(self, **kwargs):
         """
-        Construct a VLLM deployment.
+        Construct a vLLM deployment.
 
         Refer to https://github.com/vllm-project/vllm/blob/main/vllm/engine/arg_utils.py
         for the full list of arguments.
@@ -80,7 +80,7 @@ class VLLMPredictDeployment:
         results_generator = self.engine.generate(prompt, sampling_params, request_id)
         if stream:
             background_tasks = BackgroundTasks()
-            # Using background_taks to abort the the request
+            # Using background_taks to abort the request
             # if the client disconnects.
             background_tasks.add_task(self.may_abort_request, request_id)
             return StreamingResponse(

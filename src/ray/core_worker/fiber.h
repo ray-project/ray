@@ -16,6 +16,8 @@
 
 #include <boost/fiber/all.hpp>
 #include <chrono>
+#include <memory>
+#include <utility>
 
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
@@ -91,13 +93,19 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
-  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
+                                  bool has_other_concurrency_groups) {
     RAY_UNUSED(max_concurrency_in_default_group);
-    /// asycio mode always need a default executor.
+    RAY_UNUSED(has_other_concurrency_groups);
+    /// asyncio mode always need a default executor.
     return true;
   }
 
-  explicit FiberState(int max_concurrency)
+  explicit FiberState(
+      int max_concurrency,
+      // TODO(kevin85421): The language-specific callback function that
+      // initializes threads. It's not currently used in the async mode.
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {

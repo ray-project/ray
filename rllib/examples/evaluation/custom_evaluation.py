@@ -154,9 +154,7 @@ def custom_eval_function(
     algorithm.metrics.merge_and_log_n_dicts(
         env_runner_metrics, key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
     )
-    eval_results = algorithm.metrics.reduce(
-        key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
-    )
+    eval_results = algorithm.metrics.peek((EVALUATION_RESULTS, ENV_RUNNER_RESULTS))
     # Alternatively, you could manually reduce over the n returned `env_runner_metrics`
     # dicts, but this would be much harder as you might not know, which metrics
     # to sum up, which ones to average over, etc..
@@ -180,6 +178,7 @@ if __name__ == "__main__":
             SimpleCorridor,
             env_config={"corridor_length": args.corridor_length_training},
         )
+        .env_runners(create_env_on_local_worker=True)
         .evaluation(
             # Do we use the custom eval function defined above?
             custom_evaluation_function=(

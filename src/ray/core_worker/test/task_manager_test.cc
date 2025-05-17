@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -131,10 +137,7 @@ class TaskManagerTest : public ::testing::Test {
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
-            [this](TaskSpecification &spec,
-                   bool object_recovery,
-                   bool update_seqno,
-                   uint32_t delay_ms) {
+            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
               num_retries_++;
               last_delay_ms_ = delay_ms;
               last_object_recovery_ = object_recovery;
@@ -2193,7 +2196,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
 
   /**
    * Test TemporarilyOwnGeneratorReturnRefIfNeeded called before any
-   * HandleReportGeneratorItemReturns adds a refernece.
+   * HandleReportGeneratorItemReturns adds a reference.
    */
   manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
                                                     generator_id);

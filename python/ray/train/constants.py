@@ -56,12 +56,14 @@ ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
 
 V2_MIGRATION_GUIDE_MESSAGE = (
     "See this issue for more context and migration options: "
-    "https://github.com/ray-project/ray/issues/49454"
+    "https://github.com/ray-project/ray/issues/49454. "
+    "Disable these warnings by setting the environment variable: "
+    f"{ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR}=0"
 )
 
 
 def _v2_migration_warnings_enabled() -> bool:
-    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, False)
+    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
 
 
 # ==================================================
@@ -76,9 +78,9 @@ ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
-# Integer value which if set will not share ROCR accelerator visible devices
+# Integer value which if set will not share HIP accelerator visible devices
 # across workers. 1 for True (default), 0 for False.
-ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ROCR_VISIBLE_DEVICES"
+ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_HIP_VISIBLE_DEVICES"
 
 # Integer value which if set will not share neuron-core accelerator visible cores
 # across workers. 1 for True (default), 0 for False.
