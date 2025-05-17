@@ -24,6 +24,7 @@ from ray._private.runtime_env.conda_utils import (
     get_conda_env_list,
     get_conda_info_json,
     get_conda_envs,
+    validate_ray_installed_in_conda_env,
 )
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -45,6 +46,41 @@ if not os.environ.get("CI"):
 EMOJI_VERSIONS = ["2.1.0", "2.2.0"]
 
 _WIN32 = os.name == "nt"
+
+
+@pytest.fixture(scope="session")
+def conda_env_no_ray():
+    """Creates a conda env without ray installed."""
+    env_name = "conda-no-ray"
+
+    def delete_env(env_name):
+        subprocess.run(["conda", "remove", "--name", env_name, "--all", "-y"])
+
+    def create_package_env(env_name: str):
+        delete_env(env_name)
+        proc = subprocess.run(
+            [
+                "conda",
+                "create",
+                "-n",
+                env_name,
+                "-y",
+                f"python={_current_py_version()}",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if proc.returncode != 0:
+            print("conda create failed, returned %d" % proc.returncode)
+            print(proc.stdout.decode())
+            print(proc.stderr.decode())
+            assert False
+
+    create_package_env(env_name=f"package-{env_name}")
+
+    yield
+
+    delete_env(env_name=f"package-{env_name}")
 
 
 @pytest.fixture(scope="session")
@@ -332,6 +368,20 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
         ray.init(runtime_env=runtime_env)
         assert ray.get(get_emoji_version.remote()) == package_version
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment",
+)
+def test_conda_env_validation(conda_env_no_ray):
+    try:
+        env_name = "conda-no-ray"
+        validate_ray_installed_in_conda_env(f"package-{env_name}")
+    except ValueError:
+        return
+    else:
+        assert False, "Expected ValueError"  # 若未抛出异常则失败
 
 
 @pytest.mark.skipif(
