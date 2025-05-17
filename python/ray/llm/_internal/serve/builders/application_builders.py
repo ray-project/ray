@@ -42,7 +42,9 @@ def _get_llm_deployments(
     llm_deployments = []
     for llm_config in llm_base_models:
         if llm_config.llm_engine == LLMEngine.vLLM:
-            llm_deployments.append(build_llm_deployment(llm_config, deployment_kwargs=deployment_kwargs))
+            llm_deployments.append(
+                build_llm_deployment(llm_config, deployment_kwargs=deployment_kwargs)
+            )
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
