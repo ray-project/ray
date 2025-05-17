@@ -17,6 +17,8 @@ from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.handle import DeploymentHandle
 
+TEST_METRICS_EXPORT_PORT = 9999
+
 
 @pytest.fixture
 def serve_start_shutdown(request):
@@ -28,7 +30,7 @@ def serve_start_shutdown(request):
     request_timeout_s = param if param else None
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
-        _metrics_export_port=9999,
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
             "metrics_report_interval_ms": 100,
             "task_retry_delay_ms": 50,
@@ -121,7 +123,7 @@ def check_sum_metric_eq(
     if tags is None:
         tags = {}
 
-    metrics = fetch_prometheus_metrics(["http://127.0.0.1:9999"])
+    metrics = fetch_prometheus_metrics([f"localhost:{TEST_METRICS_EXPORT_PORT}"])
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
         metric_sum = 0
