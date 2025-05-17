@@ -138,7 +138,7 @@ class TorchTensorType(ChannelOutputType):
         _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
-        if self.requires_nccl():
+        if self.requires_comm_backend():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )
@@ -158,7 +158,7 @@ class TorchTensorType(ChannelOutputType):
         typ = SharedMemoryType()
         return typ.create_channel(writer, reader_and_node_list, driver_actor_id)
 
-    def requires_nccl(self) -> bool:
+    def requires_comm_backend(self) -> bool:
         return self.transport == self.NCCL
 
     def get_custom_communicator(self) -> Optional[Communicator]:
