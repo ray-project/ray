@@ -15,9 +15,14 @@ def test_actor_pool_scaling():
     """Test `_actor_pool_should_scale_up` and `_actor_pool_should_scale_down`
     in `DefaultAutoscaler`"""
 
+    op_resource_allocator = MagicMock(
+        get_budget=MagicMock(return_value=ExecutionResources(cpu=1, gpu=0))
+    )
+    resource_manager = MagicMock(op_resource_allocator=op_resource_allocator)
+
     autoscaler = DefaultAutoscaler(
         topology=MagicMock(),
-        resource_manager=MagicMock(),
+        resource_manager=resource_manager,
         execution_id="execution_id",
         actor_pool_scaling_up_threshold=0.8,
         actor_pool_scaling_down_threshold=0.5,
@@ -30,6 +35,9 @@ def test_actor_pool_scaling():
         current_size=MagicMock(return_value=10),
         num_active_actors=MagicMock(return_value=9),
         num_free_task_slots=MagicMock(return_value=5),
+        per_actor_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=0)
+        ),
     )
 
     op = MagicMock(
@@ -52,15 +60,17 @@ def test_actor_pool_scaling():
         setattr(mock, attr, original)
 
     # === Test scaling up ===
+    actor_scale_up_amount = 1
 
     def assert_should_scale_up(expected):
-        nonlocal actor_pool, op, op_state
+        nonlocal actor_pool, op, op_state, actor_scale_up_amount
 
         assert (
             autoscaler._actor_pool_should_scale_up(
                 actor_pool=actor_pool,
                 op=op,
                 op_state=op_state,
+                scale_up_amount=actor_scale_up_amount,
             )
             == expected
         )
@@ -104,7 +114,14 @@ def test_actor_pool_scaling():
     with patch(op_state, "total_enqueued_input_bundles", 5):
         assert_should_scale_up(False)
 
+    # Shouldn't scale up since the op does not have enough budget
+    with patch(
+        op_resource_allocator, "get_budget", ExecutionResources(cpu=0, gpu=0), True
+    ):
+        assert_should_scale_up(False)
+
     # === Test scaling down ===
+    actor_scale_down_amount = 1
 
     def assert_should_scale_down(expected):
         assert (
@@ -112,6 +129,7 @@ def test_actor_pool_scaling():
                 actor_pool=actor_pool,
                 op=op,
                 op_state=op_state,
+                scale_down_amount=actor_scale_down_amount,
             )
             == expected
         )

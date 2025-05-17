@@ -57,6 +57,7 @@ class DefaultAutoscaler(Autoscaler):
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
+        scale_up_amount: int = 1,
     ):
         # Do not scale up, if the op is completed or no more inputs are coming.
         if op.completed() or (op_state.total_enqueued_input_bundles() == 0):
@@ -64,7 +65,7 @@ class DefaultAutoscaler(Autoscaler):
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
             return True
-        elif actor_pool.current_size() >= actor_pool.max_size():
+        elif actor_pool.current_size() + scale_up_amount > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
             return False
         # Do not scale up, if the op does not have more resources.
@@ -72,6 +73,11 @@ class DefaultAutoscaler(Autoscaler):
             return False
         # Do not scale up, if the op has enough free slots for the existing inputs.
         if op_state.total_enqueued_input_bundles() <= actor_pool.num_free_task_slots():
+            return False
+        # Do not scale up, if the op does not have the budget
+        if not self._operator_has_processor_budget_for_actors(
+            actor_pool, op, scale_up_amount
+        ):
             return False
         # Determine whether to scale up based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
@@ -82,6 +88,7 @@ class DefaultAutoscaler(Autoscaler):
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
+        scale_down_amount: int = 1,
     ):
         # Scale down, if the op is completed or no more inputs are coming.
         if op.completed() or (op_state.total_enqueued_input_bundles() == 0):
@@ -89,12 +96,21 @@ class DefaultAutoscaler(Autoscaler):
         if actor_pool.current_size() > actor_pool.max_size():
             # Scale down, if the actor pool is above max size.
             return True
-        elif actor_pool.current_size() <= actor_pool.min_size():
+        elif actor_pool.current_size() - scale_down_amount < actor_pool.min_size():
             # Do not scale down, if the actor pool is already at min size.
             return False
         # Determine whether to scale down based on the actor pool utilization.
         util = self._calculate_actor_pool_util(actor_pool)
         return util < self._actor_pool_scaling_down_threshold
+
+    def _operator_has_processor_budget_for_actors(
+        self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator", by_amount: int
+    ) -> bool:
+        budget = self._resource_manager.op_resource_allocator.get_budget(op)
+        per_actor_resource_usage = actor_pool.per_actor_resource_usage()
+        have_enough_cpus = by_amount * per_actor_resource_usage.cpu <= budget.cpu
+        have_enough_gpus = by_amount * per_actor_resource_usage.gpu <= budget.gpu
+        return have_enough_cpus and have_enough_gpus
 
     def _try_scale_up_or_down_actor_pool(self):
         for op, state in self._topology.items():
@@ -102,21 +118,25 @@ class DefaultAutoscaler(Autoscaler):
             for actor_pool in actor_pools:
                 while True:
                     # Try to scale up or down the actor pool.
+                    scale_up_num_actors_wanted = 1
                     should_scale_up = self._actor_pool_should_scale_up(
-                        actor_pool,
-                        op,
-                        state,
+                        actor_pool, op, state, scale_up_num_actors_wanted
                     )
+                    scale_down_num_actors_wanted = 1
                     should_scale_down = self._actor_pool_should_scale_down(
-                        actor_pool,
-                        op,
-                        state,
+                        actor_pool, op, state, scale_down_num_actors_wanted
                     )
                     if should_scale_up and not should_scale_down:
-                        if actor_pool.scale_up(1) == 0:
+                        if (
+                            actor_pool.scale_up(scale_up_num_actors_wanted)
+                            != scale_up_num_actors_wanted
+                        ):
                             break
                     elif should_scale_down and not should_scale_up:
-                        if actor_pool.scale_down(1) == 0:
+                        if (
+                            actor_pool.scale_down(scale_down_num_actors_wanted)
+                            != scale_down_num_actors_wanted
+                        ):
                             break
                     else:
                         break
