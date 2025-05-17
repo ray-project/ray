@@ -103,12 +103,25 @@ py_test_module_list(
     size = "medium",
     files = [
         "tests/experimental/test_collective_dag.py",
-        "tests/experimental/test_dag_error_handling.py",
         "tests/experimental/test_dag_visualization.py",
         "tests/experimental/test_execution_schedule.py",
         "tests/experimental/test_mocked_nccl_dag.py",
         "tests/experimental/test_multi_node_dag.py",
         "tests/experimental/test_torch_tensor_dag.py",
+    ],
+    tags = [
+        "compiled_graphs",
+        "exclusive",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "tests/experimental/test_dag_error_handling.py",
     ],
     tags = [
         "compiled_graphs",
