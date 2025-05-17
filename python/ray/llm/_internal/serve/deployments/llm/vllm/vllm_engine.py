@@ -796,9 +796,7 @@ class VLLMEngine(LLMEngine):
 
     async def check_health(self) -> None:
         if not hasattr(self.engine, "check_health"):
-            raise RuntimeError(
-                f"{type(self.engine)} does not support health check."
-            )
+            raise RuntimeError(f"{type(self.engine)} does not support health check.")
 
         try:
             return await asyncio.wait_for(self.engine.check_health(), timeout=15)
