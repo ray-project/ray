@@ -26,7 +26,6 @@ BTS
 CLI
 CPU(s)
 [Aa]sync
-Raylet
 g[Rr][Pp][Cc]
 http
 kubectl
@@ -44,7 +43,6 @@ deserialize
 dev
 dev to prod
 DPO
-FSDP
 GGUF
 GKE
 GPTQ
