@@ -14,25 +14,30 @@
 
 syntax = "proto3";
 
-import "src/ray/protobuf/runtime_env_common.proto";
+import "google/protobuf/timestamp.proto";
 import "src/ray/protobuf/common.proto";
 
-package ray.rpc.events;
+package ray.rpc.event_aggregator;
 
-// Message containing the definition information of an actor task.
-// The message is expected to be emitted once per task attempt.
-message ActorTaskDefinitionEvent {
-  // task_id and task_attempt forms the unique identifier for a task.
+// Message containing the execution information of a task.
+message TaskExecutionEvent {
+  // task_id and task_attempt form the unique identifier of a task.
   bytes task_id = 1;
   int32 task_attempt = 2;
 
-  // The actor task definition information.
-  FunctionDescriptor actor_func = 3;
-  map<string, string> required_resources = 5;
-  RuntimeEnvInfo runtime_env_info = 6;
+  // The task execution information
+
+  // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
+  // Value is the timestamp when status changes to the target status indicated by the key.
+  map<int32, google.protobuf.Timestamp> task_state = 3;
+  UserErrorInfo user_error_info = 4;
+  RayErrorInfo ray_error_info = 5;
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
-  bytes job_id = 7;
-  map<string, bytes> ref_ids = 8;
+  bytes node_id = 6;
+  bytes worker_id = 7;
+  int32 worker_pid = 8;
+  bytes parent_task_id = 9;
+  bytes placement_group_id = 10;
 }
