@@ -68,9 +68,10 @@ def _should_convert_to_tensor(
         #   existing behavior where all column values were blindly converted to Numpy
         #   leading to list of ndarrays being converted a tensor):
         or (
-            isinstance(column_values, (List, np.ndarray)) and (
-                isinstance(column_values[0], np.ndarray) or
-                _is_ndarray_like_not_pa_array_not_pd_series(column_values[0])
+            isinstance(column_values, (List, np.ndarray))
+            and (
+                isinstance(column_values[0], np.ndarray)
+                or _is_ndarray_like_not_pa_array_not_pd_series(column_values[0])
             )
         )
     )
