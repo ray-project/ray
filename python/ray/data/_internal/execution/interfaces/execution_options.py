@@ -111,10 +111,10 @@ class ExecutionResources:
         self._object_store_memory = value
 
     @property
-
     def resources(self) -> Dict[str, float]:
         return self._resources
-    
+
+    @property
     def memory(self) -> float:
         if self._memory is not None:
             return self._memory
@@ -199,11 +199,10 @@ class ExecutionResources:
             A new ExecutionResource object with summed resources.
         """
         return ExecutionResources(
-            resources= self._resources
             cpu=self.cpu + other.cpu,
             gpu=self.gpu + other.gpu,
             object_store_memory=self.object_store_memory + other.object_store_memory,
-            memory=self.memory + other.memory,
+            memory= self.memory + other.memory,
             resources= self._resources,
         )
 
@@ -229,7 +228,7 @@ class ExecutionResources:
             object_store_memory=max(
                 self.object_store_memory, other.object_store_memory
             ),
-            resources= self._resources
+            resources= self._resources,
             memory=max(self.memory, other.memory),
         )
 
@@ -241,7 +240,7 @@ class ExecutionResources:
             object_store_memory=min(
                 self.object_store_memory, other.object_store_memory
             ),
-            resources= self._resources
+            resources= self._resources,
             memory=min(self.memory, other.memory),
         )
 
@@ -281,7 +280,7 @@ class ExecutionResources:
             cpu=self.cpu * f,
             gpu=self.gpu * f,
             object_store_memory=self.object_store_memory * f,
-            resources= self._resources
+            resources= self._resources,
             memory=self.memory * f,
         )
 
