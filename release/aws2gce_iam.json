@@ -3,6 +3,7 @@
   "type": "external_account",
   "audience": "//iam.googleapis.com/projects/1057531544153/locations/global/workloadIdentityPools/kuberay-gke/providers/rayrelease-aws",
   "subject_token_type": "urn:ietf:params:aws:token-type:aws4_request",
+  "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/kuberay-sa@dhyey-dev.iam.gserviceaccount.com:generateAccessToken",
   "token_url": "https://sts.googleapis.com/v1/token",
   "credential_source": {
     "environment_id": "aws1",
