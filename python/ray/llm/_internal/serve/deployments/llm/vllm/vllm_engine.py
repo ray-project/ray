@@ -4,7 +4,6 @@ import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
-from ray import serve
 import re
 from concurrent.futures.thread import ThreadPoolExecutor
 from ray.util import metrics
