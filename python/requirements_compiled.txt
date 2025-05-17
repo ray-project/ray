@@ -203,8 +203,10 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-bokeh==2.4.3
-    # via dask
+bokeh==2.4.3 ; python_version < "3.12"
+    # via
+    #   -r python/requirements/ml/data-requirements.txt
+    #   dask
 boltons==21.0.0
     # via
     #   face
