@@ -388,26 +388,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def iter_rows(
         self, public_row_format: bool
     ) -> Iterator[Union[Mapping, np.ndarray]]:
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._cur = -1
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                self._cur += 1
-                if self._cur < outer.num_rows():
-                    row = outer._get_row(self._cur)
-                    if public_row_format and isinstance(row, TableRow):
-                        return row.as_pydict()
-                    else:
-                        return row
-                raise StopIteration
-
-        return Iter()
+        for i in range(self.num_rows()):
+            row = self._get_row(i)
+            if public_row_format and isinstance(row, TableRow):
+                yield row.as_pydict()
+            else:
+                yield row
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
