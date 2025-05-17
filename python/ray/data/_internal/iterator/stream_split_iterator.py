@@ -90,6 +90,10 @@ class StreamSplitDataIterator(DataIterator):
                 if not block_ref_and_md:
                     break
                 else:
+                    _, block_md = block_ref_and_md
+                    block_md.reset_schema()
+                    block_md.reset_input_files()
+                    block_md.reset_exec_stats()
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
@@ -236,6 +240,11 @@ class SplitCoordinator:
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             block = next_bundle.blocks[-1]
+            block_md = next_bundle.metadata[-1]
+            block_md.reset_schema()
+            block_md.reset_input_files()
+            block_md.reset_exec_stats()
+
             next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
             # Accumulate any remaining blocks in next_bundle map as needed.
