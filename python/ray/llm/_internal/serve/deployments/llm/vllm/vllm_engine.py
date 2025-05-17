@@ -20,6 +20,7 @@ from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
+from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStatTracker,
@@ -190,6 +191,11 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+        # TODO(lk-chen): This is hacky, we only need port in PD case.
+        # Consider extend this class and do _pre_init_ there, then pass the class through LLMServer::engine_cls.
+        if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+            port:int = vllm.utils.get_open_port()
+            os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
         assert isinstance(
             llm_config, LLMConfig
@@ -489,6 +495,12 @@ class VLLMEngine(LLMEngine):
             from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         vllm_config.parallel_config.placement_group = placement_group
+        # For prototype, force these configs, following toy_proxy_server.py, per vllm_with_nixl.py enforce_eager doesn't matter.
+        vllm_config.enforce_eager = True
+        vllm_config.kv_transfer_config = vllm.config.KVTransferConfig(
+            kv_connector="NixlConnector",
+            kv_role="kv_both",
+        )
 
         _clear_current_platform_cache()
 
@@ -573,6 +585,8 @@ class VLLMEngine(LLMEngine):
         }
         if mm_data:
             request_params["multi_modal_data"] = mm_data
+        if (kv_transfer_params := prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None)) is not None:
+            request_params[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
@@ -610,10 +624,16 @@ class VLLMEngine(LLMEngine):
                 multi_modal_data=request.multi_modal_data,
             )
 
+        _sampling_params = self._parse_sampling_params(request.sampling_params, extra_args={KV_TRANSFER_PARAMS_KEY: request.kv_transfer_params}
+            if getattr(request, KV_TRANSFER_PARAMS_KEY, None) is not None else {})
+        logger.info(f"request.kv_transfer_params: {getattr(request, KV_TRANSFER_PARAMS_KEY, None)}")
+        logger.info(f"Sampling params: {_sampling_params}")
+        logger.info(f"{type(self.engine)=}")
+
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=prompt,
-            sampling_params=self._parse_sampling_params(request.sampling_params),
+            sampling_params=_sampling_params,
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
         )
@@ -661,6 +681,9 @@ class VLLMEngine(LLMEngine):
                     preprocessing_time=0,
                     generation_time=clock.reset_interval(),
                     finish_reason=finish_reason,
+                    internal_parameters={
+                        KV_TRANSFER_PARAMS_KEY: request.kv_transfer_params,
+                    },
                 )
 
             if request_output is not None:

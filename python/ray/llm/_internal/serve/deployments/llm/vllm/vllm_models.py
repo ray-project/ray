@@ -217,6 +217,7 @@ class VLLMSamplingParams(SamplingParams):
 
     top_k: Optional[int] = None
     seed: Optional[int] = None
+    kv_transfer_parameters: Optional[Dict[str, Any]] = None
 
 
 class VLLMGenerationRequest(GenerationRequest):
