@@ -253,7 +253,16 @@ class SerializationContext:
                     object_ref
                 )
 
-    def _deserialize_pickle5_data(self, data):
+    def _deserialize_pickle5_data(self, data, object_id=None):
+        # TODO(swang): self.get_outer_object_ref() is set to ObjectID::Nil.
+        worker = ray._private.worker.global_worker
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        if object_id in worker.in_actor_object_store:
+            tensors = worker.in_actor_object_store[object_id]
+            ctx.reset_out_of_band_tensors(tensors)
+
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -263,13 +272,15 @@ class SerializationContext:
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()
+        finally:
+            ctx.reset_out_of_band_tensors([])
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata_fields):
+    def _deserialize_msgpack_data(self, data, metadata_fields, object_id=None):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data)
+            python_objects = self._deserialize_pickle5_data(pickle5_data, object_id)
         else:
             python_objects = []
 
@@ -314,7 +325,9 @@ class SerializationContext:
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
-                return self._deserialize_msgpack_data(data, metadata_fields)
+                return self._deserialize_msgpack_data(
+                    data, metadata_fields, object_ref.hex()
+                )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
@@ -541,7 +554,7 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value):
+    def serialize(self, value, obj_id=None, tensor_transport=None):
         """Serialize an object.
 
         Args:
@@ -553,4 +566,23 @@ class SerializationContext:
             # that this object can also be read by Java.
             return RawSerializedObject(value)
         else:
-            return self._serialize_to_msgpack(value)
+            from ray.experimental.channel import ChannelContext
+
+            ctx = ChannelContext.get_current().serialization_context
+            prev_use_external_transport = ctx.use_external_transport
+            if tensor_transport in ["nccl", "gloo"]:
+                ctx.set_use_external_transport(True)
+
+            try:
+                val = self._serialize_to_msgpack(value)
+            finally:
+                ctx.set_use_external_transport(prev_use_external_transport)
+
+            tensors, _ = ctx.reset_out_of_band_tensors([])
+            if tensors:
+                assert obj_id is not None
+                obj_id = obj_id.decode("ascii")
+                worker = ray._private.worker.global_worker
+                worker.in_actor_object_store[obj_id] = tensors
+
+            return val

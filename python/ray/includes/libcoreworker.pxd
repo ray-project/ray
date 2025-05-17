@@ -402,7 +402,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool is_reattempt,
             c_bool is_streaming_generator,
             c_bool should_retry_exceptions,
-            int64_t generator_backpressure_num_objects
+            int64_t generator_backpressure_num_objects,
+            c_string tensor_transport
         ) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (function[void()]() nogil) initialize_thread_callback
