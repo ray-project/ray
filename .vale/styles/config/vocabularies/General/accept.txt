@@ -66,6 +66,11 @@ rollouts
 SFT
 ShareGPT
 teardown
+deserialization
+VPC[s]
+preemptible
+CRD[s]
+VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs
