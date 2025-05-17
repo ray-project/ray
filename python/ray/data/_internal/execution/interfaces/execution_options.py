@@ -166,7 +166,7 @@ class ExecutionResources:
     def zero(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with zero resources."""
         return ExecutionResources(
-            0.0, 0.0, 0.0, 0.0, resources={key: 0.0 for key in cls.resources.keys()}
+            0.0, 0.0, 0.0, 0.0, {}
         )
 
     @classmethod
@@ -225,10 +225,7 @@ class ExecutionResources:
         """
         merged_resources = self._resources.copy()
         for k, v in other.resources.items():
-            t_v = merged_resources.get(k, None)
-            if not t_v:
-                raise KeyError("Resource key not matched.")
-            merged_resources[k] = t_v + v
+            merged_resources[k] = merged_resources.get(k, 0.0) + v
 
         return ExecutionResources(
             cpu=self.cpu + other.cpu,
@@ -246,10 +243,7 @@ class ExecutionResources:
         """
         merged_resources = self._resources.copy()
         for k, v in other.resources.items():
-            t_v = merged_resources.get(k, None)
-            if not t_v:
-                raise KeyError("Resource key not matched.")
-            merged_resources[k] = t_v - v
+            merged_resources[k] = merged_resources.get(k, 0.0) - v
 
         return ExecutionResources(
             cpu=self.cpu - other.cpu,
@@ -263,10 +257,7 @@ class ExecutionResources:
         """Returns the maximum for each resource type."""
         merged_resources = self._resources.copy()
         for k, v in other.resources.items():
-            t_v = merged_resources.get(k, None)
-            if not t_v:
-                raise KeyError("Resource key not matched.")
-            merged_resources[k] = max(t_v, v)
+            merged_resources[k] = max(merged_resources.get(k, 0.0), v)
 
         return ExecutionResources(
             cpu=max(self.cpu, other.cpu),
@@ -280,13 +271,9 @@ class ExecutionResources:
 
     def min(self, other: "ExecutionResources") -> "ExecutionResources":
         """Returns the minimum for each resource type."""
-
         merged_resources = self._resources.copy()
         for k, v in other.resources.items():
-            t_v = merged_resources.get(k, None)
-            if not t_v:
-                raise KeyError("Resource key not matched.")
-            merged_resources[k] = min(t_v, v)
+            merged_resources[k] = min(merged_resources.get(k, float('inf')), v)
 
         return ExecutionResources(
             cpu=min(self.cpu, other.cpu),
@@ -419,6 +406,7 @@ class ExecutionOptions:
             gpu=value._gpu,
             object_store_memory=value._object_store_memory,
             memory=value._memory,
+            resources=value._resources,
         )
 
     def is_resource_limits_default(self):
