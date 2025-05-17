@@ -194,6 +194,7 @@ py_test_module_list(
         "test_metrics_2.py",
         "test_metrics_3.py",
         "test_metrics_4.py",
+        "test_metrics_5.py",
         "test_regression.py",
     ],
     tags = [
