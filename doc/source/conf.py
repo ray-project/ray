@@ -516,7 +516,7 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
-    # Sphnix were unable to render dataclass with factory
+    # Sphinx is unable to render dataclass with factory/`field`
     # https://github.com/sphinx-doc/sphinx/issues/10893
     if what == "class" and is_dataclass(obj):
         return signature.replace("<factory>", "..."), return_annotation
