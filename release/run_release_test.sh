@@ -96,6 +96,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   START=$(date +%s)
   set +e
 
+  ./gcloud_docker_login.sh aws2kuberay_gke.json
   trap _term SIGINT SIGTERM
   ${RAY_TEST_SCRIPT} "$@" &
   proc=$!

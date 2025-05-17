@@ -935,6 +935,9 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_gce_1x16.yaml
+    - __suffix__: kuberay
+      run:
+        type: kuberay_job
 
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests

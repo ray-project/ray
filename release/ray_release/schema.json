@@ -130,7 +130,8 @@
 						"sdk_command",
 						"job",
 						"client",
-						"anyscale_job"
+						"anyscale_job",
+						"kuberay_job"
 					]
 				},
 				"wait_for_nodes": {

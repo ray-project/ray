@@ -41,6 +41,8 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
+from ray_release.util import convert_cluster_compute_to_kuberay_compute_config, upload_working_dir, KUBERAY_SERVER_URL, DEFAULT_KUBERAY_NAMESPACE
+import requests
 
 type_str_to_command_runner = {
     "job": JobRunner,
@@ -54,7 +56,6 @@ command_runner_to_cluster_manager = {
 
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
-
 
 def _get_extra_tags_from_env() -> dict:
     env_vars = (
@@ -94,16 +95,18 @@ def _load_test_configuration(
     os.chdir(working_dir)
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
+    print("Test: ", test)
+    print("Run type: ", run_type)
 
     # Workaround while Anyscale Jobs don't support leaving cluster alive
     # after the job has finished.
     # TODO: Remove once we have support in Anyscale
-    if no_terminate and run_type == "anyscale_job":
-        logger.warning(
-            "anyscale_job run type does not support --no-terminate. "
-            "Switching to job (Ray Job) run type."
-        )
-        run_type = "job"
+    # if no_terminate and run_type == "anyscale_job":
+    #     logger.warning(
+    #         "anyscale_job run type does not support --no-terminate. "
+    #         "Switching to job (Ray Job) run type."
+    #     )
+    #     run_type = "job"
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -400,6 +403,40 @@ def run_release_test(
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
+
+    if test.get_name().endswith(".kuberay"):
+        # Load test configuration
+        cluster_compute = load_test_cluster_compute(test, test_definition_root)
+        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(cluster_compute)
+        working_dir_upload_path = upload_working_dir(get_working_dir(test))
+        runtime_env_vars = test.get_byod_runtime_env()
+
+        # Prepare request payload
+        request = {
+            "namespace": DEFAULT_KUBERAY_NAMESPACE,
+            "name": test["name"].replace(".", "-").replace("_", "-"), 
+            "entrypoint": test["run"]["script"],
+            "rayImage": "rayproject/ray:2.41.0", #TODO: figure out image path on GAR
+            "computeConfig": kuberay_compute_config,
+            "runtimeEnv": {
+                "env_vars": runtime_env_vars,
+                "working_dir": working_dir_upload_path
+            }
+        }
+
+        token = os.getenv("KUBERAY_SERVER_TOKEN")
+        url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
+        headers = {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json"
+        }
+
+        logger.info(f"Submitting KubeRay job request: {request}")
+        response = requests.post(url, json=request, headers=headers)
+        logger.info(f"KubeRay server response: {response.text}")
+
+        return
+
     try:
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, command_runner, artifact_path = _load_test_configuration(
