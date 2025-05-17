@@ -372,6 +372,8 @@ def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
+    buffer_key: Optional[str] = None,
+    buffer_cache: Optional[Dict[str, torch.Tensor]] = None,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
@@ -380,6 +382,8 @@ def concat_tensors_to_device(
         device: The device to move tensors to
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        buffer_key: Key to use for caching tensors.
+        buffer_cache: A dictionary to cache tensors.
 
     Returns:
         A contiguous tensor on the target device
@@ -412,8 +416,21 @@ def concat_tensors_to_device(
     shape_tail = first.shape[1:]
     total_rows = sum(t.shape[0] for t in tensor_sequence)
 
-    # Allocate an empty Tensor on device
-    result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
+    # Allocate an empty Tensor on device if not cached
+    if buffer_cache:
+        cached_tensor = buffer_cache.get(buffer_key)
+
+        if cached_tensor is None:
+            buffer_cache[buffer_key] = torch.empty(
+                (total_rows, *shape_tail), dtype=dtype, device=device
+            )
+        assert cached_tensor.shape == (total_rows, *shape_tail)
+        assert cached_tensor.dtype == dtype
+        assert cached_tensor.device == torch.device(device)
+
+        result = buffer_cache[buffer_key]
+    else:
+        result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
 
     row_start = 0
     for t in tensor_sequence:
@@ -429,6 +446,7 @@ def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
+    buffer_cache: Optional[Dict[str, torch.Tensor]] = None,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
@@ -443,6 +461,7 @@ def move_tensors_to_device(
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        buffer_cache: A dictionary to cache tensors.
 
     Returns:
         The input tensors moved to the specified device
@@ -462,7 +481,11 @@ def move_tensors_to_device(
             elif isinstance(v, ABCSequence) and not isinstance(v, (str, bytes)):
                 if all(isinstance(t, torch.Tensor) for t in v):
                     new_batch[k] = concat_tensors_to_device(
-                        v, device=device, non_blocking=non_blocking
+                        v,
+                        device=device,
+                        non_blocking=non_blocking,
+                        buffer_key=k,
+                        buffer_cache=buffer_cache,
                     )
                 else:
                     raise TypeError(
@@ -480,7 +503,11 @@ def move_tensors_to_device(
     elif isinstance(batch, ABCSequence) and not isinstance(batch, (str, bytes)):
         if all(isinstance(t, torch.Tensor) for t in batch):
             return concat_tensors_to_device(
-                batch, device=device, non_blocking=non_blocking
+                batch,
+                device=device,
+                non_blocking=non_blocking,
+                buffer_key="batch",
+                buffer_cache=buffer_cache,
             )
 
         elif all(
@@ -490,8 +517,14 @@ def move_tensors_to_device(
             for seq in batch
         ):
             return tuple(
-                concat_tensors_to_device(seq, device=device, non_blocking=non_blocking)
-                for seq in batch
+                concat_tensors_to_device(
+                    seq,
+                    device=device,
+                    non_blocking=non_blocking,
+                    buffer_key=f"batch_{i}",
+                    buffer_cache=buffer_cache,
+                )
+                for i, seq in enumerate(batch)
             )
 
         else:

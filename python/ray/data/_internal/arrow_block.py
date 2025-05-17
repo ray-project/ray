@@ -11,6 +11,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    Mapping,
 )
 
 import numpy as np
@@ -383,6 +384,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        for i in range(self.num_rows()):
+            row = self._get_row(i)
+            if public_row_format and isinstance(row, TableRow):
+                yield row.as_pydict()
+            else:
+                yield row
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):

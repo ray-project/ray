@@ -207,30 +207,6 @@ class TableBlockAccessor(BlockAccessor):
     def to_block(self) -> Block:
         return self._table
 
-    def iter_rows(
-        self, public_row_format: bool
-    ) -> Iterator[Union[Mapping, np.ndarray]]:
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._cur = -1
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                self._cur += 1
-                if self._cur < outer.num_rows():
-                    row = outer._get_row(self._cur)
-                    if public_row_format and isinstance(row, TableRow):
-                        return row.as_pydict()
-                    else:
-                        return row
-                raise StopIteration
-
-        return Iter()
-
     def _zip(self, acc: BlockAccessor) -> "Block":
         raise NotImplementedError
 
