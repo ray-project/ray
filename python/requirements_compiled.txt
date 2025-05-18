@@ -380,7 +380,7 @@ cython==0.29.37
     # via
     #   -r python/requirements/test-requirements.txt
     #   gpy
-dask==2022.10.2 ; python_version < "3.12"
+dask==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -425,7 +425,7 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2022.10.2 ; python_version < "3.12"
+distributed==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -794,6 +794,7 @@ imagesize==1.4.1
 importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
+    #   dask
     #   jupyter-cache
     #   mlflow-skinny
     #   myst-nb
@@ -1011,6 +1012,7 @@ lz4==4.3.3
     # via
     #   -r python/requirements.txt
     #   clickhouse-connect
+    #   dask
 mako==1.3.0
     # via alembic
 markdown==3.5.1
@@ -1599,6 +1601,7 @@ py4j==0.10.9.7
 pyarrow==14.0.2
     # via
     #   -r python/requirements.txt
+    #   dask
     #   datasets
     #   delta-sharing
     #   deltalake

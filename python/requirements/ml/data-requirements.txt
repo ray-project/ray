@@ -2,8 +2,8 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 getdaft==0.4.3
-dask[complete]==2022.10.2; python_version < '3.12'
-distributed==2022.10.2; python_version < '3.12'
+dask[complete]==2023.6.1; python_version < '3.12'
+distributed==2023.6.1; python_version < '3.12'
 dask[complete]==2025.5.0; python_version >= '3.12'
 distributed==2025.5.0; python_version >= '3.12'
 aioboto3==11.2.0
