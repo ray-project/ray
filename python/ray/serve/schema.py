@@ -487,7 +487,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        replica_scheduler=info.deployment_config.replica_scheduler,
+        replica_scheduler_class=info.deployment_config.replica_scheduler_class,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -1180,14 +1180,14 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` and `serialize_replica_scheduler` are only used
+        # `serialized_policy_def` and `serialized_replica_scheduler_cls` are only used
         # internally and should not be exposed to the REST api. This method iteratively
         # removes them from each deployment and autoscaling config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
                 if "deployment_config" in deployment:
                     deployment["deployment_config"].pop(
-                        "serialize_replica_scheduler", None
+                        "serialized_replica_scheduler_cls", None
                     )
                     if "autoscaling_config" in deployment["deployment_config"]:
                         deployment["deployment_config"]["autoscaling_config"].pop(
