@@ -26,13 +26,15 @@ class ProtocolsProvider:
             "s3",
             # Remote google storage path, assumes everything packed in one zip file.
             "gs",
+            # Remote azure blob storage path, assumes everything packed in one zip file.
+            "azure",
             # File storage path, assumes everything packed in one zip file.
             "file",
         }
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "file"}
+        return {"https", "s3", "gs", "azure", "file"}
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
@@ -75,6 +77,57 @@ class ProtocolsProvider:
                     "You must `pip install smart_open[gcs]` "
                     "to fetch URIs in Google Cloud Storage bucket."
                     + cls._MISSING_DEPENDENCIES_WARNING
+                )
+        elif protocol == "azure":
+            try:
+                import os
+                from azure.storage.blob import BlobServiceClient  # noqa: F401
+                from smart_open import open as open_file
+            except ImportError:
+                raise ImportError(
+                    "You must `pip install azure-storage-blob smart_open[azure]` "
+                    "to fetch URIs in Azure Blob Storage. "
+                    + cls._MISSING_DEPENDENCIES_WARNING
+                )
+
+            # Define authentication variables
+            azure_storage_connection_string = os.getenv(
+                "AZURE_STORAGE_CONNECTION_STRING"
+            )
+            azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT")
+
+            # Connection string authentication
+            if azure_storage_connection_string:
+                tp = {
+                    "client": BlobServiceClient.from_connection_string(
+                        azure_storage_connection_string
+                    )
+                }
+            # Managed Identity authentication
+            elif azure_storage_account_name:
+                try:
+                    from azure.identity import ManagedIdentityCredential
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install azure-identity` "
+                        "to use Azure Managed Identity authentication. "
+                        + cls._MISSING_DEPENDENCIES_WARNING
+                    )
+
+                account_url = (
+                    f"https://{azure_storage_account_name}.blob.core.windows.net/"
+                )
+                tp = {
+                    "client": BlobServiceClient(
+                        account_url=account_url, credential=ManagedIdentityCredential()
+                    )
+                }
+            # No valid authentication method available
+            else:
+                raise ValueError(
+                    "Azure Blob Storage authentication requires either "
+                    "AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT "
+                    "environment variable to be set."
                 )
         else:
             try:

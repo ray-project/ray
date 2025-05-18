@@ -491,6 +491,7 @@ class TestParseUri:
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+            ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
@@ -549,6 +550,11 @@ class TestParseUri:
                 "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
             (
+                "azure://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.AZURE,
+                "azure_fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
                 "file__fake_2022-10-21T13_11_35_00_00_package.zip",
@@ -582,6 +588,11 @@ class TestParseUri:
             (
                 "s3://fake/2022-10-21T13:11:35+00:00/package.whl",
                 Protocol.S3,
+                "package.whl",
+            ),
+            (
+                "azure://fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.AZURE,
                 "package.whl",
             ),
             (
