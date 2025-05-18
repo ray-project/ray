@@ -2415,7 +2415,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, std::string> &labels,
     const std::unordered_map<std::string, std::string> &label_selector,
     const rpc::TensorTransport &tensor_transport) {
-  RAY_LOG(INFO) << "CoreWorker::BuildCommonTaskSpec task_name: " << name << " tensor_transport: " << tensor_transport;
+  RAY_LOG(INFO) << "CoreWorker::BuildCommonTaskSpec task_name: " << name
+                << " tensor_transport: " << tensor_transport;
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2870,7 +2871,8 @@ Status CoreWorker::SubmitActorTask(
 
   // The depth of the actor task is depth of the caller + 1
   // The caller is not necessarily the creator of the actor.
-  RAY_LOG(INFO) << "SubmitActorTask task_name: " << task_name << " tensor_transport: " << task_options.tensor_transport;
+  RAY_LOG(INFO) << "SubmitActorTask task_name: " << task_name
+                << " tensor_transport: " << task_options.tensor_transport;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
