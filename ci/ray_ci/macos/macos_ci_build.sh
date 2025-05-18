@@ -35,6 +35,12 @@ build_x86_64() {
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
+
+  # Remove openssl from the system to avoid conflicts with the one in the build environment.
+  # Brew links openssl to /usr/local/include/openssl, and MacOS's toolchain will always
+  # pick them up.
+  rm -rf /usr/local/include/openssl
+
   ./ci/ci.sh build_wheels_and_jars
   # Test wheels
   ./ci/ci.sh test_wheels
