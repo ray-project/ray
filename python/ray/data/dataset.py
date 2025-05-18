@@ -5245,7 +5245,6 @@ class Dataset:
             pa = None
 
         from ray.data._internal.pandas_block import PandasBlockSchema
-        from ray.util.client.common import ClientObjectRef
         from ray.util.dask import ray_dask_get
 
         dask.config.set(scheduler=ray_dask_get)
