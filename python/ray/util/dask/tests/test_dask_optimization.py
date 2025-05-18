@@ -27,7 +27,7 @@ if Version(dask.__version__) < Version("2025.1") and not DASK_EXPR_INSTALLED:
     )
 
 pytestmark = pytest.mark.skipif(
-    sys.version_info == (3, 9), reason="Skip dask tests for Python version == 3.9"
+    sys.version_info < (3, 12), reason="Skip dask tests for Python version < 3.12"
 )
 pytestmark = pytest.mark.skipif(
     Version(dask.__version__) >= Version("2025.1") or DASK_EXPR_INSTALLED,
