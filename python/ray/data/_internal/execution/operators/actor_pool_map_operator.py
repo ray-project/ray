@@ -479,6 +479,7 @@ class _MapWorker:
         # Delete it to trigger `UDF.__del__`.
         # del ray.data._map_actor_context
         # ray.data._map_actor_context = None
+        pass
 
 
 @dataclass
