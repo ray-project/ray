@@ -270,6 +270,31 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
+class FIFOMixin:
+    """Mixin for FIFO scheduling.
+    This mixin is used to schedule requests in FIFO order and only respecting
+    the multiplexed model id. ReplicaScheduler's default behavior is
+    out-of-order scheduling and match expectly the internal request id of
+    the request.
+    """
+
+    @property
+    def fifo_scheduling(self) -> bool:
+        return True
+
+    @staticmethod
+    def pending_request_matched(
+        pending_request: PendingRequest, request_metadata: RequestMetadata
+    ) -> bool:
+        """Check if the pending request matches on the multiplex model id to
+        achieve FIFO scheduling."""
+        return (
+            not pending_request.future.done()
+            and pending_request.metadata.multiplexed_model_id
+            == request_metadata.multiplexed_model_id
+        )
+
+
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
@@ -330,9 +355,7 @@ class ReplicaScheduler(ABC):
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
-        # requests in FIFO order by scheduling tasks once they've acquired a replica.
-        # To avoid long tail latencies due to backoff, the scheduling task started by
-        # a given request may not be the one to fulfill it.
+        # requests in out of order by scheduling tasks once they've acquired a replica.
         # - self._pending_requests_to_schedule is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for scheduling tasks to know which multiplexed model IDs they
@@ -660,19 +683,31 @@ class ReplicaScheduler(ABC):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
+    @property
+    def fifo_scheduling(self) -> bool:
+        return False
+
+    @staticmethod
+    def pending_request_matched(
+        pending_request: PendingRequest, request_metadata: RequestMetadata
+    ) -> bool:
+        """Check if the pending request matches exactly on the internal
+        request id."""
+        return (
+            not pending_request.future.done()
+            and pending_request.metadata.internal_request_id
+            == request_metadata.internal_request_id
+        )
+
     def _get_pending_request_matching_metadata(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
+        if request_metadata is None:
             return None
 
         for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
+            if self.pending_request_matched(pr, request_metadata):
                 return pr
 
         return None
@@ -682,19 +717,23 @@ class ReplicaScheduler(ABC):
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending request in FIFO order.
+        """Assign the replica to the next pending request in out of order.
 
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # First try to match a pending request based on the request metadata (currently
-        # this only looks at the multiplexed model ID).
+        # First try to match a pending request based on the request metadata.
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
+            return
+
+        # If FIFO scheduling is not enabled, early return as there is no
+        # matching request for this replica.
+        if not self.fifo_scheduling:
             return
 
         # If no pending request matches the request metadata, fulfill the next in the
@@ -869,9 +908,6 @@ class ReplicaScheduler(ABC):
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
         """Chooses a replica to send the provided request to.
-
-        By default, requests are scheduled in FIFO order, so this places a future on the
-        back of an internal queue that will be popped when a replica is available.
 
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
