@@ -389,11 +389,8 @@ class TestLLMServer:
         # Mock the engine's check_health method
         server.engine.check_health = AsyncMock(return_value=True)
 
-        # Perform the health check
-        health_status = await server.check_health()
-
-        # Verify the health status
-        assert health_status is True
+        # Perform the health check, no exceptions should be raised
+        await server.check_health()
         server.engine.check_health.assert_called_once()
 
     @pytest.mark.asyncio
