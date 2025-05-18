@@ -11,6 +11,7 @@ def test_chat_template_with_vllm():
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
         engine_kwargs=dict(
+            distributed_executor_backend="ray",
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
@@ -131,6 +132,7 @@ def test_vllm_llama_lora():
         model_source=model_source,
         dynamic_lora_loading_path=lora_path,
         engine_kwargs=dict(
+            distributed_executor_backend="ray",
             max_model_len=4096,
             enable_chunked_prefill=True,
             enable_lora=True,
