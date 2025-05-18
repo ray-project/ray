@@ -160,8 +160,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Delete(const std::vector<ObjectID> &object_ids);
 
-  Status Evict(int64_t num_bytes, int64_t &num_bytes_evicted);
-
   Status Disconnect();
 
   std::string DebugString();
@@ -863,17 +861,6 @@ Status PlasmaClient::Impl::Delete(const std::vector<ObjectID> &object_ids) {
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  // Send a request to the store to evict objects.
-  RAY_RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
-  // Wait for a response with the number of bytes actually evicted.
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaEvictReply, &buffer));
-  return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
-}
-
 Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
                                    const std::string &manager_socket_name,
                                    int release_delay,
@@ -926,8 +913,6 @@ std::string PlasmaClient::Impl::DebugString() {
 // PlasmaClient
 
 PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
-
-PlasmaClient::~PlasmaClient() {}
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
@@ -1016,16 +1001,8 @@ Status PlasmaClient::Abort(const ObjectID &object_id) { return impl_->Abort(obje
 
 Status PlasmaClient::Seal(const ObjectID &object_id) { return impl_->Seal(object_id); }
 
-Status PlasmaClient::Delete(const ObjectID &object_id) {
-  return impl_->Delete(std::vector<ObjectID>{object_id});
-}
-
 Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
   return impl_->Delete(object_ids);
-}
-
-Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
-  return impl_->Evict(num_bytes, num_bytes_evicted);
 }
 
 Status PlasmaClient::Disconnect() { return impl_->Disconnect(); }

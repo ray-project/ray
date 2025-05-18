@@ -37,7 +37,7 @@ class MockObjectManager : public ObjectManagerInterface {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority prio,
-                const TaskMetricsKey &task_key) {
+                const TaskMetricsKey &task_key) override {
     if (prio == BundlePriority::GET_REQUEST) {
       active_get_requests.insert(req_id);
     } else if (prio == BundlePriority::WAIT_REQUEST) {
@@ -48,21 +48,40 @@ class MockObjectManager : public ObjectManagerInterface {
     return req_id++;
   }
 
-  void CancelPull(uint64_t request_id) {
+  void CancelPull(uint64_t request_id) override {
     ASSERT_TRUE(active_get_requests.erase(request_id) ||
                 active_wait_requests.erase(request_id) ||
                 active_task_requests.erase(request_id));
   }
 
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const override {
     return active_get_requests.count(request_id) ||
            active_wait_requests.count(request_id) ||
            active_task_requests.count(request_id);
   }
 
-  int64_t PullManagerNumInactivePullsByTaskName(const TaskMetricsKey &task_key) const {
+  int64_t PullManagerNumInactivePullsByTaskName(
+      const TaskMetricsKey &task_key) const override {
     return 0;
   }
+
+  MOCK_METHOD(int, GetServerPort, (), (const, override));
+  MOCK_METHOD(void,
+              FreeObjects,
+              (const std::vector<ObjectID> &object_ids, bool local_only),
+              (override));
+  MOCK_METHOD(bool, IsPlasmaObjectSpillable, (const ObjectID &object_id), (override));
+  MOCK_METHOD(int64_t, GetUsedMemory, (), (const, override));
+  MOCK_METHOD(bool, PullManagerHasPullsQueued, (), (const, override));
+  MOCK_METHOD(int64_t, GetMemoryCapacity, (), (const, override));
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
+  MOCK_METHOD(void,
+              FillObjectStoreStats,
+              (rpc::GetNodeStatsReply * reply),
+              (const, override));
+  MOCK_METHOD(double, GetUsedMemoryPercentage, (), (const, override));
+  MOCK_METHOD(void, Stop, (), (override));
+  MOCK_METHOD(void, RecordMetrics, (), (override));
 
   uint64_t req_id = 1;
   std::unordered_set<uint64_t> active_get_requests;

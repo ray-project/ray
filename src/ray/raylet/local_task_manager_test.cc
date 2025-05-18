@@ -177,7 +177,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
 class MockObjectManager : public ObjectManagerInterface {
  public:
-  MockObjectManager() {}
+  MockObjectManager() = default;
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority priority,
                 const TaskMetricsKey &metrics_key) override {
@@ -191,6 +191,23 @@ class MockObjectManager : public ObjectManagerInterface {
       const TaskMetricsKey &metrics_key) const override {
     return 0;
   }
+  MOCK_METHOD(int, GetServerPort, (), (const, override));
+  MOCK_METHOD(void,
+              FreeObjects,
+              (const std::vector<ObjectID> &object_ids, bool local_only),
+              (override));
+  MOCK_METHOD(bool, IsPlasmaObjectSpillable, (const ObjectID &object_id), (override));
+  MOCK_METHOD(int64_t, GetUsedMemory, (), (const, override));
+  MOCK_METHOD(bool, PullManagerHasPullsQueued, (), (const, override));
+  MOCK_METHOD(int64_t, GetMemoryCapacity, (), (const, override));
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
+  MOCK_METHOD(void,
+              FillObjectStoreStats,
+              (rpc::GetNodeStatsReply * reply),
+              (const, override));
+  MOCK_METHOD(double, GetUsedMemoryPercentage, (), (const, override));
+  MOCK_METHOD(void, Stop, (), (override));
+  MOCK_METHOD(void, RecordMetrics, (), (override));
 };
 
 class LocalTaskManagerTest : public ::testing::Test {

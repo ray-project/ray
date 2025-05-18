@@ -764,7 +764,6 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
