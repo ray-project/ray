@@ -6,10 +6,6 @@ import pytest
 import ray
 from ray.util.dask import ray_dask_get, RayDaskCallback
 
-pytestmark = pytest.mark.skipif(
-    sys.version_info < (3, 12), reason="Skip dask tests for Python version < 3.12"
-)
-
 
 @pytest.fixture
 def ray_start_1_cpu():
