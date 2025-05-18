@@ -12,7 +12,7 @@ from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
 )
 from ray.serve._private.replica_scheduler.replica_scheduler import (
-    LocalityScope,
+    LocalityScheduleMixin,
     MultiplexScheduleMixin,
     ReplicaScheduler,
 )
@@ -23,7 +23,9 @@ from ray.serve._private.replica_scheduler.replica_wrapper import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler):
+class PowerOfTwoChoicesReplicaScheduler(
+    LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler
+):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
     Requests are scheduled in FIFO order.
@@ -53,6 +55,7 @@ class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler
     ) -> List[List[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
          (at most) two random available replicas.
+
         For multiplexing, this will first attempt to choose replicas that have the
         requested model ID for a configured timeout. If no replicas with the matching
         model ID are available after that timeout, it will fall back to the regular
@@ -66,36 +69,11 @@ class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler
             candidate_replica_ids = self.apply_multiplex_scheduling(
                 pending_request=pending_request,
             )
-        elif (
-            pending_request is not None
-            and self._prefer_local_node_routing
-            and not pending_request.scheduling_context.tried_same_node
-            and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
-        ):
-            # Attempt to schedule requests to replicas on the
-            # same node at most once
-            candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            pending_request.scheduling_context.tried_same_node = True
-            pending_request.scheduling_context.should_backoff = False
-        elif (
-            pending_request is not None
-            and self._prefer_local_az_routing
-            and not pending_request.scheduling_context.tried_same_az
-            and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
-        ):
-            # Attempt to schedule requests to replicas in the same
-            # AZ at most once
-            candidate_replica_ids = self._colocated_replica_ids[
-                LocalityScope.AVAILABILITY_ZONE
-            ]
-            pending_request.scheduling_context.tried_same_az = True
-            pending_request.scheduling_context.should_backoff = False
         else:
-            # On subsequent iterations or when there are no replicas on the same
-            # node or AZ, consider all available replicas.
-            candidate_replica_ids = self._replica_id_set
-            if pending_request is not None:
-                pending_request.scheduling_context.should_backoff = True
+            # Get candidates for locality preference.
+            candidate_replica_ids = self.apply_locality_scheduling(
+                pending_request=pending_request,
+            )
 
         if not candidate_replica_ids:
             return []
