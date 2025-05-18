@@ -54,18 +54,6 @@ reload_env() {
   fi
 }
 
-_need_wheels() {
-  local result="false"
-  case "${OSTYPE}" in
-    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
-  esac
-  echo "${result}"
-}
-
-NEED_WHEELS="$(_need_wheels)"
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -402,11 +390,6 @@ init() {
 }
 
 build() {
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels_and_jars
-    return
-  fi
-
   # Build and install ray into the system.
   # For building the wheel, see build_wheels_and_jars.
   _bazel_build_before_install

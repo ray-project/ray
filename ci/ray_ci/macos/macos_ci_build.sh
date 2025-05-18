@@ -30,13 +30,12 @@ build_x86_64() {
   java -version
   # Build wheels
   export UPLOAD_WHEELS_AS_ARTIFACTS=1
-  export MAC_WHEELS=1
   export MAC_JARS=1
   export RAY_INSTALL_JAVA=1
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build
+  ./ci/ci.sh build_wheels_and_jars
   # Test wheels
   ./ci/ci.sh test_wheels
   # Build jars
@@ -70,14 +69,13 @@ build_aarch64() {
   java -version
   # Build wheels
   export UPLOAD_WHEELS_AS_ARTIFACTS=1
-  export MAC_WHEELS=1
   export MAC_JARS=1
   export RAY_INSTALL_JAVA=1
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   export MINIMAL_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build
+  ./ci/ci.sh build_wheels_and_jars
   # Test wheels
   ./ci/ci.sh test_wheels
   # Build jars
