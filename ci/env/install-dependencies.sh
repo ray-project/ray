@@ -218,6 +218,8 @@ install_pip_packages() {
   # shellcheck disable=SC2262
   alias pip="python -m pip"
 
+  pip install "pip>=25.0"
+
   # Array to hold all requirements files to install later
   requirements_files=()
   # Single packages to install in sync with files
@@ -367,7 +369,7 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" && "${OSTYPE}" != "msys" ]]; then
+  if [[ "${OSTYPE}" != "msys" ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
