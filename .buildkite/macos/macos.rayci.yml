@@ -15,7 +15,7 @@ steps:
     job_env: MACOS
     instance_type: macos
     commands:
-      - ./ci/ray_ci/macos/macos_ci_build.sh build_x86_64
+      - bash ci/ray_ci/macos/macos_ci_build.sh
     depends_on: []
 
   - label: ":tapioca: build: :mac: wheels and jars (aarch64)"
@@ -27,7 +27,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - ./ci/ray_ci/macos/macos_ci_build.sh build_aarch64
+      - MINIMAL_INSTALL=1 bash ci/ray_ci/macos/macos_ci_build.sh
     depends_on: []
 
   # test
