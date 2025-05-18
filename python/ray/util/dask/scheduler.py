@@ -455,6 +455,8 @@ def dask_task_wrapper(
             for cb in ray_pretask_cbs
         ]
     (repacked_deps,) = repack(arg_object_refs)
+    # De-reference the top-level arguments.
+    task.args = [ray.get(x) if isinstance(x, ray.ObjectRef) else x for x in task.args]
     result = task(repacked_deps)
 
     if ray_posttask_cbs is not None:

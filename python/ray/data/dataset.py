@@ -5245,14 +5245,20 @@ class Dataset:
             pa = None
 
         from ray.data._internal.pandas_block import PandasBlockSchema
+        from ray.util.client.common import ClientObjectRef
         from ray.util.dask import ray_dask_get
 
         dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
         def block_to_df(block_ref: ObjectRef[Block]) -> pd.DataFrame:
-            block = ray.get(block_ref)
-            return _block_to_df(block)
+            if isinstance(block_ref, (ray.ObjectRef, ClientObjectRef)):
+                raise ValueError(
+                    "Dataset.to_dask() must be used with Dask-on-Ray, please "
+                    "set the Dask scheduler to ray_dask_get (located in "
+                    "ray.util.dask)."
+                )
+            return _block_to_df(block_ref)
 
         if meta is None:
             from ray.data.extensions import TensorDtype
