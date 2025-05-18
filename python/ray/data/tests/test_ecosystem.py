@@ -30,6 +30,11 @@ def test_from_dask(ray_start_regular_shared):
 
 @pytest.mark.parametrize("ds_format", ["pandas", "arrow"])
 def test_to_dask(ray_start_regular_shared, ds_format):
+    # Since 2023.7.1, Dask DataFrame automatically converts text data using object data types to string[pyarrow]
+    # For the purpose of this test, we need to disable this behavior.
+    import dask
+    dask.config.set({"dataframe.convert-string": False})
+
     from ray.util.dask import ray_dask_get
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
