@@ -571,7 +571,7 @@ message TaskSpec {
   // The key-value label constraints of the node to schedule this task or actor on.
   map<string, string> label_selector = 43;
   // The tensor transport type for this task.
-  string tensor_transport = 44;
+  TensorTransport tensor_transport = 44;
 }
 
 message TaskInfoEntry {
@@ -690,6 +690,15 @@ message ObjectReferenceCount {
   // The object IDs that this object contains, if any. This is used for nested
   // object IDs.
   repeated bytes contains = 6;
+}
+
+enum TensorTransport {
+  // Use the default object store for tensor transport.
+  NONE = 0;
+  // Use NCCL for tensor transport.
+  NCCL = 1;
+  // Use GLOO for tensor transport.
+  GLOO = 2;
 }
 
 // Argument in the task.

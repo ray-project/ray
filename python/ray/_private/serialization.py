@@ -570,7 +570,11 @@ class SerializationContext:
 
             ctx = ChannelContext.get_current().serialization_context
             prev_use_external_transport = ctx.use_external_transport
-            if tensor_transport in ["nccl", "gloo"]:
+            print(f"serialize tensor_transport: {tensor_transport}")
+            if tensor_transport is not None and tensor_transport.lower() in [
+                "nccl",
+                "gloo",
+            ]:
                 ctx.set_use_external_transport(True)
 
             try:

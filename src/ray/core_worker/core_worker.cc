@@ -2414,7 +2414,8 @@ void CoreWorker::BuildCommonTaskSpec(
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     const std::unordered_map<std::string, std::string> &label_selector,
-    const std::string &tensor_transport) {
+    const rpc::TensorTransport &tensor_transport) {
+  RAY_LOG(INFO) << "CoreWorker::BuildCommonTaskSpec task_name: " << name << " tensor_transport: " << tensor_transport;
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2869,6 +2870,7 @@ Status CoreWorker::SubmitActorTask(
 
   // The depth of the actor task is depth of the caller + 1
   // The caller is not necessarily the creator of the actor.
+  RAY_LOG(INFO) << "SubmitActorTask task_name: " << task_name << " tensor_transport: " << task_options.tensor_transport;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
@@ -3373,6 +3375,9 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
+
+  rpc::TensorTransport tensor_transport = task_spec.TensorTransport();
+  std::string tensor_transport_str = rpc::TensorTransport_Name(tensor_transport);
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -3396,7 +3401,7 @@ Status CoreWorker::ExecuteTask(
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
-      /*tensor_transport=*/task_spec.TensorTransport());
+      /*tensor_transport=*/tensor_transport_str);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

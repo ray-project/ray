@@ -24,7 +24,7 @@ class GPUTestActor:
             backend="gloo", world_size=world_size, rank=rank, init_method=init_method
         )
 
-    @ray.method(tensor_transport="gloo")
+    @ray.method(tensor_transport="GLOO")
     def echo(self, data):
         return data
 

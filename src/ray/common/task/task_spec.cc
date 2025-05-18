@@ -487,12 +487,11 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
-const std::string &TaskSpecification::TensorTransport() const {
-  static const std::string empty_string = "";
+const rpc::TensorTransport TaskSpecification::TensorTransport() const {
   if (IsActorTask()) {
     return message_->tensor_transport();
   }
-  return empty_string;
+  return rpc::TensorTransport::NONE;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {

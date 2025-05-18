@@ -519,7 +519,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskAttempt GetTaskAttempt() const;
 
-  const std::string &TensorTransport() const;
+  const rpc::TensorTransport TensorTransport() const;
 
  private:
   void ComputeResources();

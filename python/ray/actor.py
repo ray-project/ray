@@ -202,7 +202,7 @@ class ActorMethod:
         # Validate and set the tensor transport protocol
         if (
             tensor_transport is not None
-            and tensor_transport not in self.valid_transports
+            and tensor_transport.lower() not in self.valid_transports
         ):
             raise ValueError(
                 f"tensor_transport must be one of {self.valid_transports} or None"
@@ -368,7 +368,10 @@ class ActorMethod:
             )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
-        assert tensor_transport is None or tensor_transport in self.valid_transports
+        assert (
+            tensor_transport is None
+            or tensor_transport.lower() in self.valid_transports
+        )
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
@@ -455,6 +458,7 @@ class ActorMethod:
 
         obj_ref = invocation(args, kwargs)
         if tensor_transport is not None:
+            print(f"_remote tensor_transport: {tensor_transport}")
             assert num_returns == 1
 
             def get_tensor_sizes(self, obj_id):
@@ -1632,6 +1636,9 @@ class ActorHandle:
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
 
+        print(
+            f"_actor_method_call submit_actor_task tensor_transport: {tensor_transport}"
+        )
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,

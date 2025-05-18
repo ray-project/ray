@@ -83,8 +83,14 @@ struct TaskOptions {
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        label_selector(std::move(label_selector_p)),
-        tensor_transport(std::move(tensor_transport_p)) {}
+        label_selector(std::move(label_selector_p)) {
+    // TODO: If tensor_transport_p is lower case, `TensorTransport_Parse` will fail.
+    tensor_transport = rpc::TensorTransport::NONE;
+    if (tensor_transport_p != "") {
+      RAY_CHECK(rpc::TensorTransport_Parse(tensor_transport_p, &tensor_transport));
+    }
+    RAY_LOG(INFO) << "TaskOptions tensor_transport: " << tensor_transport << " tensor_transport_p: " << tensor_transport_p;
+  }
 
   /// The name of this task.
   std::string name;
@@ -108,7 +114,7 @@ struct TaskOptions {
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
   std::unordered_map<std::string, std::string> label_selector;
-  std::string tensor_transport;
+  rpc::TensorTransport tensor_transport;
 };
 
 /// Options for actor creation tasks.

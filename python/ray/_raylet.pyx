@@ -1752,6 +1752,7 @@ cdef void execute_task(
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
         c_string c_tensor_transport) except *:
+    print(f"execute_task task_name: {task_name}")
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
