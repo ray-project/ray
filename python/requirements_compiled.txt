@@ -378,7 +378,7 @@ cython==0.29.37
     # via
     #   -r python/requirements/test-requirements.txt
     #   gpy
-dask==2024.12.1 ; python_version < "3.12"
+dask==2024.12.1 ; python_version > "3.9" and python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -423,7 +423,7 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2024.12.1 ; python_version < "3.12"
+distributed==2024.12.1 ; python_version > "3.9" and python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
 distro==1.9.0
     # via azure-cli-core

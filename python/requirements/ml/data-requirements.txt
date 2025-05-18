@@ -2,8 +2,11 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 getdaft==0.4.3
-dask[array]==2024.12.1; python_version < '3.12'
-distributed==2024.12.1; python_version < '3.12'
+dask[complete]==2024.8.0; python_version == '3.9'
+distributed==2024.8.0; python_version == '3.9'
+# Use [array] extra not to depend on dask-expr, which requires pandas>=2
+dask[array]==2024.12.1; python_version > '3.9' and python_version<'3.12'
+distributed==2024.12.1; python_version > '3.9' and python_version<'3.12'
 dask[complete]==2025.5.0; python_version >= '3.12'
 distributed==2025.5.0; python_version >= '3.12'
 aioboto3==11.2.0
