@@ -39,7 +39,7 @@ build() {
   # Remove openssl from the system to avoid conflicts with the one in the build environment.
   # Brew links openssl to /usr/local/include/openssl, and MacOS's toolchain will always
   # pick them up.
-  if [[ -d /usr/local/include/openssl ]]; then
+  if [[ -d /usr/local/include ]]; then
     rm -rf /usr/local/include/*
   fi
 
