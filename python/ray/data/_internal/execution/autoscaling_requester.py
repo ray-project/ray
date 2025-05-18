@@ -78,6 +78,10 @@ class AutoscalingRequester:
         for _, (r, _) in self._resource_requests.items():
             req.extend(r)
 
+        # Need to carray custom resource requests for CPU to the autoscaler.
+        # e.g.
+        # req=[{'CPU': 1, 'cpu_node': 0.0001}, {'CPU': 1, 'cpu_node': 0.0001}]
+        # get_grouped_cpu_crd = {"{'CPU': 1, 'cpu_worker_node': 0.0001}": 2}
         def get_grouped_cpu_crd(req):
             grouped_cpu_crd = {}
             for r in req:
