@@ -198,7 +198,7 @@ def monitor_events(
                     monitor_thread_pool_executor, _read_monitor_file, filename, 0
                 )
 
-        # Read files that aren't zipped.
+        # Read files.
         await asyncio.gather(
             *[
                 _concurrent_coro(filename)
