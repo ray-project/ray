@@ -1,5 +1,6 @@
 import os
 import signal
+import sys
 from typing import List
 
 import pytest
