@@ -40,7 +40,7 @@ class Stats:
         self,
         init_values: Optional[Any] = None,
         reduce: Optional[str] = "mean",
-        reduce_per_index_on_merge: Optional[bool] = None,
+        reduce_per_index_on_parallel_merge: Optional[bool] = None,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -70,7 +70,7 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
-            reduce_per_index_on_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -134,12 +134,17 @@ class Stats:
         self._window = window
         self._ema_coeff = ema_coeff
 
-        if self._reduce_method != "mean" and reduce_per_index_on_merge:
+        if (
+            self._reduce_method not in ["mean", "sum", "min", "max"]
+            and reduce_per_index_on_parallel_merge
+        ):
             raise ValueError(
-                "reduce_per_index_on_merge is only supported for mean reduction!"
+                "reduce_per_index_on_parallel_merge is only supported for mean, sum, min, and max reduction!"
             )
 
-        self._reduce_per_index_on_merge = reduce_per_index_on_merge or False
+        self._reduce_per_index_on_parallel_merge = (
+            reduce_per_index_on_parallel_merge or False
+        )
 
         # Timing functionality (keep start times per thread).
         self._start_times = defaultdict(lambda: None)
@@ -459,15 +464,20 @@ class Stats:
             # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
             # TODO (sven) : explain why all this
 
-            if self._reduce_per_index_on_merge:
+            if self._reduce_per_index_on_parallel_merge:
                 n_values = 1
             else:
                 n_values = len(tmp_values)
 
             if self._ema_coeff is not None:
                 new_values.extend([np.nanmean(tmp_values)] * n_values)
-            elif self._reduce_method in [None, "sum"]:
+            elif self._reduce_method is None:
                 new_values.extend(tmp_values)
+            elif self._reduce_method == "sum":
+                # We add [sum(tmp_values) / n_values] * n_values to the new values list
+                # Instead of tmp_values, because every incoming element should have the same weight
+                reduced_value = self._reduced_values(values=tmp_values)[0][0] / n_values
+                new_values.extend([reduced_value] * n_values)
             else:
                 new_values.extend(self._reduced_values(values=tmp_values)[0] * n_values)
 

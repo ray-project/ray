@@ -184,7 +184,7 @@ def test_reduce_with_clear():
     check(len(stats), 0)  # Stats should be cleared
 
 
-def test_merge_on_time_axis():
+def test_basic_merge_on_time_axis():
     """Test merging stats on time axis."""
     stats1 = Stats(
         init_values=None,
@@ -214,7 +214,7 @@ def test_merge_on_time_axis():
     check(stats1.peek(), 10)  # sum of [1, 2, 3, 4]
 
 
-def test_merge_in_parallel():
+def test_basic_merge_in_parallel():
     """Test merging stats in parallel."""
     window_size = 3
 
@@ -429,45 +429,277 @@ def test_basic_throughput():
     )  # default EMA coefficient for throughput is 0.01
 
 
-def test_reduce_per_index_on_merge():
-    stats_default = Stats(reduce="mean", window=3, reduce_per_index_on_merge=False)
-    stats1 = Stats(reduce="mean", window=3)
-    stats1.push(10)
-    stats1.push(20)
-    stats1.push(30)
+@pytest.mark.parametrize(
+    "reduce_method,"
+    "reduce_per_index,"
+    "clear_on_reduce,"
+    "expected_first_round_values,"
+    "expected_first_round_peek,"
+    "expected_second_round_values,"
+    "expected_second_round_peek,"
+    "expected_third_round_values,"
+    "expected_third_round_peek",
+    [
+        (
+            "mean",  # reduce_method
+            True,  # reduce_per_index
+            True,  # clear_on_reduce
+            [55, 110, 165],  # expected_first_round_values
+            (55 + 110 + 165) / 3,  # expected_first_round_peek
+            [220, 275, 330],  # expected_second_round_values
+            (220 + 275 + 330) / 3,  # expected_second_round_peek
+            [275, 330, 385],  # expected_third_round_values
+            (275 + 330 + 385) / 3,  # expected_third_round_peek
+        ),
+        (
+            "mean",  # reduce_method
+            True,  # reduce_per_index
+            False,  # clear_on_reduce
+            [55, 110, 165],  # expected_first_round_values
+            (55 + 110 + 165) / 3,  # expected_first_round_peek
+            [220, 275, 330],  # expected_second_round_values
+            (220 + 275 + 330) / 3,  # expected_second_round_peek
+            [387.5, 465.0, 385.0],  # expected_third_round_values
+            (387.5 + 465.0 + 385.0) / 3,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            True,  # reduce_per_index
+            True,  # clear_on_reduce
+            [110, 220, 330],  # expected_first_round_values
+            110 + 220 + 330,  # expected_first_round_peek
+            [440, 550, 660],  # expected_second_round_values
+            440 + 550 + 660,  # expected_second_round_peek
+            [550, 660, 770],  # expected_third_round_values
+            550 + 660 + 770,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            True,  # reduce_per_index
+            False,  # clear_on_reduce
+            [110, 220, 330],  # expected_first_round_values
+            110 + 220 + 330,  # expected_first_round_peek
+            [440, 550, 660],  # expected_second_round_values
+            440 + 550 + 660,  # expected_second_round_peek
+            [1050.0, 1260.0, 770.0],  # expected_third_round_values
+            1050.0 + 1260.0 + 770.0,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            True,  # reduce_per_index
+            True,  # clear_on_reduce
+            [10, 20, 30],  # expected_first_round_values
+            10,  # expected_first_round_peek
+            [40, 50, 60],  # expected_second_round_values
+            40,  # expected_second_round_peek
+            [50, 60, 70],  # expected_third_round_values
+            50,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            True,  # reduce_per_index
+            False,  # clear_on_reduce
+            [10, 20, 30],  # expected_first_round_values
+            10,  # expected_first_round_peek
+            [40, 50, 60],  # expected_second_round_values
+            40,  # expected_second_round_peek
+            [50, 60, 70],  # expected_third_round_values
+            50,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            True,  # reduce_per_index
+            True,  # clear_on_reduce
+            [100, 200, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [400, 500, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [500, 600, 700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            True,  # reduce_per_index
+            False,  # clear_on_reduce
+            [100, 200, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [400, 500, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [500, 600, 700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "mean",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            [110, 165, 165],  # expected_first_round_values
+            (110 + 165 + 165) / 3,  # expected_first_round_peek
+            [275, 330, 330],  # expected_second_round_values
+            (275 + 330 + 330) / 3,  # expected_second_round_peek
+            [330.0, 385.0, 385.0],  # expected_third_round_values
+            (330.0 + 385.0 + 385.0) / 3,  # expected_third_round_peek
+        ),
+        (
+            "mean",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            [110, 165, 165],  # expected_first_round_values
+            (110 + 165 + 165) / 3,  # expected_first_round_peek
+            [275, 330, 330],  # expected_second_round_values
+            (275 + 330 + 330) / 3,  # expected_second_round_peek
+            [465.0, 385.0, 385.0],  # expected_third_round_values
+            (465.0 + 385.0 + 385.0) / 3,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            [110, 165, 165],  # expected_first_round_values
+            110 + 165 + 165,  # expected_first_round_peek
+            [275, 330, 330],  # expected_second_round_values
+            275 + 330 + 330,  # expected_second_round_peek
+            [330.0, 385.0, 385.0],  # expected_third_round_values
+            330.0 + 385.0 + 385.0,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            [110, 165, 165],  # expected_first_round_values
+            110 + 165 + 165,  # expected_first_round_peek
+            [275, 330, 330],  # expected_second_round_values
+            275 + 330 + 330,  # expected_second_round_peek
+            [465.0, 385.0, 385.0],  # expected_third_round_values
+            465.0 + 385.0 + 385.0,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            [20, 30, 30],  # expected_first_round_values
+            20,  # expected_first_round_peek
+            [50, 60, 60],  # expected_second_round_values
+            50,  # expected_second_round_peek
+            [60, 70, 70],  # expected_third_round_values
+            60,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            [20, 30, 30],  # expected_first_round_values
+            20,  # expected_first_round_peek
+            [50, 60, 60],  # expected_second_round_values
+            50,  # expected_second_round_peek
+            [60, 70, 70],  # expected_third_round_values
+            60,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            [200, 300, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [500, 600, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [600, 700, 700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            [200, 300, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [500, 600, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [600, 700, 700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+    ],
+)
+def test_merging_multiples_rounds(
+    reduce_method,
+    reduce_per_index,
+    clear_on_reduce,
+    expected_first_round_values,
+    expected_first_round_peek,
+    expected_second_round_values,
+    expected_second_round_peek,
+    expected_third_round_values,
+    expected_third_round_peek,
+):
+    """Test reduce_per_index_on_parallel_merge with different reduction methods and clear_on_reduce setting."""
+    result_stats = Stats(
+        reduce=reduce_method,
+        window=3,
+        reduce_per_index_on_parallel_merge=reduce_per_index,
+        clear_on_reduce=clear_on_reduce,
+    )
 
-    stats2 = Stats(reduce="mean", window=3)
-    stats2.push(100)
-    stats2.push(200)
-    stats2.push(300)
+    # First round: Create and fill two stats objects
+    incoming_stats1 = Stats(
+        reduce=reduce_method,
+        window=3,
+        clear_on_reduce=clear_on_reduce,
+        reduce_per_index_on_parallel_merge=reduce_per_index,
+    )
+    incoming_stats1.push(10)
+    incoming_stats1.push(20)
+    incoming_stats1.push(30)
 
-    stats_default.merge_in_parallel(stats1, stats2)
-    # Default behavior repeats the mean at each index:
-    # Last index: mean([30, 300]) = 165 -> [165, 165]
-    # Second to last: mean([20, 200]) = 110 -> [165, 165, 110, 110]
-    # Take only last 3: [110, 165, 165]
-    check(stats_default.values, [110, 165, 165])
-    check(stats_default.peek(), (110 + 165 + 165) / 3)
+    incoming_stats2 = Stats(
+        reduce=reduce_method,
+        window=3,
+        clear_on_reduce=clear_on_reduce,
+        reduce_per_index_on_parallel_merge=reduce_per_index,
+    )
+    incoming_stats2.push(100)
+    incoming_stats2.push(200)
+    incoming_stats2.push(300)
 
-    stats_per_index = Stats(reduce="mean", window=3, reduce_per_index_on_merge=True)
-    stats1 = Stats(reduce="mean", window=3)
-    stats1.push(10)
-    stats1.push(20)
-    stats1.push(30)
+    # First merge
+    incoming_stats1.merge_in_parallel(incoming_stats2)
+    result_stats.merge_on_time_axis(incoming_stats1)
 
-    stats2 = Stats(reduce="mean", window=3)
-    stats2.push(100)
-    stats2.push(200)
-    stats2.push(300)
+    # Verify first merge results
+    check(result_stats.values, expected_first_round_values)
+    check(result_stats.peek(), expected_first_round_peek)
 
-    stats_per_index.merge_in_parallel(stats1, stats2)
-    # Per-index behavior:
-    # Last index: mean([30, 300]) = 165 -> [165]
-    # Second to last: mean([20, 200]) = 110 -> [165, 110]
-    # First index: mean([10, 100]) = 55 -> [165, 110, 55]
-    # Reversed: [55, 110, 165]
-    check(stats_per_index.values, [55, 110, 165])
-    check(stats_per_index.peek(), (55 + 110 + 165) / 3)
+    result_stats.reduce()
+
+    # Second round: Add more values to original stats
+    incoming_stats1.push(40)
+    incoming_stats1.push(50)
+    incoming_stats1.push(60)
+
+    incoming_stats2.push(400)
+    incoming_stats2.push(500)
+    incoming_stats2.push(600)
+
+    # Second merge
+    incoming_stats1.merge_in_parallel(incoming_stats2)
+    result_stats.merge_on_time_axis(incoming_stats1)
+
+    # Verify second merge results
+    check(result_stats.values, expected_second_round_values)
+    check(result_stats.peek(), expected_second_round_peek)
+
+    result_stats.reduce()
+
+    # Third round: Add values to one stats object, maybe clear the other one
+    incoming_stats1.push(70)
+
+    incoming_stats2.reduce()  # Maybe clear incoming_stats2
+    incoming_stats2.push(700)
+
+    # Third merge
+    incoming_stats1.merge_in_parallel(incoming_stats2)
+    result_stats.merge_on_time_axis(incoming_stats1)
+
+    # Verify third merge results
+    check(result_stats.values, expected_third_round_values)
+    check(result_stats.peek(), expected_third_round_peek)
 
 
 if __name__ == "__main__":

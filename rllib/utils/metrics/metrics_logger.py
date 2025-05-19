@@ -264,6 +264,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
+        reduce_per_index_on_parallel_merge: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -368,6 +369,12 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
+            reduce_per_index_on_parallel_merge: If True, when merging Stats objects in parallel, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -399,6 +406,7 @@ class MetricsLogger:
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
                             throughput_ema_coeff=throughput_ema_coeff,
+                            reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
                         )
                     ),
                 )
@@ -440,6 +448,16 @@ class MetricsLogger:
                         f"but got argument window={window} while the existing Stats object {key} "
                         f"has window={stats._window}."
                     )
+                if (
+                    reduce_per_index_on_parallel_merge
+                    != stats._reduce_per_index_on_parallel_merge
+                    and log_once(f"reduce_per_index_on_parallel_merge_warning_{key}")
+                ):
+                    logger.warning(
+                        f"reduce_per_index_on_parallel_merge should be the same for all logged values under the same key, "
+                        f"but got argument reduce_per_index_on_parallel_merge={reduce_per_index_on_parallel_merge} while the existing Stats object {key} "
+                        f"has reduce_per_index_on_parallel_merge={stats._reduce_per_index_on_parallel_merge}."
+                    )
                 if isinstance(value, Stats):
                     # If value itself is a `Stats`, we merge it on time axis into self's
                     # `Stats`.
@@ -459,6 +477,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
+        reduce_per_index_on_parallel_merge: bool = False,
     ) -> None:
         """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
 
@@ -542,6 +561,12 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
+            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
         """
         assert isinstance(
             stats_dict, dict
@@ -561,6 +586,7 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
+                reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
             )
 
         with self._threading_lock:
@@ -785,6 +811,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
+        reduce_per_index_on_parallel_merge: bool = False,
     ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -847,6 +874,12 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
+            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -868,6 +901,7 @@ class MetricsLogger:
                     clear_on_reduce=clear_on_reduce,
                     throughput=with_throughput,
                     throughput_ema_coeff=throughput_ema_coeff,
+                    reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
                 ),
             )
 
@@ -984,6 +1018,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
+        reduce_per_index_on_parallel_merge: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -1030,6 +1065,13 @@ class MetricsLogger:
                 <MetricsLogger>.peek([key], throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
+            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
+                Note that this is only applied if `key` does not exist in `self` yet.
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
@@ -1050,6 +1092,7 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
+                reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
             )
 
     def reset(self) -> None:
