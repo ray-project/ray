@@ -4236,7 +4236,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: pytest -v test_llm_serve_correctness.py
+    script: pytest -vs test_llm_serve_correctness.py
 
 
 ##############

@@ -168,8 +168,8 @@ def setup_servers(request):
     )
 
     # Wait for servers to be ready
-    wait_for_server_ready(vllm_url, server_type="vllm")
-    wait_for_server_ready(ray_url, server_type="ray")
+    wait_for_server_ready(vllm_url, server_type="vllm", timeout=240)
+    wait_for_server_ready(ray_url, server_type="ray", timeout=240)
     time.sleep(5)  # Buffer time for the servers to be ready
 
     # Provide the server URLs to the test
