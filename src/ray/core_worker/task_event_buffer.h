@@ -27,6 +27,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/event_aggregator_exporter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
@@ -67,6 +68,11 @@ class TaskEvent {
   /// \param[out] rpc_task_export_event_data The rpc export task event data to be filled.
   virtual void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
+
+  /// TODO(myan): reorganize the function
+  virtual void ToRpcRayEvents(
+      std::pair<std::optional<rpc::events::RayEvent>,
+                std::optional<rpc::events::RayEvent>> &ray_events) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -141,6 +147,10 @@ class TaskStatusEvent : public TaskEvent {
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
+  void ToRpcRayEvents(
+      std::pair<std::optional<rpc::events::RayEvent>,
+                std::optional<rpc::events::RayEvent>> &ray_events) override;
+
   bool IsProfileEvent() const override { return false; }
 
  private:
@@ -171,6 +181,10 @@ class TaskProfileEvent : public TaskEvent {
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
+  void ToRpcRayEvents(
+      std::pair<std::optional<rpc::events::RayEvent>,
+                std::optional<rpc::events::RayEvent>> &ray_events) override;
+
   bool IsProfileEvent() const override { return true; }
 
   void SetEndTime(int64_t end_time) { end_time_ = end_time; }
@@ -199,9 +213,12 @@ enum TaskEventBufferCounter {
   kTotalNumTaskProfileEventDropped,
   kTotalNumTaskStatusEventDropped,
   kTotalNumTaskAttemptsReported,
+  kTotalNumTaskAttemptsReportedToAggregator,
   kTotalNumLostTaskAttemptsReported,
+  kTotalNumLostTaskAttemptsReportedToAggregator,
   kTotalTaskEventsBytesReported,
   kTotalNumFailedToReport,
+  kTotalNumFailedToReportToAggregator,
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,
@@ -224,6 +241,12 @@ enum TaskEventBufferCounter {
 /// GCS will be delayed until GCS replies the gRPC in future intervals.
 class TaskEventBuffer {
  public:
+  struct TaskEventDataToSend {
+    std::optional<std::unique_ptr<rpc::TaskEventData>> task_event_data;
+    std::optional<std::unique_ptr<rpc::events::RayEventData>> ray_event_data;
+  };
+
+  /// Update task status change for the task attempt in TaskEventBuffer if needed.
   virtual ~TaskEventBuffer() = default;
 
   /// Update task status change for the task attempt in TaskEventBuffer if needed.
@@ -357,6 +380,26 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       std::vector<std::shared_ptr<TaskEvent>> *profile_events_to_send)
       ABSL_LOCKS_EXCLUDED(profile_mutex_);
 
+  /// Create the task event data to send.
+  /// TODO: Add comments
+  void CreateTaskEventDataToSend(
+      absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &agg_task_events,
+      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
+      std::unique_ptr<rpc::TaskEventData> &data);
+
+  /// Create the ray event data to send.
+  /// TODO: Add comments
+  void CreateRayEventDataToSend(
+      absl::flat_hash_map<TaskAttempt,
+                          std::pair<std::optional<rpc::events::RayEvent>,
+                                    std::optional<rpc::events::RayEvent>>>
+          &agg_task_events,
+      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
+      std::unique_ptr<rpc::events::RayEventData> &data);
+
+  /// TODO: Add comments
+  void ResetCountersForFlush();
+
   /// Get the task events to GCS.
   ///
   /// \param status_events_to_send Task status events to be sent.
@@ -364,7 +407,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
   ///        status events being dropped.
   /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
-  std::unique_ptr<rpc::TaskEventData> CreateDataToSend(
+  std::unique_ptr<TaskEventDataToSend> CreateDataToSend(
       const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_send,
       const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
@@ -388,8 +431,16 @@ class TaskEventBufferImpl : public TaskEventBuffer {
         ::RayConfig::instance().enable_export_api_write_config());
   }
 
-  /// Reset the counters during flushing data to GCS.
-  void ResetCountersForFlush();
+  /// Send task events to GCS.
+  /// TODO: Add comments
+  void SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data);
+
+  /// Send ray events to the event aggregator.
+  /// TODO: Add comments
+  void SendRayEventsToAggregator(std::unique_ptr<rpc::events::RayEventData> data);
+
+  /// Reset the task event counters during flushing data.
+  void ResetTaskEventCountersForFlush();
 
   /// Test only functions.
   size_t GetNumTaskEventsStored() {
@@ -450,6 +501,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
+  /// Client to the event aggregator used to push ray events to it.
+  // TODO(myan): think about whether we should have one event_aggregator_exporter per
+  // core_worker or per node
+  std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
+
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
@@ -477,10 +533,19 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  std::atomic<bool> grpc_in_progress_ = false;
+  std::atomic<bool> gcs_grpc_in_progress_ = false;
+
+  /// True if there's a pending gRPC call to the event aggregator.
+  std::atomic<bool> event_aggregator_grpc_in_progress_ = false;
 
   /// If true, task events are exported for Export API
   bool export_event_write_enabled_ = false;
+
+  /// If true, task events from the event buffer are sent to GCS
+  bool send_task_events_to_gcs_enabled_ = true;
+
+  /// If true, ray events from the event buffer are sent to the event aggregator
+  bool send_ray_events_to_aggregator_enabled_ = false;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
