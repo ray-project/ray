@@ -56,6 +56,7 @@ namespace
 NER
 Nsight
 NumPy
+Nvidia
 pretraining
 Pythonic
 QPS
@@ -64,6 +65,11 @@ rollouts
 SFT
 ShareGPT
 teardown
+deserialization
+VPC[s]
+preemptible
+CRD[s]
+VM[s]
 uncaptured
 URI(s)?
 [Vv]ision LMs
