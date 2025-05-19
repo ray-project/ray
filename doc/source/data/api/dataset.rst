@@ -4,7 +4,16 @@ Dataset API
 ==============
 
 .. include:: ray.data.Dataset.rst
-.. include:: ray.data.Schema.rst
+
+
+Schema
+------
+.. currentmodule:: ray.data
+
+.. autoclass:: Schema
+    :members:
+
+
 
 Developer API
 -------------
