@@ -286,7 +286,7 @@ def test_get_timeout(ray_start_regular, zero_teardown_timeout):
     compiled_dag.teardown(kill_actors=True)
 
 
-def test_buffered_get_timeout(ray_start_regular):
+def test_buffered_get_timeout(ray_start_regular, zero_teardown_timeout):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.sleep.bind(inp)
@@ -304,6 +304,7 @@ def test_buffered_get_timeout(ray_start_regular):
         # other two that take 1s each, this should time out.
         ray.get(refs[-1], timeout=1)
 
+    compiled_dag.teardown(kill_actors=True)
 
 def test_get_with_zero_timeout(ray_start_regular):
     @ray.remote
