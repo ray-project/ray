@@ -8,13 +8,10 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
-platform=""
-case "${OSTYPE}" in
-  linux*) platform="linux";;
-  darwin*) platform="macosx";;
-  msys*) platform="windows";;
-  *) echo "Unrecognized platform."; exit 1;;
-esac
+if [[ ! "${OSTYPE}" =~ ^darwin ]]; then
+  echo "ERROR: This wheel test script is only for MacOS platforms." >/dev/stderr
+  exit 1
+fi
 
 BUILD_DIR="${TRAVIS_BUILD_DIR-}"
 if [ -z "${BUILD_DIR}" ]; then
@@ -45,66 +42,50 @@ function retry {
   done
 }
 
-if [[ "$platform" == "macosx" ]]; then
-  MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
+MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 
-  PY_WHEEL_VERSIONS=("39" "310")
-  PY_MMS=("3.9" "3.10")
+PY_WHEEL_VERSIONS=("39" "310")
+PY_MMS=("3.9" "3.10")
 
-  for ((i=0; i<${#PY_MMS[@]}; ++i)); do
-    PY_MM="${PY_MMS[i]}"
+for ((i=0; i<${#PY_MMS[@]}; ++i)); do
+  PY_MM="${PY_MMS[i]}"
 
-    PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
+  PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
-    # Todo: The main difference between arm64 and x86_64 is
-    # the Mac OS version. We should move everything to a
-    # single path when it's acceptable to move up our lower
-    # Python + MacOS compatibility bound.
-    if [ "$(uname -m)" = "arm64" ]; then
-      CONDA_ENV_NAME="test-wheels-p$PY_MM"
+  CONDA_ENV_NAME="test-wheels-p$PY_MM"
 
-      [ -f "$HOME/.bash_profile" ] && conda init bash
+  [ -f "$HOME/.bash_profile" ] && conda init bash
 
-      source ~/.bash_profile
+  source ~/.bash_profile
 
-      conda create -y -n "$CONDA_ENV_NAME"
-      conda activate "$CONDA_ENV_NAME"
-      conda remove -y python || true
-      conda install -y python="${PY_MM}"
+  conda create -y -n "$CONDA_ENV_NAME"
+  conda activate "$CONDA_ENV_NAME"
+  conda remove -y python || true
+  conda install -y python="${PY_MM}"
 
-      PYTHON_EXE="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/python"
-      PIP_CMD="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/pip"
-    else
-      PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
-      PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
-    fi
+  PYTHON_EXE="${CONDA_PREFIX}/bin/python"
+  PIP_CMD="${CONDA_PREFIX}/bin/pip"
 
-    # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"cp$PY_WHEEL_VERSION-cp$PY_WHEEL_VERSION"* | head -n 1)"
+  # Find the appropriate wheel by grepping for the Python version.
+  PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"cp$PY_WHEEL_VERSION-cp$PY_WHEEL_VERSION"* | head -n 1)"
 
-    # Print some env info
-    "$PYTHON_EXE" --version
-    "$PYTHON_EXE" -c "from distutils import util; print(util.get_platform())" || true
+  # Print some env info
+  "$PYTHON_EXE" --version
+  "$PYTHON_EXE" -c "from distutils import util; print(util.get_platform())" || true
 
-    # Update pip
-    "$PIP_CMD" install -U pip
+  # Update pip
+  "$PIP_CMD" install -U pip
 
-    # Install the wheel.
-    "$PIP_CMD" uninstall -y ray
-    "$PIP_CMD" install -q "$PYTHON_WHEEL"
+  # Install the wheel.
+  "$PIP_CMD" uninstall -y ray
+  "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
-    # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp numpy 'pytest==7.0.1' requests proxy.py
+  # Install the dependencies to run the tests.
+  "$PIP_CMD" install -q aiohttp numpy 'pytest==7.4.4' requests proxy.py
 
-    # Run a simple test script to make sure that the wheel works.
-    # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
-    for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      PY_IGNORE_IMPORTMISMATCH=1 PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
-    done
+  # Run a simple test script to make sure that the wheel works.
+  # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
+  for SCRIPT in "${TEST_SCRIPTS[@]}"; do
+    PY_IGNORE_IMPORTMISMATCH=1 PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
   done
-elif [ "${platform}" = windows ]; then
-  echo "WARNING: Wheel testing not yet implemented for Windows."
-else
-  echo "Unrecognized environment."
-  exit 3
-fi
+done
