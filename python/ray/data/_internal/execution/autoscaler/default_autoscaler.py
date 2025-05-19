@@ -58,12 +58,8 @@ class DefaultAutoscaler(Autoscaler):
         op: "PhysicalOperator",
         op_state: "OpState",
     ):
-        # TODO(mowen): Revert changes here once https://github.com/ray-project/ray/pull/53009
-        # is merged.
         # Do not scale up, if the op is completed or no more inputs are coming.
-        if op.completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
-        ):
+        if op.completed() or (op_state.total_enqueued_input_bundles() == 0):
             return False
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
@@ -87,12 +83,8 @@ class DefaultAutoscaler(Autoscaler):
         op: "PhysicalOperator",
         op_state: "OpState",
     ):
-        # TODO(mowen): Revert changes here once https://github.com/ray-project/ray/pull/53009
-        # is merged.
         # Scale down, if the op is completed or no more inputs are coming.
-        if op.completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
-        ):
+        if op.completed() or (op_state.total_enqueued_input_bundles() == 0):
             return True
         if actor_pool.current_size() > actor_pool.max_size():
             # Scale down, if the actor pool is above max size.
