@@ -7,6 +7,7 @@ import pytest
 import torch
 
 import ray
+import ray.train.torch
 from ray.air._internal.torch_utils import (
     arrow_batch_to_tensors,
     convert_ndarray_batch_to_torch_tensor_batch,
@@ -400,7 +401,12 @@ def custom_collate_fns():
 @pytest.mark.parametrize("return_type", ["single", "tuple", "dict", "list"])
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_custom_batch_collate_fn(
-    ray_start_4_cpus_2_gpus, custom_collate_fns, collate_batch_type, return_type, device
+    ray_start_4_cpus_2_gpus,
+    custom_collate_fns,
+    monkeypatch,
+    collate_batch_type,
+    return_type,
+    device,
 ):
     """Tests that custom batch collate functions can be used to modify
     the batch before it is converted to a PyTorch tensor."""
@@ -408,8 +414,9 @@ def test_custom_batch_collate_fn(
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
 
-    # Get the actual device to use
+    # Set the device that's returned by device="auto" -> get_device()
     device = torch.device(device)
+    monkeypatch.setattr(ray.train.torch, "get_device", lambda: device)
 
     ds = ray.data.range(5)
     it = ds.iterator()
@@ -421,7 +428,7 @@ def test_custom_batch_collate_fn(
         else collate_fns[collate_batch_type]
     )
 
-    for batch in it.iter_torch_batches(collate_fn=collate_fn, device=device):
+    for batch in it.iter_torch_batches(collate_fn=collate_fn):
         if return_type == "single":
             assert isinstance(batch, torch.Tensor)
             assert sorted(batch.tolist()) == list(range(5, 10))
