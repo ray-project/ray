@@ -98,6 +98,12 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 
   ./gcloud_docker_login.sh aws2kuberay_gke.json
   export GOOGLE_CLOUD_PROJECT=dhyey-dev
+  export AWS_REGION="us-west-2"
+  export RELEASE_AWS_ANYSCALE_SECRET_ARN="arn:aws:secretsmanager:us-west-2:029272617770:secret:release-automation/anyscale-staging-token20231008005227440600000001-JTgxb0"
+  export RELEASE_AWS_BUCKET="ray-release-automation-results"
+  export RELEASE_AWS_DB_NAME="ray_ci"
+  export RELEASE_AWS_DB_TABLE="release_test_result"
+  export RELEASE_AWS_LOCATION="dev"
   trap _term SIGINT SIGTERM
   ${RAY_TEST_SCRIPT} "$@" &
   proc=$!
