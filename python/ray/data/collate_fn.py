@@ -56,6 +56,7 @@ def _is_tensor(batch: Any) -> bool:
 def _is_tensor_sequence(batch: Any) -> bool:
     """Check if a batch is a sequence of torch.Tensors.
 
+    >>> import torch
     >>> _is_tensor_sequence(torch.ones(1))
     False
     >>> _is_tensor_sequence([torch.ones(1), torch.ones(1)])
@@ -73,6 +74,7 @@ def _is_nested_tensor_sequence(batch: Any) -> bool:
 
     Stops at one level of nesting.
 
+    >>> import torch
     >>> _is_nested_tensor_sequence([torch.ones(1), torch.ones(1)])
     False
     >>> _is_nested_tensor_sequence(
@@ -88,6 +90,7 @@ def _is_nested_tensor_sequence(batch: Any) -> bool:
 def _is_tensor_mapping(batch: Any) -> bool:
     """Check if a batch is a mapping of keys to torch.Tensors.
 
+    >>> import torch
     >>> _is_tensor_mapping({"a": torch.ones(1), "b": torch.ones(1)})
     True
     >>> _is_tensor_mapping({"a": torch.ones(1), "b": [torch.ones(1), torch.ones(1)]})
@@ -99,6 +102,7 @@ def _is_tensor_mapping(batch: Any) -> bool:
 def _is_tensor_sequence_mapping(batch: Any) -> bool:
     """Check if a batch is a mapping of keys to sequences of torch.Tensors.
 
+    >>> import torch
     >>> _is_tensor_sequence_mapping({"a": torch.ones(1), "b": torch.ones(1)})
     False
     >>> _is_tensor_sequence_mapping(
