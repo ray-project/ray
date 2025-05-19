@@ -42,9 +42,11 @@ class LLMEngine(abc.ABC):
         """Generate an LLMRawResponse stream based on the GenerationRequest"""
         pass
 
-    async def check_health(self) -> bool:
-        """Check the health of the engine"""
-        return True
+    async def check_health(self) -> None:
+        """Check the health of the replica. Does not return anything. Raise error when
+        the engine is dead and needs to be restarted.
+        """
+        return
 
     ##############################################################
     # Optional methods
