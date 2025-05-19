@@ -51,7 +51,7 @@ for PY_MINOR_VERSION in "${PY_MINOR_VERSIONS[@]}"; do
 
   CONDA_ENV_NAME="test-wheels-p$PY_MM"
 
-  [ -f "$HOME/.bash_profile" ] && conda init bash
+  [[ -f "$HOME/.bash_profile" ]] && conda init bash
 
   source ~/.bash_profile
 
