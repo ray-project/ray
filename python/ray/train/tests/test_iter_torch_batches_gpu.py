@@ -16,7 +16,6 @@ from ray.data.iterator import (
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
 )
-from ray.train.torch import get_device
 
 
 class BaseArrowBatchCollateFn(ArrowBatchCollateFn):
@@ -397,76 +396,49 @@ def custom_collate_fns():
     return _create_collate_fns
 
 
-@pytest.mark.parametrize(
-    "collate_type,return_type,device",
-    [
-        ("arrow", "single", "cpu"),
-        ("arrow", "single", "cuda"),
-        ("arrow", "tuple", "cpu"),
-        ("arrow", "tuple", "cuda"),
-        ("arrow", "dict", "cpu"),
-        ("arrow", "dict", "cuda"),
-        ("arrow", "list", "cpu"),
-        ("arrow", "list", "cuda"),
-        ("numpy", "single", "cpu"),
-        ("numpy", "single", "cuda"),
-        ("numpy", "tuple", "cpu"),
-        ("numpy", "tuple", "cuda"),
-        ("numpy", "dict", "cpu"),
-        ("numpy", "dict", "cuda"),
-        ("numpy", "list", "cpu"),
-        ("numpy", "list", "cuda"),
-        ("pandas", "single", "cpu"),
-        ("pandas", "single", "cuda"),
-        ("pandas", "tuple", "cpu"),
-        ("pandas", "tuple", "cuda"),
-        ("pandas", "dict", "cpu"),
-        ("pandas", "dict", "cuda"),
-        ("pandas", "list", "cpu"),
-        ("pandas", "list", "cuda"),
-    ],
-)
+@pytest.mark.parametrize("collate_batch_type", ["arrow", "numpy", "pandas"])
+@pytest.mark.parametrize("return_type", ["single", "tuple", "dict", "list"])
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_custom_batch_collate_fn(
-    ray_start_4_cpus_2_gpus, custom_collate_fns, collate_type, return_type, device
+    ray_start_4_cpus_2_gpus, custom_collate_fns, collate_batch_type, return_type, device
 ):
     """Tests that custom batch collate functions can be used to modify
     the batch before it is converted to a PyTorch tensor."""
     # Skip GPU tests if CUDA is not available
-    if device != "cpu" and not torch.cuda.is_available():
+    if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
 
     # Get the actual device to use
-    if device == "cuda":
-        device = str(get_device())
+    device = torch.device(device)
 
     ds = ray.data.range(5)
     it = ds.iterator()
 
     collate_fns = custom_collate_fns(device)
     collate_fn = (
-        collate_fns[collate_type][return_type]
+        collate_fns[collate_batch_type][return_type]
         if return_type
-        else collate_fns[collate_type]
+        else collate_fns[collate_batch_type]
     )
 
     for batch in it.iter_torch_batches(collate_fn=collate_fn):
         if return_type == "single":
             assert isinstance(batch, torch.Tensor)
             assert sorted(batch.tolist()) == list(range(5, 10))
-            assert str(batch.device) == device
+            assert batch.device == device
         elif return_type == "dict":
             assert isinstance(batch, dict)
             assert sorted(batch["id"].tolist()) == list(range(5, 10))
             assert sorted(batch["value"].tolist()) == list(range(5))
-            assert str(batch["id"].device) == device
-            assert str(batch["value"].device) == device
+            assert batch["id"].device == device
+            assert batch["value"].device == device
         else:  # tuple or list
-            assert isinstance(batch, torch.Tensor)
-            # For tuple/list return types, tensors are concatenated
-            # First 5 values: modified id values [5,6,7,8,9]
-            # Last 5 values: original values [0,1,2,3,4]
-            assert sorted(batch.tolist()) == list(range(10))
-            assert str(batch.device) == device
+            assert isinstance(batch, (tuple, list))
+            assert len(batch) == 2
+            assert sorted(batch[0].tolist()) == list(range(5, 10))
+            assert sorted(batch[1].tolist()) == list(range(5))
+            assert batch[0].device == device
+            assert batch[1].device == device
 
 
 if __name__ == "__main__":
