@@ -27,7 +27,6 @@ CPU[s]
 deduplicate[s]
 [Dd]eduplication
 [Aa]sync
-Raylet
 g[Rr][Pp][Cc]
 http
 kubectl
@@ -46,7 +45,6 @@ deserialize
 dev
 dev to prod
 DPO
-FSDP
 GGUF
 GKE
 GPTQ
@@ -60,6 +58,7 @@ namespace
 NER
 Nsight
 NumPy
+Nvidia
 pretraining
 Pythonic
 QPS
@@ -68,6 +67,11 @@ rollouts
 SFT
 ShareGPT
 teardown
+deserialization
+VPC[s]
+preemptible
+CRD[s]
+VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs

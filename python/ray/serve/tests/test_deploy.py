@@ -57,6 +57,52 @@ def test_deploy_basic(serve_instance, use_handle):
     assert pid3 != pid2
 
 
+@pytest.mark.parametrize(
+    "component_name_with_special_character",
+    [
+        "test@component",
+        "test#123",
+        "component/name",
+        "component.name",
+        "component!name",
+        "component$name",
+        "component%name",
+        "component^name",
+        "component&name",
+        "component*name",
+        "component_name",
+    ],
+)
+def test_deploy_with_any_characters(
+    serve_instance, component_name_with_special_character
+):
+    """The function should not fail when the deployment name contains special characters."""
+
+    # V1 blocks on signal
+    @serve.deployment
+    class V1:
+        async def handler(self):
+            return True
+
+        async def __call__(self):
+            return await self.handler()
+
+    # Check that deployment succeeds with special characters
+    deployment = V1.options(name=component_name_with_special_character).bind()
+    serve.run(deployment, name="app")
+
+    status = serve.status()
+
+    handle_name = serve.get_deployment_handle(
+        component_name_with_special_character, "app"
+    ).deployment_name
+
+    assert handle_name == component_name_with_special_character
+
+    app = status.applications["app"]
+    assert app.status == "RUNNING"
+
+
 def test_empty_decorator(serve_instance):
     @serve.deployment
     def func(*args):

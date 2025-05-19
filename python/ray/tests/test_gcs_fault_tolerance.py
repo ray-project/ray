@@ -881,6 +881,7 @@ print("DONE")
     [
         generate_system_config_map(
             enable_cluster_auth=True,
+            raylet_liveness_self_check_interval_ms=5000,
         )
     ],
     indirect=True,
@@ -1313,7 +1314,4 @@ def test_pg_removal_after_gcs_restarts(
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

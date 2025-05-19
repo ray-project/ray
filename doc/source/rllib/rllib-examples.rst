@@ -70,11 +70,24 @@ Actions
 
 Algorithms
 ++++++++++
+
+- `Custom implementation of the Model-Agnostic Meta-Learning (MAML) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/maml_lr_supervised_learning.py>`__:
+   Shows how to stably train a model in an "infinite-task" environment, where each task corresponds
+   to a sinusoidal function with randomly sampled amplitude and phase. Because each new task introduces
+   a shift in data distribution, traditional learning algorithms would fail to generalize.
+
 - `Custom "vanilla policy gradient" (VPG) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py>`__:
    Shows how to write a very simple policy gradient :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from scratch,
    including a matching :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`,
    a matching :py:class:`~ray.rllib.core.learner.learner.Learner` which defines the loss function,
    and the Algorithm's :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` implementation.
+
+- `Custom algorithm with a global, shared data actor for sending manipulated rewards from EnvRunners to Learners <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py>`__:
+   Shows how to write a custom shared data actor accessible from any of the Algorithm's other actors,
+   like :py:class:`~ray.rllib.env.env_runner.EnvRunner` and :py:class:`~ray.rllib.core.learner.learner.Learner` actors.
+   The new actor stores manipulated rewards from sampled episodes under unique, per-episode keys and then serves
+   this information to the :py:class:`~ray.rllib.core.learner.learner.Learner` for adding these rewards to the train
+   batch.
 
 
 Checkpoints
@@ -232,10 +245,14 @@ Inference of models or policies
 +++++++++++++++++++++++++++++++
 
 - `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
-   Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
+   Demonstrates performing inference using a checkpointed :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   First trains the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, creates a checkpoint, then re-loads the module from this checkpoint or ONNX file, and computes
+   actions in a simulated environment.
 
 - `Policy inference after training, with ConnectorV2 <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__:
-   Runs inference with a trained, LSTM-based policy using connectors, which preprocess observations and actions, allowing for more modular and flexible inference setups.
+   Runs inference with a trained, LSTM-based :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   Two connector pipelines, env-to-module and module-to-env, preprocess observations and LSTM-states and postprocess model outputs into actions,
+   allowing for very modular and flexible inference setups.
 
 
 Learners

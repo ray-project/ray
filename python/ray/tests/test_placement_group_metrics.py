@@ -1,6 +1,8 @@
+import sys
 from collections import defaultdict
-import pytest
 from typing import Dict
+
+import pytest
 
 import ray
 from ray._private.test_utils import (
@@ -61,10 +63,4 @@ def test_basic_states(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
