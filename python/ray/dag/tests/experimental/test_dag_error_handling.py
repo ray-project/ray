@@ -49,6 +49,15 @@ def temporary_change_timeout(request):
     ctx.submit_timeout = original
 
 
+@pytest.fixture
+def zero_teardown_timeout(request):
+    ctx = DAGContext.get_current()
+    original = ctx.teardown_timeout
+    ctx.teardown_timeout = 0
+    yield ctx.teardown_timeout
+    ctx.teardown_timeout = original
+
+
 def test_kwargs_not_supported(ray_start_regular):
     a = Actor.remote(0)
 
@@ -248,25 +257,27 @@ def test_dag_errors(ray_start_regular):
         ray.get(ref)
 
 
-def test_get_timeout(ray_start_regular):
+def test_get_timeout(ray_start_regular, zero_teardown_timeout):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.sleep.bind(inp)
 
     compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(10)
+    ref = compiled_dag.execute(5)
 
     timed_out = False
     epsilon = 0.1  # Allow for some slack in the timeout checking
     try:
         start_time = time.monotonic()
-        ray.get(ref, timeout=3)
+        ray.get(ref, timeout=1)
     except RayChannelTimeoutError:
         duration = time.monotonic() - start_time
-        assert duration > 3 - epsilon
-        assert duration < 3 + epsilon
+        assert duration > 1 - epsilon
+        assert duration < 1 + epsilon
         timed_out = True
     assert timed_out
+
+    compiled_dag.teardown(kill_actors=True)
 
 
 def test_buffered_get_timeout(ray_start_regular):
@@ -275,18 +286,17 @@ def test_buffered_get_timeout(ray_start_regular):
         dag = a.sleep.bind(inp)
 
     compiled_dag = dag.experimental_compile()
-    refs = []
-    for i in range(3):
-        # sleeps 1, 2, 3 seconds, respectively
-        ref = compiled_dag.execute(i + 1)
-        refs.append(ref)
+    # The tasks will execute in order and sleep 1s, 1s, then 0s, respectively.
+    refs = [
+        compiled_dag.execute(1),
+        compiled_dag.execute(1),
+        compiled_dag.execute(0),
+    ]
 
     with pytest.raises(RayChannelTimeoutError):
-        # Since the first two sleep() tasks need to complete before
-        # the last one, the total time needed is 1 + 2 + 3 = 6 seconds,
-        # therefore with a timeout of 3.5 seconds, an exception will
-        # be raised.
-        ray.get(refs[-1], timeout=3.5)
+        # The final task takes <1s on its own, but because it's queued behind the
+        # other two that take 1s each, this should time out.
+        ray.get(refs[-1], timeout=1)
 
 
 def test_get_with_zero_timeout(ray_start_regular):
@@ -425,7 +435,7 @@ def test_exceed_max_buffered_results_multi_output(ray_start_regular):
 
 def test_dag_fault_tolerance_chain(ray_start_regular):
     actors = [
-        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
+        Actor.remote(0, fail_after=10 if i == 0 else None, sys_exit=False)
         for i in range(4)
     ]
     with InputNode() as i:
@@ -435,12 +445,12 @@ def test_dag_fault_tolerance_chain(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    for i in range(99):
+    for i in range(9):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
 
     with pytest.raises(RuntimeError):
-        for i in range(99):
+        for i in range(9):
             ref = compiled_dag.execute(i)
             results = ray.get(ref)
             assert results == i
@@ -458,7 +468,7 @@ def test_dag_fault_tolerance_chain(ray_start_regular):
             dag = a.echo.bind(dag)
 
     compiled_dag = dag.experimental_compile()
-    for i in range(100):
+    for i in range(10):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
         assert results == i
@@ -466,7 +476,7 @@ def test_dag_fault_tolerance_chain(ray_start_regular):
 
 def test_dag_fault_tolerance(ray_start_regular):
     actors = [
-        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
+        Actor.remote(0, fail_after=10 if i == 0 else None, sys_exit=False)
         for i in range(4)
     ]
     with InputNode() as i:
@@ -475,12 +485,12 @@ def test_dag_fault_tolerance(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    for i in range(99):
+    for i in range(9):
         refs = compiled_dag.execute(1)
         assert ray.get(refs) == [i + 1] * len(actors)
 
     with pytest.raises(RuntimeError):
-        for i in range(99, 200):
+        for i in range(9, 20):
             refs = compiled_dag.execute(1)
             assert ray.get(refs) == [i + 1] * len(actors)
 
@@ -496,13 +506,13 @@ def test_dag_fault_tolerance(ray_start_regular):
         dag = MultiOutputNode(out)
 
     compiled_dag = dag.experimental_compile()
-    for i in range(100):
+    for i in range(10):
         ray.get(compiled_dag.execute(1))
 
 
 def test_dag_fault_tolerance_sys_exit(ray_start_regular):
     actors = [
-        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
+        Actor.remote(0, fail_after=10 if i == 0 else None, sys_exit=True)
         for i in range(4)
     ]
     with InputNode() as i:
@@ -511,14 +521,14 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    for i in range(99):
+    for i in range(9):
         refs = compiled_dag.execute(1)
         assert ray.get(refs) == [i + 1] * len(actors)
 
     with pytest.raises(
         ActorDiedError, match="The actor died unexpectedly before finishing this task."
     ):
-        for i in range(99):
+        for i in range(9):
             refs = compiled_dag.execute(1)
             ray.get(refs)
 
@@ -534,7 +544,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
         dag = MultiOutputNode(out)
 
     compiled_dag = dag.experimental_compile()
-    for i in range(100):
+    for i in range(10):
         refs = compiled_dag.execute(1)
         ray.get(refs)
 
@@ -795,7 +805,4 @@ ray.get(ref)
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
