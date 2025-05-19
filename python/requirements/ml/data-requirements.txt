@@ -4,11 +4,11 @@
 getdaft==0.4.3
 # Use [array] extra not to depend on dask-expr, which requires pandas>=2
 dask[array]==2024.6.2; python_version < '3.11'
-dask[complete]==2025.5.0; python_version >= '3.11'
+dask[array,dataframe]==2025.5.0; python_version >= '3.11'
 aioboto3==11.2.0
 crc32c==2.3
 flask_cors
-bokeh==2.4.3; python_version < '3.11'
+bokeh==2.4.3
 modin==0.22.2; python_version < '3.11'
 pandas==1.5.3; python_version < '3.11'
 modin==0.31.0; python_version >= '3.11'

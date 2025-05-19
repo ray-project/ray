@@ -203,8 +203,8 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-bokeh==3.3.4
-    # via dask
+bokeh==2.4.3
+    # via -r python/requirements/ml/data-requirements.txt
 boltons==21.0.0
     # via
     #   face
@@ -281,7 +281,6 @@ click==8.1.7
     #   black
     #   click-option-group
     #   dask
-    #   distributed
     #   flask
     #   jupyter-cache
     #   mlflow-skinny
@@ -300,7 +299,6 @@ cloudpickle==3.0.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   dask
-    #   distributed
     #   gymnasium
     #   hyperopt
     #   mlagents-envs
@@ -342,9 +340,7 @@ contextlib2==21.6.0
     #   ml-collections
     #   pytest-shutil
 contourpy==1.1.1
-    # via
-    #   bokeh
-    #   matplotlib
+    # via matplotlib
 coverage==7.6.12
     # via nbval
 cramjam==2.8.3
@@ -380,9 +376,7 @@ cython==0.29.37
     #   -r python/requirements/test-requirements.txt
     #   gpy
 dask==2025.5.0 ; python_version >= "3.11"
-    # via
-    #   -r python/requirements/ml/data-requirements.txt
-    #   distributed
+    # via -r python/requirements/ml/data-requirements.txt
 databricks-sdk==0.52.0
     # via mlflow-skinny
 datasets==2.19.1
@@ -423,8 +417,6 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2025.5.0
-    # via dask
 distro==1.9.0
     # via azure-cli-core
 dm-control==1.0.12 ; python_version < "3.12"
@@ -845,8 +837,6 @@ jinja2==3.1.6
     #   altair
     #   ax-platform
     #   bokeh
-    #   dask
-    #   distributed
     #   flask
     #   fugue
     #   fugue-sql-antlr
@@ -993,9 +983,7 @@ llvmlite==0.42.0
     #   -r python/requirements/test-requirements.txt
     #   numba
 locket==1.0.0
-    # via
-    #   distributed
-    #   partd
+    # via partd
 log-symbols==0.0.14
     # via halo
 lxml==4.9.4
@@ -1008,7 +996,6 @@ lz4==4.3.3
     # via
     #   -r python/requirements.txt
     #   clickhouse-connect
-    #   dask
 mako==1.3.0
     # via alembic
 markdown==3.5.1
@@ -1097,7 +1084,6 @@ msgpack==1.0.7
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
-    #   distributed
     #   msgpack-numpy
     #   ray
 msgpack-numpy==0.4.8
@@ -1384,7 +1370,6 @@ packaging==23.0
     #   dask
     #   datasets
     #   deepspeed
-    #   distributed
     #   evaluate
     #   fugue-sql-antlr
     #   google-cloud-bigquery
@@ -1427,7 +1412,6 @@ pandas==2.2.2 ; python_version >= "3.11"
     #   -r python/requirements/ml/data-requirements.txt
     #   altair
     #   ax-platform
-    #   bokeh
     #   cmdstanpy
     #   dask
     #   datasets
@@ -1567,7 +1551,6 @@ psutil==5.9.6
     #   azure-cli-core
     #   comet-ml
     #   deepspeed
-    #   distributed
     #   ipykernel
     #   modin
     #   raydp
@@ -1818,7 +1801,6 @@ pyyaml==6.0.1
     #   cfn-lint
     #   dask
     #   datasets
-    #   distributed
     #   gradio
     #   huggingface-hub
     #   jsonschema-path
@@ -2105,7 +2087,6 @@ snowflake-connector-python==3.15.0
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
-    #   distributed
     #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
@@ -2175,9 +2156,7 @@ tabulate==0.9.0
     #   jupyter-cache
     #   knack
 tblib==3.0.0
-    # via
-    #   -r python/requirements/docker/ray-docker-requirements.txt
-    #   distributed
+    # via -r python/requirements/docker/ray-docker-requirements.txt
 tenacity==8.5.0
     # via
     #   plotly
@@ -2257,7 +2236,6 @@ toolz==0.12.1
     # via
     #   altair
     #   dask
-    #   distributed
     #   partd
 torch==2.3.0
     # via
@@ -2302,9 +2280,7 @@ torchvision==0.18.0
     #   timm
 tornado==6.2
     # via
-    #   -r python/requirements/test-requirements.txt
     #   bokeh
-    #   distributed
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
@@ -2384,6 +2360,7 @@ typing-extensions==4.12.2
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
+    #   bokeh
     #   configspace
     #   etils
     #   fastapi
@@ -2425,7 +2402,6 @@ urllib3==1.26.19
     #   botocore
     #   clickhouse-connect
     #   comet-ml
-    #   distributed
     #   docker
     #   dulwich
     #   kubernetes
@@ -2535,8 +2511,6 @@ xxhash==3.4.1
     # via
     #   datasets
     #   evaluate
-xyzservices==2025.4.0
-    # via bokeh
 y-py==0.6.2
     # via
     #   jupyter-ydoc
@@ -2553,8 +2527,6 @@ yq==3.2.2
     # via
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/test-requirements.txt
-zict==3.0.0
-    # via distributed
 zipp==3.19.2
     # via
     #   etils
