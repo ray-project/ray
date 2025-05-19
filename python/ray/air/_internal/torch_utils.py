@@ -434,14 +434,15 @@ def concat_tensors_to_device(
 def _get_type_str(batch: Any) -> str:
     """Get a string representation of the possibly nested type of the batch.
 
+    >>> import torch
     >>> _get_type_str([1, 2, "???"])
-    "list[int | str]"
+    'list[int | str]'
     >>> _get_type_str({"a": [1, 2, 3], "b": 4})
-    "dict[str, int | list[int]]"
+    'dict[str, int | list[int]]'
     >>> _get_type_str({"a": torch.tensor(1), "b": [torch.tensor(2)]})
-    "dict[str, Tensor | list[Tensor]]"
+    'dict[str, Tensor | list[Tensor]]'
     >>> _get_type_str({"a": torch.tensor(1), "b": {"c": torch.tensor(2)}})
-    "dict[str, Tensor | dict[str, Tensor]]"
+    'dict[str, Tensor | dict[str, Tensor]]'
     """
     curr_type = type(batch).__name__
     if isinstance(batch, (list, tuple)):
