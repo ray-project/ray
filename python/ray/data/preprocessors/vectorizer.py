@@ -261,7 +261,6 @@ class CountVectorizer(Preprocessor):
             for col in self.columns
         ]
         aggregated_counts = dataset.aggregate(*agg_fns)
-        print(aggregated_counts)
         total_counts = {
             col: aggregated_counts[f"token_counter({col})"] for col in self.columns
         }
