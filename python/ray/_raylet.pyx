@@ -37,7 +37,6 @@ from typing import (
 
 import contextvars
 import concurrent.futures
-import collections
 
 from libc.stdint cimport (
     int32_t,
@@ -2061,7 +2060,7 @@ cdef void execute_task(
                             should_retry_exceptions)
 
                     task_exception = False
-                    dynamic_refs = collections.deque()
+                    dynamic_refs = []
                     for idx in range(dynamic_returns.size()):
                         dynamic_refs.append(ObjectRef(
                             dynamic_returns[0][idx].first.Binary(),
