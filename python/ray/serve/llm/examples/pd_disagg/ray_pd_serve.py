@@ -1,7 +1,7 @@
 """Using Ray Serve to proxy between P/D LLM servers.
 
 Usage:
->>> serve run ray.serve.llm.examples.pd_disagg.ray_pd_serve:example_disagg_1p2d
+>>> serve run ray.serve.llm.examples.pd_disagg.ray_pd_serve:example_disagg_1p1d
 or
 >>> python -m ray.serve.llm.examples.pd_disagg.ray_pd_serve
 """
@@ -233,8 +233,8 @@ def build_PD_disagg_app(llm_serving_args: LLMServingArgs) -> Application:
     )
 
 
-def _default_example_config_1p2d() -> LLMServingArgs:
-    """Example config for 1P2D, hosting Qwen3-0.6B."""
+def _default_example_config_1p1d() -> LLMServingArgs:
+    """Example config for 1P1D, hosting Qwen3-0.6B."""
     maybe_hf_token = os.environ.get("HF_TOKEN", None)
     env_vars = dict(
         VLLM_USE_V1="1",
@@ -265,14 +265,10 @@ def _default_example_config_1p2d() -> LLMServingArgs:
     )
 
 
-example_disagg_1p2d = build_PD_disagg_app(_default_example_config_1p2d())
+example_disagg_1p1d = build_PD_disagg_app(_default_example_config_1p1d())
 
 if __name__ == "__main__":
     import ray
 
     ray.init(ignore_reinit_error=True)
-    """
-    This is equivalent to
-    >>> serve run ray.serve.llm.examples.pd_disagg.ray_pd_serve:example_disagg_1p2d
-    """
-    ray.serve.run(example_disagg_1p2d)
+    ray.serve.run(example_disagg_1p1d)
