@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -41,6 +41,9 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
+
+if TYPE_CHECKING:
+    import torch
 
 logger = logging.getLogger(__name__)
 
@@ -390,40 +393,10 @@ class ActorMethod:
 
                     src_actor, tensor_meta = tensor_meta
 
-                    def send(self, obj_id, dst_rank):
-                        import torch.distributed as dist
-
-                        worker = ray._private.worker.global_worker
-                        assert (
-                            obj_id in worker.in_actor_object_store
-                        ), worker.in_actor_object_store
-                        tensors = worker.in_actor_object_store[obj_id]
-                        print(
-                            f"send: tensors={tensors}, obj_id={obj_id}, dst_rank={dst_rank}"
-                        )
-                        for tensor in tensors:
-                            dist.send(tensor, dst_rank)
-
-                    def recv(self, obj_id, src_rank, tensor_meta):
-                        import torch
-                        import torch.distributed as dist
-
-                        worker = ray._private.worker.global_worker
-                        tensors = []
-                        print(
-                            f"recv: tensor_meta={tensor_meta}, obj_id={obj_id}, src_rank={src_rank}"
-                        )
-                        for meta in tensor_meta:
-                            shape, dtype = meta
-                            tensor = torch.zeros(shape, dtype=dtype)
-                            dist.recv(tensor, src_rank)
-                            tensors.append(tensor)
-                        worker.in_actor_object_store[obj_id] = tensors
-
                     from ray.experimental.channel import ChannelContext
 
                     ctx = ChannelContext.get_current()
-                    for group_id, actors in ctx.communicators.items():
+                    for _, actors in ctx.communicators.items():
                         src_rank = None
                         dst_rank = None
                         for i, a in enumerate(actors):
@@ -435,8 +408,8 @@ class ActorMethod:
                         assert dst_rank is not None
                         assert src_rank != dst_rank
 
-                    src_actor.__ray_call__.remote(send, arg.hex(), dst_rank)
-                    actor.__ray_call__.remote(recv, arg.hex(), src_rank, tensor_meta)
+                    src_actor.__ray_send__.remote(arg.hex(), dst_rank)
+                    actor.__ray_recv__.remote(arg.hex(), src_rank, tensor_meta)
 
             return actor._actor_method_call(
                 self._method_name,
@@ -1862,6 +1835,45 @@ def _modify_class(cls):
             worker = ray._private.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
+
+        def __ray_send__(self, obj_id: str, dst_rank: int):
+            """
+            Send tensors stored in the in-actor object store to the
+            destination rank.
+            """
+            import torch.distributed as dist
+
+            worker = ray._private.worker.global_worker
+            assert obj_id in worker.in_actor_object_store, worker.in_actor_object_store
+            tensors = worker.in_actor_object_store[obj_id]
+            print(f"send: obj_id={obj_id}, dst_rank={dst_rank}, tensors={tensors}")
+            for tensor in tensors:
+                dist.send(tensor, dst_rank)
+
+        def __ray_recv__(
+            self,
+            obj_id: str,
+            src_rank: int,
+            tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        ):
+            """
+            Receive tensors from the source rank and store them in the
+            in-actor object store.
+            """
+            import torch
+            import torch.distributed as dist
+
+            worker = ray._private.worker.global_worker
+            tensors = []
+            print(
+                f"__ray_recv__: tensor_meta={tensor_meta}, obj_id={obj_id}, src_rank={src_rank}"
+            )
+            for meta in tensor_meta:
+                shape, dtype = meta
+                tensor = torch.zeros(shape, dtype=dtype)
+                dist.recv(tensor, src_rank)
+                tensors.append(tensor)
+            worker.in_actor_object_store[obj_id] = tensors
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
