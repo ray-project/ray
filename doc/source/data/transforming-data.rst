@@ -406,7 +406,10 @@ Each of the above methods also has a corresponding :ref:`AggregateFnV2 <aggregat
     # Schema: {"id": int64}
     ds = ds.add_column("label", lambda x: x % 3)
     # Schema: {"id": int64, "label": int64}
-    ds.aggregate(ray.data.aggregate.Sum(on="id"), ray.data.aggregate.Count(on="label")).take_all()
+    ds.aggregate(
+        ray.data.aggregate.Sum(on="id"), 
+        ray.data.aggregate.Count(on="label")
+    ).take_all()
     # {'sum(id)': 45, 'count(label)': 10}
 
 
