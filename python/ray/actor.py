@@ -379,39 +379,14 @@ class ActorMethod:
         kwargs = kwargs or {}
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref()
+            dst_actor = self._actor_hard_ref or self._actor_ref()
 
-            if actor is None:
+            if dst_actor is None:
                 raise RuntimeError("Lost reference to actor")
 
-            for arg in args:
-                if isinstance(arg, ray.ObjectRef):
-                    worker = ray._private.worker.global_worker
-                    tensor_meta = worker.in_actor_object_refs.get(arg, None)
-                    if tensor_meta is None:
-                        continue
+            _handle_tensor_transport(dst_actor, args)
 
-                    src_actor, tensor_meta = tensor_meta
-
-                    from ray.experimental.channel import ChannelContext
-
-                    ctx = ChannelContext.get_current()
-                    for _, actors in ctx.communicators.items():
-                        src_rank = None
-                        dst_rank = None
-                        for i, a in enumerate(actors):
-                            if a._ray_actor_id == src_actor._ray_actor_id:
-                                src_rank = i
-                            if a._ray_actor_id == actor._ray_actor_id:
-                                dst_rank = i
-                        assert src_rank is not None
-                        assert dst_rank is not None
-                        assert src_rank != dst_rank
-
-                    src_actor.__ray_send__.remote(arg.hex(), dst_rank)
-                    actor.__ray_recv__.remote(arg.hex(), src_rank, tensor_meta)
-
-            return actor._actor_method_call(
+            return dst_actor._actor_method_call(
                 self._method_name,
                 args=args,
                 kwargs=kwargs,
@@ -1946,3 +1921,42 @@ def exit_actor():
             f"{worker.mode}. Call this API inside an actor methods"
             "if you'd like to exit the actor gracefully."
         )
+
+
+def _handle_tensor_transport(dst_actor, args):
+    """Handle tensor transport between actors.
+
+    Args:
+        dst_actor: The target actor to receive tensors
+        args: List of arguments that may contain ObjectRefs
+    """
+    from ray.experimental.channel import ChannelContext
+
+    ctx = ChannelContext.get_current()
+
+    # TODO(kevin85421): Currently, GPU objects only support 1 communicator.
+    if len(ctx.communicators) != 1 or not args:
+        return
+
+    actor_id_to_rank = {}
+    for arg in args:
+        if not isinstance(arg, ray.ObjectRef):
+            continue
+
+        worker = ray._private.worker.global_worker
+        tensor_meta = worker.in_actor_object_refs.get(arg, None)
+        if tensor_meta is None:
+            continue
+
+        src_actor, tensor_meta = tensor_meta
+        if not actor_id_to_rank:
+            actor_id_to_rank = {
+                a._ray_actor_id: i for i, a in enumerate(ctx.communicators[0])
+            }
+        src_rank = actor_id_to_rank[src_actor._ray_actor_id]
+        dst_rank = actor_id_to_rank[dst_actor._ray_actor_id]
+        assert (
+            src_rank != dst_rank
+        ), "src_rank and dst_rank are the same. This may cause deadlock for transports like NCCL."
+        src_actor.__ray_send__.remote(arg.hex(), dst_rank)
+        dst_actor.__ray_recv__.remote(arg.hex(), src_rank, tensor_meta)
