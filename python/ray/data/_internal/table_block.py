@@ -21,7 +21,6 @@ from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    MiB,
     find_partition_index,
     is_nan,
     keys_equal,
@@ -36,6 +35,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -45,7 +45,7 @@ T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = 50 * MiB
+MAX_UNCOMPACTED_SIZE_BYTES = DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 
 class TableBlockBuilder(BlockBuilder):
