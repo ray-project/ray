@@ -781,6 +781,15 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
                 json.dump(cached_node_ip_address, f)
 
 
+def get_node_instance_id():
+    """Get the specified node instance id of the current node.
+
+    Returns:
+        The node instance id of the current node.
+    """
+    return os.getenv("RAY_CLOUD_INSTANCE_ID", "")
+
+
 def create_redis_client(redis_address, password=None, username=None):
     """Create a Redis client.
 

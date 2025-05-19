@@ -195,7 +195,7 @@ class ServeController:
         self._actor_details = ServeActorDetails(
             node_id=ray.get_runtime_context().get_node_id(),
             node_ip=ray.util.get_node_ip_address(),
-            node_instance_id=os.getenv("RAY_CLOUD_INSTANCE_ID", ""),
+            node_instance_id=ray.util.get_node_instance_id(),
             actor_id=ray.get_runtime_context().get_actor_id(),
             actor_name=SERVE_CONTROLLER_NAME,
             worker_id=ray.get_runtime_context().get_worker_id(),
