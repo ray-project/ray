@@ -21,7 +21,7 @@ def test_dedup_logs():
 import time
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 signal = SignalActor.remote()
 
@@ -31,6 +31,9 @@ def verbose():
     print(f"hello world, id={time.time()}")
 
 refs = [verbose.remote() for _ in range(4)]
+wait_for_condition(
+    lambda: ray.get(signal.cur_num_waiters.remote()) == 4
+)
 ray.get(signal.send.remote())
 ray.get(refs)
 """
