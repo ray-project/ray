@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
-    """NOTE: THIS IS DEPRECATED, PLEASE USE AggregateFnV2 INSTEAD
+    """NOTE: THIS IS DEPRECATED, PLEASE USE :class:`AggregateFnV2` INSTEAD
 
     Defines how to perform a custom aggregation in Ray Data.
 
@@ -115,15 +115,16 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     needs further transformation.
 
     Aggregation follows these steps:
-        1. **Initialization**: For each group (if grouping) or for the entire dataset,
-           an initial accumulator is created using `zero_factory`.
-        2. **Block Aggregation**: The `aggregate_block` method is applied to
-           each block independently, producing a partial aggregation result for that block.
-        3. **Combination**: The `combine` method is used to merge these partial
-           results (or an existing accumulated result with a new partial result)
-           into a single, combined accumulator.
-        4. **Finalization**: Optionally, the `_finalize` method transforms the
-           final combined accumulator into the desired output format.
+
+    1. **Initialization**: For each group (if grouping) or for the entire dataset,
+       an initial accumulator is created using `zero_factory`.
+    2. **Block Aggregation**: The `aggregate_block` method is applied to
+       each block independently, producing a partial aggregation result for that block.
+    3. **Combination**: The `combine` method is used to merge these partial
+       results (or an existing accumulated result with a new partial result)
+       into a single, combined accumulator.
+    4. **Finalization**: Optionally, the `_finalize` method transforms the
+       final combined accumulator into the desired output format.
 
     Args:
         name: The name of the aggregation. This will be used as the column name
@@ -158,7 +159,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
-        _safe_finalize = _null_safe_finalize(self._finalize)
+        _safe_finalize = _null_safe_finalize(self.finalize)
 
         _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
 
@@ -212,7 +213,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         """
         ...
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AggType) -> Optional[U]:
         """Transforms the final accumulated state into the desired output.
 
         This method is called once per group after all blocks have been processed
@@ -532,7 +533,7 @@ class Mean(AggregateFnV2):
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AggType) -> Optional[U]:
         # The final accumulator for a group is [total_sum, total_count].
         if accumulator[1] == 0:
             # If total_count is 0 (e.g., group was empty or all nulls ignored),
@@ -633,7 +634,9 @@ class Std(AggregateFnV2):
         M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
         return [M2, mean, count]
 
-    def _finalize(self, accumulator: List[float]) -> Optional[U]:
+    def finalize(self, accumulator: List[float]) -> Optional[U]:
+        # Compute the final standard deviation from the accumulated
+        # sum of squared differences from current mean and the count.
         # Final accumulator: [M2, mean, count]
         M2, mean, count = accumulator
         # Denominator for variance calculation is count - ddof
@@ -787,7 +790,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def _finalize(self, accumulator: List[Any]) -> Optional[U]:
+    def finalize(self, accumulator: List[Any]) -> Optional[U]:
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
