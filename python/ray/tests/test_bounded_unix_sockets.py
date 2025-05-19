@@ -1,5 +1,4 @@
 import sys
-import os
 
 import ray
 import logging
@@ -99,7 +98,4 @@ def test_actors_have_bounded_num_of_sockets(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

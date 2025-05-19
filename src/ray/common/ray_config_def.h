@@ -861,7 +861,7 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 ///  To use this, simply do
 ///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
@@ -892,7 +892,7 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
 // By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks
