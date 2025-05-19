@@ -74,6 +74,8 @@ train_dashboard_config = DashboardConfig(
     standard_global_filters=[
         'SessionName=~"$SessionName"',
         'ray_train_run_name=~"$TrainRunName"',
+        'ray_train_run_id=~"$TrainRunId"',
+        'ray_train_worker_world_rank=~"$TrainWorkerWorldRank"',
     ],
     base_json_file_name="train_grafana_dashboard_base.json",
 )
