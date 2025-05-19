@@ -203,8 +203,8 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-bokeh==2.4.3 ; python_version < "3.12"
-    # via -r python/requirements/ml/data-requirements.txt
+bokeh==3.3.4
+    # via dask
 boltons==21.0.0
     # via
     #   face
@@ -305,7 +305,6 @@ cloudpickle==3.0.0
     #   hyperopt
     #   mlagents-envs
     #   mlflow-skinny
-    #   pymars
     #   statsforecast
     #   tensorflow-probability
 cma==3.2.2
@@ -343,7 +342,9 @@ contextlib2==21.6.0
     #   ml-collections
     #   pytest-shutil
 contourpy==1.1.1
-    # via matplotlib
+    # via
+    #   bokeh
+    #   matplotlib
 coverage==7.6.12
     # via nbval
 cramjam==2.8.3
@@ -378,7 +379,7 @@ cython==0.29.37
     # via
     #   -r python/requirements/test-requirements.txt
     #   gpy
-dask==2024.8.0 ; python_version < "3.12"
+dask==2025.5.0 ; python_version >= "3.11"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -404,7 +405,6 @@ deepspeed==0.12.3
 defusedxml==0.7.1
     # via
     #   nbconvert
-    #   pymars
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -423,8 +423,8 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2024.8.0 ; python_version < "3.12"
-    # via -r python/requirements/ml/data-requirements.txt
+distributed==2025.5.0
+    # via dask
 distro==1.9.0
     # via azure-cli-core
 dm-control==1.0.12 ; python_version < "3.12"
@@ -845,6 +845,7 @@ jinja2==3.1.6
     #   altair
     #   ax-platform
     #   bokeh
+    #   dask
     #   distributed
     #   flask
     #   fugue
@@ -1007,6 +1008,7 @@ lz4==4.3.3
     # via
     #   -r python/requirements.txt
     #   clickhouse-connect
+    #   dask
 mako==1.3.0
     # via alembic
 markdown==3.5.1
@@ -1066,7 +1068,7 @@ mmh3==4.1.0
     # via pyiceberg
 mock==5.2.0
     # via pytest-shutil
-modin==0.22.2 ; python_version < "3.12"
+modin==0.31.0 ; python_version >= "3.11"
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
@@ -1198,9 +1200,7 @@ numba==0.59.1
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
 numexpr==2.8.4
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   pymars
+    # via -r python/requirements/test-requirements.txt
 numpy==1.26.4
     # via
     #   -r python/requirements.txt
@@ -1258,7 +1258,6 @@ numpy==1.26.4
     #   prophet
     #   pyarrow
     #   pylance
-    #   pymars
     #   pyro-ppl
     #   pytorch-lightning
     #   raydp
@@ -1422,13 +1421,15 @@ packaging==23.0
     #   torchmetrics
     #   transformers
     #   utilsforecast
-pandas==1.5.3 ; python_version < "3.12"
+pandas==2.2.2 ; python_version >= "3.11"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   altair
     #   ax-platform
+    #   bokeh
     #   cmdstanpy
+    #   dask
     #   datasets
     #   delta-sharing
     #   evaluate
@@ -1436,7 +1437,6 @@ pandas==1.5.3 ; python_version < "3.12"
     #   mlflow
     #   modin
     #   prophet
-    #   pymars
     #   qpd
     #   raydp
     #   statsforecast
@@ -1570,7 +1570,6 @@ psutil==5.9.6
     #   distributed
     #   ipykernel
     #   modin
-    #   pymars
     #   raydp
     #   tensorflow-datasets
     #   torch-geometric
@@ -1594,6 +1593,7 @@ py4j==0.10.9.7
 pyarrow==14.0.2
     # via
     #   -r python/requirements.txt
+    #   dask
     #   datasets
     #   delta-sharing
     #   deltalake
@@ -1663,8 +1663,6 @@ pyjwt==2.8.0
     #   snowflake-connector-python
 pylance==0.22.0
     # via -r python/requirements/ml/data-test-requirements.txt
-pymars==0.10.0 ; python_version < "3.12"
-    # via -r python/requirements/ml/data-requirements.txt
 pymongo==4.3.2
     # via -r python/requirements/test-requirements.txt
 pymunk==6.2.1
@@ -1838,7 +1836,6 @@ pyyaml==6.0.1
     #   myst-parser
     #   optuna
     #   pre-commit
-    #   pymars
     #   pytorch-lightning
     #   ray
     #   timm
@@ -1991,7 +1988,6 @@ scikit-learn==1.3.2
     #   bayesian-optimization
     #   gpytorch
     #   mlflow
-    #   pymars
     #   torch-geometric
 scipy==1.11.4
     # via
@@ -2009,7 +2005,6 @@ scipy==1.11.4
     #   mlflow
     #   open-spiel
     #   paramz
-    #   pymars
     #   scikit-image
     #   scikit-learn
     #   statsforecast
@@ -2144,7 +2139,6 @@ sqlalchemy==2.0.32
     #   mlflow
     #   optuna
     #   pyiceberg
-    #   pymars
 sqlglot==25.6.1
     # via fugue
 sqlparse==0.5.1
@@ -2317,7 +2311,6 @@ tornado==6.2
     #   jupyterlab
     #   nbclassic
     #   notebook
-    #   pymars
     #   terminado
 tqdm==4.64.1
     # via
@@ -2337,7 +2330,6 @@ tqdm==4.64.1
     #   moviepy
     #   optuna
     #   prophet
-    #   pymars
     #   pyro-ppl
     #   pytorch-lightning
     #   statsforecast
@@ -2392,7 +2384,6 @@ typing-extensions==4.12.2
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
-    #   bokeh
     #   configspace
     #   etils
     #   fastapi
@@ -2418,6 +2409,8 @@ typing-extensions==4.12.2
     #   tensorflow
     #   torch
     #   typer
+tzdata==2025.2
+    # via pandas
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 ujson==5.10.0
@@ -2449,8 +2442,6 @@ uvicorn==0.22.0
     #   aim
     #   gradio
     #   mlflow-skinny
-uvloop==0.21.0
-    # via pymars
     # via
     #   nsx-policy-python-sdk
     #   nsx-python-sdk
@@ -2544,6 +2535,8 @@ xxhash==3.4.1
     # via
     #   datasets
     #   evaluate
+xyzservices==2025.4.0
+    # via bokeh
 y-py==0.6.2
     # via
     #   jupyter-ydoc
