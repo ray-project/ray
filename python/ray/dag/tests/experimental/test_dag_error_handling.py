@@ -306,6 +306,7 @@ def test_buffered_get_timeout(ray_start_regular, zero_teardown_timeout):
 
     compiled_dag.teardown(kill_actors=True)
 
+
 def test_get_with_zero_timeout(ray_start_regular):
     @ray.remote
     class Actor:
