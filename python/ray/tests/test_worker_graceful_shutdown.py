@@ -45,13 +45,16 @@ def test_ray_get_during_graceful_shutdown(ray_start_regular_shared, actor_type: 
                 print("Got signal, calling ray.get")
                 return ray.get(nested_ref[0])
 
+    # Start the actor and wait for the method to begin executing and then block.
     actor = A.remote()
     wait_ref = actor.wait_then_get.remote([ray.put("hi")])
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
 
+    # SIGTERM the process and then signal the method to unblock.
     ray.get(actor.exit.remote())
     ray.get(signal_actor.send.remote())
 
+    # Check that the method succeeds as expected.
     assert ray.get(wait_ref) == "hi"
 
 
