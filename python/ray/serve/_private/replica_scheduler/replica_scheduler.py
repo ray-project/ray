@@ -75,7 +75,8 @@ class MultiplexScheduleMixin:
         self, replicas: List[RunningReplica]
     ):
         """Update the multiplexed model IDs based on the replicas.
-        This is called when the replicas are updated.
+
+        This should be called when the replicas are updated.
         """
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
