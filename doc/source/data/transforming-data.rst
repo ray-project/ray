@@ -394,7 +394,7 @@ You can also perform aggregations on grouped data.
     #  {'label': 1, 'sum(id)': 12},
     #  {'label': 2, 'sum(id)': 15}]
 
-Each of the above methods also has a corresponding :ref:`AggregateFn <aggregations_api_ref>` object. These objects can be used in
+Each of the above methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in
 :meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
 
 
