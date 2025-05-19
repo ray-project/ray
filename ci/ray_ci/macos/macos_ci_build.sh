@@ -51,7 +51,7 @@ build() {
   # Upload the wheels and jars
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
   if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-  pip install -q docker aws_requests_auth boto3
+  python -m pip install -q docker aws_requests_auth boto3
   # Upload to branch directory.
   python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
   python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
