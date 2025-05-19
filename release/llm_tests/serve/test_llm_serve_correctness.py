@@ -2,6 +2,7 @@ import os
 import subprocess
 import time
 import requests
+import pytest
 from openai import OpenAI
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
@@ -121,34 +122,50 @@ def wait_for_server_ready(url, server_type="ray", timeout=120, retry_interval=2)
     )
 
 
-if __name__ == "__main__":
-    test_prompt = "Hello, world!"
-    test_id = "test_1"
+@pytest.fixture
+def setup_servers():
+    """Fixture to set up Ray Serve and vLLM servers and clean them up after the test."""
     ray_url = "http://localhost:8000"
 
-    try:
-        start_ray_serve()
-        vllm_url, vllm_process = start_vllm_server()
+    # Start Ray Serve
+    start_ray_serve()
 
-        wait_for_server_ready(vllm_url, server_type="vllm")
-        wait_for_server_ready(ray_url, server_type="ray")
+    # Start vLLM Server
+    vllm_url, vllm_process = start_vllm_server()
 
-        ray_output = generate_with_ray(test_prompt, ray_url)
-        vllm_output = generate_with_vllm(test_prompt, vllm_url)
+    # Wait for servers to be ready
+    wait_for_server_ready(vllm_url, server_type="vllm")
+    wait_for_server_ready(ray_url, server_type="ray")
 
-        try:
-            assert ray_output == vllm_output
-        except AssertionError:
-            print("Ray and vLLM outputs do not match")
-            print(f"Ray output: {ray_output}")
-            print(f"vLLM output: {vllm_output}")
-    finally:
-        serve.shutdown()
-        vllm_process.terminate()
+    # Provide the server URLs to the test
+    yield ray_url, vllm_url, vllm_process
 
-        for _ in range(5):
-            if vllm_process.poll() is not None:
-                break
-            time.sleep(1)
-        if vllm_process.poll() is None:
-            vllm_process.kill()
+    # Cleanup
+    serve.shutdown()
+    vllm_process.terminate()
+
+    for _ in range(5):
+        if vllm_process.poll() is not None:
+            break
+        time.sleep(1)
+    if vllm_process.poll() is None:
+        vllm_process.kill()
+
+
+def test_llm_serve_correctness(setup_servers):
+    """Test that Ray Serve and vLLM produce the same output for the same input."""
+    ray_url, vllm_url, _ = setup_servers
+    test_prompt = "Hello, world!"
+
+    ray_output = generate_with_ray(test_prompt, ray_url)
+    vllm_output = generate_with_vllm(test_prompt, vllm_url)
+
+    assert ray_output == vllm_output, (
+        f"Ray and vLLM outputs do not match\n"
+        f"Ray output: {ray_output}\n"
+        f"vLLM output: {vllm_output}"
+    )
+
+
+if __name__ == "__main__":
+    pytest.main(["-xvs", __file__])
