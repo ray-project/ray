@@ -9,8 +9,6 @@ from typing import (
 )
 
 from ray import serve
-from ray.serve._private.replica_scheduler.common import PendingRequest
-
 from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
@@ -19,6 +17,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_scheduler.common import PendingRequest
 from ray.serve._private.replica_scheduler.replica_scheduler import (
     LocalityScope,
     ReplicaScheduler,
@@ -28,7 +27,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class VLLMDeploymentScheduler(ReplicaScheduler):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._use_vllm_prompt_processor = True
@@ -44,6 +42,7 @@ class VLLMDeploymentScheduler(ReplicaScheduler):
             ChatCompletionRequest,
             CompletionRequest,
         )
+
         request = pending_request.args[0]
         if isinstance(request, CompletionRequest):
             prompt = request.prompt
