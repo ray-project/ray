@@ -367,7 +367,7 @@ Ray Data offers out-of-the-box methods for performing aggregations on your data.
 These methods include :meth:`~ray.data.Dataset.sum`, :meth:`~ray.data.Dataset.min`, :meth:`~ray.data.Dataset.max`, :meth:`~ray.data.Dataset.mean`, and more
 (see :ref:`API Reference <dataset-api>` for the full list).
 
-To use these methods, call them on your Dataset. For example:
+You can use these methods as follows:
 
 .. testcode::
 
