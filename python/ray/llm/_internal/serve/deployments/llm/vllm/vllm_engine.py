@@ -6,6 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKI
 import ray
 import re
 from concurrent.futures.thread import ThreadPoolExecutor
+from ray import serve
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -174,6 +175,7 @@ class _EngineBackgroundProcess:
         return self._error
 
 
+@serve.deployment(name="vllm_engine_deployment")
 class VLLMEngine(LLMEngine):
     def __init__(
         self,

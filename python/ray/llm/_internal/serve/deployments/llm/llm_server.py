@@ -439,7 +439,8 @@ class LLMServer(_LLMServerBase):
         await super().__init__(llm_config)
 
         self._engine_cls = engine_cls or self._default_engine_cls
-        self.engine = self._get_engine_class(self._llm_config)
+        self.engine = self._get_engine_class.bind(self._llm_config)
+        self.engine_deployment = serve.run(self.engine, route_prefix="/vllm")
         await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         self.image_retriever = (
@@ -486,7 +487,7 @@ class LLMServer(_LLMServerBase):
         return self._engine_cls
 
     async def _start_engine(self):
-        await self.engine.start()
+        await self.engine_deployment.start.remote()
 
         # Push telemetry reports for the model in the current deployment.
         # Note: the model architecture is only available after node initialized and the
@@ -518,14 +519,16 @@ class LLMServer(_LLMServerBase):
         else:
             disk_lora_model = None
 
-        llm_request = await self.engine.prepare_request(
+        llm_request = await self.engine_deployment.prepare_request.remote(
             request_id=request_id,
             prompt=prompt,
             stream=stream,
             disk_lora_model=disk_lora_model,
         )
 
-        async for llm_response in self.engine.generate(llm_request):
+        async for llm_response in self.engine_deployment.generate.options(
+            stream=True
+        ).remote(llm_request):
             yield llm_response
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
@@ -615,7 +618,7 @@ class LLMServer(_LLMServerBase):
     async def check_health(self) -> None:
         """Check the health of the replica. Does not return anything. Raise error when
         the engine is dead and needs to be restarted."""
-        healthy = await self.engine.check_health()
+        healthy = await self.engine_deployment.check_health.remote()
         if not healthy:
             raise RuntimeError("Engine is not healthy. Please restart the engine.")
 
@@ -648,7 +651,9 @@ class LLMServer(_LLMServerBase):
                 "serve_request_context": serve.context._serve_request_context.get(),
             }
             vllm_request = VLLMEmbeddingRequest(**request_params)
-            embedding_data, total_tokens = await self.engine.embed(vllm_request)
+            embedding_data, total_tokens = await self.engine_deployment.embed.remote(
+                vllm_request
+            )
 
             data = [
                 EmbeddingResponseData(
