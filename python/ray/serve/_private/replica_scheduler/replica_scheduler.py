@@ -842,8 +842,10 @@ class ReplicaScheduler(ABC):
         replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        """One iteration of choosing available replicas.
-        This is the main function each custom scheduler should implement to
-        decide which replica to send the request.
+        """Chooses a subset of candidate replicas from available replicas.
+
+        This is the main function each replica scheduler should implement to
+        decide which replica to send the request to. This is one iteration of
+        replica selection.
         """
         pass
