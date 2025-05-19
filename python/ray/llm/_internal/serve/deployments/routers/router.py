@@ -290,7 +290,6 @@ class LLMRouter:
                 f'Got request for model "{model}". '
                 f'Could not find base model with ID "{base_model_id}".',
             )
-        print(f"[[LLMRouter._get_response]] model: {model}, body: {body}")
         model_handle = self._get_configured_serve_handle(model)
 
         async for response in getattr(model_handle, call_method).remote(body):

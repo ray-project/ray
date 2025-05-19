@@ -49,9 +49,6 @@ class PowerOfTwoChoicesReplicaScheduler(
     capped at (2 * num_replicas).
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     async def choose_replicas(
         self,
         replicas_ranks: List[List[RunningReplica]],

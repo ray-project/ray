@@ -410,30 +410,23 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         When the set of replicas changes, we may spawn additional scheduling tasks
         if there are pending requests.
         """
-        # 1) remember what was there before…
+        # 1) Record the old replica IDs
         old_ids = set(self._replica_id_set)
 
-        # 2) run the default logic (updates self._replicas, self._replica_id_set, etc)
+        # 2) Run the default update_replicas logic
         super().update_replicas(replicas)
 
-        # 3) figure out who was added / removed
+        # 3) Figure out which replicas were added / removed
         new_ids = set(self._replica_id_set)
         added = new_ids - old_ids
         removed = old_ids - new_ids
 
         # 4) Update the prefix tree with the changes
         for rid in added:
-            # Convert rid to the string representation
             self._active_tree_actor._add_tenant.remote(rid.to_full_id_str())
 
         for rid in removed:
             self._active_tree_actor.remove_tenant.remote(rid.to_full_id_str())
-
-        # # Start metrics tracking task if it's not already running and we have replicas
-        # if self._do_track_metrics and self._track_metrics_task is None and len(self._replicas) > 0:
-        #     self._track_metrics_task = self._event_loop.create_task(
-        #         self._track_metrics()
-        #     )
 
     async def choose_replicas(
         self,
