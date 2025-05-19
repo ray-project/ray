@@ -164,7 +164,7 @@ def main(scale_factor: int):
 
     from ray.data.context import DataContext
 
-    DataContext.get_current().eager_free = True
+    DataContext.get_current().eager_free = False
 
     print("Creating metadata")
     metadata = create_metadata(scale_factor=scale_factor)
