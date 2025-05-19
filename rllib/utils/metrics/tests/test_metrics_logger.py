@@ -385,7 +385,17 @@ def test_lifetime_stats():
 
 
 def test_hierarchical_metrics_system():
-    """Test a hierarchical system of MetricsLoggers."""
+    """Test a hierarchical system of MetricsLoggers.
+
+    This test creates a tree structure of MetricsLoggers:
+        Root        (Driver)
+        ┌─┴─┐
+      A      B      (AggregatorActor)
+    ┌─┴─┐  ┌─┴─┐
+    A1 A2  B1 B2    (EnvRunner)
+
+    We test the aggregation of all these metrics through multiple reduction steps.
+    """
     # Test parameters
     # Change the metric_name to test different metrics if ever needed
     metric_name = "window_mean"
