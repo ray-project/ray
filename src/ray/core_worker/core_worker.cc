@@ -1176,10 +1176,6 @@ void CoreWorker::Exit(
   }
 
   RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
-  /// Since this core worker is exiting, it's necessary to release all local references,
-  /// otherwise the frontend code may not release its references and this worker will be
-  /// leaked. See https://github.com/ray-project/ray/issues/19639.
-  reference_counter_->ReleaseAllLocalReferences();
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -1220,12 +1216,20 @@ void CoreWorker::Exit(
             not_actor_task = actor_id_.IsNil();
           }
           if (not_actor_task) {
-            // If we are a task, then we cannot hold any object references in the
-            // heap. Therefore, any active object references are being held by other
-            // processes. Wait for these processes to release their references
-            // before we shutdown. NOTE(swang): This could still cause this worker
-            // process to stay alive forever if another process holds a reference
-            // forever.
+            // Normal tasks should not hold any object references in the heap after
+            // executing, but they could in the case that one was stored as a glob
+            // variable (anti-pattern, but possible). We decrement the reference count
+            // for all local references to account for this. After this call, the only
+            // references left to drain should be those that are in use by remote
+            // workers. If these workers hold their references forever, the call to
+            // drain the reference counter will hang forever and this process will not
+            // exit until it is forcibly removed (e.g., via SIGKILL).
+            //
+            // NOTE(edoakes): this is only safe to do _after_ we have drained executing
+            // tasks in the task_receiver_, otherwise there might still be user code
+            // running that relies on the state of the reference counter.
+            // See: https://github.com/ray-project/ray/pull/53002.
+            reference_counter_->ReleaseAllLocalReferences();
             reference_counter_->DrainAndShutdown(shutdown);
           } else {
             // If we are an actor, then we may be holding object references in the
