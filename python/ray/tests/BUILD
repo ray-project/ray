@@ -456,6 +456,7 @@ py_test_module_list(
         "test_environ.py",
         "test_exceptiongroup.py",
         "test_get_or_create_actor.py",
+        "test_worker_graceful_shutdown.py",
         "test_ids.py",
         "test_list_actors.py",
         "test_list_actors_2.py",
