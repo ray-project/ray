@@ -26,7 +26,7 @@ TaskSpecification BuildTaskSpec(uint64_t seq) {
   TaskSpecification spec;
   spec.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID()).Binary());
   spec.GetMutableMessage().set_type(ray::rpc::TaskType::ACTOR_TASK);
-  spec.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(seq);
+  spec.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(seq);
   return spec;
 }
 }  // namespace
@@ -71,8 +71,8 @@ TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
   }
 
   // task 1 and task 3 is ready to send.
-  EXPECT_EQ(queue.PopNextTaskToSend()->first.ActorCounter(), 1);
-  EXPECT_EQ(queue.PopNextTaskToSend()->first.ActorCounter(), 3);
+  EXPECT_EQ(queue.PopNextTaskToSend()->first.SequenceNumber(), 1);
+  EXPECT_EQ(queue.PopNextTaskToSend()->first.SequenceNumber(), 3);
   EXPECT_FALSE(queue.PopNextTaskToSend().has_value());
 
   // only contains task 2 and 4.
