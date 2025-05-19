@@ -45,7 +45,7 @@ build() {
 
   ./ci/ci.sh build_wheels_and_jars
   # Test wheels
-  ./ci/ci.sh test_wheels
+  ./ci/ci.sh test_macos_wheels
   # Build jars
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars

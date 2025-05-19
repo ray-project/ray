@@ -141,10 +141,10 @@ test_cpp() {
   fi
 }
 
-test_wheels() {
+test_macos_wheels() {
   local TEST_WHEEL_RESULT=0
 
-  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
+  "${WORKSPACE_DIR}"/ci/build/test-macos-wheels.sh || TEST_WHEEL_RESULT=$?
 
   if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
