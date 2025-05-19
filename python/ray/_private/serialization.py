@@ -259,7 +259,8 @@ class SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        if object_id in worker.in_actor_object_store:
+        enable_gpu_objects = object_id in worker.in_actor_object_store
+        if enable_gpu_objects:
             tensors = worker.in_actor_object_store[object_id]
             ctx.reset_out_of_band_tensors(tensors)
 
@@ -273,7 +274,8 @@ class SerializationContext:
         except pickle.pickle.PicklingError:
             raise DeserializationError()
         finally:
-            ctx.reset_out_of_band_tensors([])
+            if enable_gpu_objects:
+                ctx.reset_out_of_band_tensors([])
         return obj
 
     def _deserialize_msgpack_data(self, data, metadata_fields, object_id=None):
@@ -560,33 +562,45 @@ class SerializationContext:
         Args:
             value: The value to serialize.
         """
+        print(f"serialize tensor_transport: {tensor_transport}")
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
-        else:
-            from ray.experimental.channel import ChannelContext
 
-            ctx = ChannelContext.get_current().serialization_context
-            prev_use_external_transport = ctx.use_external_transport
-            print(f"serialize tensor_transport: {tensor_transport}")
-            if tensor_transport is not None and tensor_transport.lower() in [
-                "nccl",
-                "gloo",
-            ]:
-                ctx.set_use_external_transport(True)
+        # TODO(kevin85421): We should have a clear definition to express whether
+        # the tensor transport is enabled.
+        if (
+            tensor_transport is None
+            or tensor_transport == ""
+            or tensor_transport == "NONE"
+        ):
+            return self._serialize_to_msgpack(value)
 
-            try:
-                val = self._serialize_to_msgpack(value)
-            finally:
-                ctx.set_use_external_transport(prev_use_external_transport)
+        # Handle tensor transport.
+        assert tensor_transport.lower() in [
+            "nccl",
+            "gloo",
+        ], f"Invalid tensor transport {tensor_transport}"
 
-            tensors, _ = ctx.reset_out_of_band_tensors([])
-            if tensors:
-                assert obj_id is not None
-                obj_id = obj_id.decode("ascii")
-                worker = ray._private.worker.global_worker
-                worker.in_actor_object_store[obj_id] = tensors
+        from ray.experimental.channel import ChannelContext
 
-            return val
+        ctx = ChannelContext.get_current().serialization_context
+        prev_use_external_transport = ctx.use_external_transport
+        ctx.set_use_external_transport(True)
+        try:
+            val = self._serialize_to_msgpack(value)
+        finally:
+            ctx.set_use_external_transport(prev_use_external_transport)
+
+        tensors, _ = ctx.reset_out_of_band_tensors([])
+        if tensors:
+            assert (
+                obj_id is not None
+            ), "obj_id is the key to retrieve corresponding tensors from the in-actor object store, and it should not be None."
+            obj_id = obj_id.decode("ascii")
+            worker = ray._private.worker.global_worker
+            worker.in_actor_object_store[obj_id] = tensors
+
+        return val
