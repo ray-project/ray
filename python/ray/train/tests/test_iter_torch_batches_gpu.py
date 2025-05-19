@@ -421,7 +421,7 @@ def test_custom_batch_collate_fn(
         else collate_fns[collate_batch_type]
     )
 
-    for batch in it.iter_torch_batches(collate_fn=collate_fn):
+    for batch in it.iter_torch_batches(collate_fn=collate_fn, device=device):
         if return_type == "single":
             assert isinstance(batch, torch.Tensor)
             assert sorted(batch.tolist()) == list(range(5, 10))
