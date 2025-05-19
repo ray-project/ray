@@ -62,7 +62,9 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 if override_num_blocks is not None
                 else {}
             ),
-        ).map_batches(get_preprocess_map_batch_fn(random_transforms=True), batch_size=4)
+        ).map_batches(
+            get_preprocess_map_batch_fn(random_transforms=True), batch_size=32
+        )
 
         # Create validation dataset
         val_ds = ray.data.read_images(
@@ -79,7 +81,9 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 if override_num_blocks is not None
                 else {}
             ),
-        ).map_batches(get_preprocess_map_batch_fn(random_transforms=False), batch_size=4)
+        ).map_batches(
+            get_preprocess_map_batch_fn(random_transforms=False), batch_size=32
+        )
 
         return {
             DatasetKey.TRAIN: train_ds,

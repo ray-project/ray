@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from typing import Dict, Union, Callable
+from typing import Dict, Union, Callable, List
 from PIL import Image
 
 from constants import DatasetKey
@@ -21,7 +21,8 @@ IMAGENET_JPEG_SPLIT_S3_DIRS = {
 def get_preprocess_map_fn(
     random_transforms: bool = True,
 ) -> Callable[[Dict[str, Union[np.ndarray, str]]], Dict[str, torch.Tensor]]:
-    """Get a map function that transforms a row to the format expected by the training loop.
+    """Get a map function that transforms a row to the format expected by the
+    training loop.
 
     Args:
         random_transforms: Whether to use random transforms for training
@@ -60,22 +61,49 @@ def get_preprocess_map_fn(
 def get_preprocess_map_batch_fn(
     random_transforms: bool = True,
 ) -> Callable[[Dict[str, np.ndarray]], Dict[str, List[torch.Tensor]]]:
-    """Ray map_batches-compatible function using 'numpy' batch format."""
+    """
+    Returns a function compatible with map_batches, which processes a batch of images
+    and labels. The returned function expects a batch in 'numpy' format and outputs a
+    dict of lists of torch.Tensors.
+
+    Args:
+        random_transforms: Whether to apply random data augmentations.
+
+    Returns:
+        Callable: A function that takes a batch dict and returns a dict with processed
+        images and labels.
+    """
     crop_resize_transform = get_transform(
-        to_torch_tensor=False, random_transforms=random_transforms
+        to_torch_tensor=True, random_transforms=random_transforms
     )
 
     def map_batch_fn(batch: Dict[str, np.ndarray]) -> Dict[str, List[torch.Tensor]]:
-        images = batch["image"]  # shape: (B, H, W, C)
-        classes = batch["class"]  # shape: (B,)
+        """
+        Processes a batch of images and labels.
+
+        Args:
+            batch: Dict containing 'image' (np.ndarray, shape: (B, H, W, C)) and
+                   'class' (np.ndarray, shape: (B,)).
+
+        Returns:
+            Dict containing 'image' (list of torch.Tensor) and 'label' (list of int).
+        """
+        images = batch["image"]
+        classes = batch["class"]
 
         processed_images = []
         labels = []
+
         for img, cls in zip(images, classes):
-            image_tensor = torch.from_numpy(img.transpose(2, 0, 1)).float() / 255.0
-            image_tensor = crop_resize_transform(image_tensor)
-            processed_images.append(image_tensor)
-            labels.append(IMAGENET_WNID_TO_ID[cls])
+            # Convert NumPy HWC image to PIL Image for transformation
+            image_pil = Image.fromarray(img)
+            # Apply the transformation pipeline (e.g., crop, resize, normalize, to
+            # tensor)
+            image = crop_resize_transform(image_pil)
+            # Convert class label from WNID string to integer ID
+            label = IMAGENET_WNID_TO_ID[cls]
+            processed_images.append(image)
+            labels.append(label)
 
         return {"image": processed_images, "label": labels}
 
