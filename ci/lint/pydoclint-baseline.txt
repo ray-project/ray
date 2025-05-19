@@ -1161,12 +1161,6 @@ python/ray/data/_internal/equalize.py
     DOC103: Function `_equalize`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [owned_by_consumer: bool].
     DOC103: Function `_shave_all_splits`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [per_split_num_rows: List[List[int]]].
 --------------------
-python/ray/data/_internal/execution/autoscaler/autoscaling_actor_pool.py
-    DOC101: Method `AutoscalingActorPool.scale_up`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AutoscalingActorPool.scale_up`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [num_actors: int].
-    DOC101: Method `AutoscalingActorPool.scale_down`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AutoscalingActorPool.scale_down`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [num_actors: int].
---------------------
 python/ray/data/_internal/execution/bundle_queue/bundle_queue.py
     DOC201: Method `BundleQueue.pop` does not have a return section in docstring
 --------------------

@@ -387,7 +387,7 @@ class TestLLMServer:
         server = await create_server(llm_config, engine_cls=MockVLLMEngine)
 
         # Mock the engine's check_health method
-        server.engine.check_health = AsyncMock(return_value=True)
+        server.engine.check_health = AsyncMock(return_value=None)
 
         # Perform the health check, no exceptions should be raised
         await server.check_health()
