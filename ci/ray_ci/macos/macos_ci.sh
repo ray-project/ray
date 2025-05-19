@@ -114,7 +114,9 @@ _prelude() {
   #
   # Brew links openssl to /usr/local/include/openssl, and recent MacOS's toolchain will always
   # pick them up.
-  if [[ "${MACHTYPE}" =~ ^x86_64 ]]; then
+  #
+  # This is not required for arm64, because brew is installed in /opt/homebrew/
+  if [[ "$(uname -m)" == "x86_64" ]]; then
     rm -rf /usr/local/include/*
   fi
 
