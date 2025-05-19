@@ -1,7 +1,5 @@
 import sys
 
-import ray.data.context
-
 import pytest
 
 import ray
