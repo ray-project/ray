@@ -1,8 +1,8 @@
 .. _data:
 
-==================================
-Ray Data: Scalable Datasets for ML
-==================================
+==========================================
+Ray Data: Data Processing for AI Workloads
+==========================================
 
 .. toctree::
     :hidden:
@@ -15,29 +15,43 @@ Ray Data: Scalable Datasets for ML
     comparisons
     data-internals
 
-Ray Data is a scalable data processing library for ML and AI workloads built on Ray.
-Ray Data provides flexible and performant APIs for expressing AI workloads such as :ref:`batch inference <batch_inference_home>`, data preprocessing, and ingest for ML training. Unlike other distributed data systems, Ray Data features a :ref:`streaming execution <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
+Ray Data is a data processing library for AI workloads built on Ray.
+Ray Data aims to bridge the gap between the needs of AI workloads and the capabilities of existing data processing systems
+by providing:
+
+- key primitives for efficient GPU batch inference, distributed training ingestion, and data preprocessing
+- support for many data formats used in Data and AI workloads (Iceberg, Parquet, Lance, images, audio, video, etc.)
+- integration with common AI frameworks (vLLM, Pytorch, Tensorflow, etc)
+- support for distributed data processing (map, filter, join, groupby, aggregate, etc.)
 
 
 Why choose Ray Data?
 --------------------
 
-Modern AI workloads revolve around the usage of deep learning models, which are computationally intensive and often require specialized hardware such as GPUs.
-Unlike CPUs, GPUs often come with less memory, have different semantics for scheduling, and are much more expensive to run.
-Systems built to support traditional data processing pipelines often don't utilize such resources well.
+Traditional data processing workloads are built on the following assumptions:
 
-Ray Data supports AI workloads as a first-class citizen and offers several key advantages:
+- Data formats are primarily *tabular*
+- Computation is primarily *CPU or memory-bound*
+- Ecosystems are primarily *Java or Scala* based.
 
-- **Faster and cheaper for deep learning**: Ray Data streams data between CPU preprocessing and GPU inference/training tasks, maximizing resource utilization and reducing costs by keeping GPUs active.
 
-- **Framework friendly**: Ray Data provides performant, first-class integration with common AI frameworks (vLLM, PyTorch, HuggingFace, TensorFlow) and common cloud providers (AWS, GCP, Azure)
+However, modern AI workloads revolve around the usage of deep learning models, which are computationally intensive and often require specialized hardware such as GPUs.
+These workloads result in the following characteristics:
 
-- **Support for multi-modal data**: Ray Data leverages Apache Arrow and Pandas and provides support for many data formats used in ML workloads such as Parquet, Lance, images, JSON, CSV, audio, video, and more.
+- Data formats are mixed between *tabular* and *tensor*
+- Computation is primarily *GPU-bound*
+- Ecosystems are primarily *Python* based.
 
-- **Scalable by default**: Built on Ray for automatic scaling across heterogeneous clusters with different CPU and GPU machines. Code runs unchanged from one machine to hundreds of nodes processing hundreds of TB of data.
 
-..
-  https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
+Ray Data is designed to address these characteristics by providing several key advantages:
+
+- **GPU-friendly**: Ray Data is built to target GPU efficiency. Ray Data's architecture can stream data between CPU preprocessing and GPU inference/training tasks, maximizing resource utilization and reducing costs by keeping GPUs active.
+
+- **Support for tabular and tensor data**: Ray Data has native support for various tensor types and can leverage many data formats used in Data and AI workloads such as Parquet, Lance, images, JSON, CSV, and more.
+
+- **Centered on the AI Ecosystem**: Ray Data provides performant integrations with common AI frameworks (vLLM, PyTorch, HuggingFace, TensorFlow) and common cloud providers (AWS, GCP, Azure)
+
+
 
 Install Ray Data
 ----------------
