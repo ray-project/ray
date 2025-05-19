@@ -14,10 +14,10 @@ if [[ ! "${OSTYPE}" =~ ^darwin ]]; then
 fi
 
 BUILD_DIR="${TRAVIS_BUILD_DIR-}"
-if [ -z "${BUILD_DIR}" ]; then
+if [[ -z "${BUILD_DIR}" ]]; then
   BUILD_DIR="${GITHUB_WORKSPACE}"
 fi
-if [ -n "${BUILDKITE-}" ]; then
+if [[ -n "${BUILDKITE-}" ]]; then
   BUILD_DIR="${ROOT_DIR}/../.."
 fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
@@ -32,7 +32,7 @@ function retry {
     if "$@"; then
       break
     fi
-    if [ $n -lt $max ]; then
+    if [[ $n -lt $max ]]; then
       ((n++))
       echo "Command failed. Attempt $n/$max:"
     else
