@@ -321,7 +321,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
-  /// Note that if a queue exists, it should be guaranteed to be non-empty.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       tasks_to_dispatch_;
 
@@ -341,7 +340,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// in this queue may not match the order in which we initially received the
   /// tasks. This also means that the PullManager may request dependencies for
   /// these tasks in a different order than the waiting task queue.
-  /// Note that if a queue exists, it should be guaranteed to be non-empty.
   std::list<std::shared_ptr<internal::Work>> waiting_task_queue_;
 
   /// An index for the above queue.
