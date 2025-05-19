@@ -5,6 +5,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKI
 
 import ray
 import re
+from concurrent.futures.thread import ThreadPoolExecutor
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -27,8 +28,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
     VLLMGenerationRequest,
+    VLLMEmbeddingRequest,
     VLLMSamplingParams,
 )
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
@@ -60,7 +63,7 @@ if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput
+    from vllm.outputs import RequestOutput, PoolingRequestOutput
     from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 vllm = try_import("vllm")
@@ -205,6 +208,11 @@ class VLLMEngine(LLMEngine):
         # Also need local instance of the tokenizer to manage prompt formatting.
         self._tokenizer = None
 
+        self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
+        self._atokenize = vllm.utils.make_async(
+            self._tokenize, executor=self._tokenizer_executor
+        )
+
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         """Run the node initializer.
@@ -215,12 +223,20 @@ class VLLMEngine(LLMEngine):
         """
         return await initialize_node_util(llm_config)
 
+    def _tokenize(
+        self, prompt_text: str, add_special_tokens: bool = False
+    ) -> List[int]:
+        encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
+        return encoded.input_ids
+
     async def start(self):
         """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
-        from vllm.entrypoints.chat_utils import resolve_chat_template_content_format
+        from vllm.entrypoints.chat_utils import (
+            resolve_chat_template_content_format as _resolve_chat_template_content_format,
+        )
 
         if self.running:
             # The engine is already running!
@@ -232,7 +248,21 @@ class VLLMEngine(LLMEngine):
         self.model_config = await self.engine.get_model_config()
 
         self._tokenizer = await self.engine.get_tokenizer()
+
+        def resolve_chat_template_content_format(model_config, **kwargs):
+            try:
+                return _resolve_chat_template_content_format(
+                    model_config=model_config, **kwargs
+                )
+            except TypeError:
+                # Legacy API before vLLM 0.9.0.
+                # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
+                return _resolve_chat_template_content_format(
+                    trust_remote_code=model_config.trust_remote_code, **kwargs
+                )
+
         self._resolved_content_format = resolve_chat_template_content_format(
+            model_config=self.model_config,
             # Use HF to get the chat template so set it to None here.
             chat_template=None,
             # Default to None, change when it's needed.
@@ -241,7 +271,6 @@ class VLLMEngine(LLMEngine):
             # Let vLLM decide the content format.
             given_format="auto",
             tokenizer=self._tokenizer,
-            trust_remote_code=self.model_config.trust_remote_code,
         )
 
         logger.info("Started vLLM engine.")
@@ -266,7 +295,11 @@ class VLLMEngine(LLMEngine):
             envs.set_vllm_use_v1(False)
 
         if not envs.VLLM_USE_V1:
+            if self.llm_config.log_engine_metrics:
+                raise ValueError("V1 vLLM Engine is required to log engine metrics")
+
             return await self._start_engine_v0()
+
         return await self._start_engine_v1()
 
     async def _prepare_engine_config(self, use_v1: bool):
@@ -459,11 +492,24 @@ class VLLMEngine(LLMEngine):
 
         _clear_current_platform_cache()
 
-        return vllm.engine.async_llm_engine.AsyncLLMEngine(
+        custom_stat_loggers = None
+        if self.llm_config.log_engine_metrics:
+            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
+                RayPrometheusStatLogger,
+            )
+
+            # V1 AsyncLLMEngine does not yet support add_logger
+            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            custom_stat_loggers = [RayPrometheusStatLogger]
+
+        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
+            stat_loggers=custom_stat_loggers,
         )
+
+        return engine
 
     async def prepare_request(
         self,
@@ -474,7 +520,7 @@ class VLLMEngine(LLMEngine):
     ) -> GenerationRequest:
         from vllm.entrypoints.chat_utils import (
             parse_chat_messages_futures,
-            apply_hf_chat_template,
+            apply_hf_chat_template as _apply_hf_chat_template,
         )
 
         model_config = self.model_config
@@ -490,22 +536,36 @@ class VLLMEngine(LLMEngine):
             )
             mm_data = await mm_futures
 
+            def apply_hf_chat_template(model_config, **kwargs):
+                try:
+                    return _apply_hf_chat_template(model_config=model_config, **kwargs)
+                except TypeError:
+                    # Legacy API before vLLM 0.9.0.
+                    # TODO(#52975): Remove above once vLLM <0.9.0 is no longer supported.
+                    return _apply_hf_chat_template(
+                        trust_remote_code=model_config.trust_remote_code, **kwargs
+                    )
+
             prompt_text = apply_hf_chat_template(
+                model_config=model_config,
                 tokenizer=self._tokenizer,
                 conversation=conversation,
                 chat_template=None,
                 tools=None,
-                trust_remote_code=model_config.trust_remote_code,
                 tokenize=False,
                 # **kwargs for tokenizer.apply_chat_template
+                trust_remote_code=model_config.trust_remote_code,
                 add_generation_prompt=True,
                 continue_final_message=False,
             )
         else:
             prompt_text = prompt.prompt
 
+        prompt_token_ids = await self._atokenize(prompt_text)
+
         request_params = {
             "prompt": prompt_text,
+            "prompt_token_ids": prompt_token_ids,
             "request_id": request_id,
             "sampling_params": VLLMSamplingParams.from_prompt(prompt),
             "disk_multiplex_config": disk_lora_model,
@@ -538,12 +598,21 @@ class VLLMEngine(LLMEngine):
             logger.info(
                 f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
             )
-        # Construct a results generator from vLLM
-        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
-            prompt=vllm.inputs.TextPrompt(
+
+        if request.prompt_token_ids is not None:
+            prompt = vllm.inputs.TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=request.multi_modal_data,
+            )
+        else:
+            prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multi_modal_data,
-            ),
+            )
+
+        # Construct a results generator from vLLM
+        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
+            prompt=prompt,
             sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
@@ -681,6 +750,50 @@ class VLLMEngine(LLMEngine):
                 len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
 
+    async def embed(
+        self, vllm_embedding_request: VLLMEmbeddingRequest
+    ) -> Tuple[List[List[float]], int]:
+        """Return (embeddings, num_prompt_tokens)"""
+
+        num_prompts = len(vllm_embedding_request.prompt)
+        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+            logger.info(
+                f"Encoding request {vllm_embedding_request.request_id} started. "
+                f"Num prompts: {num_prompts}"
+            )
+
+        generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
+
+        prompts = vllm_embedding_request.prompt
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        for i, prompt in enumerate(prompts):
+            request_id = f"{vllm_embedding_request.request_id}-{i}"
+            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+                prompt=vllm.inputs.TextPrompt(
+                    prompt=prompt,
+                ),
+                pooling_params=vllm.pooling_params.PoolingParams(),
+                request_id=request_id,
+                lora_request=vllm_embedding_request.lora_request,  # type: ignore
+            )
+            generators.append(gen)
+
+        embedding_data = []
+        total_prompt_tokens = 0
+
+        for gen in generators:
+            async for result in gen:
+                embedding = result.outputs.embedding
+                if vllm_embedding_request.encoding_format == "base64":
+                    embedding = floats_to_base64(embedding)
+
+                embedding_data.append(embedding)
+                total_prompt_tokens += len(result.prompt_token_ids)
+
+        return embedding_data, total_prompt_tokens
+
     async def check_health(self) -> bool:
         if not hasattr(self.engine, "check_health"):
             return False
@@ -745,7 +858,6 @@ class VLLMEngine(LLMEngine):
     ) -> "VLLMInternalSamplingParams":
         # Add vLLM-Anyscale specific fields
 
-        extra_fields = {}
         if sampling_params.response_format is not None:
             extra_fields.update(
                 self._map_response_format_to_extra_fields(sampling_params)

@@ -299,11 +299,19 @@ class TrainLoopRunner:
                 }
             )
 
+        metrics[
+            "train/dataset_creation_time"
+        ] = self.factory.get_dataset_creation_time()
+        metrics[
+            "validation/dataset_creation_time"
+        ] = self.factory.get_dataset_creation_time()
+
         # Throughput
         # TODO: Ray Data can provide these throughput metrics automatically.
         num_workers = ray.train.get_context().get_world_size()
         train_time = (
-            self._metrics["train/step"].get()
+            metrics["train/dataset_creation_time"]
+            + self._metrics["train/step"].get()
             # Exclude the time it takes to get the first batch.
             # + self._metrics["train/iter_first_batch"].get()
             + self._metrics["train/iter_batch"].get()
@@ -317,7 +325,8 @@ class TrainLoopRunner:
             )
 
         validation_time = (
-            self._metrics["validation/step"].get()
+            metrics["validation/dataset_creation_time"]
+            + self._metrics["validation/step"].get()
             # Exclude the time it takes to get the first batch.
             # + self._metrics["validation/iter_first_batch"].get()
             + self._metrics["validation/iter_batch"].get()
