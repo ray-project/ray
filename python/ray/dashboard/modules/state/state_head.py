@@ -30,12 +30,7 @@ from ray.dashboard.utils import RateLimitedModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.utils import ResponseType
-from ray.util.state.common import (
-    DEFAULT_DOWNLOAD_FILENAME,
-    DEFAULT_LOG_LIMIT,
-    DEFAULT_RPC_TIMEOUT,
-    GetLogOptions,
-)
+from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
@@ -200,7 +195,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
     @routes.get("/api/v0/logs/{media_type}", resp_type=ResponseType.STREAM)
     @RateLimitedModule.enforce_max_concurrent_calls
-    async def get_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+    async def get_logs(self, req: aiohttp.web.Request):
         """
         Fetches logs from the given criteria.
         """
@@ -210,12 +205,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
             node_id=req.query.get("node_id", None),
             node_ip=req.query.get("node_ip", None),
             media_type=req.match_info.get("media_type", "file"),
-            # The filename to match on the server side.
             filename=req.query.get("filename", None),
-            # The filename to download the log as on the client side.
-            download_filename=req.query.get(
-                "download_filename", DEFAULT_DOWNLOAD_FILENAME
-            ),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
             submission_id=req.query.get("submission_id", None),
@@ -236,13 +226,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
                 return None
             return actor_info_dict[actor_id]
 
-        response = aiohttp.web.StreamResponse(
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{options.download_filename}"'
-                )
-            },
-        )
+        response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
 
         logs_gen = self._log_api.stream_logs(options, get_actor_fn)
