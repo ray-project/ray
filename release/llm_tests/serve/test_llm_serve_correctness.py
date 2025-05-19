@@ -45,7 +45,7 @@ def start_vllm_server():
             "--port",
             str(vllm_port),
             "--distributed-executor-backend=ray",
-            "--generation-config=vllm",
+            "--generation-config=vllm",  # Do not use HF generation_config.json
         ]
     )
     return f"http://localhost:{vllm_port}", process
@@ -82,20 +82,43 @@ def generate_with_vllm(test_prompt, vllm_server_url):
     return response.choices[0].text
 
 
-def wait_for_server_ready(url, timeout=120, retry_interval=2):
-    """Poll the server until it's ready or timeout is reached."""
+def wait_for_server_ready(url, server_type="ray", timeout=120, retry_interval=2):
+    """Poll the server until it's ready or timeout is reached.
+
+    Args:
+        url: The server URL to check
+        server_type: Either "ray" or "vllm"
+        timeout: Maximum time to wait in seconds
+        retry_interval: Time between retry attempts
+    """
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
-            response = requests.get(f"{url}/v1/models", timeout=5)
-            if response.status_code == 200:
-                print(f"Server at {url} is ready!")
+            # Directly test if the server can handle a completion request
+            model_id = MODEL_ID if server_type == "vllm" else RAY_MODEL_ID
+            test_data = {
+                "model": model_id,
+                "prompt": "test",
+                "max_tokens": 5,
+                "temperature": 0,
+            }
+            completion_response = requests.post(
+                f"{url}/v1/completions", json=test_data, timeout=10
+            )
+            if completion_response.status_code == 200:
+                print(
+                    f"{server_type.upper()} server at {url} is ready to handle requests!"
+                )
                 return True
-        except (requests.RequestException, ConnectionError):
+        except Exception:
             pass
+
+        print(f"Waiting for {server_type.upper()} server at {url} to be ready...")
         time.sleep(retry_interval)
 
-    raise TimeoutError(f"Server at {url} did not become ready within {timeout} seconds")
+    raise TimeoutError(
+        f"{server_type.upper()} server at {url} did not become ready within {timeout} seconds"
+    )
 
 
 if __name__ == "__main__":
@@ -105,12 +128,10 @@ if __name__ == "__main__":
 
     try:
         start_ray_serve()
-        wait_for_server_ready(ray_url)
-
-        # Use global vllm_process but don't re-declare it inside the function
         vllm_url, vllm_process = start_vllm_server()
 
-        wait_for_server_ready(vllm_url)
+        wait_for_server_ready(vllm_url, server_type="vllm")
+        wait_for_server_ready(ray_url, server_type="ray")
 
         ray_output = generate_with_ray(test_prompt, ray_url)
         vllm_output = generate_with_vllm(test_prompt, vllm_url)
