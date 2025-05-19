@@ -78,7 +78,7 @@ async def create_or_get_virtualenv(path: str, cwd: str, logger: logging.Logger):
         #
         # --app-data
         # --reset-app-data
-        #   Set an empty seperated app data folder for current virtualenv.
+        #   Set an empty separated app data folder for current virtualenv.
         #
         # --no-periodic-update
         #   Disable the periodic (once every 14 days) update of the embedded

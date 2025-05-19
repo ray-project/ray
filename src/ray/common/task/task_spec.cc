@@ -458,9 +458,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::ActorCounter() const {
+uint64_t TaskSpecification::SequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().actor_counter();
+  return message_->actor_task_spec().sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -528,7 +528,7 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
+           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 

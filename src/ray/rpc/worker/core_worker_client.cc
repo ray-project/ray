@@ -22,10 +22,10 @@ namespace ray {
 namespace rpc {
 
 CoreWorkerClient::CoreWorkerClient(
-    const rpc::Address &address,
+    rpc::Address address,
     ClientCallManager &client_call_manager,
     std::function<void()> core_worker_unavailable_timeout_callback)
-    : addr_(address) {
+    : addr_(std::move(address)) {
   grpc_client_ = std::make_shared<GrpcClient<CoreWorkerService>>(
       addr_.ip_address(), addr_.port(), client_call_manager);
 
@@ -39,7 +39,7 @@ CoreWorkerClient::CoreWorkerClient(
       /*server_unavailable_timeout_seconds=*/
       ::RayConfig::instance().core_worker_rpc_server_reconnect_timeout_s(),
       /*server_unavailable_timeout_callback=*/
-      core_worker_unavailable_timeout_callback,
+      std::move(core_worker_unavailable_timeout_callback),
       /*server_name=*/"Core worker " + addr_.ip_address());
 }
 
