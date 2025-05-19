@@ -1,4 +1,3 @@
-from ray._common.utils import get_or_create_event_loop
 import asyncio
 import json
 import logging
@@ -18,7 +17,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionRequest,
 )
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
-    PrefixTreeActor
+    PrefixTreeActor,
 )
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
@@ -60,12 +59,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._active_tree_actor = PrefixTreeActor.options(
             name="ActivePrefixTreeActor", get_if_exists=True
         ).remote()
-        # self._updating_tree_actor = PrefixTreeActor.options(
-        #     name="UpdatingPrefixTreeActor", get_if_exists=True
-        # ).remote()
-        # self._dual_tree_actor = DualPrefixTreeActor.options(
-        #     name="DualPrefixTreeActor", get_if_exists=True
-        # ).remote()
         self._use_vllm_prompt_processor = False
         if self._use_vllm_prompt_processor:
             from ray import serve
@@ -89,66 +82,100 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._zero_load_count = 0
 
         # === Eviction policy ===
+        self._do_eviction = True
         self._use_swapped_tree = False
-        self._max_char_count = 100_000  # example threshold
+        # 400K chars = 100K tokens, 1M chars = 250K tokens (benchmark reaches about 200K tokens per replica)
+        self._max_char_count = 400_000
         self._eviction_interval_secs = 10
-        self._eviction_task = self._event_loop.create_task(
-        # self._eviction_task = get_or_create_event_loop().create_task(
-            self._eviction_loop()
-        )
+
+        # === Start tasks (if enabled) ===
+        if self._do_eviction:
+            if self._use_swapped_tree:
+                self._updating_tree_actor = PrefixTreeActor.options(
+                    name="UpdatingPrefixTreeActor", get_if_exists=True
+                ).remote()
+                self._dual_tree_actor = PrefixTreeActor.options(
+                    name="DualPrefixTreeActor", get_if_exists=True
+                ).remote()
+            self._eviction_task = self._event_loop.create_task(self._eviction_loop())
+
+        if self._do_track_metrics:
+            self._track_metrics_task = self._event_loop.create_task(
+                self._track_metrics()
+            )
 
     # This doesn't seem to copy ray actors correctly
     # async def copy_tree_to_tree(self, copy_from, copy_to):
-        # copyable_attrs = ["root", "tenant_to_char_count", "tenant_to_lru_tail"]
-        # for attr in copyable_attrs:
-        #     value = await copy_from.getattr.remote(attr)
-        #     print(f"[[PrefixAwareReplicaScheduler.copy_tree_to_tree]] Setting {attr} to {value}")
-        #     await copy_to.setattr.remote(attr, value)
+    # copyable_attrs = ["root", "tenant_to_char_count", "tenant_to_lru_tail"]
+    # for attr in copyable_attrs:
+    #     value = await copy_from.getattr.remote(attr)
+    #     await copy_to.setattr.remote(attr, value)
 
     async def _eviction_loop(self):
-        while True:
-            print(f"[[PrefixAwareReplicaScheduler._eviction_loop]] Eviction loop started")
-            try:
-                print(f"[[PrefixAwareReplicaScheduler._eviction_loop]] Sleeping for {self._eviction_interval_secs} seconds")
-                await asyncio.sleep(self._eviction_interval_secs)
-                # continue
-                if self._use_swapped_tree:
-                    pass
-                    # print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Swapped-tree eviction")
-                    # # === Swapped-tree eviction ===
+        os.makedirs("/home/ray/default/work/_testing/results", exist_ok=True)
+        log_file_path = f"/home/ray/default/work/_testing/results/eviction_times/{int(time.time())}_id_{random.randint(0, 1000000)}.txt"
 
-                    # # 1. Copy active tree to updating tree
-                    # await self._dual_tree_actor.copy_active_to_updating.remote()
-                    # print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Copied active tree to updating tree")
-                    # # 2. Run eviction in updating tree
-                    # tenant_to_char_count = (await self._dual_tree_actor.getattr.remote("updating_tree")).getattr("tenant_to_char_count")
-                    # print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Tenant to char count: {tenant_to_char_count}")
-                    # for tenant, char_count in tenant_to_char_count.items():
-                    #     print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Tenant: {tenant}, Char count: {char_count}")
-                    #     if char_count > self._max_char_count:
-                    #         excess = char_count - self._max_char_count
-                    #         print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Evicting tenant: {tenant}, Excess: {excess}")
-                    #         chars_removed = (await self._dual_tree_actor.getattr.remote("updating_tree")).evict_tenant_by_lru(tenant, excess)
-                    #         print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Evicted tenant: {tenant}, Excess: {excess}, Chars removed: {chars_removed}")
-                    # # 3. Copy updating tree to active tree
-                    # await self._dual_tree_actor.copy_updating_to_active.remote()
-                    # print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=True)]] Copied updating tree to active tree")
+        while True:
+            try:
+                await asyncio.sleep(self._eviction_interval_secs)
+                after_sleep_time = time.time()
+
+                with open(log_file_path, "a") as f:
+                    f.write(f"{after_sleep_time},after_asyncio_sleep\n")
+
+                if self._use_swapped_tree:
+                    # === Swapped-tree eviction ===
+                    # 1. Copy active tree to updating tree
+                    await self._dual_tree_actor.copy_active_to_updating.remote()
+                    # 2. Run eviction in updating tree
+                    updating_tree = await self._dual_tree_actor.getattr.remote(
+                        "updating_tree"
+                    )
+                    tenant_to_char_count = updating_tree.getattr("tenant_to_char_count")
+                    for tenant, char_count in tenant_to_char_count.items():
+                        if char_count > self._max_char_count:
+                            excess = char_count - self._max_char_count
+                            updating_tree.evict_tenant_by_lru(tenant, excess)
+
+                            # Log time after each eviction
+                            after_evict_time = time.time()
+                            with open(log_file_path, "a") as f:
+                                f.write(f"{after_evict_time},after_evict_{tenant}\n")
+
+                    # 3. Copy updating tree to active tree
+                    await self._dual_tree_actor.copy_updating_to_active.remote()
                 else:
                     # === In-place eviction ===
-                    print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=False)]] In-place eviction")
-                    tenant_char_count = await self._active_tree_actor.getattr.remote("tenant_to_char_count")
-                    print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=False)]] Tenant to char count: {tenant_char_count}")
+                    tenant_char_count = await self._active_tree_actor.getattr.remote(
+                        "tenant_to_char_count"
+                    )
                     if tenant_char_count:
                         for tenant, char_count in tenant_char_count.items():
-                            print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=False)]] Tenant: {tenant}, Char count: {char_count}")
                             if char_count > self._max_char_count:
                                 excess = char_count - self._max_char_count
-                                print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=False)]] Evicting tenant: {tenant}, Excess: {excess}")
-                                chars_removed = await self._active_tree_actor.evict_tenant_by_lru.remote(tenant, excess)
-                                print(f"[[PrefixAwareReplicaScheduler._eviction_loop (swapped=False)]] Evicted tenant: {tenant}, Excess: {excess}, Chars removed: {chars_removed}")
+                                self._active_tree_actor.evict_tenant_by_lru.remote(
+                                    tenant, excess
+                                )
+
+                                # Log time after each eviction
+                                after_evict_time = time.time()
+                                with open(log_file_path, "a") as f:
+                                    f.write(
+                                        f"{after_evict_time},after_evict_{tenant}\n"
+                                    )
+
+                # Log end of iteration time
+                end_time = time.time()
+                with open(log_file_path, "a") as f:
+                    f.write(f"{end_time},end_of_iteration\n")
 
             except Exception as e:
                 logger.exception(f"[Eviction Loop] error: {e}")
+
+                # Log error time
+                error_time = time.time()
+                with open(log_file_path, "a") as f:
+                    f.write(f"{error_time},error_occurred\n")
 
     async def _track_metrics(self):
         """Track vLLM metrics by WorkerId every 0.1s, save to JSON at end."""
@@ -159,9 +186,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             while True:
                 await asyncio.sleep(1)
                 current_time = time.time()
-                print(
-                    f"[[PrefixAwareReplicaScheduler._track_metrics]] current_time: {current_time}"
-                )
                 elapsed = round(current_time - self._benchmark_start_time, 2)
                 total_load = 0
 
@@ -169,9 +193,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                 try:
                     response = session.get("http://localhost:5001/metrics")
                     output = response.text
-                    print(
-                        f"[[PrefixAwareReplicaScheduler._track_metrics]] output: {output}"
-                    )
                     lines = output.strip().split("\n")
                     current_vllm_metrics = {}
 
@@ -192,13 +213,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                         # Parse metric name and labels
                         if "{" in metric_line:
                             name, label_str = metric_line.split("{", 1)
-                            print(
-                                f"[[PrefixAwareReplicaScheduler._track_metrics]] name: {name}, label_str: {label_str}"
-                            )
                             if name == "ray_vllm:num_requests_running":
-                                print(
-                                    f"[[PrefixAwareReplicaScheduler._track_metrics]] ray_vllm:num_requests_running value: {value}"
-                                )
                                 total_load += value
                             label_str = label_str.rstrip("}")
                             labels = dict(
@@ -249,9 +264,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                 self._char_count_over_time[elapsed] = current_char_count
 
                 # === End condition ===
-                print(
-                    f"[[PrefixAwareReplicaScheduler._track_metrics]] self._num_requests_seen: {self._num_requests_seen}, total_load: {total_load}"
-                )
                 if self._num_requests_seen > 10 and total_load == 0:
                     self._zero_load_count += 1
                     if self._zero_load_count >= 2:
@@ -335,9 +347,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         candidate_replica_ids_strings = [
             replica_id.to_full_id_str() for replica_id in candidate_replica_ids
         ]
-        print(
-            f"[[PrefixAwareReplicaScheduler._prefix_match_best_replicas]] candidate_replica_ids_strings: {candidate_replica_ids_strings}"
-        )
 
         chosen_replica_ids_strings = []
 
@@ -391,17 +400,9 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         return chosen_replica_ids
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
-        print(
-            f"[[PrefixAwareReplicaScheduler.on_replica_actor_died]] replica_id: {replica_id}"
-        )
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
-        self._active_tree_actor.remove_tenant.remote(
-            replica_id.to_full_id_str()
-        )
-        print(
-            f"[[PrefixAwareReplicaScheduler.on_replica_actor_died]] Removed {replica_id} from prefix tree"
-        )
+        self._active_tree_actor.remove_tenant.remote(replica_id.to_full_id_str())
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for scheduling.
@@ -409,41 +410,30 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         When the set of replicas changes, we may spawn additional scheduling tasks
         if there are pending requests.
         """
-        print(f"[[PrefixAwareReplicaScheduler.update_replicas]] replicas: {replicas}")
         # 1) remember what was there before…
         old_ids = set(self._replica_id_set)
-        print(f"[[PrefixAwareReplicaScheduler.update_replicas]] old_ids: {old_ids}")
 
         # 2) run the default logic (updates self._replicas, self._replica_id_set, etc)
         super().update_replicas(replicas)
 
         # 3) figure out who was added / removed
         new_ids = set(self._replica_id_set)
-        print(f"[[PrefixAwareReplicaScheduler.update_replicas]] new_ids: {new_ids}")
         added = new_ids - old_ids
         removed = old_ids - new_ids
 
-        # 4) tell the prefix‐tree about the changes
+        # 4) Update the prefix tree with the changes
         for rid in added:
-            print(
-                f"[[PrefixAwareReplicaScheduler.update_replicas]] Adding {rid} to prefix tree"
-            )
-            # rid is a ReplicaID; we store them in the tree as strings
+            # Convert rid to the string representation
             self._active_tree_actor._add_tenant.remote(rid.to_full_id_str())
 
         for rid in removed:
-            print(
-                f"[[PrefixAwareReplicaScheduler.update_replicas]] Removing {rid} from prefix tree"
-            )
             self._active_tree_actor.remove_tenant.remote(rid.to_full_id_str())
 
-        # Start metrics tracking task if it's not already running and we have replicas
-        if self._do_track_metrics and self._track_metrics_task is None and len(self._replicas) > 0:
-            # self._track_metrics_task = get_or_create_event_loop().create_task(
-            self._track_metrics_task = self._event_loop.create_task(
-                self._track_metrics()
-            )
-
+        # # Start metrics tracking task if it's not already running and we have replicas
+        # if self._do_track_metrics and self._track_metrics_task is None and len(self._replicas) > 0:
+        #     self._track_metrics_task = self._event_loop.create_task(
+        #         self._track_metrics()
+        #     )
 
     async def choose_replicas(
         self,
@@ -459,9 +449,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        print(
-            f"[[PrefixAwareReplicaScheduler.choose_replicas]] pending_request: {pending_request}"
-        )
         # Get fallback replicas from PowerOfTwoChoicesReplicaScheduler
         fallback_replicas = await super().choose_replicas(
             replicas_ranks=replicas_ranks,

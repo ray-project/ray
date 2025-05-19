@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import logging
 import os
 from threading import RLock
@@ -544,7 +543,7 @@ class PrefixTree:
                 if count == min_count
             ]
 
-    
+
 @ray.remote
 class PrefixTreeActor(PrefixTree):
     def getattr(self, attribute: str) -> Any:
@@ -553,9 +552,10 @@ class PrefixTreeActor(PrefixTree):
         Note: This method is intended to be used only in tests.
         """
         return getattr(self, attribute)
-    
+
     def setattr(self, attribute: str, value: Any) -> None:
         setattr(self, attribute, value)
+
 
 # class DualPrefixTree:
 #     def __init__(self):
@@ -570,7 +570,7 @@ class PrefixTreeActor(PrefixTree):
 
 #     def copy_active_to_updating(self) -> None:
 #         self.copy_tree_to_tree(self.active_tree, self.updating_tree)
-    
+
 #     def copy_updating_to_active(self) -> None:
 #         self.copy_tree_to_tree(self.updating_tree, self.active_tree)
 
