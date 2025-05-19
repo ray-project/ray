@@ -7,11 +7,11 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
     Union,
-    Mapping,
 )
 
 import numpy as np

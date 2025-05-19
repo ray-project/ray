@@ -6,7 +6,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Mapping,
     Optional,
     Sequence,
     Tuple,
