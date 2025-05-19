@@ -59,17 +59,10 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._active_tree_actor = PrefixTreeActor.options(
             name="ActivePrefixTreeActor", get_if_exists=True
         ).remote()
-        self._use_vllm_prompt_processor = False
-        if self._use_vllm_prompt_processor:
-            from ray import serve
-
-            self._vllm_engine_deployment = serve.get_deployment_handle(
-                "vllm_engine_deployment", app_name="default"
-            )
         self._imbalanced_threshold = 10
 
         # === Metrics tracking ===
-        self._do_track_metrics = True
+        self._do_track_metrics = False
         self._track_metrics_task = None
         self._vllm_metrics_path = "/home/ray/default/work/_testing/results/vllm_metrics"
         self._char_count_over_time_path = (
@@ -82,7 +75,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._zero_load_count = 0
 
         # === Eviction policy ===
-        self._do_eviction = True
+        self._do_eviction = False
         self._use_swapped_tree = False
         # 400K chars = 100K tokens, 1M chars = 250K tokens (benchmark reaches about 200K tokens per replica)
         self._max_char_count = 400_000
@@ -296,41 +289,26 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             self._track_metrics_task = None
 
     async def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
-        request = pending_request.args[0]
-        if isinstance(request, CompletionRequest):
-            prompt = request.prompt
-        elif isinstance(request, ChatCompletionRequest):
-            prompt = request.messages
+        prompt = None
+        for arg in pending_request.args:
+            valid_input_types = ["messages", "prompt"]
+            for valid_input_type in valid_input_types:
+                if hasattr(arg, valid_input_type):
+                    prompt = arg.prompt if valid_input_type == "prompt" else arg.messages
+                    break
+            if prompt is not None:
+                break
+        if prompt is None:
+            raise ValueError("No request with message or prompt attribute found in pending_request.args")
+        
+        # Convert list of messages to concatenated string
+        if isinstance(prompt, list):
+            concatenated_messages = "".join(
+                msg.get("content", "") for msg in prompt if "content" in msg
+            )
+            return concatenated_messages
         else:
-            raise ValueError(
-                "request is not a CompletionRequest or ChatCompletionRequest"
-            )
-
-        if self._use_vllm_prompt_processor:
-            from ray.llm._internal.serve.configs.server_models import (
-                GenerationRequest,
-                Prompt,
-            )
-
-            wrapped_prompt = Prompt(prompt=prompt)
-            vllm_request: GenerationRequest = (
-                await self._vllm_engine_deployment.prepare_request.remote(
-                    request_id="N/A",
-                    prompt=wrapped_prompt,
-                    stream=False,
-                    disk_lora_model=None,
-                )
-            )
-            prompt_text: str = vllm_request.prompt
-            return prompt_text
-        else:
-            if isinstance(prompt, list):
-                concatenated_messages = "".join(
-                    msg.get("content", "") for msg in prompt if "content" in msg
-                )
-                return concatenated_messages
-            else:
-                return prompt
+            return prompt
 
     async def _prefix_match_best_replicas(
         self,

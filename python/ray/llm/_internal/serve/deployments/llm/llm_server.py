@@ -445,8 +445,6 @@ class LLMServer(_LLMServerBase):
 
         self._engine_cls = engine_cls or self._default_engine_cls
         self.engine = self._get_engine_class(self._llm_config)
-        # self.engine = self._get_engine_class.bind(self._llm_config)
-        # self.engine_deployment = serve.run(self.engine, route_prefix="/vllm")
         await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         self.image_retriever = (
@@ -493,7 +491,6 @@ class LLMServer(_LLMServerBase):
         return self._engine_cls
 
     async def _start_engine(self):
-        # await self.engine_deployment.start.remote()
         await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
@@ -526,14 +523,12 @@ class LLMServer(_LLMServerBase):
         else:
             disk_lora_model = None
 
-        # llm_request = await self.engine_deployment.prepare_request.remote(
         llm_request = await self.engine.prepare_request(
             request_id=request_id,
             prompt=prompt,
             stream=stream,
             disk_lora_model=disk_lora_model,
         )
-        # async for llm_response in self.engine_deployment.generate.options(stream=True).remote(llm_request):
         async for llm_response in self.engine.generate(llm_request):
             yield llm_response
 
@@ -623,7 +618,6 @@ class LLMServer(_LLMServerBase):
 
     async def check_health(self) -> bool:
         """Check the health of the llm engine."""
-        # return await self.engine_deployment.check_health.remote()
         return await self.engine.check_health()
 
     async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
@@ -655,7 +649,6 @@ class LLMServer(_LLMServerBase):
                 "serve_request_context": serve.context._serve_request_context.get(),
             }
             vllm_request = VLLMEmbeddingRequest(**request_params)
-            # embedding_data, total_tokens = await self.engine_deployment.embed.remote(vllm_request)
             embedding_data, total_tokens = await self.engine.embed(vllm_request)
 
             data = [
