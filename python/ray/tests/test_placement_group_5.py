@@ -10,7 +10,6 @@ import ray
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.tests.test_placement_group import are_pairwise_unique
 from ray.util.state import list_actors, list_placement_groups
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import wait_for_condition
@@ -18,8 +17,7 @@ from click.testing import CliRunner
 import ray.scripts.scripts as scripts
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_no_resource(ray_start_cluster, connect_to_client):
+def test_placement_group_no_resource(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor(object):
         def __init__(self):
@@ -42,82 +40,80 @@ def test_placement_group_no_resource(ray_start_cluster, connect_to_client):
         cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        for _ in range(10):
-            pg1 = ray.util.placement_group(
-                name="pg1",
-                bundles=[
-                    {"CPU": 2},
-                ],
+    for _ in range(10):
+        pg1 = ray.util.placement_group(
+            name="pg1",
+            bundles=[
+                {"CPU": 2},
+            ],
+        )
+        pg2 = ray.util.placement_group(
+            name="pg2",
+            bundles=[
+                {"CPU": 2},
+            ],
+        )
+        ray.get(pg1.ready())
+        ray.get(pg2.ready())
+        actor_11 = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg1, placement_group_bundle_index=0
             )
-            pg2 = ray.util.placement_group(
-                name="pg2",
-                bundles=[
-                    {"CPU": 2},
-                ],
+        ).remote()
+        actor_12 = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg1, placement_group_bundle_index=0
             )
-            ray.get(pg1.ready())
-            ray.get(pg2.ready())
-            actor_11 = Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg1, placement_group_bundle_index=0
-                )
-            ).remote()
-            actor_12 = Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg1, placement_group_bundle_index=0
-                )
-            ).remote()
-            actor_13 = PhantomActor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg1, placement_group_bundle_index=0
-                )
-            ).remote()
-            actor_21 = Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg2, placement_group_bundle_index=0
-                )
-            ).remote()
-            actor_22 = Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg2, placement_group_bundle_index=0
-                )
-            ).remote()
-            actor_23 = PhantomActor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg2, placement_group_bundle_index=0
-                )
-            ).remote()
+        ).remote()
+        actor_13 = PhantomActor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg1, placement_group_bundle_index=0
+            )
+        ).remote()
+        actor_21 = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg2, placement_group_bundle_index=0
+            )
+        ).remote()
+        actor_22 = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg2, placement_group_bundle_index=0
+            )
+        ).remote()
+        actor_23 = PhantomActor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg2, placement_group_bundle_index=0
+            )
+        ).remote()
 
-            first_node = [actor_11, actor_12, actor_13]
-            second_node = [actor_21, actor_22, actor_23]
+        first_node = [actor_11, actor_12, actor_13]
+        second_node = [actor_21, actor_22, actor_23]
 
-            for actor in chain(first_node, second_node):
-                ray.get(actor.value.remote())
+        for actor in chain(first_node, second_node):
+            ray.get(actor.value.remote())
 
-            # Get all actors.
-            actor_infos = ray._private.state.actors()
+        # Get all actors.
+        actor_infos = ray._private.state.actors()
 
-            first_node_ids = [
-                actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
-                for actor in first_node
-            ]
-            second_node_ids = [
-                actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
-                for actor in second_node
-            ]
+        first_node_ids = [
+            actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
+            for actor in first_node
+        ]
+        second_node_ids = [
+            actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
+            for actor in second_node
+        ]
 
-            def check_eq(ip1, ip2):
-                assert ip1 == ip2
-                return ip1
+        def check_eq(ip1, ip2):
+            assert ip1 == ip2
+            return ip1
 
-            assert reduce(check_eq, first_node_ids) != reduce(check_eq, second_node_ids)
+        assert reduce(check_eq, first_node_ids) != reduce(check_eq, second_node_ids)
 
-            placement_group_assert_no_leak([pg1, pg2])
+        placement_group_assert_no_leak([pg1, pg2])
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_pg_no_resource_bundle_index(ray_start_cluster, connect_to_client):
+def test_pg_no_resource_bundle_index(ray_start_cluster):
     @ray.remote(num_cpus=0)
     class Actor:
         def node_id(self):
@@ -129,26 +125,23 @@ def test_pg_no_resource_bundle_index(ray_start_cluster, connect_to_client):
         cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        pg = ray.util.placement_group(
-            bundles=[{"CPU": 1} for _ in range(num_nodes)],
-        )
-        ray.get(pg.ready())
-        first_bundle_node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][
-            0
-        ]
+    pg = ray.util.placement_group(
+        bundles=[{"CPU": 1} for _ in range(num_nodes)],
+    )
+    ray.get(pg.ready())
+    first_bundle_node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
 
-        # Iterate 10 times to make sure it is not flaky.
-        for _ in range(10):
-            actor = Actor.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg, placement_group_bundle_index=0
-                )
-            ).remote()
+    # Iterate 10 times to make sure it is not flaky.
+    for _ in range(10):
+        actor = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=0
+            )
+        ).remote()
 
-            assert first_bundle_node_id == ray.get(actor.node_id.remote())
+        assert first_bundle_node_id == ray.get(actor.node_id.remote())
 
-        placement_group_assert_no_leak([pg])
+    placement_group_assert_no_leak([pg])
 
 
 # Make sure the task observability API outputs don't contain
@@ -204,11 +197,8 @@ def test_task_using_pg_observability(ray_start_cluster):
     wait_for_condition(check_demands)
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK"])
-def test_placement_group_bin_packing_priority(
-    ray_start_cluster, connect_to_client, scheduling_strategy
-):
+def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_strategy):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -249,26 +239,25 @@ def test_placement_group_bin_packing_priority(
     add_nodes_to_cluster(cluster)
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy=scheduling_strategy,
-            bundles=default_bundles,
-        )
-        ray.get(placement_group.ready())
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy=scheduling_strategy,
+        bundles=default_bundles,
+    )
+    ray.get(placement_group.ready())
 
-        actors = [index_to_actor(placement_group, i) for i in range(default_num_nodes)]
+    actors = [index_to_actor(placement_group, i) for i in range(default_num_nodes)]
 
-        [ray.get(actor.value.remote()) for actor in actors]
+    [ray.get(actor.value.remote()) for actor in actors]
 
-        # Get all actors.
-        actor_infos = ray._private.state.actors()
+    # Get all actors.
+    actor_infos = ray._private.state.actors()
 
-        # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-        assert are_pairwise_unique(
-            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-        )
+    # Make sure all actors in counter_list are located in separate nodes.
+    actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
+    assert are_pairwise_unique(
+        [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
+    )
 
 
 @pytest.mark.parametrize("multi_bundle", [True, False])
@@ -652,9 +641,5 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

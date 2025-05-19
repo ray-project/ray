@@ -56,7 +56,11 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
                 field_names=["class"],
             ),
-            override_num_blocks=override_num_blocks,
+            **(
+                {"override_num_blocks": override_num_blocks}
+                if override_num_blocks is not None
+                else {}
+            ),
         ).map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset
@@ -69,41 +73,17 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
                 field_names=["class"],
             ),
-            override_num_blocks=override_num_blocks,
+            **(
+                {"override_num_blocks": override_num_blocks}
+                if override_num_blocks is not None
+                else {}
+            ),
         ).map(get_preprocess_map_fn(random_transforms=False))
 
         return {
             DatasetKey.TRAIN: train_ds,
             DatasetKey.VALID: val_ds,
         }
-
-
-class LazyTorchImageFolder(torch.utils.data.Dataset):
-    """A lazy-loading wrapper for torchvision.datasets.ImageFolder.
-
-    This class defers creation of the ImageFolder instance until first use.
-    Useful for large datasets to avoid directory scanning during dataset construction.
-    Note: this does not preload image data — ImageFolder always loads images lazily.
-    """
-
-    def __init__(self, root, transform=None):
-        self.root = root
-        self.transform = transform
-        self._dataset = None
-
-    def _init_dataset(self):
-        if self._dataset is None:
-            self._dataset = torchvision.datasets.ImageFolder(
-                root=self.root, transform=self.transform
-            )
-
-    def __getitem__(self, idx):
-        self._init_dataset()
-        return self._dataset[idx]
-
-    def __len__(self):
-        self._init_dataset()
-        return len(self._dataset)
 
 
 class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
@@ -139,12 +119,12 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
         """Get the train and validation datasets."""
-        train_dataset = LazyTorchImageFolder(
+        train_dataset = torchvision.datasets.ImageFolder(
             root=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
             transform=self.train_transform,
         )
 
-        val_dataset = LazyTorchImageFolder(
+        val_dataset = torchvision.datasets.ImageFolder(
             root=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
             transform=self.val_transform,
         )

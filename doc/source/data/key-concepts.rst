@@ -20,17 +20,21 @@ There are two main concepts in Ray Data:
 
 The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset,
 like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
-and execute operations in a pipelined streaming fashion.
+and execute operations in a pipelined, streaming fashion.
 
-Each *Dataset* consists of *blocks*. A *block* is a contiguous subset of rows from a dataset,
-which are distributed across the cluster and processed independently in parallel.
+*Block* is a set of rows representing single partition of the dataset. Blocks, as collection of rows represented by columnar formats (like Arrow)
+ are the basic unit of data processing in Ray Data:
+
+ 1. Every dataset is partitioned into a number of blocks, then
+ 2. Processing of the whole dataset is distributed and parallelized at the block level (blocks are processed in parallel and for the most part independently)
+
+Block is the basic unit of data that every Ray Data dataset is partitioned into and stored in the object store. Data processing is parallelized at the block level.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
 (which is usually the entrypoint of the program, referred to as the :term:`driver`)
-and stores the blocks as objects in Ray's shared-memory
-:ref:`object store <objects-in-ray>`. Internally, Ray Data represents blocks with
-Pandas Dataframes or Arrow tables.
+and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`. Internally, Ray Data can natively handle blocks either
+as Pandas ``DataFrame`` or PyArrow ``Table``.
 
 .. image:: images/dataset-arch-with-blocks.svg
 ..
