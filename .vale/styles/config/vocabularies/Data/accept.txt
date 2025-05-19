@@ -29,4 +29,5 @@ runai
 Spotify('s)?
 TFRecord(s)?
 UDF(s)?
+VLM(s)?
 XGBoost
