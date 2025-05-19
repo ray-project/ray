@@ -193,7 +193,9 @@ class VLLMEngine(LLMEngine):
             )
 
         # Pick a random port in P/D case.
-        if llm_config.engine_kwargs.get("kv_transfer_config", None) is not None:
+        if (kv_transfer_config := llm_config.engine_kwargs.get("kv_transfer_config", None)) is not None:
+            if getattr(kv_transfer_config, "kv_connector", "") != "NixlConnector":
+                raise ValueError("Only NixlConnector is supported for kv transfer.")
             if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
                 port: int = vllm.utils.get_open_port()
                 os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
