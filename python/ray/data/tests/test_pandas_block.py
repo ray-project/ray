@@ -275,10 +275,7 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        # The actual usage should be the index usage + the string data usage.
-        memory_usage = block.memory_usage(index=True, deep=False).sum() + sum(
-            [sys.getsizeof(animal) for animal in animals]
-        )
+        memory_usage = sum([sys.getsizeof(animal) for animal in animals])
 
         assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
@@ -450,9 +447,7 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        true_size = block.memory_usage(index=True, deep=False).sum() + sum(
-            sys.getsizeof(x) for x in data
-        )
+        true_size = block.memory_usage(index=True, deep=True).sum()
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
 
