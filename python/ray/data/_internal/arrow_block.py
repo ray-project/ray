@@ -389,8 +389,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         self, public_row_format: bool
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
-        schema = table.schema
-
         if public_row_format:
             for batch in table.to_batches():
                 yield from batch.to_pylist()

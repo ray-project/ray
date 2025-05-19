@@ -574,11 +574,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def iter_rows(
         self, public_row_format: bool
     ) -> Iterator[Union[Mapping, np.ndarray]]:
-        get_row = self._get_row
-        num_rows = self.num_rows()
-
-        for i in range(num_rows):
-            row = get_row(i)
+        for i in range(self.num_rows()):
+            row = self._get_row(i)
             if public_row_format and isinstance(row, TableRow):
                 yield row.as_pydict()
             else:
