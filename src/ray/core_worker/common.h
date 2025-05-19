@@ -116,6 +116,7 @@ struct TaskOptions {
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
   std::unordered_map<std::string, std::string> label_selector;
+  // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   rpc::TensorTransport tensor_transport;
 };
 
