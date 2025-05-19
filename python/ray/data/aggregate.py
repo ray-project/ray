@@ -115,7 +115,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     needs further transformation.
 
     Aggregation follows these steps:
-    
+
     1. **Initialization**: For each group (if grouping) or for the entire dataset,
        an initial accumulator is created using `zero_factory`.
     2. **Block Aggregation**: The `aggregate_block` method is applied to
