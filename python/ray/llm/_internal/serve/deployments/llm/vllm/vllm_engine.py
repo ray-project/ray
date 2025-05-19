@@ -574,7 +574,7 @@ class VLLMEngine(LLMEngine):
             "prompt": prompt_text,
             "prompt_token_ids": prompt_token_ids,
             "request_id": request_id,
-            "sampling_params": VLLMSamplingParams.from_prompt(prompt),
+            "sampling_params": self._parse_sampling_params(prompt),
             "disk_multiplex_config": disk_lora_model,
             "stream": stream,
         }
@@ -617,14 +617,10 @@ class VLLMEngine(LLMEngine):
                 multi_modal_data=request.multi_modal_data,
             )
 
-        _sampling_params = self._parse_sampling_params(
-            request.sampling_params,
-        )
-
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=prompt,
-            sampling_params=_sampling_params,
+            sampling_params=request.sampling_params,
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
         )
