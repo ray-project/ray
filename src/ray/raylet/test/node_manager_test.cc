@@ -187,17 +187,19 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
 
 class NodeManagerTest : public ::testing::Test {
  public:
-  NodeManagerTest() {
+  NodeManagerTest()
+      : client_call_manager_(io_service_, /*record_stats=*/false),
+        worker_rpc_pool_([](const auto &) {
+          return std::make_shared<rpc::MockCoreWorkerClientInterface>();
+        }) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
-    node_manager_config_.maximum_startup_concurrency = 1;
-    node_manager_config_.store_socket_name = "test_store_socket";
-    auto client_call_manager =
-        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
-    auto worker_rpc_pool = std::make_unique<rpc::CoreWorkerClientPool>([](const auto &) {
-      return std::make_shared<rpc::MockCoreWorkerClientInterface>();
-    });
+
+    NodeManagerConfig node_manager_config{};
+    node_manager_config.maximum_startup_concurrency = 1;
+    node_manager_config.store_socket_name = "test_store_socket";
+
     auto core_worker_subscriber = std::make_unique<pubsub::MockSubscriber>();
     auto object_directory = std::make_unique<MockObjectDirectory>();
     mock_object_directory_ = object_directory.get();
@@ -208,10 +210,10 @@ class NodeManagerTest : public ::testing::Test {
     node_manager_ = std::make_unique<NodeManager>(io_service_,
                                                   NodeID::FromRandom(),
                                                   "test_node_name",
-                                                  node_manager_config_,
+                                                  node_manager_config,
                                                   mock_gcs_client_,
-                                                  std::move(client_call_manager),
-                                                  std::move(worker_rpc_pool),
+                                                  client_call_manager_,
+                                                  worker_rpc_pool_,
                                                   std::move(core_worker_subscriber),
                                                   std::move(object_directory),
                                                   std::move(object_manager),
@@ -220,7 +222,9 @@ class NodeManagerTest : public ::testing::Test {
   }
 
   instrumented_io_context io_service_;
-  NodeManagerConfig node_manager_config_;
+  rpc::ClientCallManager client_call_manager_;
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_shared<gcs::MockGcsClient>();
   MockObjectDirectory *mock_object_directory_;

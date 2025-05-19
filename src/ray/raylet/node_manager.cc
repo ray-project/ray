@@ -114,8 +114,8 @@ NodeManager::NodeManager(
     std::string self_node_name,
     const NodeManagerConfig &config,
     std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<rpc::ClientCallManager> client_call_manager,
-    std::unique_ptr<rpc::CoreWorkerClientPool> worker_rpc_pool,
+    rpc::ClientCallManager &client_call_manager,
+    rpc::CoreWorkerClientPool &worker_rpc_pool,
     std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
     std::unique_ptr<IObjectDirectory> object_directory,
     std::unique_ptr<ObjectManagerInterface> object_manager,
@@ -160,8 +160,8 @@ NodeManager::NodeManager(
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::Now(); },
           config.enable_resource_isolation),
-      client_call_manager_(std::move(client_call_manager)),
-      worker_rpc_pool_(std::move(worker_rpc_pool)),
+      client_call_manager_(client_call_manager),
+      worker_rpc_pool_(worker_rpc_pool),
       core_worker_subscriber_(std::move(core_worker_subscriber)),
       object_directory_(std::move(object_directory)),
       object_manager_(std::move(object_manager)),
@@ -191,7 +191,7 @@ NodeManager::NodeManager(
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(),
           worker_pool_,
-          *worker_rpc_pool_,
+          worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
@@ -1266,7 +1266,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                worker_type,
                                worker_ip_address,
                                client,
-                               *client_call_manager_,
+                               client_call_manager_,
                                worker_startup_token));
 
   std::function<void(Status, int)> send_reply_callback;
@@ -2846,7 +2846,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   // Fetch from remote nodes.
   for (const auto &entry : remote_node_manager_addresses_) {
     auto client = std::make_unique<rpc::NodeManagerClient>(
-        entry.second.first, entry.second.second, *client_call_manager_);
+        entry.second.first, entry.second.second, client_call_manager_);
     client->GetNodeStats(stats_req,
                          [replies, store_reply](const ray::Status &status,
                                                 const rpc::GetNodeStatsReply &r) {

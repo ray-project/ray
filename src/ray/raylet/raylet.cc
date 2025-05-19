@@ -78,28 +78,22 @@ Raylet::Raylet(instrumented_io_context &main_service,
       gcs_client_(std::move(gcs_client)),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
-      socket_(main_service) {
-  auto client_call_manager =
-      std::make_unique<rpc::ClientCallManager>(main_service, /*record_stats=*/true);
-  std::unique_ptr<rpc::CoreWorkerClientPool> worker_rpc_pool;
-  worker_rpc_pool = std::make_unique<rpc::CoreWorkerClientPool>(
-      [this,
-       client_call_manager = client_call_manager.get(),
-       worker_rpc_pool = worker_rpc_pool.get()](const rpc::Address &addr) {
+      socket_(main_service),
+      client_call_manager_(main_service, /*record_stats=*/true),
+      worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
-            *client_call_manager,
+            client_call_manager_,
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 gcs_client_.get(),
-                worker_rpc_pool,
-                [client_call_manager](const std::string &node_manager_address,
-                                      int32_t port) {
+                &worker_rpc_pool_,
+                [this](const std::string &node_manager_address, int32_t port) {
                   return std::make_shared<raylet::RayletClient>(
                       rpc::NodeManagerWorkerClient::make(
-                          node_manager_address, port, *client_call_manager));
+                          node_manager_address, port, client_call_manager_));
                 },
                 addr));
-      });
+      }) {
   auto core_worker_subscriber = std::make_unique<pubsub::Subscriber>(
       self_node_id_,
       /*channels=*/
@@ -108,15 +102,15 @@ Raylet::Raylet(instrumented_io_context &main_service,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
-      [worker_rpc_pool = worker_rpc_pool.get()](const rpc::Address &address) {
-        return worker_rpc_pool->GetOrConnect(address);
+      [this](const rpc::Address &address) {
+        return worker_rpc_pool_.GetOrConnect(address);
       },
       &main_service);
   auto object_directory = std::make_unique<OwnershipBasedObjectDirectory>(
       main_service,
       gcs_client_,
       core_worker_subscriber.get(),
-      worker_rpc_pool.get(),
+      &worker_rpc_pool_,
       [this](const ObjectID &obj_id, const ErrorType &error_type) {
         rpc::ObjectReference ref;
         ref.set_object_id(obj_id.Binary());
@@ -189,8 +183,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                                                 node_name,
                                                 node_manager_config,
                                                 gcs_client_,
-                                                std::move(client_call_manager),
-                                                std::move(worker_rpc_pool),
+                                                client_call_manager_,
+                                                worker_rpc_pool_,
                                                 std::move(core_worker_subscriber),
                                                 std::move(object_directory),
                                                 std::move(object_manager),

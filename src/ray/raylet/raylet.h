@@ -105,6 +105,10 @@ class Raylet {
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   local_stream_socket socket_;
+
+  rpc::ClientCallManager client_call_manager_;
+
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
 };
 
 }  // namespace ray::raylet

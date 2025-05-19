@@ -135,8 +135,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               std::string self_node_name,
               const NodeManagerConfig &config,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::unique_ptr<rpc::ClientCallManager> client_call_manager,
-              std::unique_ptr<rpc::CoreWorkerClientPool> worker_rpc_pool,
+              rpc::ClientCallManager &client_call_manager,
+              rpc::CoreWorkerClientPool &worker_rpc_pool,
               std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
               std::unique_ptr<IObjectDirectory> object_directory,
               std::unique_ptr<ObjectManagerInterface> object_manager,
@@ -789,9 +789,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  rpc::ClientCallManager &client_call_manager_;
   /// Pool of RPC client connections to core workers.
-  std::unique_ptr<rpc::CoreWorkerClientPool> worker_rpc_pool_;
+  rpc::CoreWorkerClientPool &worker_rpc_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
   std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
