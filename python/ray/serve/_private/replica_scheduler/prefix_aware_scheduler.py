@@ -12,10 +12,6 @@ from typing import (
 
 import requests
 
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest,
-    CompletionRequest,
-)
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -294,13 +290,17 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             valid_input_types = ["messages", "prompt"]
             for valid_input_type in valid_input_types:
                 if hasattr(arg, valid_input_type):
-                    prompt = arg.prompt if valid_input_type == "prompt" else arg.messages
+                    prompt = (
+                        arg.prompt if valid_input_type == "prompt" else arg.messages
+                    )
                     break
             if prompt is not None:
                 break
         if prompt is None:
-            raise ValueError("No request with message or prompt attribute found in pending_request.args")
-        
+            raise ValueError(
+                "No request with message or prompt attribute found in pending_request.args"
+            )
+
         # Convert list of messages to concatenated string
         if isinstance(prompt, list):
             concatenated_messages = "".join(
