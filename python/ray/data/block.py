@@ -189,9 +189,6 @@ class BlockStats:
     #: Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
 
-    def reset_exec_stats(self):
-        self.exec_stats = None
-
     def __post_init__(self):
         if self.size_bytes is not None:
             # Require size_bytes to be int, ray.util.metrics objects
@@ -212,12 +209,6 @@ class BlockMetadata(BlockStats):
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
-
-    def reset_schema(self):
-        self.schema = None
-
-    def reset_input_files(self):
-        self.input_files = None
 
     def to_stats(self):
         return BlockStats(

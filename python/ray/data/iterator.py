@@ -388,8 +388,6 @@ class DataIterator(abc.ABC):
             move_tensors_to_device,
         )
 
-        buffer_cache = {}  # Will persist across batches in this iterator
-
         # The default finalize_fn handles the host to device data transfer.
         # This is executed in a 1-thread pool separately from collate_fn
         # to allow independent parallelism of these steps.
@@ -411,9 +409,7 @@ class DataIterator(abc.ABC):
                 to device.
             """
             if is_tensor_batch_type(batch):
-                return move_tensors_to_device(
-                    batch, device=device, buffer_cache=buffer_cache
-                )
+                return move_tensors_to_device(batch, device=device)
             else:
                 return batch
 
