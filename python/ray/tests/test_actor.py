@@ -1303,9 +1303,9 @@ def test_actor_autocomplete(ray_start_regular_shared):
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
     if client_test_enabled():
-        assert set(method_options) == {"options", "remote"}
+        assert set(method_options) == {"options", "remote", "valid_transports"}
     else:
-        assert set(method_options) == {"options", "remote", "bind"}
+        assert set(method_options) == {"options", "remote", "bind", "valid_transports"}
 
 
 def test_actor_mro(ray_start_regular_shared):

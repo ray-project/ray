@@ -3681,9 +3681,7 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector,
-                    c_string tensor_transport,
-                    ):
+                    label_selector):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
@@ -3728,8 +3726,7 @@ cdef class CoreWorker:
                 enable_task_events,
                 c_labels,
                 c_label_selector,
-                tensor_transport,
-                )
+                b"")  # `tensor_transport` is currently only supported in Ray Actor tasks.
 
             current_c_task_id = current_task.native()
 

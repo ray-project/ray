@@ -84,7 +84,8 @@ struct TaskOptions {
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)) {
-    // TODO(Kai-Hsun): If tensor_transport_p is lower case, `TensorTransport_Parse` will fail.
+    // TODO(Kai-Hsun): If tensor_transport_p is lower case, `TensorTransport_Parse` will
+    // fail.
     tensor_transport = rpc::TensorTransport::NONE;
     if (tensor_transport_p != "") {
       RAY_CHECK(rpc::TensorTransport_Parse(tensor_transport_p, &tensor_transport));
