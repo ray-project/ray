@@ -42,6 +42,7 @@ function retry {
   done
 }
 
+# TODO(aslonnie): add python 3.10 and above
 PY_MINOR_VERSIONS=("9" "10")
 
 for PY_MINOR_VERSION in "${PY_MINOR_VERSIONS[@]}"; do
