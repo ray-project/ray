@@ -1,7 +1,6 @@
 # coding: utf-8
 import copy
 import logging
-import os
 import pickle
 import re
 import sys
