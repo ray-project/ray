@@ -1,13 +1,27 @@
 import sys
 
+import ray.data.context
+
 import pytest
 
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
 
+@pytest.fixture(autouse=True, scope="module")
+def setup_data_context():
+    """Fixture to set DataContext wait_for_min_actors_s for all tests in this module.
+
+    FIXES: https://github.com/ray-project/ray/issues/53124
+    TODO (Kourosh): Remove this once the issue is fixed.
+    """
+    ray.data.DataContext.get_current().wait_for_min_actors_s = 600
+    yield
+
+
 def test_chat_template_with_vllm():
     """Test vLLM with explicit chat template."""
+
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
         engine_kwargs=dict(
@@ -57,6 +71,7 @@ def test_chat_template_with_vllm():
 )
 def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
     """Test vLLM with Llama model using different parallelism configurations."""
+
     if vllm_use_v1:
         runtime_env = dict(
             env_vars=dict(
@@ -69,7 +84,11 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
         tokenize = False
         detokenize = False
     else:
-        runtime_env = {}
+        runtime_env = dict(
+            env_vars=dict(
+                VLLM_USE_V1="0",
+            ),
+        )
         tokenize = True
         detokenize = True
 
@@ -121,6 +140,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
 
 def test_vllm_llama_lora():
     """Test vLLM with Llama model and LoRA adapter support."""
+
     model_source = "s3://air-example-data/llama-3.2-216M-dummy/"
     lora_path = "s3://air-example-data/"
     lora_name = "llama-3.2-216M-lora-dummy"
@@ -202,7 +222,11 @@ def test_vllm_vision_language_models(
         tokenize = False
         detokenize = False
     else:
-        runtime_env = {}
+        runtime_env = dict(
+            env_vars=dict(
+                VLLM_USE_V1="0",
+            ),
+        )
         tokenize = True
         detokenize = True
 
