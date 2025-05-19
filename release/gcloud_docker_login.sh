@@ -11,3 +11,4 @@ PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
 export PATH
 gcloud auth login --cred-file="$1" --quiet
 gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
+gcloud config set project dhyey-dev
