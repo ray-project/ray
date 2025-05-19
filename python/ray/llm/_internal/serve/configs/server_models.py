@@ -237,6 +237,11 @@ class LLMConfig(BaseModelExtended):
         "router replicas per model replica.\n",
     )
 
+    log_engine_metrics: Optional[bool] = Field(
+        False,
+        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine.",
+    )
+
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
@@ -877,7 +882,8 @@ def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
 
 
 class SamplingParams(BaseModelExtended):
-    """
+    """Parameters for controlling text generation sampling.
+
     Args:
         max_tokens: The maximum number of tokens to generate. Defaults to inf.
         temperature: What sampling temperature to use.
@@ -902,7 +908,6 @@ class SamplingParams(BaseModelExtended):
             the completion.
         response_format: Format to return the final response in. Can be for ex:
             response_format={"type": "json", "schema": "{...}"}
-
     """
 
     _ignored_fields: Set[str] = set()
@@ -957,6 +962,7 @@ class SamplingParams(BaseModelExtended):
 
 class GenerationRequest(BaseModelExtended):
     prompt: Union[str, List[int], List[str]]
+    prompt_token_ids: Optional[List[int]] = None
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
     stream: bool = False

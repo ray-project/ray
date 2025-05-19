@@ -30,7 +30,7 @@ TEST(LabelSelectorTest, BasicConstruction) {
 
   for (const auto &constraint : constraints) {
     EXPECT_TRUE(label_selector_dict.count(constraint.GetLabelKey()));
-    EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::IN);
+    EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::LABEL_IN);
     auto values = constraint.GetLabelValues();
     EXPECT_EQ(values.size(), 1);
     EXPECT_EQ(*values.begin(), label_selector_dict[constraint.GetLabelKey()]);
@@ -45,7 +45,7 @@ TEST(LabelSelectorTest, InOperatorParsing) {
   ASSERT_EQ(constraints.size(), 1);
   const auto &constraint = constraints[0];
 
-  EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::IN);
+  EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::LABEL_IN);
   auto values = constraint.GetLabelValues();
   EXPECT_EQ(values.size(), 3);
   EXPECT_TRUE(values.contains("us-west"));
@@ -61,7 +61,7 @@ TEST(LabelSelectorTest, NotInOperatorParsing) {
   ASSERT_EQ(constraints.size(), 1);
   const auto &constraint = constraints[0];
 
-  EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::NOT_IN);
+  EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::LABEL_NOT_IN);
   auto values = constraint.GetLabelValues();
   EXPECT_EQ(values.size(), 2);
   EXPECT_TRUE(values.contains("premium"));
@@ -76,7 +76,7 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
   ASSERT_EQ(constraints.size(), 1);
   const auto &constraint = constraints[0];
 
-  EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::NOT_IN);
+  EXPECT_EQ(constraint.GetOperator(), LabelSelectorOperator::LABEL_NOT_IN);
   auto values = constraint.GetLabelValues();
   EXPECT_EQ(values.size(), 1);
   EXPECT_TRUE(values.contains("dev"));
