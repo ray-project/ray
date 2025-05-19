@@ -372,6 +372,8 @@ class ActorMethod:
             tensor_transport is None
             or tensor_transport.lower() in self.valid_transports
         )
+        args = args or []
+        kwargs = kwargs or {}
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
