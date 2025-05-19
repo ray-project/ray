@@ -36,9 +36,6 @@ PATCH_SIZE = 256
 # Largest batch that can fit on a T4.
 BATCH_SIZE = 1200
 
-ray_backend_log_level = os.environ.get("RAY_BACKEND_LOG_LEVEL")
-assert ray_backend_log_level == "debug", ray_backend_log_level
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
