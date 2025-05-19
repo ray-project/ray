@@ -325,7 +325,7 @@ class TokenCounter(AggregateFnV2):
             alias_name if alias_name else f"token_counter({str(on)})",
             on=on,
             ignore_nulls=False,  # Include nulls for this calculation
-            zero_factory=lambda: [0, 0],  # Our AggType is a simple list
+            zero_factory=lambda: Counter(),  # Our AggType is a Counter
         )
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer
 
