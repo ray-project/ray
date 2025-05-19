@@ -2,10 +2,13 @@
 import json
 import logging
 import os
-import pytest
 import sys
 import tempfile
 
+import pytest
+
+from ray._private.ray_constants import SESSION_LATEST
+from ray._private.utils import get_ray_temp_dir
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_PANELS,
 )
@@ -13,9 +16,6 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start
-from ray._private.ray_constants import SESSION_LATEST
-from ray._private.utils import get_ray_temp_dir
-
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,10 @@ def test_metrics_folder_with_dashboard_override(
                 assert global_filters in variable["definition"]
                 assert global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
+            # Check that panels have some width and height
+            for panel in contents["panels"]:
+                assert panel["gridPos"]["h"] > 0
+                assert panel["gridPos"]["w"] > 0
 
         # Serve Dashboard
         with open(f"{override_dashboard_dir}/serve_grafana_dashboard.json") as f:

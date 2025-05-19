@@ -114,7 +114,7 @@ GRAPH_PANEL_TEMPLATE = {
     "datasource": r"${datasource}",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
-    "gridPos": {"h": 0, "w": 0, "x": 0, "y": 0},
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "fill": 10,
     "fillGradient": 0,
     "hiddenSeries": False,
