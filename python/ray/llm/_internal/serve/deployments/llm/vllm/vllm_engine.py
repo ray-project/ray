@@ -580,12 +580,6 @@ class VLLMEngine(LLMEngine):
         }
         if mm_data:
             request_params["multi_modal_data"] = mm_data
-        if (
-            kv_transfer_params := prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None)
-        ) is not None:
-            request_params["internal_parameters"] = {
-                KV_TRANSFER_PARAMS_KEY: kv_transfer_params
-            }
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
@@ -625,14 +619,6 @@ class VLLMEngine(LLMEngine):
 
         _sampling_params = self._parse_sampling_params(
             request.sampling_params,
-            extra_args={
-                KV_TRANSFER_PARAMS_KEY: request.internal_parameters[
-                    KV_TRANSFER_PARAMS_KEY
-                ]
-            }
-            if request.internal_parameters is not None
-            and KV_TRANSFER_PARAMS_KEY in request.internal_parameters
-            else {},
         )
 
         # Construct a results generator from vLLM
@@ -676,6 +662,11 @@ class VLLMEngine(LLMEngine):
                     log_probs_idx,
                     request.sampling_params.top_logprobs,
                 )
+                internal_metadata = {}
+                if getattr(request_output, "kv_transfer_params", None) is not None:
+                    internal_metadata[
+                        KV_TRANSFER_PARAMS_KEY
+                    ] = request_output.kv_transfer_params
                 yield LLMRawResponse(
                     generated_text=text_output,
                     num_generated_tokens=tokens_collected,
@@ -686,9 +677,7 @@ class VLLMEngine(LLMEngine):
                     preprocessing_time=0,
                     generation_time=clock.reset_interval(),
                     finish_reason=finish_reason,
-                    internal_parameters={
-                        KV_TRANSFER_PARAMS_KEY: request_output.kv_transfer_params,
-                    },
+                    metadata=internal_metadata,
                 )
 
             if request_output is not None:
@@ -827,8 +816,7 @@ class VLLMEngine(LLMEngine):
             raise RuntimeError(f"{type(self.engine)} does not support health check.")
 
         try:
-            await asyncio.wait_for(self.engine.check_health(), timeout=15)
-            return True
+            return await asyncio.wait_for(self.engine.check_health(), timeout=15)
         except BaseException as e:
             logger.exception("Healthcheck failed. The replica will be restarted")
             raise e from None

@@ -716,7 +716,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
         timestamp: The timestamp of the response.
         finish_reason: The reason the generation finished.
         error: The error, if any.
-        internal_parameters: The parameters for internal usage.
+        metadata: The metadata for internal usage.
     """
 
     generated_text: Optional[str] = None
@@ -730,7 +730,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
     timestamp: Optional[float] = Field(default_factory=time.time)
     finish_reason: Optional[str] = None
     error: Optional[ErrorResponse] = None
-    internal_parameters: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -823,7 +823,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
             timestamp=responses[-1].timestamp,
             finish_reason=responses[-1].finish_reason,
             error=error,
-            internal_parameters=responses[-1].internal_parameters,
+            metadata=responses[-1].metadata,
         )
 
     @property
@@ -977,4 +977,4 @@ class GenerationRequest(BaseModelExtended):
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
     stream: bool = False
-    internal_parameters: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None

@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING, Union
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator, ValidationError
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
@@ -24,6 +24,8 @@ from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
 )
+from ray.llm._internal.serve.configs.prompt_formats import Prompt
+from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 
 
 vllm = try_import("vllm")
@@ -222,7 +224,25 @@ class VLLMSamplingParams(SamplingParams):
     top_k: Optional[int] = None
     repetition_penalty: Optional[float] = None
     seed: Optional[int] = None
-    kv_transfer_parameters: Optional[Dict[str, Any]] = None
+    kv_transfer_params: Optional[Dict[str, Any]] = None
+
+    @field_validator("n", mode="before")
+    @classmethod
+    def validate_n(cls, values):
+        if values != 1:
+            raise ValidationError("n>1 is not supported yet in rayllm.")
+        return values
+
+    @classmethod
+    def from_prompt(cls, prompt: Prompt):
+        """
+        Extend the base class's from_prompt method to include vllm-specific parameters.
+        """
+        generate_kwargs = super()._get_model_validate_kwargs(prompt)
+        generate_kwargs["kv_transfer_params"] = prompt.parameters.get(
+            KV_TRANSFER_PARAMS_KEY, None
+        )
+        return cls.model_validate(generate_kwargs)
 
 
 class VLLMGenerationRequest(GenerationRequest):
