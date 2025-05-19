@@ -4226,11 +4226,13 @@
   cluster:
     byod:
       type: llm-cu124
-    cluster_compute: llm_auto_select_worker.yaml
+      runtime_env:
+        - VLLM_USE_V1=1
+        - RAYLLM_GUIDED_DECODING_BACKEND=auto
+    cluster_compute: llm_g5-48xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
-
   run:
     timeout: 3600
     long_running: false
