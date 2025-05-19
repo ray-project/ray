@@ -42,15 +42,11 @@ function retry {
   done
 }
 
-MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
+PY_MINOR_VERSIONS=("9" "10")
 
-PY_WHEEL_VERSIONS=("39" "310")
-PY_MMS=("3.9" "3.10")
-
-for ((i=0; i<${#PY_MMS[@]}; ++i)); do
-  PY_MM="${PY_MMS[i]}"
-
-  PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
+for PY_MINOR_VERSION in "${PY_MINOR_VERSIONS[@]}"; do
+  PY_MM="3.${PY_MINOR_VERSION}"
+  PY_WHEEL_VERSION="3${PY_MINOR_VERSION}"
 
   CONDA_ENV_NAME="test-wheels-p$PY_MM"
 
