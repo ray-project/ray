@@ -15,7 +15,7 @@ This guide shows you how to:
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
 * :ref:`Order rows <ordering_of_rows>`
-* :ref:`Perform Stateful transforms <stateful_transforms>`
+* :ref:`Perform stateful transformations <stateful_transforms>`
 * :ref:`Perform Aggregations <aggregations>`
 * :ref:`Transform groups <transforming_groupby>`
 
