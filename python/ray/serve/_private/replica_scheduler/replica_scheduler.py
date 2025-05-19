@@ -51,6 +51,7 @@ class LocalityScope(str, enum.Enum):
 
 class MultiplexScheduleMixin:
     """Mixin for multiplex scheduling.
+
     This mixin is used to schedule requests to replicas that are multiplexed.
     It adds necessary attributes and methods to keep track of multiplexed
     model IDs and offer the helpers to apply multiplex scheduling and rank
