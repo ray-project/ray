@@ -12,7 +12,7 @@ CHECKPOINT_REPORT_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_train_report_total_blocked_time_s{{ray_train_worker_world_rank=~'$TrainWorkerWorldRank', {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank)",
+            expr="sum(ray_train_report_total_blocked_time_s{{ray_train_worker_world_rank=~'$TrainWorkerWorldRank', ray_train_worker_actor_id=~'$TrainWorkerActorId', {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)",
             legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
         )
     ],

@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from typing import Dict, Optional
 
+import ray
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     TrainContextCallback,
@@ -83,9 +84,11 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
     def after_init_train_context(self):
         """Initialize metrics after train context is initialized."""
         train_context = get_train_context()
+        core_context = ray.runtime_context.get_runtime_context()
         world_rank = train_context.get_world_rank()
+        worker_actor_id = core_context.get_actor_id()
         self._metrics = WorkerMetrics.get_worker_metrics(
-            self._run_name, self._run_id, world_rank
+            self._run_name, self._run_id, world_rank, worker_actor_id
         )
 
     def before_shutdown(self):

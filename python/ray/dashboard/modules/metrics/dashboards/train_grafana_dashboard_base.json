@@ -155,6 +155,35 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "allValue": ".+",
+        "current": {
+          "selected": false
+        },
+        "datasource": "${datasource}",
+        "definition": "query_result(count by (ray_train_worker_actor_id)(last_over_time(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+        "description": "Filter queries to specific Ray Train worker actor ids.",
+        "error": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": false,
+        "name": "TrainWorkerActorId",
+        "options": [],
+        "query": {
+          "query": "query_result(count by (ray_train_worker_actor_id)(last_over_time(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "{ray_train_worker_actor_id=\"(?<value>.*)\".*",
+        "skipUrlSync": false,
+        "sort": 2,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       }
     ]
   },

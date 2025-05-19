@@ -7,6 +7,7 @@ from ray.train.v2._internal.metrics.base import (
 )
 
 WORKER_WORLD_RANK_TAG_KEY = "ray_train_worker_world_rank"
+WORKER_ACTOR_ID_TAG_KEY = "ray_train_worker_actor_id"
 
 
 class WorkerMetrics:
@@ -33,13 +34,14 @@ class WorkerMetrics:
 
     @classmethod
     def get_worker_metrics(
-        cls, run_name: str, run_id: str, world_rank: int
+        cls, run_name: str, run_id: str, world_rank: int, worker_actor_id: str
     ) -> Dict[str, TimeMetric]:
         """Get all worker metrics."""
         base_tags = {
             RUN_NAME_TAG_KEY: run_name,
             RUN_ID_TAG_KEY: run_id,
             WORKER_WORLD_RANK_TAG_KEY: str(world_rank),
+            WORKER_ACTOR_ID_TAG_KEY: worker_actor_id,
         }
         return {
             cls.REPORT_TOTAL_BLOCKED_TIME_S: cls._create_time_metric(
