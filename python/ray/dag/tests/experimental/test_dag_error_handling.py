@@ -150,7 +150,14 @@ def test_dag_exception_multi_output(ray_start_regular, capsys):
     compiled_dag = dag.experimental_compile()
 
     # Verify that fetching each output individually raises the error.
-    # 3) Fetching each of the above subsequently raises the error again.
+    refs = compiled_dag.execute("hello")
+    for ref in refs:
+        with pytest.raises(TypeError) as exc_info:
+            ray.get(ref)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
+
+    # Verify that another bad input exhibits the same behavior.
     refs = compiled_dag.execute("hello")
     for ref in refs:
         with pytest.raises(TypeError) as exc_info:
