@@ -419,9 +419,6 @@ Group-by and transforming groups
 ================================
 
 To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values.
-This produces a :class:`~ray.data.grouped_data.GroupedData` object, which is an unmaterialized
-grouped view of the data.
-
 Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
 
 .. tab-set::
