@@ -463,6 +463,12 @@ def move_tensors_to_device(
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
+    Concatenate nested lists/tuples of tensors along the first (batch) dimension.
+    For example, for the input
+    ((feature_0_chunk_0,), (feature_1_chunk_0, feature_1_chunk_1))
+    the output will be (feature_0_chunk_0, feature_1_chunk_0+1)
+    where each feature is concatenated along the batch dimension.
+
     Args:
         batch: A tensor or collection of tensors to move to device. Can be:
             - A single tensor

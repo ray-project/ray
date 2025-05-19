@@ -7,10 +7,7 @@ from ray.air._internal.torch_utils import move_tensors_to_device
 
 
 def test_move_tensors_to_device():
-    """Test that move_tensors_to_device moves and concatenates tensors correctly.
-
-    TODO: Add GPU test.
-    """
+    """Test that move_tensors_to_device moves and concatenates tensors correctly."""
     device = torch.device("cpu")
 
     # torch.Tensor
