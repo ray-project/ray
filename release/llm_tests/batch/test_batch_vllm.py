@@ -8,17 +8,6 @@ import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
 
-@pytest.fixture(autouse=True, scope="module")
-def setup_data_context():
-    """Fixture to set DataContext wait_for_min_actors_s for all tests in this module.
-
-    FIXES: https://github.com/ray-project/ray/issues/53124
-    TODO (Kourosh): Remove this once the issue is fixed.
-    """
-    ray.data.DataContext.get_current().wait_for_min_actors_s = 600
-    yield
-
-
 def test_chat_template_with_vllm():
     """Test vLLM with explicit chat template."""
 
