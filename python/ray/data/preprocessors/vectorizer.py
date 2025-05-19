@@ -333,7 +333,6 @@ class TokenCounter(AggregateFnV2):
         # Use BlockAccessor to work with the block
         block_acc = BlockAccessor.for_block(block)
 
-        # Convert to Arrow for efficient operations
         df = block_acc.to_pandas()
         token_series = df[self._target_col_name].apply(self.tokenization_fn)
         tokens = token_series.sum()
