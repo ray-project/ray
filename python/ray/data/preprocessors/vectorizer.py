@@ -7,6 +7,8 @@ from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.util.annotations import PublicAPI
+from ray.data.aggregate import AggregateFnV2
+from ray.data.block import BlockAccessor, Block
 
 
 @PublicAPI(stability="alpha")
@@ -254,20 +256,15 @@ class CountVectorizer(Preprocessor):
         )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
-            def get_token_counts(col):
-                token_series = df[col].apply(self.tokenization_fn)
-                tokens = token_series.sum()
-                return Counter(tokens)
-
-            return {col: [get_token_counts(col)] for col in self.columns}
-
-        value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-        total_counts = {col: Counter() for col in self.columns}
-        for batch in value_counts.iter_batches(batch_size=None):
-            for col, counters in batch.items():
-                for counter in counters:
-                    total_counts[col].update(counter)
+        agg_fns = [
+            TokenCounter(on=col, tokenization_fn=self.tokenization_fn)
+            for col in self.columns
+        ]
+        aggregated_counts = dataset.aggregate(*agg_fns)
+        print(aggregated_counts)
+        total_counts = {
+            col: aggregated_counts[f"token_counter({col})"] for col in self.columns
+        }
 
         def most_common(counter: Counter, n: int):
             return Counter(dict(counter.most_common(n)))
@@ -313,3 +310,36 @@ class CountVectorizer(Preprocessor):
             f"tokenization_fn={fn_name}, max_features={self.max_features!r}, "
             f"output_columns={self.output_columns!r})"
         )
+
+
+class TokenCounter(AggregateFnV2):
+    """Counts the number of tokens in a column."""
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+        tokenization_fn: Optional[Callable[[str], List[str]]] = None,
+    ):
+        # Initialize with a list accumulator [null_count, total_count]
+        super().__init__(
+            alias_name if alias_name else f"token_counter({str(on)})",
+            on=on,
+            ignore_nulls=False,  # Include nulls for this calculation
+            zero_factory=lambda: [0, 0],  # Our AggType is a simple list
+        )
+        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
+
+    def aggregate_block(self, block: Block) -> Counter:
+        # Use BlockAccessor to work with the block
+        block_acc = BlockAccessor.for_block(block)
+
+        # Convert to Arrow for efficient operations
+        df = block_acc.to_pandas()
+        token_series = df[self._target_col_name].apply(self.tokenization_fn)
+        tokens = token_series.sum()
+        return Counter(tokens)
+
+    def combine(self, current_accumulator: Counter, new: Counter) -> Counter:
+        # Merge two accumulators by summing their components
+        return current_accumulator + new
