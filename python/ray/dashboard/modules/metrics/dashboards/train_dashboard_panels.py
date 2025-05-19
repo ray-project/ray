@@ -12,7 +12,7 @@ CHECKPOINT_REPORT_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_train_report_total_blocked_time_s{{{global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank)",
+            expr="sum(ray_train_report_total_blocked_time_s{{ray_train_worker_world_rank=~'$TrainWorkerWorldRank', {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank)",
             legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
         )
     ],
@@ -75,7 +75,6 @@ train_dashboard_config = DashboardConfig(
         'SessionName=~"$SessionName"',
         'ray_train_run_name=~"$TrainRunName"',
         'ray_train_run_id=~"$TrainRunId"',
-        'ray_train_worker_world_rank=~"$TrainWorkerWorldRank"',
     ],
     base_json_file_name="train_grafana_dashboard_base.json",
 )
