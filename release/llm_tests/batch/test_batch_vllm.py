@@ -11,6 +11,7 @@ def test_chat_template_with_vllm():
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
         engine_kwargs=dict(
+            distributed_executor_backend="ray",
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
@@ -78,6 +79,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
+            distributed_executor_backend="ray",
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
@@ -130,6 +132,7 @@ def test_vllm_llama_lora():
         model_source=model_source,
         dynamic_lora_loading_path=lora_path,
         engine_kwargs=dict(
+            distributed_executor_backend="ray",
             max_model_len=4096,
             enable_chunked_prefill=True,
             enable_lora=True,
@@ -141,6 +144,7 @@ def test_vllm_llama_lora():
         concurrency=1,
         runtime_env={
             "env_vars": {
+                # TODO(lk-chen): Remove this once ray.data.llm enables LoRA in v1.
                 "VLLM_USE_V1": "0",
             }
         },
@@ -212,6 +216,7 @@ def test_vllm_vision_language_models(
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
+            distributed_executor_backend="ray",
             max_model_len=4096,
             enable_chunked_prefill=True,
         ),
