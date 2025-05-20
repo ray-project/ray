@@ -1523,7 +1523,7 @@ class OperatorStatsSummary:
             # time_total_s.
 
             # The estimated single node operator throughput is computed by dividing the
-            # total number of rows produced by the the sum of the wall times across all
+            # total number of rows produced by the sum of the wall times across all
             # blocks of the operator. This assumes that on a single node the work done
             # would be equivalent, with no concurrency.
             total_num_out_rows = output_num_rows_stats["sum"]

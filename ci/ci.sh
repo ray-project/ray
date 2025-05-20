@@ -224,23 +224,14 @@ check_sphinx_links() {
 }
 
 _bazel_build_before_install() {
-  local target
-  if [ "${OSTYPE}" = msys ]; then
-    target="//:ray_pkg"
-  else
-    # Just build Python on other platforms.
-    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
-    target="//:ray_pkg"
-  fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
-    bazel build "${target}"
-  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
-    # bazel build --config asan "${target}"
-    echo "Not needed"
-  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel build --config debug "${target}"
+  if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
+    bazel build //:ray_pkg
+  elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
+    echo "No need to build anything before install"
+  elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
+    bazel build --config debug //:ray_pkg
   else
     echo "Invalid config given"
     exit 1

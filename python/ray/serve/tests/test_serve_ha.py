@@ -1,4 +1,3 @@
-import os
 import sys
 import threading
 from time import sleep
@@ -122,7 +121,4 @@ assert serve_details.controller_info.node_id == head_node_id
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -329,7 +329,7 @@ def _find_address_from_flag(flag: str):
     # Indeed, we had to pull --redis-address to the front of each call to make
     # this readable.
     # As you can see, this is very long and complex, which is why we can't
-    # simply extract all the the arguments using regular expressions and
+    # simply extract all the arguments using regular expressions and
     # present a dict as if we never lost track of these arguments, for
     # example. Picking out --redis-address below looks like it might grab the
     # wrong thing, but double-checking that we're finding the correct process
@@ -779,6 +779,15 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
             cached_node_ip_address["node_ip_address"] = node_ip_address
             with file_path.open(mode="w") as f:
                 json.dump(cached_node_ip_address, f)
+
+
+def get_node_instance_id():
+    """Get the specified node instance id of the current node.
+
+    Returns:
+        The node instance id of the current node.
+    """
+    return os.getenv("RAY_CLOUD_INSTANCE_ID", "")
 
 
 def create_redis_client(redis_address, password=None, username=None):
