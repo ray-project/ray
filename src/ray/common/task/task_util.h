@@ -142,7 +142,7 @@ class TaskSpecBuilder {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const std::unordered_map<std::string, std::string> &label_selector = {},
-      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::NONE) {
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     RAY_LOG(INFO) << "TaskSpecBuilder tensor_transport: " << tensor_transport;
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);

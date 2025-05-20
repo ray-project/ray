@@ -155,7 +155,7 @@ class ActorMethod:
             return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
         _tensor_transport: The tensor transport protocol to use for the actor method.
-            The valid values are NONE, NCCL, or GLOO, and they are case-insensitive.
+            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
     """
 
     def __init__(
@@ -205,7 +205,7 @@ class ActorMethod:
             self._actor_hard_ref = None
         # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
         # as the default transport for this actor method.
-        self._tensor_transport: TypeTensorTransport = tensor_transport or "NONE"
+        self._tensor_transport: TypeTensorTransport = tensor_transport or "OBJECT_STORE"
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -400,7 +400,7 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         obj_ref = invocation(args, kwargs)
-        if tensor_transport != "NONE":
+        if tensor_transport != "OBJECT_STORE":
             # print(f"_remote tensor_transport: {tensor_transport}")
             assert num_returns == 1
 
@@ -1505,7 +1505,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
-        tensor_transport: TypeTensorTransport = "NONE",
+        tensor_transport: TypeTensorTransport = "OBJECT_STORE",
     ):
         """Method execution stub for an actor handle.
 
@@ -1596,8 +1596,7 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
-            # TODO(kevin85421): Remove the if / else
-            tensor_transport if tensor_transport != "NONE" else b"",
+            tensor_transport,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

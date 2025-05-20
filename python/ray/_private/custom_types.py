@@ -121,7 +121,7 @@ LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
 # The TensorTransport is used to define the tensor transport type.
 TENSOR_TRANSPORT = [
-    "NONE",
+    "OBJECT_STORE",
     "NCCL",
     "GLOO",
 ]

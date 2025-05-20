@@ -491,7 +491,7 @@ const rpc::TensorTransport TaskSpecification::TensorTransport() const {
   if (IsActorTask()) {
     return message_->tensor_transport();
   }
-  return rpc::TensorTransport::NONE;
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {

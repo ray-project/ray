@@ -694,7 +694,7 @@ message ObjectReferenceCount {
 
 enum TensorTransport {
   // Use the default object store for tensor transport.
-  NONE = 0;
+  OBJECT_STORE = 0;
   // Use NCCL for tensor transport.
   NCCL = 1;
   // Use GLOO for tensor transport.

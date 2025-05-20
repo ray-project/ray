@@ -3726,7 +3726,9 @@ cdef class CoreWorker:
                 enable_task_events,
                 c_labels,
                 c_label_selector,
-                b"")  # `tensor_transport` is currently only supported in Ray Actor tasks.
+                # `tensor_transport` is currently only supported in Ray Actor tasks.
+                # For Ray tasks, we always use `OBJECT_STORE`.
+                b"OBJECT_STORE")
 
             current_c_task_id = current_task.native()
 

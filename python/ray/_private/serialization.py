@@ -574,11 +574,12 @@ class SerializationContext:
         if (
             tensor_transport is None
             or tensor_transport == ""
-            or tensor_transport == "NONE"
+            or tensor_transport == "OBJECT_STORE"
         ):
             return self._serialize_to_msgpack(value)
 
         # Handle tensor transport.
+        # TODO(kevin85421): Use the custom type to verify the value.
         assert tensor_transport.lower() in [
             "nccl",
             "gloo",

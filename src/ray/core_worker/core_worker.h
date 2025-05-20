@@ -1412,7 +1412,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const std::unordered_map<std::string, std::string> &label_selector = {},
-      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::NONE);
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
