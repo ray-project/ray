@@ -399,7 +399,7 @@ def custom_collate_fns():
 
 @pytest.mark.parametrize("collate_batch_type", ["arrow", "numpy", "pandas"])
 @pytest.mark.parametrize("return_type", ["single", "tuple", "dict", "list"])
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("device", ["cpu", "cuda:0"])
 def test_custom_batch_collate_fn(
     ray_start_4_cpus_2_gpus,
     custom_collate_fns,
@@ -411,7 +411,7 @@ def test_custom_batch_collate_fn(
     """Tests that custom batch collate functions can be used to modify
     the batch before it is converted to a PyTorch tensor."""
     # Skip GPU tests if CUDA is not available
-    if device == "cuda" and not torch.cuda.is_available():
+    if device == "cuda:0" and not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
 
     # Set the device that's returned by device="auto" -> get_device()
