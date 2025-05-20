@@ -13,6 +13,7 @@ Getting Involved / Contributing
     ci
     docs
     writing-code-snippets
+    protobuf
     fake-autoscaler
     testing-tips
     debugging
