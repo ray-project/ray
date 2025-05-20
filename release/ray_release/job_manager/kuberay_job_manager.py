@@ -3,7 +3,11 @@ from ray_release.logger import logger
 import boto3
 import requests
 import time
-
+from ray_release.exception import (
+    CommandTimeout,
+    JobStartupTimeout,
+    JobStartupFailed,
+)
 KUBERAY_SERVICE_SECRET_KEY_SECRET_NAME = "kuberay_service_secret_key"
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
 DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
@@ -17,7 +21,7 @@ job_status_to_return_code = {
 
 class KuberayJobManager:
     def __init__(self):
-        pass
+        self.cluster_startup_timeout = 600
 
     def run_and_wait(self, job_name: str, image: str, cmd_to_run: str, timeout: int, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> Tuple[int, float]:
         self.job_name = job_name
@@ -49,34 +53,53 @@ class KuberayJobManager:
         }
 
         logger.info(f"Submitting KubeRay job request: {request}")
-        response = requests.post(url, json=request, headers=headers)
-        logger.info(f"KubeRay server response: {response.text}")
+        try:
+            response = requests.post(url, json=request, headers=headers)
+        except Exception as e:
+            raise JobStartupFailed(
+                "Error starting job with name "
+                f"{self.job_name}: "
+                f"{e}"
+            ) from e
 
-    def _wait_job(self, timeout: int = 120) -> Tuple[int, float]:
+    def _wait_job(self, timeout: int = 1200) -> Tuple[int, float]:
         start_time = time.time()
         next_status = start_time + 10
-        timeout_at = start_time + timeout
+        timeout_at = start_time + self.cluster_startup_timeout
+        job_running = False
 
         while True:
             now = time.time()
             if now >= timeout_at:
-                logger.info(f"Job timed out after {timeout} seconds")
-                return (-1, now - start_time)
+                self._terminate_job()
+                if not job_running:
+                    raise JobStartupTimeout(
+                        "Cluster did not start within "
+                        f"{self.cluster_startup_timeout} seconds."
+                    )
+                raise CommandTimeout(f"Job timed out after {timeout_at} seconds")
 
             if now >= next_status:
-                logger.info(f"... checking job status ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)")
+                if job_running:
+                    logger.info(f"... job still running ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)")
+                else:
+                    logger.info(f"... job not yet running ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)")
                 next_status += 10
 
             status = self._get_job_status()
             logger.info(f"Current job status: {status}")
-
+            if not job_running and status in ["RUNNING", "ERRORED"]:
+                logger.info(f"Job started")
+                job_running = True
+                timeout_at = now + timeout
             if status in ["SUCCEEDED", "FAILED", "ERRORED", "CANCELLED"]:
                 logger.info(f"Job entered terminal state {status}")
                 duration = time.time() - start_time
                 retcode = job_status_to_return_code[status]
                 break
 
-            time.sleep(1)
+            time.sleep(10)
+
         duration = time.time() - start_time
         return retcode, duration
 
@@ -117,3 +140,7 @@ class KuberayJobManager:
     def fetch_results(self) -> Dict[str, Any]:
         # TODO: implement this
         return {}
+    
+    def _terminate_job(self) -> None:
+        # TODO: implement this
+        pass

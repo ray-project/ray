@@ -407,12 +407,12 @@ def run_release_test(
 
     if test.get_name().endswith(".kuberay"):
         # Load test configuration
+        result.stable = test.get("stable", True)
+        result.smoke_test = smoke_test
         cluster_compute = load_test_cluster_compute(test, test_definition_root)
         kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(cluster_compute)
         working_dir_upload_path = upload_working_dir(get_working_dir(test))
-        runtime_env_vars = test.get_byod_runtime_env()
-        result.stable = test.get("stable", True)
-        result.smoke_test = smoke_test
+        
         command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
 
         kuberay_job_manager = KuberayJobManager()
@@ -420,14 +420,14 @@ def run_release_test(
             job_name=test["name"].replace(".", "-").replace("_", "-"),
             image="us-west2-docker.pkg.dev/dhyey-dev/kuberayportal/kuberayportal:gcs", #TODO: figure out image path on GAR
             cmd_to_run=test["run"]["script"],
-            env_vars=runtime_env_vars,
+            env_vars=test.get_byod_runtime_env(),
             working_dir=working_dir_upload_path,
             pip=test.get_byod_pips(),
             compute_config=kuberay_compute_config,
             timeout=command_timeout
         )
         result.return_code = retcode
-
+        result.runtime = duration
         return result
 
     try:
