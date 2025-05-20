@@ -1,10 +1,9 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
-import copy
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
-from ray.rllib.utils.metrics.stats import Stats
+from ray.rllib.utils.metrics.stats import Stats, merge_stats
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
 from ray.util import log_once
@@ -458,13 +457,9 @@ class MetricsLogger:
                         f"but got argument reduce_per_index_on_parallel_merge={reduce_per_index_on_parallel_merge} while the existing Stats object {key} "
                         f"has reduce_per_index_on_parallel_merge={stats._reduce_per_index_on_parallel_merge}."
                     )
-                if isinstance(value, Stats):
-                    # If value itself is a `Stats`, we merge it on time axis into self's
-                    # `Stats`.
-                    stats.merge_on_time_axis(value)
-                else:
-                    # Otherwise, we just push the value into self's `Stats`.
-                    stats.push(value)
+
+                # Otherwise, we just push the value into self's `Stats`.
+                stats.push(value)
 
     def log_dict(
         self,
@@ -762,44 +757,17 @@ class MetricsLogger:
                 if self._key_in_stats(key, stats=s)
             ]
 
-            # Find a base Stats object first - we will use this to merge with incoming Stats objects
-            base_stats = None
-            own_stats = self._get_key(key, stats=self.stats, key_error=False)
+            structure_under_key = self._get_key(key, stats=self.stats, key_error=False)
+            # self._get_key returns {} if the key is not found
+            own_stats = (
+                None if isinstance(structure_under_key, dict) else structure_under_key
+            )
 
-            if not self._key_in_stats(key):
-                # We need to deepcopy here first because stats from incoming_stats may be altered in the future
-                base_stats = copy.deepcopy(incoming_stats[0])
-            elif len(incoming_stats) > 0:
-                base_stats = own_stats
+            merged_stats = merge_stats(
+                base_stats=own_stats, incoming_stats=incoming_stats
+            )
 
-                # Special case: `base_stats` is a lifetime sum (reduce=sum,
-                # clear_on_reduce=False) -> We subtract the previous value (from 2
-                # `reduce()` calls ago) from all to-be-merged stats, so we don't count
-                # twice the older sum from before.
-                if (
-                    base_stats._reduce_method == "sum"
-                    and base_stats._inf_window
-                    and base_stats._clear_on_reduce is False
-                ):
-                    for stat in incoming_stats:
-                        base_stats.push(-stat.get_reduce_history()[-2][0])
-            else:
-                continue
-
-            if not self._key_in_stats(key):
-                # Note that we may take a mean of means here, which is not the same as a mean of all values
-                # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
-                if len(incoming_stats) > 1:
-                    base_stats.merge_in_parallel(*incoming_stats[1:])
-            elif len(incoming_stats) > 0:
-                if len(incoming_stats) > 1:
-                    # There are more than one incoming parallel others -> Merge all of them
-                    # in parallel (equal importance)
-                    incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
-                # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
-                base_stats.merge_on_time_axis(incoming_stats[0])
-
-            self._set_key(key, base_stats)
+            self._set_key(key, merged_stats)
 
     def log_time(
         self,
@@ -962,15 +930,8 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
-            # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
-            # We need to do this so that lifetime stats are accumulated only in the root logger
-            if not self._is_root_logger:
-                # For non-root logger or non-lifetime stats, reduce normally
-                values = stats.reduce(compile=False)
-                return Stats.similar_to(stats, init_values=values)
-            else:
-                # Only the root logger should return the actual values
-                return stats.reduce(compile=True)
+            # In comse cases, we
+            return stats.reduce(compile=self._is_root_logger)
 
         try:
             with self._threading_lock:
