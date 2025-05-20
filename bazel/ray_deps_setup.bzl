@@ -300,10 +300,13 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
-        strip_prefix = "boringssl-342e805bc1f5dfdd650e3f031686d6c939b095d9",
+        # This is commit https://github.com/google/boringssl/commit/1d256be42d1bb697c86372d12decf64138d82abe
+        # from the FIPS 2025-01-07 branch https://github.com/google/boringssl/tree/fips-20250107
+        # under CMVP certificate https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4953
+        sha256 = "95fa46b3f9b00d329aaf116b57500ffef04af1bf51047911fdf352c554f9de4b",
+        strip_prefix = "boringssl-1d256be42d1bb697c86372d12decf64138d82abe",
         urls = [
-            "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
+            "https://github.com/google/boringssl/archive/1d256be42d1bb697c86372d12decf64138d82abe.tar.gz",
         ],
     )
 
