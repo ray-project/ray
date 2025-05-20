@@ -594,6 +594,7 @@ def wait_for_condition(
         retry_interval_ms: Retry interval in milliseconds.
         raise_exceptions: If true, exceptions that occur while executing
             condition_predictor won't be caught and instead will be raised.
+        **kwargs: Arguments to pass to the condition_predictor.
 
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
@@ -613,6 +614,46 @@ def wait_for_condition(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def wait_for_assertion(
+    assertion_predictor: Callable,
+    timeout: int = 10,
+    retry_interval_ms: int = 100,
+    raise_exceptions: bool = False,
+    **kwargs: Any,
+):
+    """Wait until an assertion is met or time out with an exception.
+
+    Args:
+        assertion_predictor: A function that predicts the assertion.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            assertion_predictor won't be caught and instead will be raised.
+        **kwargs: Arguments to pass to the condition_predictor.
+
+    Raises:
+        RuntimeError: If the assertion is not met before the timeout expires.
+    """
+
+    def _assertion_to_condition():
+        try:
+            assertion_predictor(**kwargs)
+            return True
+        except AssertionError:
+            return False
+
+    try:
+        wait_for_condition(
+            _assertion_to_condition,
+            timeout=timeout,
+            retry_interval_ms=retry_interval_ms,
+            raise_exceptions=raise_exceptions,
+            **kwargs,
+        )
+    except RuntimeError:
+        assertion_predictor(**kwargs)  # Should fail assert
 
 
 async def async_wait_for_condition(

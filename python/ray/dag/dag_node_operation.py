@@ -364,6 +364,14 @@ def _select_next_nodes(
         candidates.remove(node)
         heapq.heapify(candidates)
 
+    # Remove the selected nodes from the candidates.
+    for node in next_nodes:
+        candidates = actor_to_candidates[node.actor_handle._actor_id]
+        #  The NCCL read nodes are not added to the candidates.
+        if node in candidates:
+            candidates.remove(node)
+            heapq.heapify(candidates)
+
     return next_nodes
 
 
