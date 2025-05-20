@@ -304,6 +304,7 @@ class MapTransformer:
         Should be called before applying the transform.
         """
         if not self._initialized:
+            self._init_fn()
             for transform_fn in self._transform_fns:
                 transform_fn.init()
             self._initialized = True
