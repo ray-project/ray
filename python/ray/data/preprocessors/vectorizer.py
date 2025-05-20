@@ -7,8 +7,7 @@ from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.util.annotations import PublicAPI
-from ray.data.aggregate import AggregateFnV2
-from ray.data.block import BlockAccessor, Block
+from ray.data.preprocessors.utils import TokenCounter
 
 
 @PublicAPI(stability="alpha")
@@ -309,35 +308,3 @@ class CountVectorizer(Preprocessor):
             f"tokenization_fn={fn_name}, max_features={self.max_features!r}, "
             f"output_columns={self.output_columns!r})"
         )
-
-
-class TokenCounter(AggregateFnV2):
-    """Counts the number of tokens in a column."""
-
-    def __init__(
-        self,
-        on: str,
-        alias_name: Optional[str] = None,
-        tokenization_fn: Optional[Callable[[str], List[str]]] = None,
-    ):
-        # Initialize with a list accumulator [null_count, total_count]
-        super().__init__(
-            alias_name if alias_name else f"token_counter({str(on)})",
-            on=on,
-            ignore_nulls=False,  # Include nulls for this calculation
-            zero_factory=lambda: Counter(),  # Our AggType is a Counter
-        )
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-
-    def aggregate_block(self, block: Block) -> Counter:
-        # Use BlockAccessor to work with the block
-        block_acc = BlockAccessor.for_block(block)
-
-        df = block_acc.to_pandas()
-        token_series = df[self._target_col_name].apply(self.tokenization_fn)
-        tokens = token_series.sum()
-        return Counter(tokens)
-
-    def combine(self, current_accumulator: Counter, new: Counter) -> Counter:
-        # Merge two accumulators by summing their components
-        return current_accumulator + new
