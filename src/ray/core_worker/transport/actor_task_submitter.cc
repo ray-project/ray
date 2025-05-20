@@ -188,7 +188,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // complete out of order. This ensures that we will not deadlock due to
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
-      send_pos = task_spec.ActorCounter();
+      send_pos = task_spec.SequenceNumber();
       RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
       queue->second.cur_pending_calls++;
       task_queued = true;
@@ -579,13 +579,13 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
-  request->set_sequence_number(task_spec.ActorCounter());
+  request->set_sequence_number(task_spec.SequenceNumber());
 
   const auto actor_id = task_spec.ActorId();
-  const auto actor_counter = task_spec.ActorCounter();
+
   const auto num_queued = queue.inflight_task_callbacks.size();
   RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
-      << "Pushing task to actor, actor counter " << actor_counter << " seq no "
+      << "Pushing task to actor, actor id " << actor_id << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
@@ -851,7 +851,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   const auto actor_id = task_spec.ActorId();
   const auto &task_id = task_spec.TaskId();
-  auto send_pos = task_spec.ActorCounter();
+  auto send_pos = task_spec.SequenceNumber();
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.

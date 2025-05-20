@@ -1,13 +1,14 @@
+import asyncio
 import contextlib
 import os
-import time
 import signal
 import sys
-import asyncio
+import time
 
 import pytest
-import ray
 import redis
+
+import ray
 from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
@@ -108,8 +109,8 @@ def test_kv_timeout(ray_start_regular):
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5,"
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:25:25,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:25:25",
     )
     ray.init()
     gcs_address = ray._private.worker.global_worker.gcs_client.address
@@ -319,9 +320,4 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
