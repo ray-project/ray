@@ -1916,23 +1916,26 @@ def exit_actor():
         )
 
 
-def _handle_tensor_transport(dst_actor, args):
-    """Handle tensor transport between actors.
+def _handle_tensor_transport(dst_actor: ActorHandle, task_args: Tuple[Any, ...]):
+    """
+    Trigger tensor communication operation between actors. This is a helper function
+    to be called when an ObjectRef containing an in-actor tensor is passed to another actor
+    task, and the data should be passed out-of-band instead of through the object store.
 
     Args:
         dst_actor: The target actor to receive tensors
-        args: List of arguments that may contain ObjectRefs
+        task_args: List of arguments for the target actor task that may contain ObjectRefs.
     """
     from ray.experimental.channel import ChannelContext
 
     ctx = ChannelContext.get_current()
 
     # TODO(kevin85421): Currently, GPU objects only support 1 communicator.
-    if len(ctx.communicators) != 1 or not args:
+    if len(ctx.communicators) != 1 or not task_args:
         return
 
     actor_id_to_rank = {}
-    for arg in args:
+    for arg in task_args:
         if not isinstance(arg, ray.ObjectRef):
             continue
 
