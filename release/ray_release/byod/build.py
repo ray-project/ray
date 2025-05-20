@@ -94,7 +94,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                 built.add(byod_image)
                 continue
             ray_image = test.get_ray_image()
-            ray_image = "rayproject/ray:2b357d-py39-cpu"
+            ray_image = "rayproject/ray:94a785-py39-cpu"
             if not _image_exist(ray_image):
                 # TODO(can): instead of waiting for the base image to be built, we can
                 #  build it ourselves
