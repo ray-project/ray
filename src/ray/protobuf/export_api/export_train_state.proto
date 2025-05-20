@@ -64,7 +64,7 @@ message ExportTrainRunEventData {
   uint32 ray_train_version = 11;
 
   // Dashboard panel configuration for visualizing Train run data
-  message DashboardPanel {
+  message DashboardPanelMetadata {
     // Unique identifier for the panel
     string id = 1;
     // Display name of the panel
@@ -72,9 +72,9 @@ message ExportTrainRunEventData {
   }
 
   // List of TrainRun dashboard panels
-  repeated DashboardPanel train_run_panels = 12;
+  repeated DashboardPanelMetadata train_run_panels = 12;
   // List of dashboard panels to include for TrainWorkers
-  repeated DashboardPanel train_worker_panels = 13;
+  repeated DashboardPanelMetadata train_worker_panels = 13;
 }
 
 // Metadata for an individual attempt to execute a Train run

@@ -92,9 +92,9 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
     return proto_attempt
 
 
-def _to_proto_dashboard_panel(panel: Panel) -> ProtoTrainRun.DashboardPanel:
+def _to_proto_dashboard_panel(panel: Panel) -> ProtoTrainRun.DashboardPanelMetadata:
     """Convert Dashboard Panel to protobuf format."""
-    proto_panel = ProtoTrainRun.DashboardPanel(
+    proto_panel = ProtoTrainRun.DashboardPanelMetadata(
         id=str(panel.id),
         title=panel.title,
     )
