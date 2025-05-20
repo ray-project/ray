@@ -9,7 +9,7 @@ If your ``python_grpc_compile`` rule is not transitively included in the ``all_p
 
 If you add new protobuf files in a nested folder, you should prefix all files in that folder with a unique prefix such as ``my_unique_prefix``. For example: ``src/ray/protobuf/nested_folder/my_unique_prefix_hello.proto``. Nested folder structures for protobuf files are currently not supported, so you cannot create files like ``src/ray/protobuf/first_level/second_level/hello.proto``.
 
-You also need to add a ``sed`` command to the ``install_py_proto`` rule in ``BUILD.bazel``. Otherwise, the Python import paths will be incorrect.
+When you have profobuf files in a nested folder, you also need to add a ``sed`` command to the ``install_py_proto`` rule in ``BUILD.bazel``. Otherwise, the Python import paths will be incorrect.
 
 .. code-block:: shell
 
