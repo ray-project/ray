@@ -832,13 +832,6 @@ python/ray/client_builder.py
     DOC201: Method `ClientBuilder.env` does not have a return section in docstring
     DOC201: Method `ClientBuilder.namespace` does not have a return section in docstring
 --------------------
-python/ray/cloudpickle/cloudpickle.py
-    DOC101: Function `_find_imported_submodules`: Docstring contains fewer arguments than in function signature.
-    DOC106: Function `_find_imported_submodules`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `_find_imported_submodules`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `_find_imported_submodules`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [code: , top_level_dependencies: ].
-    DOC201: Function `_find_imported_submodules` does not have a return section in docstring
---------------------
 python/ray/cluster_utils.py
     DOC101: Method `AutoscalingCluster.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `AutoscalingCluster.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**config_kwargs: , autoscaler_v2: bool].
@@ -1225,10 +1218,6 @@ python/ray/data/_internal/execution/operators/map_operator.py
     DOC404: Function `_map_task` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
 python/ray/data/_internal/execution/operators/map_transformer.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `MapTransformFn.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `MapTransformFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [category: MapTransformFnCategory, input_type: MapTransformFnDataType, is_udf: bool, output_type: MapTransformFnDataType].
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `MapTransformer.__init__`: Docstring contains fewer arguments than in function signature.
