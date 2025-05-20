@@ -345,6 +345,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   }
 
   if (!resubmit) {
+    RAY_LOG(INFO).WithField(task_id) << "Task is pending, skip";
     return true;
   }
 

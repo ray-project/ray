@@ -829,6 +829,8 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
         it->second.spilled_node_id == raylet_id) {
       UnsetObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+        RAY_LOG(INFO).WithField(object_id).WithField(raylet_id)
+            << "Object to recover due to dead node";
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -865,9 +867,13 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       if (check_node_alive_(raylet_id)) {
+        RAY_LOG(INFO).WithField(object_id).WithField(raylet_id)
+            << "Object pinned at node";
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
         UnsetObjectPrimaryCopy(it);
+        RAY_LOG(INFO).WithField(object_id).WithField(raylet_id)
+            << "Object to recover due to dead node";
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -1432,7 +1438,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     }
     PushToLocationSubscribers(it);
   } else {
-    RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
+    RAY_LOG(INFO).WithField(spilled_node_id).WithField(object_id)
         << "Object spilled to dead node ";
     UnsetObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);

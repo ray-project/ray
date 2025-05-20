@@ -112,7 +112,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
   const auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
-  RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
+  RAY_LOG(INFO).WithField(object_id).WithField(node_id)
       << "Trying to pin copy of lost object at node";
 
   std::shared_ptr<PinObjectsInterface> client;
