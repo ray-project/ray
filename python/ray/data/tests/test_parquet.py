@@ -909,24 +909,94 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
-def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
-    df = pd.DataFrame(
-        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
-    )
-    table = pa.Table.from_pandas(df)
-    pq.write_to_dataset(
-        table,
-        root_path=str(tmp_path),
-        partition_cols=["one"],
-    )
-    # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
+def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    os.mkdir(path)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="ignore")
 
-    ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
-    )
+    # directory was created, should ignore
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 0
 
-    parquet_output_path = os.path.join(tmp_path, "parquet")
-    ds.write_parquet(parquet_output_path, num_rows_per_file=6)
+    # now remove dir
+    shutil.rmtree(path)
+
+    # should write
+    ds.write_parquet(path, filesystem=None, mode="ignore")
+    on_disk_table = pq.read_table(path)
+
+    assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    os.mkdir(path)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+
+    with pytest.raises(ValueError):
+        ds.write_parquet(path, filesystem=None, mode="error")
+
+    # now remove dir
+    shutil.rmtree(path)
+
+    # should write
+    ds.write_parquet(path, filesystem=None, mode="error")
+    on_disk_table = pq.read_table(path)
+
+    assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="append")
+
+    # one file should be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 1
+
+    appended_in_memory_table = pa.Table.from_pydict({"two": [2]})
+    ds = ray.data.from_arrow(appended_in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="append")
+
+    # another file should be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 2
+
+
+def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="overwrite")
+
+    # one file should be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 1
+
+    overwritten_in_memory_table = pa.Table.from_pydict({"two": [2]})
+    ds = ray.data.from_arrow(overwritten_in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="overwrite")
+
+    # another file should NOT be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 1
+
+    on_disk_table = pq.read_table(path)
+    assert on_disk_table.equals(overwritten_in_memory_table)
 
 
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):

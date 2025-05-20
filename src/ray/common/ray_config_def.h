@@ -263,10 +263,6 @@ RAY_CONFIG(int64_t, fetch_fail_timeout_milliseconds, 600000)
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 
-// Whether to inline object status in serialized references.
-// See https://github.com/ray-project/ray/issues/16025 for more details.
-RAY_CONFIG(bool, inline_object_status_in_refs, true)
-
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
@@ -541,6 +537,11 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
+
+/// Determine if the high cardinality labels such as WorkerId, task and actor Name
+/// should be used in the metrics. For the complete definition, see
+/// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
+RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
@@ -861,7 +862,7 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 ///  To use this, simply do
 ///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
@@ -892,7 +893,7 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
 // By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks

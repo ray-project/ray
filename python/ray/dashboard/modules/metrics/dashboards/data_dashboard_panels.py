@@ -40,21 +40,6 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    # TODO(mowen): Determine if we actually need bytes allocated since its not being used.
-    Panel(
-        id=2,
-        title="Bytes Allocated",
-        description="Amount allocated by dataset operators.",
-        unit="bytes",
-        targets=[
-            Target(
-                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Allocated: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
     Panel(
         id=3,
         title="Bytes Freed",

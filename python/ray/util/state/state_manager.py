@@ -80,10 +80,13 @@ def handle_grpc_network_errors(func):
         Returns:
             If RPC succeeds, it returns what the original function returns.
             If RPC fails, it raises exceptions.
-        Exceptions:
+
+        Raises:
             DataSourceUnavailable: if the source is unavailable because it is down
                 or there's a slow network issue causing timeout.
-            Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
+
+            Exception: Otherwise, the raw network exceptions (e.g., gRPC) will be
+                raised.
         """
         try:
             return await func(*args, **kwargs)

@@ -195,6 +195,7 @@ class ServeController:
         self._actor_details = ServeActorDetails(
             node_id=ray.get_runtime_context().get_node_id(),
             node_ip=ray.util.get_node_ip_address(),
+            node_instance_id=ray.util.get_node_instance_id(),
             actor_id=ray.get_runtime_context().get_actor_id(),
             actor_name=SERVE_CONTROLLER_NAME,
             worker_id=ray.get_runtime_context().get_worker_id(),
@@ -863,7 +864,7 @@ class ServeController:
             DeploymentRoute's protobuf serialized bytes
 
         Raises:
-            KeyError if the deployment doesn't exist.
+            KeyError: If the deployment doesn't exist.
         """
         id = DeploymentID(name=name, app_name=app_name)
         deployment_info = self.deployment_state_manager.get_deployment(id)
@@ -988,7 +989,7 @@ class ServeController:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
-            is NOT_STARTED.
+                  is NOT_STARTED.
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)
