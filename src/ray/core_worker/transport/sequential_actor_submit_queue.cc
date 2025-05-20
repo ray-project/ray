@@ -82,10 +82,5 @@ SequentialActorSubmitQueue::PopNextTaskToSend() {
   return absl::nullopt;
 }
 
-uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
-    const TaskSpecification &task_spec) const {
-  return task_spec.ActorCounter();
-}
-
 }  // namespace core
 }  // namespace ray

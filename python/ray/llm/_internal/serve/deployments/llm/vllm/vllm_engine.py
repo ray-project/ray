@@ -234,7 +234,9 @@ class VLLMEngine(LLMEngine):
 
         If the engine is already running, do nothing.
         """
-        from vllm.entrypoints.chat_utils import resolve_chat_template_content_format
+        from vllm.entrypoints.chat_utils import (
+            resolve_chat_template_content_format as _resolve_chat_template_content_format,
+        )
 
         if self.running:
             # The engine is already running!
@@ -246,7 +248,21 @@ class VLLMEngine(LLMEngine):
         self.model_config = await self.engine.get_model_config()
 
         self._tokenizer = await self.engine.get_tokenizer()
+
+        def resolve_chat_template_content_format(model_config, **kwargs):
+            try:
+                return _resolve_chat_template_content_format(
+                    model_config=model_config, **kwargs
+                )
+            except TypeError:
+                # Legacy API before vLLM 0.9.0.
+                # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
+                return _resolve_chat_template_content_format(
+                    trust_remote_code=model_config.trust_remote_code, **kwargs
+                )
+
         self._resolved_content_format = resolve_chat_template_content_format(
+            model_config=self.model_config,
             # Use HF to get the chat template so set it to None here.
             chat_template=None,
             # Default to None, change when it's needed.
@@ -255,7 +271,6 @@ class VLLMEngine(LLMEngine):
             # Let vLLM decide the content format.
             given_format="auto",
             tokenizer=self._tokenizer,
-            trust_remote_code=self.model_config.trust_remote_code,
         )
 
         logger.info("Started vLLM engine.")
@@ -280,7 +295,11 @@ class VLLMEngine(LLMEngine):
             envs.set_vllm_use_v1(False)
 
         if not envs.VLLM_USE_V1:
+            if self.llm_config.log_engine_metrics:
+                raise ValueError("V1 vLLM Engine is required to log engine metrics")
+
             return await self._start_engine_v0()
+
         return await self._start_engine_v1()
 
     async def _prepare_engine_config(self, use_v1: bool):
@@ -473,11 +492,24 @@ class VLLMEngine(LLMEngine):
 
         _clear_current_platform_cache()
 
-        return vllm.engine.async_llm_engine.AsyncLLMEngine(
+        custom_stat_loggers = None
+        if self.llm_config.log_engine_metrics:
+            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
+                RayPrometheusStatLogger,
+            )
+
+            # V1 AsyncLLMEngine does not yet support add_logger
+            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            custom_stat_loggers = [RayPrometheusStatLogger]
+
+        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
+            stat_loggers=custom_stat_loggers,
         )
+
+        return engine
 
     async def prepare_request(
         self,
@@ -488,7 +520,7 @@ class VLLMEngine(LLMEngine):
     ) -> GenerationRequest:
         from vllm.entrypoints.chat_utils import (
             parse_chat_messages_futures,
-            apply_hf_chat_template,
+            apply_hf_chat_template as _apply_hf_chat_template,
         )
 
         model_config = self.model_config
@@ -504,14 +536,25 @@ class VLLMEngine(LLMEngine):
             )
             mm_data = await mm_futures
 
+            def apply_hf_chat_template(model_config, **kwargs):
+                try:
+                    return _apply_hf_chat_template(model_config=model_config, **kwargs)
+                except TypeError:
+                    # Legacy API before vLLM 0.9.0.
+                    # TODO(#52975): Remove above once vLLM <0.9.0 is no longer supported.
+                    return _apply_hf_chat_template(
+                        trust_remote_code=model_config.trust_remote_code, **kwargs
+                    )
+
             prompt_text = apply_hf_chat_template(
+                model_config=model_config,
                 tokenizer=self._tokenizer,
                 conversation=conversation,
                 chat_template=None,
                 tools=None,
-                trust_remote_code=model_config.trust_remote_code,
                 tokenize=False,
                 # **kwargs for tokenizer.apply_chat_template
+                trust_remote_code=model_config.trust_remote_code,
                 add_generation_prompt=True,
                 continue_final_message=False,
             )

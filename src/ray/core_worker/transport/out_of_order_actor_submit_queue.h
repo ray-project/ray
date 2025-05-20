@@ -59,9 +59,6 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-  /// Get the sequence number of the task to send.
-  /// This is ignored by the receivier but only for debugging purpose.
-  uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
   bool Empty() override;
 
  private:

@@ -58,27 +58,29 @@ kubectl get all -n prometheus-system
 # path: ray-operator/config/samples/
 kubectl apply -f ray-cluster.embed-grafana.yaml
 
-# Check ${RAYCLUSTER_HEAD_POD}
-kubectl get pod -l ray.io/node-type=head
+# Check there's a Service that specifies port 8080 for the metrics endpoint.
+# There may be a slight delay between RayCluster and Service creation.
+kubectl get service -l ray.io/cluster=raycluster-embed-grafana
 
-# Example output:
-# NAME                                  READY   STATUS    RESTARTS   AGE
-# raycluster-embed-grafana-head-98fqt   1/1     Running   0          11m
+# NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                    AGE
+# raycluster-embed-grafana-head-svc   ClusterIP   None            <none>        44217/TCP,10001/TCP,44227/TCP,8265/TCP,6379/TCP,8080/TCP   13m
 
-# Wait until all Ray Pods are running and forward the port of the Prometheus metrics endpoint in a new terminal.
-kubectl port-forward ${RAYCLUSTER_HEAD_POD} 8080:8080
+# Wait until all Ray Pods are ready.
+kubectl wait pods -l ray.io/cluster=raycluster-embed-grafana --timeout 2m --for condition=Ready
+
+# pod/raycluster-embed-grafana-head-2jk7c condition met
+# pod/raycluster-embed-grafana-small-group-worker-8g2vv condition met
+
+# Forward the port of the Prometheus metrics endpoint.
+kubectl port-forward service/raycluster-embed-grafana-head-svc metrics
+
+# Check metrics in a new terminal.
 curl localhost:8080
 
 # Example output (Prometheus metrics format):
 # # HELP ray_spill_manager_request_total Number of {spill, restore} requests.
 # # TYPE ray_spill_manager_request_total gauge
 # ray_spill_manager_request_total{Component="raylet", NodeAddress="10.244.0.13", SessionName="session_2025-01-02_07-58-21_419367_11", Type="FailedDeletion", Version="2.9.0", container="ray-head", endpoint="metrics", instance="10.244.0.13:8080", job="prometheus-system/ray-head-monitor", namespace="default", pod="raycluster-embed-grafana-head-98fqt", ray_io_cluster="raycluster-embed-grafana"} 0
-
-# Ensure that the port (8080) for the metrics endpoint is also defined in the head's Kubernetes service.
-kubectl get service
-
-# NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                    AGE
-# raycluster-embed-grafana-head-svc   ClusterIP   None            <none>        44217/TCP,10001/TCP,44227/TCP,8265/TCP,6379/TCP,8080/TCP   13m
 ```
 
 * KubeRay exposes a Prometheus metrics endpoint in port **8080** via a built-in exporter by default. Hence, we do not need to install any external exporter.
@@ -317,9 +319,10 @@ spec:
 * Alerting rules are configured in the same way as recording rules.
 
 ## Step 9: Access Prometheus Web UI
+
 ```sh
 # Forward the port of Prometheus Web UI in the Prometheus server Pod.
-kubectl port-forward prometheus-prometheus-kube-prometheus-prometheus-0 -n prometheus-system 9090:9090
+kubectl port-forward -n prometheus-system service/prometheus-kube-prometheus-prometheus http-web
 ```
 
 - Go to `${YOUR_IP}:9090/targets` (e.g. `127.0.0.1:9090/targets`). You should be able to see:
@@ -339,8 +342,8 @@ kubectl port-forward prometheus-prometheus-kube-prometheus-prometheus-0 -n prome
 ## Step 10: Access Grafana
 
 ```sh
-# Forward the port of Grafana
-kubectl port-forward deployment/prometheus-grafana -n prometheus-system 3000:3000
+# Forward the Grafana port
+kubectl port-forward -n prometheus-system service/prometheus-grafana 3000:http-web
 # Note: You need to update `RAY_GRAFANA_IFRAME_HOST` if you expose Grafana to a different port.
 
 # Check ${YOUR_IP}:3000/login for the Grafana login page (e.g. 127.0.0.1:3000/login).
@@ -359,7 +362,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
   * Click "Upload JSON file".
   * Choose a JSON file.
     * Case 1: If you are using Ray 2.9.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
-    * Case 2: Otherwise, you should import the JSON files from `/tmp/ray/session_latest/metrics/grafana/dashboards/` in the head Pod. You can use `kubectl cp` to copy the files from the head Pod to your local machine.
+    * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
   * Click "Import".
 
 * TODO: Note that importing the dashboard manually is not ideal. We should find a way to import the dashboard automatically.
@@ -379,7 +382,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 ## Step 12: Embed Grafana panels in Ray Dashboard
 
 ```sh
-kubectl port-forward svc/raycluster-embed-grafana-head-svc 8265:8265
+kubectl port-forward service/raycluster-embed-grafana-head-svc dashboard
 # Visit http://127.0.0.1:8265/#/metrics in your browser.
 ```
 

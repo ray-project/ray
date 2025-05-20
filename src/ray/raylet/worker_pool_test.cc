@@ -152,7 +152,7 @@ class WorkerPoolMock : public WorkerPool {
             /*enable_resource_isolation=*/false),
         last_worker_process_(),
         instrumented_io_service_(io_service),
-        client_call_manager_(instrumented_io_service_),
+        client_call_manager_(instrumented_io_service_, false),
         mock_worker_rpc_clients_(mock_worker_rpc_clients) {
     SetNodeManagerPort(1);
   }

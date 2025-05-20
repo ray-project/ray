@@ -862,7 +862,7 @@ py_test(
 
 py_test(
     name = "test_torch_device_manager",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_device_manager.py"],
     tags = [
         "exclusive",

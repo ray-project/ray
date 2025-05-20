@@ -199,6 +199,14 @@ DEFINE_stats(grpc_server_req_failed,
              (),
              ray::stats::COUNT);
 
+/// Number of failures observed from gRPC client(s).
+/// A failure is an RPC whose response status was not `OK`.
+DEFINE_stats(grpc_client_req_failed,
+             "Number of gRPC client failures (non-OK response statuses).",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,
              "Number of bytes pushed or received by type {PushedFromLocalPlasma, "

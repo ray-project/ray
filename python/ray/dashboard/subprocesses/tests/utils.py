@@ -165,3 +165,16 @@ class TestModule1(BaseTestModule):
     @routes.get("/test1")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return aiohttp.web.Response(text="Hello from TestModule1")
+
+    @routes.get("/redirect_between_modules")
+    async def redirect_between_modules(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        # Redirect to the /test route in TestModule
+        raise aiohttp.web.HTTPFound(location="/test")
+
+    @routes.get("/redirect_within_module")
+    async def redirect_within_module(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        raise aiohttp.web.HTTPFound(location="/test1")
