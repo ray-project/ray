@@ -33,20 +33,21 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false
-        },
-        "description": "Filter queries of a specific Prometheus type.",
-        "hide": 2,
-        "includeAll": false,
-        "multi": false,
         "name": "datasource",
-        "options": [],
+        "type": "datasource",
+        "description": "Filter queries of a specific Prometheus type.",
+        "datasource": null,
         "query": "prometheus",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
-        "type": "datasource"
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "current": {
+          "selected": false
+        }
       },
 
       {
@@ -59,11 +60,13 @@
           "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, SessionName)",
           "refId": "StandardVariableQuery"
         },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
-        "refresh": 1,
         "sort": 2,
         "current": {
           "selected": true,
@@ -82,11 +85,13 @@
           "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_name)",
           "refId": "StandardVariableQuery"
         },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
-        "refresh": 1,
         "sort": 2,
         "current": {
           "selected": true,
@@ -105,11 +110,13 @@
           "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_id)",
           "refId": "StandardVariableQuery"
         },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
-        "refresh": 1,
         "sort": 2,
         "current": {
           "selected": true,
@@ -128,11 +135,13 @@
           "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_world_rank)",
           "refId": "StandardVariableQuery"
         },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
-        "refresh": 1,
         "sort": 2,
         "current": {
           "selected": true,
@@ -151,11 +160,13 @@
           "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
           "refId": "StandardVariableQuery"
         },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
-        "refresh": 1,
         "sort": 2,
         "current": {
           "selected": true,
