@@ -136,12 +136,14 @@ class MapTransformFn:
         udf_context: Optional[MapTransformUDFContext] = None,
     ):
         """
+        Initialize a MapTransformFn from the given input type, output type, category, and udf_context.
+
         Args:
-            callable: the underlying Python callable object.
             input_type: the type of the input data.
             output_type: the type of the output data.
+            category: the MapTransformFnCategory of the transform function.
+            udf_context: optional context for user-defined functions.
         """
-        self._callable = callable
         self._input_type = input_type
         self._output_type = output_type
         self._category = category
