@@ -416,7 +416,7 @@ def run_release_test(
             "namespace": DEFAULT_KUBERAY_NAMESPACE,
             "name": test["name"].replace(".", "-").replace("_", "-"), 
             "entrypoint": test["run"]["script"],
-            "rayImage": "rayproject/ray:2.41.0", #TODO: figure out image path on GAR
+            "rayImage": "us-west2-docker.pkg.dev/dhyey-dev/kuberayportal/kuberayportal:gcs", #TODO: figure out image path on GAR
             "computeConfig": kuberay_compute_config,
             "runtimeEnv": {
                 "env_vars": runtime_env_vars,

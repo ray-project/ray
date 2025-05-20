@@ -36,7 +36,7 @@ ERROR_LOG_PATTERNS = [
     "Traceback (most recent call last)",
 ]
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
-DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-default"
+DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
 
 def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
     # We support by default reading from the branch bucket only, since most of the use
