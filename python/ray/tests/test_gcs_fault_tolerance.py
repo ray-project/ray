@@ -881,6 +881,7 @@ print("DONE")
     [
         generate_system_config_map(
             enable_cluster_auth=True,
+            raylet_liveness_self_check_interval_ms=5000,
         )
     ],
     indirect=True,
