@@ -1,6 +1,7 @@
 import pytest
 import ray
 from typing import Set, List
+import asyncio
 
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
     PrefixTree,
@@ -840,6 +841,146 @@ class TestPrefixTreeActorComprehensive:
             "tenant_2": 0,
         }
         assert await get_lru_texts_from_tree_actor(tree_actor, "tenant_2") == [""]
+
+
+@pytest.mark.asyncio
+class TestPrefixTreeActorEvictionLoop:
+    """Tests for the automatic eviction loop in PrefixTreeActor"""
+
+    async def test_eviction_loop_triggers_automatically(
+        self, tree_actor: PrefixTreeActor
+    ) -> None:
+        """Test that the eviction loop automatically evicts data when threshold is exceeded."""
+        # Set up eviction parameters
+        eviction_threshold = 10  # Low threshold for testing
+        eviction_target = 8  # Target to evict down to
+        interval_secs = 0.1  # Short interval for testing
+
+        # Start the eviction loop
+        await tree_actor.start_eviction_loop.remote(
+            eviction_threshold, eviction_target, interval_secs
+        )
+
+        # Add tenant and insert data over the threshold
+        await tree_actor.add_tenants.remote(["tenant_1"], 0)
+        await tree_actor.insert.remote("hello", "tenant_1", 1)  # 5 chars
+        await tree_actor.insert.remote(
+            "excess", "tenant_1", 2
+        )  # 6 more chars, total: 11
+
+        # Verify initial count
+        assert ray.get(tree_actor.getattr.remote("tenant_to_char_count")) == {
+            "tenant_1": 11
+        }
+
+        # Wait for eviction loop to run (interval + small buffer)
+        await asyncio.sleep(interval_secs + 0.2)
+
+        # Verify data was automatically evicted down to target (8 chars)
+        # The eviction should have removed 5 chars, so we should be at 6, which is <= 8
+        char_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
+        assert char_count["tenant_1"] == 6
+
+    async def test_eviction_loop_multiple_tenants(
+        self, tree_actor: PrefixTreeActor
+    ) -> None:
+        """Test that eviction loop evicts from each tenant that exceeds the threshold."""
+        # Set up eviction parameters
+        eviction_threshold = 10
+        eviction_target = 8
+        interval_secs = 0.1
+
+        # Start the eviction loop
+        await tree_actor.start_eviction_loop.remote(
+            eviction_threshold, eviction_target, interval_secs
+        )
+
+        # Add two tenants with data over threshold
+        await tree_actor.add_tenants.remote(["tenant_1", "tenant_2"], 0)
+        await tree_actor.insert.remote("hello", "tenant_1", 1)  # 5 chars
+        await tree_actor.insert.remote(
+            "excess", "tenant_1", 2
+        )  # 6 more chars, total: 11
+        await tree_actor.insert.remote("bigstring", "tenant_2", 3)  # 9 chars
+        await tree_actor.insert.remote("more", "tenant_2", 4)  # 4 more chars, total: 13
+
+        # Verify initial counts
+        initial_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
+        assert initial_count["tenant_1"] == 11
+        assert initial_count["tenant_2"] == 13
+
+        # Wait for eviction loop to run
+        await asyncio.sleep(interval_secs + 0.2)
+
+        # Verify both tenants were evicted to target
+        char_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
+
+        # Tenant 1 should have "hello" evicted, so 11 - 5 = 6
+        assert char_count["tenant_1"] == 6
+        # Tenant 2 should have "bigstring" evicted, so 13 - 9 = 4
+        assert char_count["tenant_2"] == 4
+
+    async def test_eviction_loop_respects_threshold(
+        self, tree_actor: PrefixTreeActor
+    ) -> None:
+        """Test that eviction loop only evicts tenants that exceed the threshold."""
+        # Set up eviction parameters
+        eviction_threshold = 10
+        eviction_target = 8
+        interval_secs = 0.1
+
+        # Start the eviction loop
+        await tree_actor.start_eviction_loop.remote(
+            eviction_threshold, eviction_target, interval_secs
+        )
+
+        # Add two tenants - one over threshold, one under
+        await tree_actor.add_tenants.remote(["over_tenant", "under_tenant"], 0)
+        await tree_actor.insert.remote("hello", "over_tenant", 1)  # 5 chars
+        await tree_actor.insert.remote(
+            "excess", "over_tenant", 2
+        )  # 6 more chars, total: 11
+        await tree_actor.insert.remote("small", "under_tenant", 3)  # 5 chars
+
+        # Verify initial counts
+        initial_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
+        assert initial_count["over_tenant"] == 11
+        assert initial_count["under_tenant"] == 5
+
+        # Wait for eviction loop to run
+        await asyncio.sleep(interval_secs + 0.2)
+
+        # Verify only the tenant over threshold was evicted
+        char_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
+        # Tenant 1 should have "hello" evicted, so 11 - 5 = 6
+        assert char_count["over_tenant"] == 6
+        # Tenant 2 should be unchanged
+        assert char_count["under_tenant"] == 5
+
+    async def test_eviction_loop_can_be_started_multiple_times(
+        self, tree_actor: PrefixTreeActor
+    ) -> None:
+        """Test that only the first call to start_eviction_loop starts a new loop."""
+        # Call start_eviction_loop multiple times
+        eviction_task_1 = await tree_actor.start_eviction_loop.remote(10, 8, 0.1)
+        eviction_task_2 = await tree_actor.start_eviction_loop.remote(10, 0, 0.1)
+        assert eviction_task_1 and not eviction_task_2
+
+        # Add tenant and insert data over the threshold
+        await tree_actor.add_tenants.remote(["tenant_1"], 0)
+        await tree_actor.insert.remote("hello", "tenant_1", 1)  # 5 chars
+        await tree_actor.insert.remote(
+            "excess", "tenant_1", 2
+        )  # 6 more chars, total: 11
+
+        # Wait for eviction loop to run
+        await asyncio.sleep(0.3)
+
+        # Verify the first eviction_target_chars is respected.
+        # Should evict "hello" to bring the char count down from 11 to 6.
+
+        char_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
+        assert char_count["tenant_1"] == 6
 
 
 if __name__ == "__main__":

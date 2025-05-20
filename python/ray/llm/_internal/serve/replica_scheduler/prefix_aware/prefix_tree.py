@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from threading import RLock
@@ -92,6 +93,7 @@ class PrefixTree:
 
         # LRU tracking - root is always the head, tail is the least recently used.
         self.tenant_to_lru_tail: Dict[str, Optional[Node]] = {}
+        self._eviction_task: Optional[asyncio.Task] = None
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -554,6 +556,41 @@ class PrefixTree:
                 for tenant, count in self.tenant_to_char_count.items()
                 if count == min_count
             ]
+
+    def start_eviction_loop(
+        self, eviction_threshold, eviction_target, interval_secs
+    ) -> bool:
+        """Start a single eviction loop within the actor itself
+        Parameters:
+            eviction_threshold: Minimum number of characters a tenant must have to be evicted
+            eviction_target: The maximum number of characters a tenant should have after eviction
+            interval_secs: Number of seconds between eviction checks
+
+        Returns:
+            True if the loop was started, False if it was already running
+        """
+        with self.lock:
+            if self._eviction_task is None:
+                self._eviction_task = asyncio.create_task(
+                    self._run_eviction_loop(
+                        eviction_threshold, eviction_target, interval_secs
+                    )
+                )
+                return True
+            else:
+                logger.warning("Eviction loop already running")
+                return False
+
+    async def _run_eviction_loop(
+        self, eviction_threshold, eviction_target, interval_secs
+    ):
+        while True:
+            await asyncio.sleep(interval_secs)
+            with self.lock:
+                for tenant, char_count in self.tenant_to_char_count.items():
+                    if char_count > eviction_threshold:
+                        excess = char_count - eviction_target
+                        self.evict_tenant_by_lru(tenant, excess)
 
 
 @ray.remote

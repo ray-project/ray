@@ -50,27 +50,38 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
     increasing cache locality and reducing overhead for language model inference.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        imbalanced_threshold=10,
+        do_eviction=True,
+        eviction_threshold_chars=400_000,
+        eviction_target_chars=360_000,
+        eviction_interval_secs=10,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self._tree_actor = PrefixTreeActor.options(
             name="PrefixTreeActor", get_if_exists=True
         ).remote()
 
         # === Prefix-aware scheduling logic hyperparameters ===
-        self._imbalanced_threshold = 10
+        self._imbalanced_threshold = imbalanced_threshold
 
         # === Eviction policy ===
-        self._do_eviction = True
-        self._eviction_task = None
-
-        # 400K chars = 100K tokens, 1M chars = 250K tokens (benchmark reaches about 200K tokens per replica)
-        self._char_count_eviction_threshold = 500_000
-        self._char_count_eviction_target = 400_000
-        self._eviction_interval_secs = 10
+        self._do_eviction = do_eviction
+        self._eviction_threshold_chars = eviction_threshold_chars
+        # Default eviction_target_chars to eviction_threshold_chars if not specified
+        self._eviction_target_chars = (
+            eviction_target_chars
+            if eviction_target_chars is not None
+            else eviction_threshold_chars
+        )
+        self._eviction_interval_secs = eviction_interval_secs
 
         # === Metrics tracking ===
         # Just used for benchmarking, will remove for PR eventually
-        self._do_track_metrics = True
+        self._do_track_metrics = False
         self._track_metrics_task = None
         self._vllm_metrics_path = "/home/ray/default/work/_testing/results/vllm_metrics"
         self._char_count_over_time_path = (
@@ -81,34 +92,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._benchmark_start_time = 0.0
         self._num_requests_seen = 0
         self._zero_load_count = 0
-
-    async def _eviction_loop(self):
-        """Periodically checks and evicts excess characters from tenants in the prefix tree.
-
-        Runs in a continuous loop every `_eviction_interval_secs` seconds, checking each tenant's
-        character count. If a tenant exceeds `_char_count_eviction_threshold`, it removes characters
-        until the count is below the `_char_count_eviction_target` using LRU eviction.
-
-        This prevents unbounded memory growth in the prefix tree while maintaining
-        the most recent and relevant prefix matches, closely simulating the eviction policy of vLLM replicas.
-        """
-        while True:
-            try:
-                await asyncio.sleep(self._eviction_interval_secs)
-                tenant_char_count = await self._tree_actor.getattr.remote(
-                    "tenant_to_char_count"
-                )
-                if tenant_char_count:
-                    for tenant, char_count in tenant_char_count.items():
-                        if char_count > self._char_count_eviction_threshold:
-                            # Evict down to the target level rather than just below threshold
-                            excess = char_count - self._char_count_eviction_target
-                            self._tree_actor.evict_tenant_by_lru.remote(tenant, excess)
-
-            except Exception as e:
-                logger.exception(
-                    f"[PrefixAwareReplicaScheduler] Eviction Loop error: {e}"
-                )
 
     async def _track_metrics(self):
         # Remove this function for PR, currently only used for benchmarking
@@ -369,8 +352,12 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             self._tree_actor.remove_tenants.remote(removed_strings)
 
         # === Start tasks (if enabled and not already running) ===
-        if self._do_eviction and self._eviction_task is None:
-            self._eviction_task = self._event_loop.create_task(self._eviction_loop())
+        if self._do_eviction:
+            self._tree_actor.start_eviction_loop.remote(
+                self._eviction_threshold_chars,
+                self._eviction_target_chars,
+                self._eviction_interval_secs,
+            )
 
         if self._do_track_metrics and self._track_metrics_task is None:
             self._track_metrics_task = self._event_loop.create_task(
