@@ -36,5 +36,9 @@ fsspec
 # test
 pytest
 pytest-asyncio
+pytest-timeout
+pytest-mock
 moto[s3,server]
 psutil
+google-api-python-client
+azure-identity
