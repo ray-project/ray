@@ -562,7 +562,7 @@ class SerializationContext:
         Args:
             value: The value to serialize.
         """
-        print(f"serialize tensor_transport: {tensor_transport}")
+        # print(f"serialize tensor_transport: {tensor_transport}")
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So

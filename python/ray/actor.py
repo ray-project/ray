@@ -408,7 +408,7 @@ class ActorMethod:
 
         obj_ref = invocation(args, kwargs)
         if tensor_transport is not None:
-            print(f"_remote tensor_transport: {tensor_transport}")
+            # print(f"_remote tensor_transport: {tensor_transport}")
             assert num_returns == 1
 
             def get_tensor_sizes(self, obj_id):
@@ -1586,9 +1586,9 @@ class ActorHandle:
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
 
-        print(
-            f"_actor_method_call submit_actor_task tensor_transport: {tensor_transport}"
-        )
+        # print(
+        #     f"_actor_method_call submit_actor_task tensor_transport: {tensor_transport}"
+        # )
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
@@ -1821,7 +1821,7 @@ def _modify_class(cls):
             worker = ray._private.worker.global_worker
             assert obj_id in worker.in_actor_object_store, worker.in_actor_object_store
             tensors = worker.in_actor_object_store[obj_id]
-            print(f"send: obj_id={obj_id}, dst_rank={dst_rank}, tensors={tensors}")
+            # print(f"send: obj_id={obj_id}, dst_rank={dst_rank}, tensors={tensors}")
             for tensor in tensors:
                 dist.send(tensor, dst_rank)
 
@@ -1840,9 +1840,9 @@ def _modify_class(cls):
 
             worker = ray._private.worker.global_worker
             tensors = []
-            print(
-                f"__ray_recv__: tensor_meta={tensor_meta}, obj_id={obj_id}, src_rank={src_rank}"
-            )
+            # print(
+            #     f"__ray_recv__: tensor_meta={tensor_meta}, obj_id={obj_id}, src_rank={src_rank}"
+            # )
             for meta in tensor_meta:
                 shape, dtype = meta
                 tensor = torch.zeros(shape, dtype=dtype)

@@ -1752,7 +1752,7 @@ cdef void execute_task(
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
         c_string c_tensor_transport) except *:
-    print(f"execute_task task_name: {task_name}")
+    # print(f"execute_task task_name: {task_name}")
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -4329,7 +4329,7 @@ cdef class CoreWorker:
             shared_ptr[CRayObject] *return_ptr
 
         tensor_transport = c_tensor_transport.decode("ascii")
-        print(f"store_task_outputs: tensor_transport={tensor_transport}")
+        # print(f"store_task_outputs: tensor_transport={tensor_transport}")
 
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
