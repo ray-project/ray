@@ -1,5 +1,11 @@
 import sys
 import time
+from unittest.mock import patch
+
+import pytest
+
+import ray._private.prometheus_exporter as prometheus_exporter
+
 from typing import List
 
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
@@ -7,11 +13,17 @@ from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
 from prometheus_client.core import REGISTRY
-import pytest
 
-import ray._private.prometheus_exporter as prometheus_exporter
 
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
+from opencensus.stats.aggregation_data import LastValueAggregationData
+from opencensus.metrics.export.value import ValueDouble
+from ray._private.metrics_agent import (
+    MetricCardinalityLevel,
+    OpenCensusProxyCollector,
+    OpencensusProxyMetric,
+    WORKER_ID_TAG_KEY,
+)
 from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
     Metric,
@@ -486,6 +498,89 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert response.count("# TYPE test_test gauge") == 1
     assert response.count("# HELP test_test2 desc") == 1
     assert response.count("# TYPE test_test2 gauge") == 1
+
+
+@patch(
+    "ray._private.metrics_agent.OpenCensusProxyCollector._get_metric_cardinality_level_setting"
+)
+def test_get_metric_cardinality_level(
+    mock_get_metric_cardinality_level_setting,
+):
+    """
+    Test the core metric cardinality level.
+    """
+    collector = OpenCensusProxyCollector("")
+    mock_get_metric_cardinality_level_setting.return_value = "recommended"
+    assert (
+        collector._get_metric_cardinality_level() == MetricCardinalityLevel.RECOMMENDED
+    )
+
+    mock_get_metric_cardinality_level_setting.return_value = "legacy"
+    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
+
+    mock_get_metric_cardinality_level_setting.return_value = "unknown"
+    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
+
+
+def _stub_node_level_metric(label: str, value: float) -> OpencensusProxyMetric:
+    metric = OpencensusProxyMetric(
+        name="test_metric_01",
+        desc="",
+        unit="",
+        label_keys=["NodeId"],
+    )
+    metric.add_data(
+        (label,),
+        LastValueAggregationData(ValueDouble, value),
+    )
+    return metric
+
+
+def _stub_worker_level_metric(label: str, value: float) -> OpencensusProxyMetric:
+    metric = OpencensusProxyMetric(
+        name="test_metric_01",
+        desc="",
+        unit="",
+        label_keys=["NodeId", WORKER_ID_TAG_KEY],
+    )
+    metric.add_data(
+        (label, "worker_01"),
+        LastValueAggregationData(ValueDouble, value),
+    )
+    return metric
+
+
+def test_collect_worker_metrics_with_recommended_cardinality():
+    aggregated_metrics = OpenCensusProxyCollector(
+        ""
+    )._aggregate_with_recommended_cardinality(
+        [
+            _stub_worker_level_metric("node_01", 1.0),
+            _stub_worker_level_metric("node_01", 3.0),
+            _stub_worker_level_metric("node_02", 2.0),
+        ]
+    )
+    assert len(aggregated_metrics) == 1
+    metric = aggregated_metrics[0]
+    assert metric.name == "test_metric_01"
+    assert metric.label_keys == ["NodeId"]
+    # Check that the worker id is removed from the label keys, and the correct metric
+    # values are returned.
+    assert metric._data.get(("node_01",)).value == 4.0
+    assert metric._data.get(("node_02",)).value == 2.0
+
+
+def test_collect_node_metrics_with_recommended_cardinality():
+    aggregated_metrics = OpenCensusProxyCollector(
+        ""
+    )._aggregate_with_recommended_cardinality(
+        [
+            _stub_node_level_metric("node_01", 1.0),
+            _stub_node_level_metric("node_02", 2.0),
+        ]
+    )
+    # Metrics are already at node level, so they should be returned as is.
+    assert len(aggregated_metrics) == 2
 
 
 if __name__ == "__main__":
