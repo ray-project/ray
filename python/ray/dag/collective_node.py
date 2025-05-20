@@ -76,7 +76,7 @@ class _CollectiveOperation:
 
     def __str__(self) -> str:
         return (
-            f"CollectiveGroup("
+            f"CollectiveOperation("
             f"_actor_handles={self._actor_handles}, "
             f"_op={self._op}, "
             f"_type_hint={self._type_hint})"
