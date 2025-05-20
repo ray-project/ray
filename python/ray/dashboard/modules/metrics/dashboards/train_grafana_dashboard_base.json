@@ -19,12 +19,13 @@
   "annotations": {
     "list": [
       {
-        "name": "Annotations & Alerts",
-        "type": "dashboard",
+        "builtIn": 1,
         "datasource": "-- Grafana --",
         "enable": true,
         "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)"
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
       }
     ]
   },
@@ -32,17 +33,20 @@
   "templating": {
     "list": [
       {
-        "name": "datasource",
-        "type": "datasource",
-        "query": "prometheus",
+        "current": {
+          "selected": false
+        },
         "description": "Filter queries of a specific Prometheus type.",
         "hide": 2,
         "includeAll": false,
         "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
         "refresh": 1,
-        "current": {
-          "selected": false
-        }
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
       },
 
       {
