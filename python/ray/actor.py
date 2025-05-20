@@ -41,7 +41,7 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
-from ray._private.custom_types import TENSOR_TRANSPORT
+from ray._private.custom_types import TENSOR_TRANSPORT, TypeTensorTransport
 
 if TYPE_CHECKING:
     import torch
@@ -111,7 +111,10 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            method.__ray_tensor_transport__ = kwargs["tensor_transport"]
+            method.__ray_tensor_transport__ = kwargs["tensor_transport"].upper()
+            assert (
+                method.__ray_tensor_transport__ in TENSOR_TRANSPORT
+            ), f"tensor_transport must be a case-insensitive string that is one of {TENSOR_TRANSPORT}."
         return method
 
     return annotate_method
@@ -152,7 +155,7 @@ class ActorMethod:
             return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
         _tensor_transport: The tensor transport protocol to use for the actor method.
-            The valid values are "nccl", "gloo", or None.
+            The valid values are NONE, NCCL, or GLOO, and they are case-insensitive.
     """
 
     def __init__(
@@ -168,7 +171,7 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
-        tensor_transport: Optional[Literal["nccl", "gloo"]] = None,
+        tensor_transport: Optional[TypeTensorTransport] = None,
     ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
@@ -200,16 +203,9 @@ class ActorMethod:
             self._actor_hard_ref = actor
         else:
             self._actor_hard_ref = None
-
-        # Validate and set the tensor transport protocol
-        if (
-            tensor_transport is not None
-            and tensor_transport.upper() not in TENSOR_TRANSPORT
-        ):
-            raise ValueError(
-                f"tensor_transport must be one of {TENSOR_TRANSPORT} or None"
-            )
-        self._tensor_transport = tensor_transport
+        # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
+        # as the default transport for this actor method.
+        self._tensor_transport: TypeTensorTransport = tensor_transport or "NONE"
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -352,7 +348,7 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
-        tensor_transport=None,
+        tensor_transport: Optional[TypeTensorTransport] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -368,9 +364,10 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
-        if tensor_transport is None:
-            tensor_transport = self._tensor_transport
-        assert tensor_transport is None or tensor_transport.upper() in TENSOR_TRANSPORT
+        tensor_transport = tensor_transport or self._tensor_transport
+        assert (
+            tensor_transport in TENSOR_TRANSPORT
+        ), f"tensor_transport must be a string that is one of {TENSOR_TRANSPORT}"
         args = args or []
         kwargs = kwargs or {}
 
@@ -403,7 +400,7 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         obj_ref = invocation(args, kwargs)
-        if tensor_transport is not None:
+        if tensor_transport != "NONE":
             # print(f"_remote tensor_transport: {tensor_transport}")
             assert num_returns == 1
 
@@ -509,7 +506,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
-        self.tensor_transport = {}
+        self.tensor_transport: Dict[str, TypeTensorTransport] = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -1405,7 +1402,7 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
-        method_tensor_transport,
+        method_tensor_transport: Dict[str, TypeTensorTransport],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1508,7 +1505,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
-        tensor_transport: Optional[str] = None,
+        tensor_transport: TypeTensorTransport = "NONE",
     ):
         """Method execution stub for an actor handle.
 
@@ -1599,7 +1596,8 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
-            tensor_transport if tensor_transport is not None else b"",
+            # TODO(kevin85421): Remove the if / else
+            tensor_transport if tensor_transport != "NONE" else b"",
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
