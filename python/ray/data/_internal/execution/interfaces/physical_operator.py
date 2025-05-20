@@ -529,7 +529,7 @@ class PhysicalOperator(Operator):
 
     def _do_shutdown(self, force: bool):
         # Default implementation simply cancels any outstanding active task
-        self._cancel_active_tasks(force=force)
+        pass
 
     def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated CPU and GPU usage of this operator, excluding
