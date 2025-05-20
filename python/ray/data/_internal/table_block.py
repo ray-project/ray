@@ -22,7 +22,6 @@ from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    MiB,
     find_partition_index,
     is_nan,
     keys_equal,
