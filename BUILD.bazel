@@ -195,7 +195,7 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/event_aggregator_client.h"],
     deps = [
         ":grpc_client",
-        "//src/ray/protobuf:event_aggregator_service_cc_proto",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/util:logging",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -1033,7 +1033,7 @@ filegroup(
         "//src/ray/protobuf:autoscaler_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:event_aggregator_service_py_proto",
+        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
         "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:export_event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
@@ -1141,8 +1141,8 @@ genrule(
         # Help the generated export api files to have the correct module
         export_api_files=(`ls python/ray/core/generated/export*_pb2*.py`)
         sed -i -E 's/from ..export_api/from ./' "$${export_api_files[@]}"
-        event_aggregator_files=(`ls python/ray/core/generated/event_aggregator*_pb2*.py`)
-        sed -i -E 's/from ..event_aggregator/from ./' "$${event_aggregator_files[@]}"
+        events_files=(`ls python/ray/core/generated/events*_pb2*.py`)
+        sed -i -E 's/from ..events/from ./' "$${events_files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,

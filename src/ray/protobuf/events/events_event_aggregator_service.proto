@@ -15,7 +15,7 @@
 syntax = "proto3";
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/event_aggregator/event_aggregator_base_event.proto";
+import "src/ray/protobuf/events/events_base_event.proto";
 
 package ray.rpc.event_aggregator;
 
