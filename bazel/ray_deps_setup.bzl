@@ -313,6 +313,7 @@ def ray_deps_setup():
     http_archive(
         # This rule is used by boringssl
         name="rules_license",
+        # https://github.com/bazelbuild/rules_license/releases/tag/1.0.0
         sha256 = "75759939aef3aeb726e801417a883deefadadb7fea49946a1f5bb74a5162e81e",
         strip_prefix="rules_license-1.0.0",
         urls = [
