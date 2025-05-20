@@ -1,4 +1,5 @@
 import copy
+import sys
 from unittest.mock import Mock, patch
 
 import pytest
@@ -1185,6 +1186,4 @@ def test_cloudwatch_alarm_update_worker_node(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

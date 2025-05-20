@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from typing import Dict, Optional
 
+import ray
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     TrainContextCallback,
@@ -23,11 +24,14 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
 
     def __init__(self, train_run_context: TrainRunContext):
         self._run_name = train_run_context.get_run_config().name
+        self._run_id = train_run_context.run_id
         self._metrics: Optional[Dict[str, Metric]] = None
 
     def after_controller_start(self):
         """Initialize metrics after controller starts."""
-        self._metrics = ControllerMetrics.get_controller_metrics(self._run_name)
+        self._metrics = ControllerMetrics.get_controller_metrics(
+            self._run_name, self._run_id
+        )
         # Record initial state
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
             TrainControllerStateType.INITIALIZING
@@ -74,12 +78,18 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
 
     def __init__(self, train_run_context: TrainRunContext):
         self._run_name = train_run_context.get_run_config().name
+        self._run_id = train_run_context.run_id
         self._metrics: Optional[Dict[str, Metric]] = None
 
     def after_init_train_context(self):
         """Initialize metrics after train context is initialized."""
-        world_rank = get_train_context().get_world_rank()
-        self._metrics = WorkerMetrics.get_worker_metrics(self._run_name, world_rank)
+        train_context = get_train_context()
+        core_context = ray.runtime_context.get_runtime_context()
+        world_rank = train_context.get_world_rank()
+        worker_actor_id = core_context.get_actor_id()
+        self._metrics = WorkerMetrics.get_worker_metrics(
+            self._run_name, self._run_id, world_rank, worker_actor_id
+        )
 
     def before_shutdown(self):
         """Shutdown metrics before shutdown."""

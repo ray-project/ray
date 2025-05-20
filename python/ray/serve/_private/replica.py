@@ -978,6 +978,7 @@ class ReplicaActor:
             ray.get_runtime_context().get_worker_id(),
             ray.get_runtime_context().get_node_id(),
             ray.util.get_node_ip_address(),
+            ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
 

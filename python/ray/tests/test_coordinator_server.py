@@ -1,8 +1,11 @@
+import json
 import os
 import random
-import unittest
 import socket
-import json
+import sys
+import unittest
+
+import pytest
 
 from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _get_node_provider
@@ -25,7 +28,6 @@ from ray.autoscaler.tags import (
     STATUS_UP_TO_DATE,
 )
 from ray._private.utils import get_ray_temp_dir
-import pytest
 
 
 class OnPremCoordinatorServerTest(unittest.TestCase):
@@ -291,9 +293,4 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

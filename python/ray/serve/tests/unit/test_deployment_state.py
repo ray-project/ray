@@ -92,6 +92,7 @@ class MockReplicaActorWrapper:
         self._actor_handle = MockActorHandle()
         self._node_id = None
         self._node_ip = None
+        self._node_instance_id = None
         self._node_id_is_set = False
         self._actor_id = None
         self._port = None
@@ -157,6 +158,10 @@ class MockReplicaActorWrapper:
 
     @property
     def node_ip(self) -> Optional[str]:
+        return None
+
+    @property
+    def node_instance_id(self) -> Optional[str]:
         return None
 
     @property

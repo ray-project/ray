@@ -7,6 +7,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -383,6 +384,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        table = self._table
+        if public_row_format:
+            for batch in table.to_batches():
+                yield from batch.to_pylist()
+        else:
+            for i in range(self.num_rows()):
+                yield self._get_row(i)
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):

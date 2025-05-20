@@ -29,7 +29,6 @@ from ray._private.utils import get_directory_size_bytes
 # If you find that confusing, take it up with @jiaodong...
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 TEST_IMPORT_DIR = "test_import_dir"
 
 
@@ -602,7 +601,4 @@ def test_override_failure(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,6 +1,8 @@
-import numpy as np
-import pytest
 import time
+import sys
+
+import pytest
+import numpy as np
 
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -99,11 +101,4 @@ def test_wait(ray_start_combination):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

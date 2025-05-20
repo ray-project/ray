@@ -3,12 +3,12 @@ import os
 import subprocess
 import sys
 import unittest
+import pexpect
+from pexpect.popen_spawn import PopenSpawn
 from telnetlib import Telnet
 from typing import Union
 
 import pytest
-import pexpect
-from pexpect.popen_spawn import PopenSpawn
 
 import ray
 from ray._private import ray_constants, services
@@ -389,12 +389,7 @@ def test_env_var_enables_ray_debugger():
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

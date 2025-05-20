@@ -1,4 +1,3 @@
-import os
 import sys
 from typing import Dict, Optional, Tuple
 
@@ -14,7 +13,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Calling `test_module.one()` should return `2`.
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
@@ -127,7 +125,4 @@ def test_remote_package_uri_multi_node(
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

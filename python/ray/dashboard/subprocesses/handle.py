@@ -290,7 +290,10 @@ class SubprocessModuleHandle:
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
         ) as backend_resp:
-            proxy_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
+            proxy_resp = aiohttp.web.StreamResponse(
+                status=backend_resp.status,
+                headers=filter_hop_by_hop_headers(backend_resp.headers),
+            )
             await proxy_resp.prepare(request)
 
             async for chunk, _ in backend_resp.content.iter_chunks():

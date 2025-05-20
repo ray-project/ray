@@ -29,7 +29,7 @@ from ray.serve._private.replica_scheduler import (
     ReplicaScheduler,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
@@ -214,6 +214,13 @@ class FakeReplicaScheduler(ReplicaScheduler):
             replica = self._replica_to_return
 
         return replica
+
+    async def choose_replicas(
+        self,
+        replicas_ranks: List[List[RunningReplica]],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        pass
 
 
 @pytest.fixture
