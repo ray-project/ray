@@ -492,18 +492,16 @@ def get_node(gcs_address, node_id):
     return global_state.get_node(node_id)
 
 
-def get_webui_url_from_internal_kv():
-    assert ray.experimental.internal_kv._internal_kv_initialized()
-    webui_url = ray.experimental.internal_kv._internal_kv_get(
-        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+def get_webui_url_from_internal_kv(gcs_client: GcsClient):
+    webui_url = gcs_client.internal_kv_get(
+        b"webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     return ray._private.utils.decode(webui_url) if webui_url is not None else None
 
 
-def get_storage_uri_from_internal_kv():
-    assert ray.experimental.internal_kv._internal_kv_initialized()
-    storage_uri = ray.experimental.internal_kv._internal_kv_get(
-        "storage", namespace=ray_constants.KV_NAMESPACE_SESSION
+def get_storage_uri_from_internal_kv(gcs_client: GcsClient):
+    storage_uri = gcs_client.internal_kv_get(
+        b"storage", namespace=ray_constants.KV_NAMESPACE_SESSION
     )
     return ray._private.utils.decode(storage_uri) if storage_uri is not None else None
 
@@ -1175,8 +1173,7 @@ def start_api_server(
     include_dashboard: Optional[bool],
     raise_on_failure: bool,
     host: str,
-    gcs_address: str,
-    cluster_id_hex: str,
+    gcs_client: GcsClient,
     node_ip_address: str,
     temp_dir: str,
     logdir: str,
@@ -1200,8 +1197,7 @@ def start_api_server(
             if we fail to start the API server. Otherwise it will print
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
-        gcs_address: The gcs address the dashboard should connect to
-        cluster_id_hex: Cluster ID in hex.
+        gcs_client: The client to GCS.
         node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
@@ -1286,8 +1282,8 @@ def start_api_server(
             f"--session-dir={session_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}",
-            f"--cluster-id-hex={cluster_id_hex}",
+            f"--gcs-address={gcs_client.address}",
+            f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
             f"--node-ip-address={node_ip_address}",
         ]
 
@@ -1333,13 +1329,11 @@ def start_api_server(
         )
 
         # Retrieve the dashboard url
-        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
-        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(3000):
-            dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.DASHBOARD_ADDRESS,
+            dashboard_url = gcs_client.internal_kv_get(
+                ray_constants.DASHBOARD_ADDRESS.encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
             if dashboard_url is not None:

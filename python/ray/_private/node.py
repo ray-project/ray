@@ -198,7 +198,9 @@ class Node:
         else:
             if ray_params.webui is None:
                 assert not self._default_worker
-                self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
+                self._webui_url = ray._private.services.get_webui_url_from_internal_kv(
+                    self.get_gcs_client()
+                )
             else:
                 self._webui_url = (
                     f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
@@ -242,7 +244,9 @@ class Node:
             storage._init_storage(ray_params.storage, is_head=True)
         else:
             if not self._default_worker:
-                storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
+                storage_uri = ray._private.services.get_storage_uri_from_internal_kv(
+                    self.get_gcs_client()
+                )
             else:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
@@ -1174,8 +1178,7 @@ class Node:
             include_dashboard,
             raise_on_failure,
             self._ray_params.dashboard_host,
-            self.gcs_address,
-            self.cluster_id.hex(),
+            self.get_gcs_client(),
             self._node_ip_address,
             self._temp_dir,
             self._logs_dir,
