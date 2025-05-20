@@ -37,7 +37,4 @@ fsspec
 pytest
 pytest-asyncio
 moto[s3,server]
-pydantic>=2.9.0
-jsonschema
-yaml
 psutil
