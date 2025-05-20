@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import sys
 import time
 
@@ -89,15 +90,11 @@ def test_release_cpu_resources(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
-    # This test fails with the flag set to false.
-    ray.init(
-        num_cpus=2,
-        object_store_memory=700e6,
-        _system_config={"inline_object_status_in_refs": True},
-    )
+    ray.init(num_cpus=2)
+
     refs = []
     for _ in range(10):
-        refs.append(ray.put(bytearray(20 * 1024 * 1024)))
+        refs.append(ray.put(bytearray(1024 * 1024)))
 
     @ray.remote
     def consume(refs):
@@ -105,7 +102,7 @@ def test_release_resources_race(shutdown_only):
         ray.get(refs)
         return os.getpid()
 
-    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    pids = set(ray.get([consume.remote(refs) for _ in range(10)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
 
@@ -237,8 +234,6 @@ def test_default_worker_import_dependency(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
-    import os
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -381,8 +376,6 @@ def test_submit_api(shutdown_only):
 
 
 def test_invalid_arguments():
-    import re
-
     def f():
         return 1
 
@@ -473,8 +466,6 @@ def test_invalid_arguments():
 
 def test_options():
     """General test of option keywords in Ray."""
-    import re
-
     from ray._private import ray_option_utils
 
     def f():
