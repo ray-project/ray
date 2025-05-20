@@ -26,7 +26,7 @@ The batching decorators expect you to make the following changes in your method 
 ---
 start-after: __batch_begin__
 end-before: __batch_end__
-emphasize-lines: 6-9
+emphasize-lines: 11-12
 ---
 ```
 

@@ -794,9 +794,9 @@ class VLLMEngine(LLMEngine):
 
         return embedding_data, total_prompt_tokens
 
-    async def check_health(self) -> bool:
+    async def check_health(self) -> None:
         if not hasattr(self.engine, "check_health"):
-            return False
+            raise RuntimeError(f"{type(self.engine)} does not support health check.")
 
         try:
             return await asyncio.wait_for(self.engine.check_health(), timeout=15)
@@ -858,7 +858,6 @@ class VLLMEngine(LLMEngine):
     ) -> "VLLMInternalSamplingParams":
         # Add vLLM-Anyscale specific fields
 
-        extra_fields = {}
         if sampling_params.response_format is not None:
             extra_fields.update(
                 self._map_response_format_to_extra_fields(sampling_params)
