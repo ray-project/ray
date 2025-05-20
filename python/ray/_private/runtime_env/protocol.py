@@ -83,52 +83,31 @@ class ProtocolsProvider:
                 import os
                 from azure.storage.blob import BlobServiceClient  # noqa: F401
                 from smart_open import open as open_file
+                from azure.identity import DefaultAzureCredential
             except ImportError:
                 raise ImportError(
-                    "You must `pip install azure-storage-blob smart_open[azure]` "
+                    "You must `pip install azure-storage-blob azure-identity smart_open[azure]` "
                     "to fetch URIs in Azure Blob Storage. "
                     + cls._MISSING_DEPENDENCIES_WARNING
                 )
 
-            # Define authentication variables
-            azure_storage_connection_string = os.getenv(
-                "AZURE_STORAGE_CONNECTION_STRING"
-            )
+            # Define authentication variable
             azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT")
 
-            # Connection string authentication
-            if azure_storage_connection_string:
-                tp = {
-                    "client": BlobServiceClient.from_connection_string(
-                        azure_storage_connection_string
-                    )
-                }
-            # Managed Identity authentication
-            elif azure_storage_account_name:
-                try:
-                    from azure.identity import ManagedIdentityCredential
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install azure-identity` "
-                        "to use Azure Managed Identity authentication. "
-                        + cls._MISSING_DEPENDENCIES_WARNING
-                    )
-
-                account_url = (
-                    f"https://{azure_storage_account_name}.blob.core.windows.net/"
-                )
-                tp = {
-                    "client": BlobServiceClient(
-                        account_url=account_url, credential=ManagedIdentityCredential()
-                    )
-                }
-            # No valid authentication method available
-            else:
+            if not azure_storage_account_name:
                 raise ValueError(
-                    "Azure Blob Storage authentication requires either "
-                    "AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT "
-                    "environment variable to be set."
+                    "Azure Blob Storage authentication requires "
+                    "AZURE_STORAGE_ACCOUNT environment variable to be set."
                 )
+
+            account_url = (
+                f"https://{azure_storage_account_name}.blob.core.windows.net/"
+            )
+            tp = {
+                "client": BlobServiceClient(
+                    account_url=account_url, credential=DefaultAzureCredential()
+                )
+            }
         else:
             try:
                 from smart_open import open as open_file
