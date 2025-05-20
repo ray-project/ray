@@ -1,7 +1,0 @@
-cupy-cuda12x; sys_platform != 'darwin'
-fire
-graphviz
-ipykernel
-jupyter
-pytest
-torch
