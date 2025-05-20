@@ -136,7 +136,7 @@ class KuberayJobManager:
         login_response = requests.post(login_url, json=login_request)
         login_response.raise_for_status()
         return login_response.json()["token"]
-    
+
     def fetch_results(self) -> Dict[str, Any]:
         # TODO: implement this
         return {}
