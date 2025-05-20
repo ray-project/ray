@@ -3,7 +3,7 @@
 End-to-End Distributed XGBoost
 ==============================
 
-An end-to-end tutorial where we'll train a distributed XGBoost model and perform offline batch inference and online serving at scale.
+An end-to-end tutorial to train a distributed XGBoost model and perform offline batch inference and online serving at scale.
 
 .. toctree::
 
