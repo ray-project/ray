@@ -281,6 +281,7 @@ click==8.1.7
     #   black
     #   click-option-group
     #   dask
+    #   distributed
     #   flask
     #   jupyter-cache
     #   mlflow-skinny
@@ -299,6 +300,7 @@ cloudpickle==3.0.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   dask
+    #   distributed
     #   gymnasium
     #   hyperopt
     #   mlagents-envs
@@ -376,7 +378,9 @@ cython==0.29.37
     #   -r python/requirements/test-requirements.txt
     #   gpy
 dask==2025.5.0 ; python_version >= "3.11"
-    # via -r python/requirements/ml/data-requirements.txt
+    # via
+    #   -r python/requirements/ml/data-requirements.txt
+    #   distributed
 databricks-sdk==0.52.0
     # via mlflow-skinny
 datasets==2.19.1
@@ -417,6 +421,8 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
+distributed==2025.5.0
+    # via dask
 distro==1.9.0
     # via azure-cli-core
 dm-control==1.0.12 ; python_version < "3.12"
@@ -837,6 +843,7 @@ jinja2==3.1.6
     #   altair
     #   ax-platform
     #   bokeh
+    #   distributed
     #   flask
     #   fugue
     #   fugue-sql-antlr
@@ -983,7 +990,9 @@ llvmlite==0.42.0
     #   -r python/requirements/test-requirements.txt
     #   numba
 locket==1.0.0
-    # via partd
+    # via
+    #   distributed
+    #   partd
 log-symbols==0.0.14
     # via halo
 lxml==4.9.4
@@ -1084,6 +1093,7 @@ msgpack==1.0.7
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
+    #   distributed
     #   msgpack-numpy
     #   ray
 msgpack-numpy==0.4.8
@@ -1370,6 +1380,7 @@ packaging==23.0
     #   dask
     #   datasets
     #   deepspeed
+    #   distributed
     #   evaluate
     #   fugue-sql-antlr
     #   google-cloud-bigquery
@@ -1551,6 +1562,7 @@ psutil==5.9.6
     #   azure-cli-core
     #   comet-ml
     #   deepspeed
+    #   distributed
     #   ipykernel
     #   modin
     #   raydp
@@ -1801,6 +1813,7 @@ pyyaml==6.0.1
     #   cfn-lint
     #   dask
     #   datasets
+    #   distributed
     #   gradio
     #   huggingface-hub
     #   jsonschema-path
@@ -2087,6 +2100,7 @@ snowflake-connector-python==3.15.0
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
+    #   distributed
     #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
@@ -2156,7 +2170,9 @@ tabulate==0.9.0
     #   jupyter-cache
     #   knack
 tblib==3.0.0
-    # via -r python/requirements/docker/ray-docker-requirements.txt
+    # via
+    #   -r python/requirements/docker/ray-docker-requirements.txt
+    #   distributed
 tenacity==8.5.0
     # via
     #   plotly
@@ -2236,6 +2252,7 @@ toolz==0.12.1
     # via
     #   altair
     #   dask
+    #   distributed
     #   partd
 torch==2.3.0
     # via
@@ -2280,7 +2297,9 @@ torchvision==0.18.0
     #   timm
 tornado==6.2
     # via
+    #   -r python/requirements/test-requirements.txt
     #   bokeh
+    #   distributed
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
@@ -2402,6 +2421,7 @@ urllib3==1.26.19
     #   botocore
     #   clickhouse-connect
     #   comet-ml
+    #   distributed
     #   docker
     #   dulwich
     #   kubernetes
@@ -2527,6 +2547,8 @@ yq==3.2.2
     # via
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/test-requirements.txt
+zict==3.0.0
+    # via distributed
 zipp==3.19.2
     # via
     #   etils
