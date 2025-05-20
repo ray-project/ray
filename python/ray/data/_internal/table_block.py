@@ -15,12 +15,14 @@ from typing import (
 
 import numpy as np
 
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
     NULL_SENTINEL,
+    MiB,
     find_partition_index,
     is_nan,
     keys_equal,
@@ -45,7 +47,9 @@ T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = DEFAULT_TARGET_MAX_BLOCK_SIZE
+MAX_UNCOMPACTED_SIZE_BYTES = env_integer(
+    "RAY_DATA_MAX_UNCOMPACTED_SIZE_BYTES", DEFAULT_TARGET_MAX_BLOCK_SIZE
+)
 
 
 class TableBlockBuilder(BlockBuilder):
