@@ -313,7 +313,7 @@ Status ActorInfoAccessor::AsyncRestartActor(const ray::ActorID &actor_id,
                                             int64_t timeout_ms) {
   rpc::RestartActorRequest request;
   request.set_actor_id(actor_id.Binary());
-  request.set_num_restarts(num_restarts);
+  request.set_num_restarts_due_to_lineage_reconstruction(num_restarts);
   client_impl_->GetGcsRpcClient().RestartActor(
       request,
       [callback](const Status &status, rpc::RestartActorReply &&reply) {

@@ -436,17 +436,24 @@ void GcsActorManager::HandleRestartActor(rpc::RestartActorRequest request,
   };
   auto pending_restart_iter = actor_to_restart_callbacks_.find(actor_id);
   if (pending_restart_iter != actor_to_restart_callbacks_.end()) {
+    RAY_LOG(INFO).WithField(actor_id) << "Add to pending restart";
     pending_restart_iter->second.emplace_back(std::move(success_callback));
     return;
   }
 
   auto actor = iter->second;
-  if (request.num_restarts() <= actor->GetActorTableData().num_restarts()) {
+  if (request.num_restarts_due_to_lineage_reconstruction() <=
+      actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()) {
     // This is a stale message.
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Stable restart " << request.num_restarts_due_to_lineage_reconstruction()
+        << " " << actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction();
     success_callback(actor);
     return;
   }
-  RAY_CHECK_EQ(request.num_restarts(), actor->GetActorTableData().num_restarts() + 1);
+  RAY_CHECK_EQ(
+      request.num_restarts_due_to_lineage_reconstruction(),
+      actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction() + 1);
   RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK(IsActorRestartable(actor->GetActorTableData()));
 
@@ -1394,7 +1401,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+    RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
         << "Actor is destroyed before restart";
     if (done_callback) {
       done_callback();
@@ -1426,7 +1433,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       << "Actor is failed on worker " << worker_id << " at node " << node_id
       << ", need_reschedule = " << need_reschedule
       << ", death context type = " << GetActorDeathCauseString(death_cause)
-      << ", remaining_restarts = " << remaining_restarts;
+      << ", remaining_restarts = " << remaining_restarts
+      << ", num_restarts = " << num_restarts;
 
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent

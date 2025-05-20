@@ -401,7 +401,7 @@ message RegisterActorReply {
 message RestartActorRequest {
   bytes actor_id = 1;
   // The target number of restarts.
-  uint64 num_restarts = 2;
+  uint64 num_restarts_due_to_lineage_reconstruction = 2;
 }
 
 message RestartActorReply {
