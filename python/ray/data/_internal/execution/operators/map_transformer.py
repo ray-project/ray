@@ -102,7 +102,6 @@ class MapTransformFn:
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
         category: MapTransformFnCategory,
-        udf_context: Optional[MapTransformUDFContext] = None,
     ):
         """
         Initialize a MapTransformFn from the given input type, output type, category, and udf_context.
@@ -111,14 +110,12 @@ class MapTransformFn:
             input_type: the type of the input data.
             output_type: the type of the output data.
             category: the MapTransformFnCategory of the transform function.
-            udf_context: optional context for user-defined functions.
         """
         self._input_type = input_type
         self._output_type = output_type
         self._category = category
         self._output_block_size_option = None
-        self._is_udf = udf_context is not None
-        self._udf_context = udf_context
+        self._is_udf = False
 
     @abstractmethod
     def __call__(
@@ -179,17 +176,13 @@ class MapTransformFn:
             return self._output_block_size_option.target_num_rows_per_block
 
     def __repr__(self) -> str:
-        op_fn_name = self._udf_context.op_fn.__name__ if self._udf_context else None
-        return f"{self.__class__.__name__}({op_fn_name}[{self._input_type} -> {self._output_type}])"
+        return f"{self.__class__.__name__}([{self._input_type} -> {self._output_type}])"
 
     def __eq__(self, other):
         return (
             isinstance(other, self.__class__)
-            and self._udf_context.op_fn == other._udf_context.op_fn
             and self._input_type == other._input_type
             and self._output_type == other._output_type
-            and self._udf_context.is_async == other._udf_context.is_async
-            and self._is_udf == other._is_udf
         )
 
 
@@ -347,11 +340,6 @@ class MapTransformer:
     def on_exit(self):
         for transform_fn in self._transform_fns:
             transform_fn.on_exit()
-            # `_udf_context` is a variable that references the UDF object.
-            # Delete it to trigger `UDF.__del__`.
-            if transform_fn._udf_context is not None:
-                del transform_fn._udf_context
-                transform_fn._udf_context = None
 
 
 def create_map_transformer_from_block_fn(
@@ -448,9 +436,10 @@ class AbstractUDFMapTransformFn(MapTransformFn):
             input_type,
             output_type,
             MapTransformFnCategory.DataProcess,
-            udf_context,
         )
         self._map_transform_fn_type = map_transform_fn_type
+        self._udf_context = udf_context
+        self._is_udf = True
 
     def _generate_transform_fn(
         self, fn: Callable[[Any], Any]
@@ -538,6 +527,16 @@ class AbstractUDFMapTransformFn(MapTransformFn):
             raise ValueError(
                 f"Invalid MapTransformFnType input type: {self._input_type}"
             )
+
+    def __repr__(self) -> str:
+        op_fn_name = self._udf_context.op_fn.__name__
+        return f"{self.__class__.__name__}({op_fn_name}[{self._input_type} -> {self._output_type}])"
+
+    def __eq__(self, other):
+        return super().__eq__(other) and (
+            self._udf_context.op_fn == other._udf_context.op_fn
+            and self._udf_context.is_async == other._udf_context.is_async
+        )
 
 
 class FunctionUDFMapTransformFn(AbstractUDFMapTransformFn):
@@ -640,8 +639,9 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
             input_type,
             output_type,
             category=MapTransformFnCategory.DataProcess,
-            udf_context=udf_context,
         )
+        self._udf_context = udf_context
+        self._is_udf = True
 
     def __call__(
         self, input: Iterable[MapTransformFnData], ctx: TaskContext
@@ -756,6 +756,16 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
         if self._udf_map_fn is not None:
             del self._udf_map_fn
             self._udf_map_fn = None
+
+    def __repr__(self) -> str:
+        op_fn_name = self._udf_context.op_fn.__name__
+        return f"{self.__class__.__name__}({op_fn_name}[{self._input_type} -> {self._output_type}])"
+
+    def __eq__(self, other):
+        return super().__eq__(other) and (
+            self._udf_context.op_fn == other._udf_context.op_fn
+            and self._udf_context.is_async == other._udf_context.is_async
+        )
 
 
 class BlocksToRowsMapTransformFn(MapTransformFn):
