@@ -6,7 +6,7 @@ from typing import AsyncIterable, Awaitable, Callable, Dict, List, Optional, Tup
 from ray import ActorID, NodeID, WorkerID
 from ray._private.pydantic_compat import BaseModel
 from ray.core.generated.gcs_pb2 import ActorTableData
-from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE, JobStatus
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     GetLogOptions,
@@ -145,8 +145,13 @@ class LogsManager:
             logger.info(f"Submission job ID {sub_job_id} not found.")
             return None, None
 
-        node_id = job_info.driver_node_id
+        node_id = target_job.driver_node_id
         if node_id is None:
+            if target_job.status == JobStatus.PENDING:
+                raise ValueError(
+                    f"Job {sub_job_id} is still {JobStatus.PENDING}."
+                    "Since it has not started yet, there are no logs available yet."
+                )
             raise ValueError(
                 f"Job {sub_job_id} has no driver node id info. "
                 "This is likely a bug. Please file an issue."
