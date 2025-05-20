@@ -410,49 +410,24 @@ def run_release_test(
         kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(cluster_compute)
         working_dir_upload_path = upload_working_dir(get_working_dir(test))
         runtime_env_vars = test.get_byod_runtime_env()
+        result.stable = test.get("stable", True)
+        result.smoke_test = smoke_test
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
 
-        # Prepare request payload
-        request = {
-            "namespace": DEFAULT_KUBERAY_NAMESPACE,
-            "name": test["name"].replace(".", "-").replace("_", "-"), 
-            "entrypoint": test["run"]["script"],
-            "rayImage": "us-west2-docker.pkg.dev/dhyey-dev/kuberayportal/kuberayportal:gcs", #TODO: figure out image path on GAR
-            "computeConfig": kuberay_compute_config,
-            "runtimeEnv": {
-                "env_vars": runtime_env_vars,
-                "working_dir": working_dir_upload_path
-            }
-        }
+        kuberay_job_manager = KuberayJobManager()
+        retcode, duration = kuberay_job_manager.run_and_wait(
+            job_name=test["name"].replace(".", "-").replace("_", "-"),
+            image="us-west2-docker.pkg.dev/dhyey-dev/kuberayportal/kuberayportal:gcs", #TODO: figure out image path on GAR
+            cmd_to_run=test["run"]["script"],
+            env_vars=runtime_env_vars,
+            working_dir=working_dir_upload_path,
+            pip=test.get_byod_pips(),
+            compute_config=kuberay_compute_config,
+            timeout=command_timeout
+        )
+        result.return_code = retcode
 
-        session = boto3.session.Session()
-        client = session.client('secretsmanager', region_name='us-west-2')
-        try:
-            secret_response = client.get_secret_value(
-                SecretId='kuberay_service_secret_key'  # Adjust secret name as needed
-            )
-            kuberay_service_secret_key = secret_response['SecretString']
-        except Exception as e:
-            logger.error(f"Failed to get KubeRay server token from AWS Secrets Manager: {e}")
-            raise
-        login_url = f"{KUBERAY_SERVER_URL}/api/v1/login"
-        login_request = {
-            "secretKey": kuberay_service_secret_key
-        }
-        login_response = requests.post(login_url, json=login_request)
-        login_response.raise_for_status()
-        token = login_response.json()["token"]
-
-        url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
-        headers = {
-            "Authorization": "Bearer " + token,
-            "Content-Type": "application/json"
-        }
-
-        logger.info(f"Submitting KubeRay job request: {request}")
-        response = requests.post(url, json=request, headers=headers)
-        logger.info(f"KubeRay server response: {response.text}")
-
-        return
+        return result
 
     try:
         buildkite_group(":spiral_note_pad: Loading test configuration")
