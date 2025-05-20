@@ -51,7 +51,6 @@ from ray.train.v2._internal.execution.failure_handling import (
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
-    ScalingDecision,
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
@@ -164,32 +163,32 @@ class TrainController:
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
 
-    def _execute_scaling_decision(
-        self, decision: ScalingDecision
-    ) -> TrainControllerState:
-        """Executes scaling decisions."""
+    def _execute_resize_decision(
+        self, decision: ResizeDecision
+    ) -> TrainControllerLoopIterationResult:
+        """Executes resize decisions."""
+
         for callback in self._controller_callbacks:
-            callback.before_controller_execute_scaling_decision(decision)
+            callback.before_controller_execute_resize_decision(decision)
 
-        if isinstance(decision, ResizeDecision):
-            if self._worker_group:
-                self._shutdown_worker_group()
+        if self._worker_group:
+            self._shutdown_worker_group()
 
-            worker_group_started = self._start_worker_group(
-                num_workers=decision.num_workers,
-                resources_per_worker=decision.resources_per_worker,
-            )
+        worker_group_started = self._start_worker_group(
+            num_workers=decision.num_workers,
+            resources_per_worker=decision.resources_per_worker,
+        )
 
-            if worker_group_started:
-                next_state = RunningState()
-            else:
-                next_state = ReschedulingState()
+        if worker_group_started:
+            next_state = RunningState()
+        else:
+            next_state = ReschedulingState()
 
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=self._state,
-                next_state=next_state,
-            )
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=self._state,
+            next_state=next_state,
+        )
 
     def _execute_failure_decision(
         self,
@@ -348,22 +347,38 @@ class TrainController:
             scaling_decision = (
                 self._scaling_policy.make_decision_for_non_running_worker_group()
             )
+            if isinstance(scaling_decision, NoopDecision):
+                next_state = InitializingState()
+            elif isinstance(scaling_decision, ResizeDecision):
+                next_state = SchedulingState(scaling_decision)
+            else:
+                raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
+
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=SchedulingState(scaling_decision),
+                next_state=next_state,
             )
         elif isinstance(controller_state, SchedulingState):
-            return self._execute_scaling_decision(controller_state.scaling_decision)
+            assert isinstance(controller_state.scaling_decision, ResizeDecision)
+            return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, ReschedulingState):
             scaling_decision = (
                 self._scaling_policy.make_decision_for_non_running_worker_group()
             )
+            if isinstance(scaling_decision, NoopDecision):
+                next_state = ReschedulingState()
+            elif isinstance(scaling_decision, ResizeDecision):
+                next_state = SchedulingState(scaling_decision)
+            else:
+                raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
+
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=SchedulingState(scaling_decision),
+                next_state=next_state,
             )
+
         elif isinstance(controller_state, RunningState):
             worker_group_status = self._poll_workers()
 
@@ -386,12 +401,12 @@ class TrainController:
                     worker_group_status=worker_group_status,
                 )
 
-                if isinstance(scaling_decision, ResizeDecision):
+                if isinstance(scaling_decision, NoopDecision):
+                    next_state = RunningState()
+                elif isinstance(scaling_decision, ResizeDecision):
                     next_state = ResizingState(
                         scaling_decision=scaling_decision,
                     )
-                elif isinstance(scaling_decision, NoopDecision):
-                    next_state = RunningState()
                 else:
                     raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
 
@@ -404,10 +419,17 @@ class TrainController:
             scaling_decision = (
                 self._scaling_policy.make_decision_for_non_running_worker_group()
             )
+            if isinstance(scaling_decision, NoopDecision):
+                next_state = RestartingState()
+            elif isinstance(scaling_decision, ResizeDecision):
+                next_state = SchedulingState(scaling_decision)
+            else:
+                raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
+
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=SchedulingState(scaling_decision=scaling_decision),
+                next_state=next_state,
             )
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
