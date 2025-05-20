@@ -318,13 +318,8 @@ install_pip_packages() {
     fi
   fi
 
-  if [[ "${RAY_DEFAULT_INSTALL-}" == 1 ]]; then
-    CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_default.txt" \
-      -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
-  else
-    CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt" \
-      -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
-  fi
+  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt" \
+    -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
@@ -453,8 +448,13 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" ]]; then
-    install_pip_packages
+  if [[ "${SKIP_PYTHON_PACKAGES:-}" != 1 ]]; then
+    if [[ "${RAY_DEFAULT_INSTALL-}" == 1 ]]; then
+      CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_default.txt" \
+        -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+    elif [[ "${MINIMAL_INSTALL:-}" != "1" ]]; then
+      install_pip_packages
+    fi
   fi
 
   install_thirdparty_packages
