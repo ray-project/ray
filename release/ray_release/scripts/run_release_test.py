@@ -138,7 +138,7 @@ def main(
     #         "You have to set the ANYSCALE_PROJECT environment variable!"
     #     )
 
-    maybe_fetch_api_token()
+    #maybe_fetch_api_token()
 
     result = Result()
 
