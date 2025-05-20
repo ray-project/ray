@@ -111,6 +111,7 @@ class VllmServer:
             str(self.tensor_parallel_size),
             "--pipeline-parallel-size",
             str(self.pipeline_parallel_size),
+            "--guided-decoding-backend=xgrammar",  # Match Ray Serve LLM default
         ]
         self.process = subprocess.Popen(cmd)
         return f"http://localhost:{vllm_port}"
