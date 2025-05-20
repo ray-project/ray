@@ -26,3 +26,18 @@ prometheus_client >= 0.7.1
 smart_open
 virtualenv >=20.0.24, !=20.21.1
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
+
+# part of data
+numpy
+pandas
+pyarrow
+fsspec
+
+# test
+pytest
+pytest-asyncio
+moto[s3,server]
+pydantic>=2.9.0
+jsonschema
+yaml
+psutil
