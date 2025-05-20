@@ -4279,6 +4279,9 @@
     timeout: 3600
     script: pytest  # release/<working_dir>/
 
+  variations:
+    - __suffix__: aws  # uses default specs above
+
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
   frequency: weekly
