@@ -1930,12 +1930,11 @@ def _handle_tensor_transport(dst_actor: ActorHandle, task_args: Tuple[Any, ...])
 
     ctx = ChannelContext.get_current()
 
-    # TODO(kevin85421): Currently, GPU objects only support 1 communicator.
-    if len(ctx.communicators) != 1 or not task_args:
-        return
-
     actor_id_to_rank = {}
     for arg in task_args:
+        # If an ObjectRef exists in `in_actor_object_refs`, it means the ObjectRef
+        # is an in-actor tensor. Therefore, this function will trigger a tensor
+        # communication operation between the sender and receiver actors.
         if not isinstance(arg, ray.ObjectRef):
             continue
 
@@ -1946,13 +1945,31 @@ def _handle_tensor_transport(dst_actor: ActorHandle, task_args: Tuple[Any, ...])
 
         src_actor, tensor_meta = tensor_meta
         if not actor_id_to_rank:
+            # TODO(kevin85421): Support multiple communicators.
+            if len(ctx.communicators) != 1:
+                raise ValueError(
+                    f"There are {len(ctx.communicators)} communicators in the current context. "
+                    "Currently, GPU objects only support 1 communicator. Please make sure only "
+                    "one communicator exists."
+                )
             actor_id_to_rank = {
                 a._ray_actor_id: i for i, a in enumerate(ctx.communicators[0])
             }
+        if src_actor._ray_actor_id not in actor_id_to_rank:
+            raise ValueError(
+                f"Sender actor {src_actor._ray_actor_id} not found in communicator. "
+                "Please make sure the sender and receiver are in the same communicator."
+            )
+        if dst_actor._ray_actor_id not in actor_id_to_rank:
+            raise ValueError(
+                f"Receiver actor {dst_actor._ray_actor_id} not found in communicator. "
+                "Please make sure the sender and receiver are in the same communicator."
+            )
         src_rank = actor_id_to_rank[src_actor._ray_actor_id]
         dst_rank = actor_id_to_rank[dst_actor._ray_actor_id]
-        assert (
-            src_rank != dst_rank
-        ), "src_rank and dst_rank are the same. This may cause deadlock for transports like NCCL."
+        if src_rank == dst_rank:
+            raise ValueError(
+                f"src_rank: {src_rank} and dst_rank: {dst_rank} are the same. This may cause deadlock for transports like NCCL."
+            )
         src_actor.__ray_send__.remote(arg.hex(), dst_rank)
         dst_actor.__ray_recv__.remote(arg.hex(), src_rank, tensor_meta)

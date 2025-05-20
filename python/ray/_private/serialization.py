@@ -254,7 +254,6 @@ class SerializationContext:
                 )
 
     def _deserialize_pickle5_data(self, data, object_id=None):
-        # TODO(swang): self.get_outer_object_ref() is set to ObjectID::Nil.
         worker = ray._private.worker.global_worker
         from ray.experimental.channel import ChannelContext
 
@@ -562,7 +561,6 @@ class SerializationContext:
         Args:
             value: The value to serialize.
         """
-        # print(f"serialize tensor_transport: {tensor_transport}")
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
