@@ -7,9 +7,12 @@ from typing import Callable, List, Optional
 
 import pandas as pd
 
+import ray._private.ray_constants as ray_constants
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.train.v2._internal.constants import (
+    DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
@@ -110,7 +113,11 @@ class TrainController:
         callbacks: Optional[List[RayTrainCallback]] = None,
     ):
         self._train_run_context = train_run_context
-        configure_controller_logger(self._train_run_context)
+        if ray_constants.env_bool(
+            ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+            DEFAULT_ENABLE_CONTROLLER_LOGGING,
+        ):
+            configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
