@@ -17,7 +17,7 @@ syntax = "proto3";
 import "src/ray/protobuf/common.proto";
 import "google/protobuf/timestamp.proto";
 
-package ray.rpc.event_aggregator;
+package ray.rpc.events;
 
 // Message containing the execution information of an actor task.
 message ActorTaskExecutionEvent {

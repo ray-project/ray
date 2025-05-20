@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package ray.rpc.event_aggregator;
+package ray.rpc.events;
 
 import "google/protobuf/timestamp.proto";
 import "src/ray/protobuf/events/events_actor_task_definition_event.proto";
