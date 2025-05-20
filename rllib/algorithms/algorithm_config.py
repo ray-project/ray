@@ -1034,9 +1034,9 @@ class AlgorithmConfig(_Config):
                             "`def myfunc(env, spaces, device): ...`, where any of "
                             "these arguments are optional and may be None.\n"
                             "`env` is the (vectorized) gym env.\n"
-                            "`spaces` is a dict of structure `{__env__: (["
-                            "env_vector_obs_space, env_vector_act_space]),"
-                            "__env_single__: ([env_obs_space, env_act_space])}`.\n"
+                            "`spaces` is a dict of structure `{'__env__': (["
+                            "vectorized env obs. space, vectorized env act. space]),"
+                            "'__env_single__': ([env obs. space, env act. space])}`.\n"
                             "`device` is a (torch) device.\n"
                         )
                     val_ = self._env_to_module_connector(env)
@@ -1139,9 +1139,9 @@ class AlgorithmConfig(_Config):
                             "`def myfunc(env, spaces): ...`, where any of "
                             "these arguments are optional and may be None.\n"
                             "`env` is the (vectorized) gym env.\n"
-                            "`spaces` is a dict of structure `{__env__: (["
-                            "env_vector_obs_space, env_vector_act_space]),"
-                            "__env_single__: ([env_obs_space, env_act_space])}`.\n"
+                            "`spaces` is a dict of structure `{'__env__': (["
+                            "vectorized env obs. space, vectorized env act. space]),"
+                            "'__env_single__': ([env obs. space, env act. space])}`.\n"
                         )
                     val_ = self._module_to_env_connector(env)
 
