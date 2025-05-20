@@ -378,7 +378,6 @@ class MapTransformer:
             if transform_fn._udf_context is not None:
                 del transform_fn._udf_context
                 transform_fn._udf_context = None
-        self._initialized = False
 
 
 def create_map_transformer_from_block_fn(
