@@ -45,30 +45,23 @@ logger = logging.getLogger(__name__)
 class PDServingArgs(BaseModel):
     """Schema for P/D serving args."""
 
-    prefill_configs: List[Union[str, LLMConfig]]
-    decode_configs: List[Union[str, LLMConfig]]
+    prefill_config: Union[str, LLMConfig]
+    decode_config: Union[str, LLMConfig]
 
     def parse_args(self) -> "PDServingArgs":
         """Converts this LLMServingArgs object into an DeployArgs object."""
 
-        if len(self.prefill_configs) != len(self.decode_configs):
-            raise ValueError(
-                f"Prefill and decode configs must have the same length, got {len(self.prefill_configs)} prefill configs and {len(self.decode_configs)} decode configs."
-            )
-
-        def parse_configs_and_cast_type(
-            configs: List[Union[str, LLMConfig]]
-        ) -> List[LLMConfig]:
+        def parse_configs_and_cast_type(config: Union[str, LLMConfig]) -> LLMConfig:
             # ray.serve.llm.__init__ imports internal LLMConfig, and extends it to external-facing LLMConfig.
             # parse_llm_configs returns internal LLMConfig, while {prefill, decode}_configs expect external-facing LLMConfig.
             # So the model_dump() here is to convert the type, to satisfy pydantic.
-            configs = parse_llm_configs(configs)
-            return [LLMConfig(**config.model_dump()) for config in configs]
+            config = parse_llm_configs([config])[0]
+            return LLMConfig(**config.model_dump())
 
         return PDServingArgs(
             # Parse string file path into LLMConfig
-            prefill_configs=parse_configs_and_cast_type(self.prefill_configs),
-            decode_configs=parse_configs_and_cast_type(self.decode_configs),
+            prefill_config=parse_configs_and_cast_type(self.prefill_config),
+            decode_config=parse_configs_and_cast_type(self.decode_config),
         )
 
 
@@ -186,27 +179,12 @@ class PDProxyServer(LLMServer):
         return serve.deployment()(cls)
 
 
-def _validate_llm_configs(llm_configs: List[LLMConfig], config_name: str) -> None:
-    model_ids = {m.model_id for m in llm_configs}
-    if len(model_ids) != len(llm_configs):
-        raise ValueError(
-            f"Duplicate models found. Make sure model ids are unique for {config_name}."
-        )
-    if len(llm_configs) == 0:
-        logger.error(
-            f"List of models is empty. Maybe some parameters cannot be parsed into the LLMConfig config for {config_name}."
-        )
-
-
 def build_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing P/D disaggregation."""
 
     rayllm_args = PDServingArgs.model_validate(pd_serving_args).parse_args()
 
-    _validate_llm_configs(rayllm_args.prefill_configs, "prefill_configs")
-    _validate_llm_configs(rayllm_args.decode_configs, "decode_configs")
-
-    for config in rayllm_args.prefill_configs + rayllm_args.decode_configs:
+    for config in [rayllm_args.prefill_config, rayllm_args.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
             config.engine_kwargs.update(
                 {
@@ -216,26 +194,12 @@ def build_app(pd_serving_args: dict) -> Application:
                 }
             )
 
-    def _get_llm_deployments(llm_configs: List[LLMConfig]) -> List[DeploymentHandle]:
-        return [build_llm_deployment(llm_config) for llm_config in llm_configs]
+    prefill_deployment = build_llm_deployment(rayllm_args.prefill_config)
+    decode_deployment = build_llm_deployment(rayllm_args.decode_config)
 
-    prefill_deployments = _get_llm_deployments(rayllm_args.prefill_configs)
-    decode_deployments = _get_llm_deployments(rayllm_args.decode_configs)
-    if len(prefill_deployments) != len(decode_deployments):
-        raise ValueError("Prefill and decode deployments must have the same length.")
-
-    proxy_server_deployments = [
-        PDProxyServer.as_deployment().bind(
-            prefill_server=prefill_deploy,
-            decode_server=decode_deploy,
-        )
-        for prefill_deploy, decode_deploy in zip(
-            prefill_deployments, decode_deployments
-        )
-    ]
-
-    # TODO(lk-chen): Need to re-think about configs here, in non-PD case LLMRouter use 2x replica
-    # as LLM, here in PD case what shall we do?
-    return LLMRouter.as_deployment(llm_configs=rayllm_args.decode_configs).bind(
-        llm_deployments=proxy_server_deployments
+    proxy_server_deployment = PDProxyServer.as_deployment().bind(
+        prefill_server=prefill_deployment,
+        decode_server=decode_deployment,
     )
+
+    return LLMRouter.as_deployment().bind(llm_deployments=[proxy_server_deployment])
