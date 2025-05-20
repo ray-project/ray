@@ -19,7 +19,7 @@ class KuberayJobManager:
     def __init__(self):
         pass
 
-    def run_and_wait(self, job_name: str, image: str, cmd_to_run: str, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> Tuple[int, float]:
+    def run_and_wait(self, job_name: str, image: str, cmd_to_run: str, timeout: int, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> Tuple[int, float]:
         self.job_name = job_name
         self._run_job(job_name, image, cmd_to_run, env_vars, working_dir, pip, compute_config)
         return self._wait_job(timeout)
