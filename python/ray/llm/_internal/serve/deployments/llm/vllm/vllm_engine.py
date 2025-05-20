@@ -660,7 +660,7 @@ class VLLMEngine(LLMEngine):
                 log_probs, log_probs_idx = self._extract_logprobs(
                     output,
                     log_probs_idx,
-                    request.sampling_params.top_logprobs,
+                    request.sampling_params.logprobs,
                 )
                 internal_metadata = {}
                 if getattr(request_output, "kv_transfer_params", None) is not None:

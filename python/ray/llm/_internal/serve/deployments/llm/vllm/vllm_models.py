@@ -252,7 +252,10 @@ class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     sampling_params: Optional[
-        Union[VLLMSamplingParams, List[VLLMSamplingParams]]
+        Union[
+            vllm.sampling_params.SamplingParams,
+            List[vllm.sampling_params.SamplingParams],
+        ]
     ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None

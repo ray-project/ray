@@ -566,6 +566,8 @@ class LLMServer(_LLMServerBase):
                 use_prompt_format=False,
             )
 
+        logger.info(f"clkbp  {request.stream=}")
+
         # 2. Predict using the engine
         gen = self._predict(request_id=request_id, prompt=prompt, stream=request.stream)
 
