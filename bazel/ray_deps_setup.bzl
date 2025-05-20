@@ -310,6 +310,15 @@ def ray_deps_setup():
         ],
     )
 
+    http_archive(
+        # This rule is used by boringssl
+        name="rules_license",
+        sha256 = "26d4021f6898e23b82ef953078389dd49ac2b5618ac564ade4ef87cced147b38",
+        urls = [
+            "https://github.com/bazelbuild/rules_license/archive/refs/tags/1.0.0.tar.gz",
+        ],
+    )
+
     # The protobuf version we use to auto generate python and java code.
     # This can be different from the protobuf version that Ray core uses internally.
     # Generally this should be a lower version since protobuf guarantees that
