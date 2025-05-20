@@ -20,7 +20,6 @@ from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
-from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStatTracker,
@@ -31,6 +30,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMEmbeddingRequest,
     VLLMSamplingParams,
+    KV_TRANSFER_PARAMS_KEY,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -193,12 +193,10 @@ class VLLMEngine(LLMEngine):
             )
 
         # Pick a random port in P/D case.
-        if (
-            kv_transfer_config := llm_config.engine_kwargs.get(
-                "kv_transfer_config", None
-            )
-        ) is not None:
-            if getattr(kv_transfer_config, "kv_connector", "") != "NixlConnector":
+        kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
+        if kv_transfer_config is not None:
+            connector_type = getattr(kv_transfer_config, "kv_connector", "")
+            if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
             if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
                 port: int = vllm.utils.get_open_port()

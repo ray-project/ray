@@ -18,14 +18,20 @@ from vllm.config import KVTransferConfig
 from ray import serve
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
-from ray.serve.llm import LLMRouter, LLMConfig, ModelLoadingConfig, build_llm_deployment
+from ray.serve.llm import (
+    LLMRouter,
+    LLMConfig,
+    ModelLoadingConfig,
+    build_llm_deployment,
+    LLMServer,
+)
 
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    KV_TRANSFER_PARAMS_KEY,
+)
 from ray.llm._internal.serve.deployments.utils.server_utils import peek_at_generator
 from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_HEALTH_CHECK_PERIOD_S,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     RAYLLM_ROUTER_HTTP_TIMEOUT,
 )
 from ray.llm._internal.serve.configs.server_models import (
@@ -72,9 +78,6 @@ class PDProxyServer(LLMServer):
 
     For chat and completions, proxy sends the request to the prefill server and
     then parses the response to send to the decode server.
-
-    For embeddings, proxy sends the request to the prefill server and returns the
-    response directly.
     """
 
     async def __init__(
@@ -111,7 +114,6 @@ class PDProxyServer(LLMServer):
         2. Parse the response and forward necessary fields to the decode server.
         3. Return the response from the decode server.
         """
-        from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 
         assert (
             prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None) is None
@@ -144,7 +146,6 @@ class PDProxyServer(LLMServer):
             async for chunk in prefill_response_gen:
                 yield chunk
             return
-        from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 
         prompt.parameters[
             KV_TRANSFER_PARAMS_KEY
@@ -160,13 +161,14 @@ class PDProxyServer(LLMServer):
         prefill_end = time.perf_counter()
         # TODO(lk-chen): propagate prefill time.
 
-    async def check_health(self) -> bool:
+    async def check_health(self) -> None:
         """Check the health of the llm engine."""
         are_healthy = await asyncio.gather(
             self.prefill_server.check_health.remote(),
             self.decode_server.check_health.remote(),
         )
-        return all(are_healthy)
+        if not all(are_healthy):
+            raise RuntimeError("LLM server is unhealthy.")
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
@@ -181,24 +183,7 @@ class PDProxyServer(LLMServer):
         ... )
         >>> ray.serve.run(deployment)
         """
-        return serve.deployment(
-            autoscaling_config={
-                "min_replicas": 1,
-                "initial_replicas": 1,
-                "max_replicas": 10,
-                "target_ongoing_requests": int(
-                    os.environ.get(
-                        "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
-                        os.environ.get(
-                            "RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 10
-                        ),
-                    )
-                ),
-            },
-            max_ongoing_requests=20,  # Maximum backlog for a single replica
-            health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
-            health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-        )(cls)
+        return serve.deployment()(cls)
 
 
 def _validate_llm_configs(llm_configs: List[LLMConfig], config_name: str) -> None:
@@ -213,10 +198,10 @@ def _validate_llm_configs(llm_configs: List[LLMConfig], config_name: str) -> Non
         )
 
 
-def build_PD_disagg_app(llm_serving_args: dict) -> Application:
+def build_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing P/D disaggregation."""
 
-    rayllm_args = PDServingArgs.model_validate(llm_serving_args).parse_args()
+    rayllm_args = PDServingArgs.model_validate(pd_serving_args).parse_args()
 
     _validate_llm_configs(rayllm_args.prefill_configs, "prefill_configs")
     _validate_llm_configs(rayllm_args.decode_configs, "decode_configs")

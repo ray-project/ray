@@ -4,6 +4,6 @@ applications:
         - ./configs/model_config/qwen_3_0dot6B_1replica.yaml
       decode_configs:
         - ./configs/model_config/qwen_3_0dot6B_1replica.yaml
-    import_path: ray.serve.llm.examples.pd_disagg.ray_pd_serve:build_PD_disagg_app
+    import_path: ray.serve.llm.examples.pd_disagg.ray_pd_serve:build_app
     name: llm-endpoint
     route_prefix: /

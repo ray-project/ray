@@ -25,8 +25,10 @@ from ray.llm._internal.serve.configs.constants import (
     ENV_VARS_TO_PROPAGATE,
 )
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
-from ray.llm._internal.serve.deployments.llm.vllm import KV_TRANSFER_PARAMS_KEY
 
+
+# The key for the kv_transfer_params in the internal metadata.
+KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
 
 vllm = try_import("vllm")
 
@@ -234,15 +236,16 @@ class VLLMSamplingParams(SamplingParams):
         return values
 
     @classmethod
-    def from_prompt(cls, prompt: Prompt):
+    def _get_model_validate_kwargs(cls, prompt: Prompt) -> Dict[str, Any]:
         """
-        Extend the base class's from_prompt method to include vllm-specific parameters.
+        Extend the base class's `_get_model_validate_kwargs` to include vllm-specific parameters.
         """
         generate_kwargs = super()._get_model_validate_kwargs(prompt)
-        generate_kwargs["kv_transfer_params"] = prompt.parameters.get(
-            KV_TRANSFER_PARAMS_KEY, None
-        )
-        return cls.model_validate(generate_kwargs)
+        if KV_TRANSFER_PARAMS_KEY in prompt.parameters:
+            generate_kwargs[KV_TRANSFER_PARAMS_KEY] = prompt.parameters[
+                KV_TRANSFER_PARAMS_KEY
+            ]
+        return generate_kwargs
 
 
 class VLLMGenerationRequest(GenerationRequest):
