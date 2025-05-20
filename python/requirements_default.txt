@@ -1,0 +1,28 @@
+# These are are ray[default] dependencies.
+# mirrored in setup.py as install_requires.
+
+# core ones
+click>=7.0
+cupy-cuda12x; sys_platform != 'darwin'
+filelock
+jsonschema
+msgpack<2.0.0,>=1.0.0
+packaging
+protobuf!=3.19.5,>=3.15.3
+pyyaml
+requests
+
+# default
+aiohttp >= 3.7
+aiohttp_cors
+colorful
+py-spy >= 0.2.0; python_version < '3.12'
+py-spy >= 0.4.0; python_version >= '3.12'
+requests
+grpcio >= 1.32.0; python_version < '3.10'
+grpcio >= 1.42.0; python_version >= '3.10'
+opencensus
+prometheus_client >= 0.7.1
+smart_open
+virtualenv >=20.0.24, !=20.21.1
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3

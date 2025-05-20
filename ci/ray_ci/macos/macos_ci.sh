@@ -106,6 +106,7 @@ _prelude() {
     rm -rf /tmp/bazel_event_logs
     (which bazel && bazel clean) || true;
   fi
+  export RAY_DEFAULT_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 

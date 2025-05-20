@@ -154,9 +154,9 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -s -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -s -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
@@ -318,8 +318,13 @@ install_pip_packages() {
     fi
   fi
 
-  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt" \
-    -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  if [[ "${RAY_DEFAULT_INSTALL-}" == 1 ]]; then
+    CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_default.txt" \
+      -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  else
+    CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt" \
+      -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  fi
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then

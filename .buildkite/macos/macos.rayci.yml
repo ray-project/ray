@@ -8,7 +8,7 @@ steps:
   # build
   - label: ":tapioca: build: :mac: wheels and jars (x86_64)"
     key: macos_wheels_amd64
-    if: 'false'
+    # if: 'false'
     tags:
       - macos_wheels
       - python_dependencies
