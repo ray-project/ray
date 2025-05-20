@@ -70,36 +70,6 @@ class MapTransformFnCategory(Enum):
     PostProcess = 2
 
 
-class _MapActorContext:
-    def __init__(
-        self,
-        udf_map_cls: UserDefinedFunction,
-        udf_map_fn: Callable[[Any], Any],
-        is_async: bool,
-    ):
-        self.udf_map_cls = udf_map_cls
-        self.udf_map_fn = udf_map_fn
-        self.is_async = is_async
-        self.udf_map_asyncio_loop = None
-        self.udf_map_asyncio_thread = None
-
-        if is_async:
-            self._init_async()
-
-    def _init_async(self):
-        # Only used for callable class with async generator `__call__` method.
-        loop = get_or_create_event_loop()
-
-        def run_loop():
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        thread = Thread(target=run_loop)
-        thread.start()
-        self.udf_map_asyncio_loop = loop
-        self.udf_map_asyncio_thread = thread
-
-
 @dataclass
 class MapTransformUDFContext:
     op_fn: UserDefinedFunction
@@ -108,7 +78,6 @@ class MapTransformUDFContext:
     fn_constructor_args: Tuple[Any, ...] = field(default_factory=tuple)
     fn_constructor_kwargs: Dict[str, Any] = field(default_factory=dict)
     is_async: bool = field(default=False)
-    map_actor_context: Optional[_MapActorContext] = None
 
 
 def _handle_debugger_exception(e: Exception, item: Any = None):
@@ -161,6 +130,10 @@ class MapTransformFn:
 
     def init(self) -> None:
         # default implementation for MapTransformFn's that do not need initialization
+        pass
+
+    def on_exit(self) -> None:
+        # default implementation for MapTransformFn's that do not need cleanup
         pass
 
     @property
@@ -373,6 +346,7 @@ class MapTransformer:
 
     def on_exit(self):
         for transform_fn in self._transform_fns:
+            transform_fn.on_exit()
             # `_udf_context` is a variable that references the UDF object.
             # Delete it to trigger `UDF.__del__`.
             if transform_fn._udf_context is not None:
@@ -627,20 +601,15 @@ class CallableClassUDFMapTransformFn(AbstractUDFMapTransformFn):
         assert not self._udf_context.is_async
         op_fn = self._udf_context.op_fn
         op_fn = make_callable_class_concurrent(op_fn)
-        self._udf_context.map_actor_context = _MapActorContext(
-            udf_map_cls=op_fn,
-            udf_map_fn=op_fn(
-                *self._udf_context.fn_constructor_args,
-                **self._udf_context.fn_constructor_kwargs,
-            ),
-            is_async=self._udf_context.is_async,
+        self._udf_map_cls = op_fn
+        self._udf_map_fn = op_fn(
+            *self._udf_context.fn_constructor_args,
+            **self._udf_context.fn_constructor_kwargs,
         )
 
         def fn(item: Any) -> Any:
-            assert self._udf_context.map_actor_context is not None
-            assert not self._udf_context.map_actor_context.is_async
             try:
-                return self._udf_context.map_actor_context.udf_map_fn(
+                return self._udf_map_fn(
                     item,
                     *self._udf_context.fn_args,
                     **self._udf_context.fn_kwargs,
@@ -649,6 +618,12 @@ class CallableClassUDFMapTransformFn(AbstractUDFMapTransformFn):
                 _handle_debugger_exception(e, item)
 
         self._transform_fn = self._generate_transform_fn(fn)
+
+    def on_exit(self) -> None:
+        # _udf_map_fn is a variable that references the UDF object, delete it to trigger UDF.__del__
+        if self._udf_map_fn is not None:
+            del self._udf_map_fn
+            self._udf_map_fn = None
 
 
 class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
@@ -677,21 +652,27 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
         assert isinstance(self._udf_context.op_fn, CallableClass)
         assert self._udf_context.is_async
         op_fn = self._udf_context.op_fn
-        self._udf_context.map_actor_context = _MapActorContext(
-            udf_map_cls=op_fn,
-            udf_map_fn=op_fn(
-                *self._udf_context.fn_constructor_args,
-                **self._udf_context.fn_constructor_kwargs,
-            ),
-            is_async=self._udf_context.is_async,
+        self._udf_map_cls = op_fn
+        self._udf_map_fn = op_fn(
+            *self._udf_context.fn_constructor_args,
+            **self._udf_context.fn_constructor_kwargs,
         )
 
-        async def fn(item: Any) -> Any:
-            assert self._udf_context.map_actor_context is not None
-            assert self._udf_context.map_actor_context.is_async
+        # init async loop
+        loop = get_or_create_event_loop()
 
+        def run_loop():
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        thread = Thread(target=run_loop)
+        thread.start()
+        self._udf_map_asyncio_loop = loop
+        self._udf_map_asyncio_thread = thread
+
+        async def fn(item: Any) -> Any:
             try:
-                return self._udf_context.map_actor_context.udf_map_fn(
+                return self._udf_map_fn(
                     item,
                     *self._udf_context.fn_args,
                     **self._udf_context.fn_kwargs,
@@ -737,7 +718,7 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
 
             async def process_all_items():
                 try:
-                    loop = self._udf_context.map_actor_context.udf_map_asyncio_loop
+                    loop = self._udf_map_asyncio_loop
                     tasks = [loop.create_task(process_item(x)) for x in input_iterable]
 
                     ctx = ray.data.DataContext.get_current()
@@ -751,7 +732,7 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
                     output_item_queue.put(sentinel)
 
             # Use the existing event loop to create and run Tasks to process each item
-            loop = self._udf_context.map_actor_context.udf_map_asyncio_loop
+            loop = self._udf_map_asyncio_loop
             asyncio.run_coroutine_threadsafe(process_all_items(), loop)
 
             # Yield results as they become available.
@@ -769,6 +750,12 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
                 yield out_item
 
         return transform_fn
+
+    def on_exit(self) -> None:
+        # _udf_map_fn is a variable that references the UDF object, delete it to trigger UDF.__del__
+        if self._udf_map_fn is not None:
+            del self._udf_map_fn
+            self._udf_map_fn = None
 
 
 class BlocksToRowsMapTransformFn(MapTransformFn):
