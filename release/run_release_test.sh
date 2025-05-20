@@ -104,6 +104,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   export RELEASE_AWS_DB_NAME="ray_ci"
   export RELEASE_AWS_DB_TABLE="release_test_result"
   export RELEASE_AWS_LOCATION="dev"
+  export KUBERAY_SERVER_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDc3ODA2MjYsIm5iZiI6MTc0NzY5NDIyNiwiaWF0IjoxNzQ3Njk0MjI2LCJ0aW1lc3RhbXAiOjE3NDc2OTQyMjZ9.KkNhUvHXMv_0jRfijPW4kKWCbtw1L2OKGXmRh56FEVs"
   trap _term SIGINT SIGTERM
   ${RAY_TEST_SCRIPT} "$@" &
   proc=$!
