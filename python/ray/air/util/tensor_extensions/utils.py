@@ -81,8 +81,7 @@ def _is_list_or_ndarray_or_pd_series(values):
     pd = _lazy_import_pandas_no_raise()
 
     return isinstance(values, (List, np.ndarray)) or (
-        pd is not None and
-        isinstance(values, pd.Series)
+        pd is not None and isinstance(values, pd.Series)
     )
 
 

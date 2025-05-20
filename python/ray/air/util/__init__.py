@@ -8,6 +8,7 @@ def _lazy_import_pandas():
 
     if _pandas is None:
         import pandas
+
         _pandas = pandas
 
     return _pandas
