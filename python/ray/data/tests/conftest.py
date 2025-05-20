@@ -17,7 +17,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import ShuffleStrategy, DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure

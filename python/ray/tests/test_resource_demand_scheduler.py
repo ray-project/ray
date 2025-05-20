@@ -2,6 +2,7 @@ import copy
 import os
 import json
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -9,9 +10,9 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
+import yaml
 
 import pytest
-import yaml
 
 import ray
 import ray._private.ray_constants
@@ -1194,6 +1195,51 @@ class TestPlacementGroupScaling:
             {},
             resource_demands,
             {},
+            pending_placement_groups,
+            {},
+            [],
+            EMPTY_AVAILABILITY_SUMMARY,
+        )
+        assert to_launch == {}
+        assert not rem
+
+    def test_skip_placed_bundles(self):
+        # test that we do not launch new nodes for bundles that are already placed.
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(
+            provider,
+            TYPES_A,
+            10,
+            head_node_type="p2.8xlarge",
+            upscaling_speed=1,
+        )
+
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
+        # At this point our cluster has 1 p2.8xlarge instances (8 GPUs) and is
+        # fully idle.
+        nodes = provider.non_terminated_nodes({})
+
+        pending_placement_groups = [
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.PACK,
+                bundles=[
+                    Bundle(unit_resources={"GPU": 2}, node_id=nodes[0].encode()),
+                    Bundle(unit_resources={"GPU": 6}),
+                ],
+            ),
+        ]
+        # The bundle that has node_id should not be counted
+        # towards the number of GPUs needed to launch new nodes.
+        # The remaining bundle should be packed onto the existing node and
+        # not require any new nodes.
+        to_launch, rem = scheduler.get_nodes_to_launch(
+            nodes,
+            {},
+            [],
+            {  # 2 GPUs are already used by the first bundle.
+                provider.internal_ip(nodes[0]): {"GPU": 6}
+            },
             pending_placement_groups,
             {},
             [],
@@ -4035,9 +4081,4 @@ def test_utilization_score_plugin_2(lexical_score_plugin):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

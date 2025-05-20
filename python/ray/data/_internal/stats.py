@@ -184,11 +184,6 @@ class _StatsActor:
                 must be set to True to report this metric""",
             tag_keys=op_tags_keys,
         )
-        self.allocated_bytes = Gauge(
-            "data_allocated_bytes",
-            description="Bytes allocated by dataset operators",
-            tag_keys=op_tags_keys,
-        )
         self.freed_bytes = Gauge(
             "data_freed_bytes",
             description="Bytes freed by dataset operators",
@@ -1028,9 +1023,9 @@ class DatasetStatsSummary:
 
         Args:
             already_printed: Set of operator IDs that have already had its stats printed
-            out.
+               out.
             include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest operator.
+               log stats of the latest operator.
             add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
@@ -1528,7 +1523,7 @@ class OperatorStatsSummary:
             # time_total_s.
 
             # The estimated single node operator throughput is computed by dividing the
-            # total number of rows produced by the the sum of the wall times across all
+            # total number of rows produced by the sum of the wall times across all
             # blocks of the operator. This assumes that on a single node the work done
             # would be equivalent, with no concurrency.
             total_num_out_rows = output_num_rows_stats["sum"]

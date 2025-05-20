@@ -16,6 +16,12 @@ syntax = "proto3";
 
 package ray.rpc.events;
 
+import "google/protobuf/timestamp.proto";
+import "src/ray/protobuf/events/task_events/actor_task_definition_event.proto";
+import "src/ray/protobuf/events/task_events/actor_task_execution_event.proto";
+import "src/ray/protobuf/events/task_events/task_definition_event.proto";
+import "src/ray/protobuf/events/task_events/task_execution_event.proto";
+
 // This is the base message for all ray events.
 message RayEvent {
 
@@ -61,8 +67,8 @@ message RayEvent {
 	// The type of the event. This is to understand the event without deserializing the
 	// nested message.
 	EventType event_type = 3;
-	// Epoch timestamp in ns, captured when the event is created
-	timestamp timestamp_ns = 4;
+	// Epoch timestamp, captured when the event is created
+	google.protobuf.Timestamp timestamp = 4;
 	// The severity of the event.
 	Severity severity = 5;
 	// A string message associated with the event.

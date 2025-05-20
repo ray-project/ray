@@ -587,7 +587,7 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
         """
         Args:
           additional_output_splits: The number of additional splits, must be
-          greater than 1.
+             greater than 1.
         """
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor
