@@ -43,7 +43,7 @@ from ray_release.signal_handling import (
 )
 from ray_release.util import convert_cluster_compute_to_kuberay_compute_config, upload_working_dir, KUBERAY_SERVER_URL, DEFAULT_KUBERAY_NAMESPACE
 import requests
-
+import boto3
 type_str_to_command_runner = {
     "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
@@ -423,8 +423,25 @@ def run_release_test(
                 "working_dir": working_dir_upload_path
             }
         }
+        # Get token from AWS Secrets Manager
+        session = boto3.session.Session()
+        client = session.client('secretsmanager')
+        try:
+            secret_response = client.get_secret_value(
+                SecretId='kuberay_service_secret_key'  # Adjust secret name as needed
+            )
+            kuberay_service_secret_key = secret_response['SecretString']
+        except Exception as e:
+            logger.error(f"Failed to get KubeRay server token from AWS Secrets Manager: {e}")
+            raise
+        login_url = f"{KUBERAY_SERVER_URL}/api/v1/login"
+        login_request = {
+            "secretKey": kuberay_service_secret_key
+        }
+        login_response = requests.post(login_url, json=login_request)
+        login_response.raise_for_status()
+        token = login_response.json()["token"]
 
-        token = os.getenv("KUBERAY_SERVER_TOKEN")
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
         headers = {
             "Authorization": "Bearer " + token,
