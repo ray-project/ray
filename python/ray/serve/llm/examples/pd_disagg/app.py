@@ -1,16 +1,8 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
-
-import os
 import asyncio
-import sys
 import logging
-from typing import List, AsyncGenerator, Union, cast
-
-if sys.version_info >= (3, 11):
-    from asyncio import timeout
-else:
-    from async_timeout import timeout
+from typing import AsyncGenerator, Union
 
 from pydantic import BaseModel
 from vllm.config import KVTransferConfig
@@ -27,16 +19,13 @@ from ray.serve.llm import (
 )
 
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    KV_TRANSFER_PARAMS_KEY,
-)
-from ray.llm._internal.serve.deployments.utils.server_utils import peek_at_generator
-from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_HTTP_TIMEOUT,
-)
 from ray.llm._internal.serve.configs.server_models import (
     parse_args as parse_llm_configs,
     LLMRawResponse,
+)
+from ray.llm._internal.serve.deployments.llm.llm_server import ResponsePostprocessor
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    KV_TRANSFER_PARAMS_KEY,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,10 +60,18 @@ class PDProxyServer(LLMServer):
 
     For chat and completions, proxy sends the request to the prefill server and
     then parses the response to send to the decode server.
+
+    Args:
+        llm_config: The LLM config for the proxy server, LLMRouter will use this config to
+            setup the supported model list (/v1/models endpoint) and route request to proper
+            server according to the model id.
+        prefill_server: The prefill server deployment handle.
+        decode_server: The decode server deployment handle.
     """
 
     async def __init__(
         self,
+        llm_config: LLMConfig,
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
@@ -88,7 +85,7 @@ class PDProxyServer(LLMServer):
                 pass
 
         await super().__init__(
-            LLMConfig(model_loading_config=ModelLoadingConfig(model_id="")),
+            llm_config,
             engine_cls=FakeEngine,
         )
 
@@ -122,27 +119,26 @@ class PDProxyServer(LLMServer):
         }
         prefill_prompt.parameters["max_tokens"] = 1
 
-        async def prefill_response_gen() -> AsyncGenerator[LLMRawResponse, None]:
-            async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
-                async for chunk in self.prefill_server.options(
-                    stream=True
-                )._predict.remote(
-                    request_id=request_id, prompt=prefill_prompt, stream=False
-                ):
-                    yield chunk
+        prefill_response_gen: AsyncGenerator[
+            LLMRawResponse, None
+        ] = self.prefill_server.options(
+            # _predict returns generator, we have to set stream=True
+            stream=True
+        )._predict.remote(
+            request_id=request_id, prompt=prefill_prompt, stream=False
+        )
 
-        prefill_response, prefill_response_gen = await peek_at_generator(
-            prefill_response_gen()
+        prefill_response = await ResponsePostprocessor.merge_stream(
+            prefill_response_gen
         )
         if prefill_response.error:
             logger.error(f"Prefill server returned error: {prefill_response.error}")
-            async for chunk in prefill_response_gen:
-                yield chunk
+            yield prefill_response
             return
 
-        prompt.parameters[
+        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = prefill_response.metadata[
             KV_TRANSFER_PARAMS_KEY
-        ] = prefill_response.internal_parameters[KV_TRANSFER_PARAMS_KEY]
+        ]
 
         import time
 
@@ -156,12 +152,10 @@ class PDProxyServer(LLMServer):
 
     async def check_health(self) -> None:
         """Check the health of the llm engine."""
-        are_healthy = await asyncio.gather(
+        await asyncio.gather(
             self.prefill_server.check_health.remote(),
             self.decode_server.check_health.remote(),
         )
-        if not all(are_healthy):
-            raise RuntimeError("LLM server is unhealthy.")
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
@@ -184,6 +178,9 @@ def build_app(pd_serving_args: dict) -> Application:
 
     rayllm_args = PDServingArgs.model_validate(pd_serving_args).parse_args()
 
+    model_id = rayllm_args.decode_config.model_id
+    assert model_id == rayllm_args.prefill_config.model_id, "P/D model id mismatch"
+
     for config in [rayllm_args.prefill_config, rayllm_args.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
             config.engine_kwargs.update(
@@ -198,6 +195,9 @@ def build_app(pd_serving_args: dict) -> Application:
     decode_deployment = build_llm_deployment(rayllm_args.decode_config)
 
     proxy_server_deployment = PDProxyServer.as_deployment().bind(
+        llm_config=LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id=model_id)
+        ),
         prefill_server=prefill_deployment,
         decode_server=decode_deployment,
     )

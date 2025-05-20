@@ -61,11 +61,11 @@ from ray.llm._internal.utils import try_import
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 
 if TYPE_CHECKING:
+    from vllm import SamplingParams as VLLMInternalSamplingParams
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
     from vllm.outputs import RequestOutput, PoolingRequestOutput
-    from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -943,6 +943,12 @@ class VLLMEngine(LLMEngine):
                 ] = sampling_params.response_format.to_guided_decoding_params(
                     backend=RAYLLM_GUIDED_DECODING_BACKEND
                 )
+            if KV_TRANSFER_PARAMS_KEY in prompt.parameters:
+                kwargs["extra_args"] = {
+                    KV_TRANSFER_PARAMS_KEY: prompt.parameters.pop(
+                        KV_TRANSFER_PARAMS_KEY
+                    )
+                }
 
             return vllm.SamplingParams(**kwargs)
         except Exception as e:

@@ -253,8 +253,8 @@ class VLLMGenerationRequest(GenerationRequest):
 
     sampling_params: Optional[
         Union[
-            vllm.sampling_params.SamplingParams,
-            List[vllm.sampling_params.SamplingParams],
+            vllm.SamplingParams,
+            List[vllm.SamplingParams],
         ]
     ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
