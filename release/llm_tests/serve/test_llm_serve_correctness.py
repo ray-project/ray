@@ -1,6 +1,8 @@
 import os
 import subprocess
 import time
+from typing import Tuple, Literal
+
 import requests
 import pytest
 from openai import OpenAI
@@ -16,7 +18,9 @@ SEED = 42
 os.environ["RAYLLM_GUIDED_DECODING_BACKEND"] = "auto"
 
 
-def get_llm_config(tensor_parallel_size=1, pipeline_parallel_size=1):
+def get_llm_config(
+    tensor_parallel_size: int = 1, pipeline_parallel_size: int = 1
+) -> LLMConfig:
     """Create LLMConfig with specified parallelism parameters."""
     return LLMConfig(
         model_loading_config=ModelLoadingConfig(
@@ -37,16 +41,20 @@ def get_llm_config(tensor_parallel_size=1, pipeline_parallel_size=1):
     )
 
 
-def start_ray_serve(tensor_parallel_size=1, pipeline_parallel_size=1):
+def start_ray_serve(
+    tensor_parallel_size: int = 1, pipeline_parallel_size: int = 1
+) -> str:
     """Start Ray Serve with specified parallelism parameters."""
     ray_url = "http://localhost:8000"
-    llm_config = get_llm_config(tensor_parallel_size, pipeline_parallel_size)
+    llm_config: LLMConfig = get_llm_config(tensor_parallel_size, pipeline_parallel_size)
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     return ray_url
 
 
-def start_vllm_server(tensor_parallel_size=1, pipeline_parallel_size=1):
+def start_vllm_server(
+    tensor_parallel_size: int = 1, pipeline_parallel_size: int = 1
+) -> Tuple[str, subprocess.Popen]:
     """Start vLLM server with specified parallelism parameters."""
     vllm_port = 8001
     cmd = [
@@ -66,12 +74,16 @@ def start_vllm_server(tensor_parallel_size=1, pipeline_parallel_size=1):
     return f"http://localhost:{vllm_port}", process
 
 
-def generate_with_ray(test_prompt, ray_serve_llm_url):
-    openai_api_base = f"{ray_serve_llm_url}/v1"
-    client = OpenAI(base_url=openai_api_base, api_key="fake-key")
+def create_openai_client(server_url: str) -> OpenAI:
+    """Create an OpenAI client."""
+    openai_api_base = f"{server_url}/v1"
+    return OpenAI(base_url=openai_api_base, api_key="fake-key")
 
+
+def generate_completion(client: OpenAI, model_id: str, test_prompt: str) -> str:
+    """Generate completion using the provided OpenAI client."""
     response = client.completions.create(
-        model=RAY_MODEL_ID,
+        model=model_id,
         prompt=test_prompt,
         temperature=0.0,
         max_tokens=MAX_OUTPUT_TOKENS,
@@ -80,24 +92,26 @@ def generate_with_ray(test_prompt, ray_serve_llm_url):
     return response.choices[0].text
 
 
-def generate_with_vllm(test_prompt, vllm_server_url):
-    openai_api_key = "EMPTY"
-    openai_api_base = f"{vllm_server_url}/v1"
-    client = OpenAI(
-        api_key=openai_api_key,
-        base_url=openai_api_base,
-    )
-    response = client.completions.create(
-        model=MODEL_ID,
-        prompt=test_prompt,
+def generate_chat_completion(client: OpenAI, model_id: str, test_message: str) -> str:
+    """Generate chat completion using the provided OpenAI client."""
+    messages = [{"role": "user", "content": test_message}]
+
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=messages,
         temperature=0.0,
         max_tokens=MAX_OUTPUT_TOKENS,
         seed=SEED,
     )
-    return response.choices[0].text
+    return response.choices[0].message.content
 
 
-def wait_for_server_ready(url, server_type="ray", timeout=120, retry_interval=2):
+def wait_for_server_ready(
+    url: str,
+    server_type: Literal["ray", "vllm"] = "ray",
+    timeout: int = 120,
+    retry_interval: int = 2,
+) -> bool:
     """Poll the server until it's ready or timeout is reached.
 
     Args:
@@ -136,74 +150,70 @@ def wait_for_server_ready(url, server_type="ray", timeout=120, retry_interval=2)
     )
 
 
-@pytest.fixture(
-    params=[
-        # (tensor_parallel_size, pipeline_parallel_size)
+@pytest.mark.parametrize(
+    "tensor_parallel_size, pipeline_parallel_size",
+    [
         (1, 1),
         (2, 1),
         (1, 2),
         (2, 2),
     ],
-    ids=[
-        "tp1-pp1",
-        "tp2-pp1",
-        "tp1-pp2",
-        "tp2-pp2",
-    ],
 )
-def setup_servers(request):
-    """Fixture to set up Ray Serve and vLLM servers with different parallelism settings."""
-    tensor_parallel_size, pipeline_parallel_size = request.param
+def test_llm_serve_correctness(
+    tensor_parallel_size: int, pipeline_parallel_size: int
+) -> None:
+    """Test that Ray Serve and vLLM produce the same completion output for the same input."""
+    test_prompt = "Two households, both alike in dignity,"
+    test_message = "What is the capital of France?"
 
     print(
-        f"Setting up servers with TP={tensor_parallel_size}, PP={pipeline_parallel_size}"
+        f"Starting Ray Serve LLM with tensor_parallel_size={tensor_parallel_size}, pipeline_parallel_size={pipeline_parallel_size}"
     )
-
-    # Start Ray Serve
     ray_url = start_ray_serve(tensor_parallel_size, pipeline_parallel_size)
+    ray_client = create_openai_client(ray_url)
 
+    wait_for_server_ready(ray_url, server_type="ray", timeout=240)
+    time.sleep(5)  # Buffer time for the servers to be ready
+
+    ray_completion_output = generate_completion(ray_client, RAY_MODEL_ID, test_prompt)
+    ray_chat_output = generate_chat_completion(ray_client, RAY_MODEL_ID, test_message)
+
+    serve.shutdown()
+
+    print(
+        f"Starting vLLM server with tensor_parallel_size={tensor_parallel_size}, pipeline_parallel_size={pipeline_parallel_size}"
+    )
     # Start vLLM Server
     vllm_url, vllm_process = start_vllm_server(
         tensor_parallel_size, pipeline_parallel_size
     )
-
+    vllm_client = create_openai_client(vllm_url)
     # Wait for servers to be ready
     wait_for_server_ready(vllm_url, server_type="vllm", timeout=240)
-    wait_for_server_ready(ray_url, server_type="ray", timeout=240)
     time.sleep(5)  # Buffer time for the servers to be ready
 
-    # Provide the server URLs to the test
-    yield ray_url, vllm_url, vllm_process, tensor_parallel_size, pipeline_parallel_size
+    vllm_completion_output = generate_completion(vllm_client, MODEL_ID, test_prompt)
+    vllm_chat_output = generate_chat_completion(vllm_client, MODEL_ID, test_message)
 
-    # Cleanup
-    serve.shutdown()
+    assert ray_completion_output == vllm_completion_output, (
+        f"Ray and vLLM outputs do not match with TP={tensor_parallel_size}, PP={pipeline_parallel_size}\n"
+        f"Ray output: {ray_completion_output}\n"
+        f"vLLM output: {vllm_completion_output}"
+    )
+
+    assert ray_chat_output == vllm_chat_output, (
+        f"Ray and vLLM chat outputs do not match with TP={tensor_parallel_size}, PP={pipeline_parallel_size}\n"
+        f"Ray output: {ray_chat_output}\n"
+        f"vLLM output: {vllm_chat_output}"
+    )
+
     vllm_process.terminate()
-
     for _ in range(5):
         if vllm_process.poll() is not None:
             break
         time.sleep(1)
     if vllm_process.poll() is None:
         vllm_process.kill()
-
-
-def test_llm_serve_correctness(setup_servers):
-    """Test that Ray Serve and vLLM produce the same output for the same input."""
-    ray_url, vllm_url, _, tp_size, pp_size = setup_servers
-    test_prompt = "Hello, world!"
-
-    print(
-        f"Testing with tensor_parallel_size={tp_size}, pipeline_parallel_size={pp_size}"
-    )
-
-    ray_output = generate_with_ray(test_prompt, ray_url)
-    vllm_output = generate_with_vllm(test_prompt, vllm_url)
-
-    assert ray_output == vllm_output, (
-        f"Ray and vLLM outputs do not match with TP={tp_size}, PP={pp_size}\n"
-        f"Ray output: {ray_output}\n"
-        f"vLLM output: {vllm_output}"
-    )
 
 
 if __name__ == "__main__":
