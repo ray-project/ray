@@ -17,15 +17,17 @@
 #include <gtest/gtest_prod.h>
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -52,7 +54,7 @@ class ClusterResourceManager {
 
   /// Update node resources. This happens when a node resource usage updated.
   ///
-  /// \param node_id ID of the node which resoruces need to be updated.
+  /// \param node_id ID of the node which resources need to be updated.
   /// \param resource_view_sync_message The node resource usage data.
   bool UpdateNode(scheduling::NodeID node_id,
                   const syncer::ResourceViewSyncMessage &resource_view_sync_message);
@@ -94,15 +96,18 @@ class ClusterResourceManager {
   bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
                                       const ResourceRequest &resource_request);
 
-  /// Check if we have sufficient resource to fullfill resource request for an given node.
+  /// Check if we have available resources to fullfill resource request for an given node.
   ///
   /// \param node_id: the id of the node.
   /// \param resource_request: the request we want to check.
   /// \param ignore_object_store_memory_requirement: if true, we will ignore the
   ///  require_object_store_memory in the resource_request.
-  bool HasSufficientResource(scheduling::NodeID node_id,
+  bool HasAvailableResources(scheduling::NodeID node_id,
                              const ResourceRequest &resource_request,
                              bool ignore_object_store_memory_requirement) const;
+
+  bool HasFeasibleResources(scheduling::NodeID node_id,
+                            const ResourceRequest &resource_request) const;
 
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
@@ -125,7 +130,10 @@ class ClusterResourceManager {
     return node.GetLocalView().is_draining;
   }
 
-  std::string DebugString() const;
+  /// @param max_num_nodes_to_include Max number of nodes to include in the debug string.
+  ///   If not specified, all nodes will be included.
+  std::string DebugString(
+      std::optional<size_t> max_num_nodes_to_include = std::nullopt) const;
 
   BundleLocationIndex &GetBundleLocationIndex();
 
@@ -168,7 +176,7 @@ class ClusterResourceManager {
   BundleLocationIndex bundle_location_index_;
 
   /// Timer to revert local changes to the resources periodically.
-  ray::PeriodicalRunner timer_;
+  std::shared_ptr<PeriodicalRunner> timer_;
 
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;

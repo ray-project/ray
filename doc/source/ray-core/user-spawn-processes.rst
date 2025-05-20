@@ -21,8 +21,7 @@ Note: The feature is meant to be a last resort to kill orphaned processes. It is
 User-Spawned Process Killed on Worker Exit
 ------------------------------------------
 
-In the following example, we use Ray Actor to spawn a user process. The user process is a long running process that prints "Hello, world!" every second. The user process is killed when the actor is killed.
-
+The following example uses a Ray Actor to spawn a user process. The user process is a sleep process.
 .. testcode::
 
   import ray
@@ -43,7 +42,7 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
       process = subprocess.Popen(["/bin/bash", "-c", "sleep 10000"])
       return process.pid
 
-    def suicide(self):
+    def signal_my_pid(self):
       import signal
       os.kill(os.getpid(), signal.SIGKILL)
 
@@ -53,7 +52,7 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
   pid = ray.get(actor.start.remote())
   assert psutil.pid_exists(pid)  # the subprocess running
 
-  actor.suicide.remote()  # sigkill'ed, the worker's subprocess killing no longer works
+  actor.signal_my_pid.remote()  # sigkill'ed, the worker's subprocess killing no longer works
   time.sleep(11)  # raylet kills orphans every 10s
   assert not psutil.pid_exists(pid)
 

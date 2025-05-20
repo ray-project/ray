@@ -16,12 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <iostream>
-#include <sstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
@@ -31,6 +30,7 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -49,7 +49,7 @@ using rpc::autoscaler::DrainNodeReason;
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
-/// Whenever the resouce changes, it notifies the subscriber of the change.
+/// Whenever the resource changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
 class LocalResourceManager : public syncer::ReporterInterface {
  public:
@@ -58,6 +58,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
@@ -153,9 +154,17 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms);
+  void SetLocalNodeDraining(const rpc::DrainRayletRequest &drain_request);
 
-  bool IsLocalNodeDraining() const { return is_local_node_draining_; }
+  bool IsLocalNodeDraining() const { return drain_request_.has_value(); }
+
+  /// Get the local drain request.
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return drain_request_;
+  }
+
+  /// Generate node death info from existing drain request.
+  rpc::NodeDeathInfo DeathInfoFromDrainRequest();
 
  private:
   struct ResourceUsage {
@@ -202,31 +211,36 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
 
-  absl::optional<absl::Time> GetResourceIdleTime() const;
+  std::optional<absl::Time> GetResourceIdleTime() const;
 
+  /// Get the draining deadline if node is in draining state.
+  ///
+  /// \return The draining deadline if node is in draining state, otherwise -1.
+  int64_t GetDrainingDeadline() const {
+    return drain_request_.has_value() ? drain_request_->deadline_timestamp_ms() : -1;
+  }
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
 
   /// A map storing when the resource was last idle.
-  absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
+  absl::flat_hash_map<WorkArtifact, std::optional<absl::Time>> last_idle_times_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
+  /// Function to shutdown the raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
+
   /// Subscribes to resource changes.
   std::function<void(const NodeResources &)> resource_change_subscriber_;
 
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
-  // Whether the local node is being drained or not.
-  bool is_local_node_draining_ = false;
-  // The value is the timestamp when
-  // the node will be force killed.
-  // 0 if there is no deadline.
-  int64_t local_node_draining_deadline_timestamp_ms_ = -1;
+  /// The draining request this node received.
+  std::optional<rpc::DrainRayletRequest> drain_request_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

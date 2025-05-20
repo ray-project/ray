@@ -1,7 +1,7 @@
-import abc
 from typing import Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data.block import BlockMetadata
 
 
 class AbstractOneToOne(LogicalOperator):
@@ -28,11 +28,10 @@ class AbstractOneToOne(LogicalOperator):
     def input_dependency(self) -> LogicalOperator:
         return self._input_dependencies[0]
 
-    @property
-    @abc.abstractmethod
     def can_modify_num_rows(self) -> bool:
         """Whether this operator can modify the number of rows,
         i.e. number of input rows != number of output rows."""
+        ...
 
 
 class Limit(AbstractOneToOne):
@@ -49,6 +48,30 @@ class Limit(AbstractOneToOne):
         )
         self._limit = limit
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        return BlockMetadata(
+            num_rows=self._num_rows(),
+            size_bytes=None,
+            schema=self._schema(),
+            input_files=self._input_files(),
+            exec_stats=None,
+        )
+
+    def _schema(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata().schema
+
+    def _num_rows(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        input_rows = self._input_dependencies[0].aggregate_output_metadata().num_rows
+        if input_rows is not None:
+            return min(input_rows, self._limit)
+        else:
+            return None
+
+    def _input_files(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata().input_files

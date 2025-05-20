@@ -11,6 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 D. Hafner's (author) original code repo (for JAX):
 https://github.com/danijar/dreamerv3
 """
+
 import unittest
 
 import gymnasium as gym
@@ -18,9 +19,8 @@ import numpy as np
 
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.numpy import one_hot
-from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 
 
@@ -39,6 +39,8 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
+            .framework(eager_tracing=False)
+            .env_runners(num_env_runners=2)
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
@@ -49,86 +51,78 @@ class TestDreamerV3(unittest.TestCase):
                 symlog_obs=True,
                 use_float16=False,
             )
-            .resources(
-                num_learner_workers=2,  # Try with 2 Learners.
-                num_cpus_per_learner_worker=1,
-                num_gpus_per_learner_worker=0,
+            .learners(
+                num_learners=2,  # Try with 2 Learners.
+                num_cpus_per_learner=1,
+                num_gpus_per_learner=0,
             )
         )
 
-        # TODO (sven): Add a `get_model_config` utility to AlgorithmConfig
-        #  that - for now - merges the user provided model_dict (which only
-        #  contains settings that only affect the model, e.g. model_size)
-        #  with the AlgorithmConfig-wide settings that are relevant for the model
-        #  (e.g. `batch_size_B`).
-        # config.get_model_config()
+        num_iterations = 3
 
-        num_iterations = 2
+        for env in [
+            "FrozenLake-v1",
+            "CartPole-v1",
+            "ale_py:ALE/MsPacman-v5",
+            "Pendulum-v1",
+        ]:
+            print("Env={}".format(env))
+            # Add one-hot observations for FrozenLake env.
+            if env == "FrozenLake-v1":
 
-        for _ in framework_iterator(config, frameworks="tf2"):
-            for env in [
-                "FrozenLake-v1",
-                "CartPole-v1",
-                "ALE/MsPacman-v5",
-                "Pendulum-v1",
-            ]:
-                print("Env={}".format(env))
-                # Add one-hot observations for FrozenLake env.
-                if env == "FrozenLake-v1":
-
-                    def env_creator(ctx):
-                        import gymnasium as gym
-                        from ray.rllib.algorithms.dreamerv3.utils.env_runner import (
-                            OneHot,
-                        )
-
-                        return OneHot(gym.make("FrozenLake-v1"))
-
-                    tune.register_env("frozen-lake-one-hot", env_creator)
-                    env = "frozen-lake-one-hot"
-
-                config.environment(env)
-                algo = config.build()
-                obs_space = algo.workers.local_worker().env.single_observation_space
-                act_space = algo.workers.local_worker().env.single_action_space
-                rl_module = algo.workers.local_worker().module
-
-                for i in range(num_iterations):
-                    results = algo.train()
-                    print(results)
-                # Test dream trajectory w/ recreated observations.
-                sample = algo.replay_buffer.sample()
-                dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
-                    start_states=rl_module.dreamer_model.get_initial_state(),
-                    timesteps_burn_in=5,
-                    timesteps_H=45,
-                    observations=sample["obs"][:1],  # B=1
-                    actions=(
-                        one_hot(
-                            sample["actions"],
-                            depth=act_space.n,
-                        )
-                        if isinstance(act_space, gym.spaces.Discrete)
-                        else sample["actions"]
-                    )[
-                        :1
-                    ],  # B=1
-                )
-                self.assertTrue(
-                    dream["actions_dreamed_t0_to_H_BxT"].shape
-                    == (46, 1)
-                    + (
-                        (act_space.n,)
-                        if isinstance(act_space, gym.spaces.Discrete)
-                        else tuple(act_space.shape)
+                def env_creator(ctx):
+                    import gymnasium as gym
+                    from ray.rllib.algorithms.dreamerv3.utils.env_runner import (
+                        OneHot,
                     )
+
+                    return OneHot(gym.make("FrozenLake-v1"))
+
+                tune.register_env("frozen-lake-one-hot", env_creator)
+                env = "frozen-lake-one-hot"
+
+            config.environment(env)
+            algo = config.build()
+            obs_space = algo.env_runner.env.single_observation_space
+            act_space = algo.env_runner.env.single_action_space
+            rl_module = algo.env_runner.module
+
+            for i in range(num_iterations):
+                results = algo.train()
+                print(results)
+            # Test dream trajectory w/ recreated observations.
+            sample = algo.replay_buffer.sample()
+            dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
+                start_states=rl_module.dreamer_model.get_initial_state(),
+                timesteps_burn_in=5,
+                timesteps_H=45,
+                observations=sample["obs"][:1],  # B=1
+                actions=(
+                    one_hot(
+                        sample["actions"],
+                        depth=act_space.n,
+                    )
+                    if isinstance(act_space, gym.spaces.Discrete)
+                    else sample["actions"]
+                )[
+                    :1
+                ],  # B=1
+            )
+            self.assertTrue(
+                dream["actions_dreamed_t0_to_H_BxT"].shape
+                == (46, 1)
+                + (
+                    (act_space.n,)
+                    if isinstance(act_space, gym.spaces.Discrete)
+                    else tuple(act_space.shape)
                 )
-                self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
-                self.assertTrue(
-                    dream["observations_dreamed_t0_to_H_BxT"].shape
-                    == [46, 1] + list(obs_space.shape)
-                )
-                algo.stop()
+            )
+            self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
+            self.assertTrue(
+                dream["observations_dreamed_t0_to_H_BxT"].shape
+                == [46, 1] + list(obs_space.shape)
+            )
+            algo.stop()
 
     def test_dreamerv3_dreamer_model_sizes(self):
         """Tests, whether the different model sizes match the ones reported in [1]."""
@@ -191,56 +185,54 @@ class TestDreamerV3(unittest.TestCase):
             symlog_obs=True,
         )
 
-        for _ in framework_iterator(config, frameworks="tf2"):
-            # Check all model_sizes described in the paper ([1]) on matching the number
-            # of parameters to RLlib's implementation.
-            for model_size in ["XS", "S", "M", "L", "XL"]:
-                config.model_size = model_size
-                config.training(model={"model_size": model_size})
+        # Check all model_sizes described in the paper ([1]) on matching the number
+        # of parameters to RLlib's implementation.
+        for model_size in ["XS", "S", "M", "L", "XL"]:
+            config.model_size = model_size
 
-                # Atari and CartPole spaces.
-                for obs_space, num_actions, env_name in [
-                    (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
-                    (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
-                ]:
-                    print(f"Testing model_size={model_size} on env-type: {env_name} ..")
-                    config.environment(
-                        observation_space=obs_space,
-                        action_space=gym.spaces.Discrete(num_actions),
-                    )
+            # Atari and CartPole spaces.
+            for obs_space, num_actions, env_name in [
+                (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
+                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+            ]:
+                print(f"Testing model_size={model_size} on env-type: {env_name} ..")
+                config.environment(
+                    observation_space=obs_space,
+                    action_space=gym.spaces.Discrete(num_actions),
+                )
 
-                    # Create our RLModule to compute actions with.
-                    policy_dict, _ = config.get_multi_agent_setup()
-                    module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
-                    rl_module = module_spec.build()[DEFAULT_POLICY_ID]
+                # Create our RLModule to compute actions with.
+                policy_dict, _ = config.get_multi_agent_setup()
+                module_spec = config.get_multi_rl_module_spec(policy_dict=policy_dict)
+                rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
-                    # Count the generated RLModule's parameters and compare to the
-                    # paper's reported numbers ([1] and [3]).
-                    num_params_world_model = sum(
-                        np.prod(v.shape.as_list())
-                        for v in rl_module.world_model.trainable_variables
-                    )
-                    self.assertEqual(
-                        num_params_world_model,
-                        expected_num_params_world_model[f"{model_size}_{env_name}"],
-                    )
-                    num_params_actor = sum(
-                        np.prod(v.shape.as_list())
-                        for v in rl_module.actor.trainable_variables
-                    )
-                    self.assertEqual(
-                        num_params_actor,
-                        expected_num_params_actor[f"{model_size}_{env_name}"],
-                    )
-                    num_params_critic = sum(
-                        np.prod(v.shape.as_list())
-                        for v in rl_module.critic.trainable_variables
-                    )
-                    self.assertEqual(
-                        num_params_critic,
-                        expected_num_params_critic[f"{model_size}_{env_name}"],
-                    )
-                    print("\tok")
+                # Count the generated RLModule's parameters and compare to the
+                # paper's reported numbers ([1] and [3]).
+                num_params_world_model = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.world_model.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_world_model,
+                    expected_num_params_world_model[f"{model_size}_{env_name}"],
+                )
+                num_params_actor = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.actor.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_actor,
+                    expected_num_params_actor[f"{model_size}_{env_name}"],
+                )
+                num_params_critic = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.critic.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_critic,
+                    expected_num_params_critic[f"{model_size}_{env_name}"],
+                )
+                print("\tok")
 
 
 if __name__ == "__main__":

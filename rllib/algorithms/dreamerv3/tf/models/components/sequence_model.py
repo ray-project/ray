@@ -53,7 +53,7 @@ class SequenceModel(tf.keras.Model):
         Args:
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the number of GRU units used.
-            action_space: The action space the our environment used.
+            action_space: The action space of the environment used.
             num_gru_units: Overrides the number of GRU units (dimension of the h-state).
                 If None, use the value given through `model_size`
                 (see [1] Appendix B).
@@ -76,7 +76,6 @@ class SequenceModel(tf.keras.Model):
             num_gru_units,
             return_sequences=False,
             return_state=False,
-            time_major=True,
             # Note: Changing these activations is most likely a bad idea!
             # In experiments, setting one of both of them to silu deteriorated
             # performance significantly.
@@ -139,7 +138,7 @@ class SequenceModel(tf.keras.Model):
         )
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
-        # Pass through (time-major) GRU.
-        h_next = self.gru_unit(tf.expand_dims(out, axis=0), initial_state=h)
+        # Pass through (batch-major) GRU (expand axis=1 as the time axis).
+        h_next = self.gru_unit(tf.expand_dims(out, axis=1), initial_state=h)
         # Return the GRU's output (the next h-state).
         return h_next

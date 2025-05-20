@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <atomic>
-#include <boost/fiber/all.hpp>
 
 #include "gtest/gtest.h"
 #include "ray/core_worker/fiber.h"
@@ -91,6 +91,14 @@ TEST(FiberStateTest, RespectsConcurrencyLimit) {
   total_counter.wait_for(100);
   EXPECT_EQ(counter.max_concurrency_, 2);
 
+  fiber_state.Stop();
+  fiber_state.Join();
+}
+
+TEST(FiberStateTest, DoubleStopJoin) {
+  FiberState fiber_state(2);
+  fiber_state.Stop();
+  fiber_state.Join();
   fiber_state.Stop();
   fiber_state.Join();
 }

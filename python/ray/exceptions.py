@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 from traceback import format_exception
 from typing import Optional, Union
 
@@ -12,11 +14,14 @@ from ray.core.generated.common_pb2 import (
     ActorDiedErrorContext,
     Address,
     Language,
+    NodeDeathInfo,
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import setproctitle
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -113,10 +118,6 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         import ray
 
-        # BaseException implements a __reduce__ method that returns
-        # a tuple with the type and the value of self.args.
-        # https://stackoverflow.com/a/49715949/2213289
-        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
@@ -127,22 +128,42 @@ class RayTaskError(RayError):
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
         self._actor_id = actor_id
-        # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
+
+        try:
+            pickle.dumps(cause)
+        except (pickle.PicklingError, TypeError) as e:
+            err_msg = (
+                "The original cause of the RayTaskError"
+                f" ({self.cause.__class__}) isn't serializable: {e}."
+                " Overwriting the cause to a RayError."
+            )
+            logger.warning(err_msg)
+            self.cause = RayError(err_msg)
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
+
         assert traceback_str is not None
 
-    def as_instanceof_cause(self):
-        """Returns an exception that is an instance of the cause's class.
+    def make_dual_exception_instance(self) -> "RayTaskError":
+        """Makes a object instance that inherits from both RayTaskError and the type of
+        `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        # For normal user Exceptions, we subclass from both
+        # RayTaskError and the user exception. For ExceptionGroup,
+        # we special handle it because it has a different __new__()
+        # signature from Exception.
+        # Ref: https://docs.python.org/3/library/exceptions.html#exception-groups
+        if sys.version_info >= (3, 11) and isinstance(
+            self.cause, ExceptionGroup  # noqa: F821
+        ):
+            return self._make_exceptiongroup_dual_exception_instance()
+        return self._make_normal_dual_exception_instance()
 
-        The returned exception will inherit from both RayTaskError and the
-        cause class and will contain all of the attributes of the cause
-        exception.
-        """
-
+    def _make_normal_dual_exception_instance(self) -> "RayTaskError":
         cause_cls = self.cause.__class__
-        if issubclass(RayTaskError, cause_cls):
-            return self  # already satisfied
-
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):
@@ -164,6 +185,58 @@ class RayTaskError(RayError):
         cls.__qualname__ = name
 
         return cls(self.cause)
+
+    def _make_exceptiongroup_dual_exception_instance(self) -> "RayTaskError":
+        cause_cls = self.cause.__class__
+        error_msg = str(self)
+
+        class cls(RayTaskError, cause_cls):
+            def __new__(cls, cause):
+                self = super().__new__(cls, cause.message, cause.exceptions)
+                return self
+
+            def __init__(self, cause):
+                self.cause = cause
+                # BaseException implements a __reduce__ method that returns
+                # a tuple with the type and the value of self.args.
+                # https://stackoverflow.com/a/49715949/2213289
+                self.args = (cause,)
+
+            def __getattr__(self, name):
+                return getattr(self.cause, name)
+
+            def __str__(self):
+                return error_msg
+
+        name = f"RayTaskError({cause_cls.__name__})"
+        cls.__name__ = name
+        cls.__qualname__ = name
+
+        return cls(self.cause)
+
+    def as_instanceof_cause(self):
+        """Returns an exception that's an instance of the cause's class.
+
+        The returned exception inherits from both RayTaskError and the
+        cause class and contains all of the attributes of the cause
+        exception.
+
+        If the cause class can't be subclassed, issues a warning and returns `self`.
+        """
+        cause_cls = self.cause.__class__
+        if issubclass(RayTaskError, cause_cls):
+            return self  # already satisfied
+
+        try:
+            return self.make_dual_exception_instance()
+        except TypeError as e:
+            logger.warning(
+                f"User exception type {type(self.cause)} in RayTaskError can't"
+                " be subclassed! This exception is raised as"
+                " RayTaskError only. You can use `ray_task_error.cause` to"
+                f" access the user exception. Failure in subclassing: {e}"
+            )
+            return self
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -300,14 +373,16 @@ class ActorDiedError(RayActorError):
         cause: The cause of the actor error. `RayTaskError` type means
             the actor has died because of an exception within `__init__`.
             `ActorDiedErrorContext` means the actor has died because of
-            unexepected system error. None means the cause is not known.
-            Theoretically, this should not happen,
-            but it is there as a safety check.
+            an unexpected system error. None means the cause isn't known.
+            Theoretically, this shouldn't happen,
+            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
 
-    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
+    def __init__(
+        self, cause: Optional[Union[RayTaskError, ActorDiedErrorContext]] = None
+    ):
         """
         Construct a RayActorError by building the arguments.
         """
@@ -353,6 +428,12 @@ class ActorDiedError(RayActorError):
                 error_msg_lines.append(
                     "\tThe actor's node was killed by a spot preemption."
                 )
+            if (
+                cause.node_death_info
+                and cause.node_death_info.reason
+                == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
+            ):
+                preempted = True
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
@@ -793,6 +874,38 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@DeveloperAPI
+class OufOfBandObjectRefSerializationException(RayError):
+    """Raised when an `ray.ObjectRef` is out of band serialized by
+    `ray.cloudpickle`. It is an anti pattern.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelError(RaySystemError):
+    """Indicates that Ray encountered a system error related
+    to ray.experimental.channel.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelTimeoutError(RayChannelError, TimeoutError):
+    """Raised when the Compiled Graph channel operation times out."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayCgraphCapacityExceeded(RaySystemError):
+    """Raised when the Compiled Graph channel's buffer is at max capacity"""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -818,4 +931,8 @@ RAY_EXCEPTION_TYPES = [
     ActorDiedError,
     ActorUnschedulableError,
     ActorUnavailableError,
+    RayChannelError,
+    RayChannelTimeoutError,
+    OufOfBandObjectRefSerializationException,
+    RayCgraphCapacityExceeded,
 ]

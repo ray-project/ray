@@ -8,8 +8,7 @@ This currently expects to work for minimal installs.
 import pytest
 import logging
 from ray._private.utils import (
-    get_or_create_event_loop,
-    pasre_pg_formatted_resources_to_original,
+    parse_pg_formatted_resources_to_original,
     try_import_each_module,
     get_current_node_cpu_model_name,
 )
@@ -17,32 +16,6 @@ from unittest.mock import patch, mock_open
 import sys
 
 logger = logging.getLogger(__name__)
-
-
-def test_get_or_create_event_loop_existing_event_loop():
-    import asyncio
-    import warnings
-
-    # With running event loop
-    expect_loop = asyncio.new_event_loop()
-    expect_loop.set_debug(True)
-    asyncio.set_event_loop(expect_loop)
-    with warnings.catch_warnings():
-        # Assert no deprecating warnings raised for python>=3.10
-        warnings.simplefilter("error")
-        actual_loop = get_or_create_event_loop()
-
-        assert actual_loop == expect_loop, "Loop should not be recreated."
-
-
-def test_get_or_create_event_loop_new_event_loop():
-    import warnings
-
-    with warnings.catch_warnings():
-        # Assert no deprecating warnings raised for python>=3.10
-        warnings.simplefilter("error")
-        loop = get_or_create_event_loop()
-        assert loop is not None, "new event loop should be created."
 
 
 def test_try_import_each_module():
@@ -81,13 +54,13 @@ def test_try_import_each_module():
             )
 
 
-def test_pasre_pg_formatted_resources():
-    out = pasre_pg_formatted_resources_to_original(
+def test_parse_pg_formatted_resources():
+    out = parse_pg_formatted_resources_to_original(
         {"CPU_group_e765be422c439de2cd263c5d9d1701000000": 1, "memory": 100}
     )
     assert out == {"CPU": 1, "memory": 100}
 
-    out = pasre_pg_formatted_resources_to_original(
+    out = parse_pg_formatted_resources_to_original(
         {
             "memory_group_4da1c24ac25bec85bc817b258b5201000000": 100.0,
             "memory_group_0_4da1c24ac25bec85bc817b258b5201000000": 100.0,

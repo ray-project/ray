@@ -3,13 +3,13 @@ import shutil
 import tempfile
 import unittest
 from collections import namedtuple
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from mlflow.tracking import MlflowClient
 
 from ray._private.dict import flatten_dict
-from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup_mlflow
 
 
 class MockTrial(

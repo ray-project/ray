@@ -544,7 +544,7 @@ def format_pg(pg):
 
 def parse_placement_group_resource_str(
     placement_group_resource_str: str,
-) -> Tuple[str, Optional[str]]:
+) -> Tuple[str, Optional[str], bool]:
     """Parse placement group resource in the form of following 3 cases:
     {resource_name}_group_{bundle_id}_{group_name};
     -> This case is ignored as it is duplicated to the case below.
@@ -724,6 +724,36 @@ def format_resource_demand_summary(
     return demand_lines
 
 
+def get_constraint_report(request_demand: List[DictCount]):
+    """Returns a formatted string describing the resource constraints from request_resources().
+
+    Args:
+        request_demand: List of tuples containing resource bundle dictionaries and counts
+            from request_resources() calls.
+
+    Returns:
+        String containing the formatted constraints report, either listing each constraint
+        and count or indicating no constraints exist.
+
+    Example:
+        >>> request_demand = [
+        ...     ({"CPU": 4}, 2),
+        ...     ({"GPU": 1}, 1)
+        ... ]
+        >>> get_constraint_report(request_demand)
+        " {'CPU': 4}: 2 from request_resources()\\n {'GPU': 1}: 1 from request_resources()"
+    """
+    constraint_lines = []
+    for bundle, count in request_demand:
+        line = f" {bundle}: {count} from request_resources()"
+        constraint_lines.append(line)
+    if len(constraint_lines) > 0:
+        constraints_report = "\n".join(constraint_lines)
+    else:
+        constraints_report = " (no request_resources() constraints)"
+    return constraints_report
+
+
 def get_demand_report(lm_summary: LoadMetricsSummary):
     demand_lines = []
     if lm_summary.resource_demand:
@@ -732,9 +762,6 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
         pg, count = entry
         pg_str = format_pg(pg)
         line = f" {pg_str}: {count}+ pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count}+ from request_resources()"
         demand_lines.append(line)
     if len(demand_lines) > 0:
         demand_report = "\n".join(demand_lines)
@@ -893,6 +920,7 @@ def format_info_string(
         failure_report += " (no failures)"
 
     usage_report = get_usage_report(lm_summary, verbose)
+    constraints_report = get_constraint_report(lm_summary.request_demand)
     demand_report = get_demand_report(lm_summary)
     formatted_output = f"""{header}
 Node status
@@ -912,9 +940,11 @@ Pending:
 
 Resources
 {separator}
-{"Total " if verbose else ""}Usage:
+Total Usage:
 {usage_report}
-{"Total " if verbose else ""}Demands:
+Total Constraints:
+{constraints_report}
+Total Demands:
 {demand_report}"""
 
     if verbose:

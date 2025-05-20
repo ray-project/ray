@@ -13,6 +13,8 @@ NODE_KIND_UNMANAGED = "unmanaged"
 # Tag for user defined node types (e.g., m4xl_spot). This is used for multi
 # node type clusters.
 TAG_RAY_USER_NODE_TYPE = "ray-user-node-type"
+# Tag for index of replica node belongs to. Used for multi-host worker groups.
+TAG_RAY_REPLICA_INDEX = "ray-replica-index"
 # Tag for autofilled node types for legacy cluster yamls without multi
 # node type defined in the cluster configs.
 NODE_TYPE_LEGACY_HEAD = "ray-legacy-head-node-type"

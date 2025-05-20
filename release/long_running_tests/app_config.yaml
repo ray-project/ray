@@ -13,7 +13,7 @@ python:
     - ale-py==0.7.5
     - pytest
     - tensorflow
-    # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable, so we built it for py3 and 
+    # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable, so we built it for py3 and
     # use that instead. This wheel was tested for python 3.7, 3.8, and 3.9.
     - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
   conda_packages: []

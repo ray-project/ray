@@ -1,4 +1,5 @@
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -24,12 +25,14 @@ def _stub_test(val: dict) -> Test:
     return test
 
 
-def test_get_step():
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step(mock):
     step = get_step(_stub_test({}), run_id=2)
     assert step["label"] == "test (None) (2)"
 
 
-def test_get_step_for_test_group():
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_for_test_group(mock):
     grouped_tests = {
         "group1": [
             (_stub_test({"name": "test1", "repeated_run": 3}), False),

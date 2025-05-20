@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 from ray_release.logger import logger
+from ray_release.configs.global_config import get_global_config
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -32,6 +33,31 @@ ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
 ]
+
+
+def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
+    # We support by default reading from the branch bucket only, since most of the use
+    # cases are on branch pipelines. Changing the default flag to read from the bucket
+    # according to the current pipeline
+    if allow_pr_bucket:
+        return get_write_state_machine_aws_bucket()
+    return get_global_config()["state_machine_branch_aws_bucket"]
+
+
+def get_write_state_machine_aws_bucket() -> str:
+    # We support different buckets for writing test result data; one for pr and one for
+    # branch. This is because pr and branch pipeline have different permissions, and we
+    # want data on branch pipeline being protected.
+    pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
+    pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+    branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
+    assert pipeline_id in pr_pipelines + branch_pipelines, (
+        "Test state machine is only supported for branch or pr pipeline, "
+        f"{pipeline_id} is given"
+    )
+    if pipeline_id in pr_pipelines:
+        return get_global_config()["state_machine_pr_aws_bucket"]
+    return get_global_config()["state_machine_branch_aws_bucket"]
 
 
 def deep_update(d, u) -> Dict:

@@ -21,6 +21,12 @@ class WindowsBuilderContainer(WindowsContainer):
     def run(self) -> None:
         cmds = [
             "powershell ci/pipeline/fix-windows-container-networking.ps1",
+            # fix symlink issue across windows and linux
+            "git config --global core.symlinks true",
+            "git config --global core.autocrlf false",
+            "git clone . ray",
+            "cd ray",
+            # build wheel
             f"export BUILD_ONE_PYTHON_ONLY={self.python_version}",
             "./python/build-wheel-windows.sh",
         ]

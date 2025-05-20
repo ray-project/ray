@@ -15,6 +15,10 @@
 #include "ray/raylet/dependency_manager.h"
 
 #include <list>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -82,7 +86,7 @@ class DependencyManagerTest : public ::testing::Test {
     ASSERT_TRUE(dependency_manager_.queued_task_requests_.empty());
     ASSERT_TRUE(dependency_manager_.get_requests_.empty());
     ASSERT_TRUE(dependency_manager_.wait_requests_.empty());
-    ASSERT_TRUE(dependency_manager_.waiting_tasks_counter_.Total() == 0);
+    ASSERT_EQ(dependency_manager_.waiting_tasks_counter_.Total(), 0);
     // All pull requests are canceled.
     ASSERT_TRUE(object_manager_mock_.active_task_requests.empty());
     ASSERT_TRUE(object_manager_mock_.active_get_requests.empty());
@@ -362,6 +366,29 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
   dependency_manager_.RemoveTaskDependencies(task_id2);
 
+  AssertNoLeaks();
+}
+
+/// Test that RemoveTaskDependencies is called before objects
+/// becoming local (e.g. the task is cancelled).
+TEST_F(DependencyManagerTest, TestRemoveTaskDependenciesBeforeLocal) {
+  int num_arguments = 3;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < num_arguments; i++) {
+    arguments.push_back(ObjectID::FromRandom());
+  }
+  TaskID task_id = RandomTaskId();
+  bool ready = dependency_manager_.RequestTaskDependencies(
+      task_id, ObjectIdsToRefs(arguments), {"foo", false});
+  ASSERT_FALSE(ready);
+  ASSERT_EQ(NumWaiting("bar"), 0);
+  ASSERT_EQ(NumWaiting("foo"), 1);
+  ASSERT_EQ(NumWaitingTotal(), 1);
+
+  // The task is cancelled
+  dependency_manager_.RemoveTaskDependencies(task_id);
+  ASSERT_EQ(NumWaiting("foo"), 0);
+  ASSERT_EQ(NumWaitingTotal(), 0);
   AssertNoLeaks();
 }
 

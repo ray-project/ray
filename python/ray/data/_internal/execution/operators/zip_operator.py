@@ -1,5 +1,5 @@
 import itertools
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -13,7 +13,9 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
+    to_stats,
 )
+from ray.data.context import DataContext
 
 
 class ZipOperator(PhysicalOperator):
@@ -28,6 +30,7 @@ class ZipOperator(PhysicalOperator):
         self,
         left_input_op: PhysicalOperator,
         right_input_op: PhysicalOperator,
+        data_context: DataContext,
     ):
         """Create a ZipOperator.
 
@@ -40,10 +43,13 @@ class ZipOperator(PhysicalOperator):
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(
-            "Zip", [left_input_op, right_input_op], target_max_block_size=None
+            "Zip",
+            [left_input_op, right_input_op],
+            data_context,
+            target_max_block_size=None,
         )
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
         right_num_outputs = self.input_dependencies[1].num_outputs_total()
         if left_num_outputs is not None and right_num_outputs is not None:
@@ -53,30 +59,55 @@ class ZipOperator(PhysicalOperator):
         else:
             return right_num_outputs
 
+    def num_output_rows_total(self) -> Optional[int]:
+        left_num_rows = self.input_dependencies[0].num_output_rows_total()
+        right_num_rows = self.input_dependencies[1].num_output_rows_total()
+        if left_num_rows is not None and right_num_rows is not None:
+            return max(left_num_rows, right_num_rows)
+        elif left_num_rows is not None:
+            return left_num_rows
+        else:
+            return right_num_rows
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0 or input_index == 1, input_index
         if input_index == 0:
             self._left_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
         else:
             self._right_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
         self._output_buffer, self._stats = self._zip(
             self._left_buffer, self._right_buffer
         )
-        self._left_buffer.clear()
-        self._right_buffer.clear()
+
+        while self._left_buffer:
+            refs = self._left_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
+        while self._right_buffer:
+            refs = self._right_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
+        for ref in self._output_buffer:
+            self._metrics.on_output_queued(ref)
+
         super().all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        return self._output_buffer.pop(0)
+        refs = self._output_buffer.pop(0)
+        self._metrics.on_output_dequeued(refs)
+        return refs
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def implements_accurate_memory_accounting(self):
+        return True
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]
@@ -190,7 +221,7 @@ class ZipOperator(PhysicalOperator):
                     owns_blocks=input_owned,
                 )
             )
-        stats = {self._name: output_metadata}
+        stats = {self._name: to_stats(output_metadata)}
 
         # Clean up inputs.
         for ref in left_input:
@@ -240,7 +271,7 @@ def _zip_one_block(
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
-    return result, br.get_metadata(input_files=[], exec_stats=stats.build())
+    return result, br.get_metadata(exec_stats=stats.build())
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

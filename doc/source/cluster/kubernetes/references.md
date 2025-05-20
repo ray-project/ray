@@ -10,8 +10,13 @@ refer to the [API reference][APIReference].
 ## KubeRay API compatibility and guarantees
 
 v1 APIs in the KubeRay project are stable and suitable for production environments.
-While KubeRay maintainers strive to maintain backward compatibility, they reserve the right to deprecate API fields.
-They will clearly communicate the deprecation status, and may remove the APIs after a minimum of two minor releases.
-This policy allows for the necessary evolution of the API while providing a reasonable transition period for users.
+Fields in the v1 APIs will never be removed to maintain compatibility.
+Future major versions of the API (i.e. v2) may have breaking changes and fields removed from v1.
+
+However, KubeRay maintainers preserve the right to mark fields as deprecated and remove
+functionality associated with deprecated fields after a minimum of two minor releases.
+In addition, some definitions of the API may see small changes in behavior. For example,
+the definition of a "ready" or "unhealthy" RayCluster could change to better handle new
+failure scenarios.
 
 [APIReference]: https://ray-project.github.io/kuberay/reference/api/

@@ -9,7 +9,7 @@ When running a Tune experiment, it can be challenging to determine the ideal dur
 For instance, one may want to set up the experiment to stop under the following circumstances:
 
 1. Set up an experiment to end after ``N`` epochs or when the reported evaluation score surpasses a particular threshold, whichever occurs first.
-2. Stop the experiment after ``T``` seconds.
+2. Stop the experiment after ``T`` seconds.
 3. Terminate when trials encounter runtime errors.
 4. Stop underperforming trials early by utilizing Tune's early-stopping schedulers.
 
@@ -123,7 +123,7 @@ You can use a dictionary stopping criteria as described above, using the ``time_
 
 .. note::
 
-    You need to include some intermediate reporting via :meth:`train.report <ray.train.report>`
+    You need to include some intermediate reporting via :meth:`tune.report <ray.tune.report>`
     if using the :ref:`Function Trainable API <tune-function-api>`.
     Each report will automatically record the trial's ``time_total_s``, which allows Tune to stop based on time as a metric.
 
@@ -143,14 +143,14 @@ Use the ``TuneConfig(time_budget_s)`` configuration to tell Tune to stop the exp
 
 .. note::
 
-    You need to include some intermediate reporting via :meth:`train.report <ray.train.report>`
+    You need to include some intermediate reporting via :meth:`tune.report <ray.tune.report>`
     if using the :ref:`Function Trainable API <tune-function-api>`, for the same reason as above.
 
 
 Stop on trial failures
 ----------------------
 
-In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the :class:`ray.train.FailureConfig` class.
+In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the :class:`ray.tune.FailureConfig` class.
 
 With this configuration, if any trial encounters an error, the entire experiment will stop immediately.
 

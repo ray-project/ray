@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-// Serivce that is only used to test GrpcServer
+// Service that is only used to test GrpcServer
 message PingRequest {
   bool no_reply = 1;
 }

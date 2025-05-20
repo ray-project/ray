@@ -1,10 +1,10 @@
-from filelock import FileLock
 import hashlib
 import os
 from pathlib import Path
 
-import ray
+from filelock import FileLock
 
+import ray
 
 RAY_LOCKFILE_DIR = "_ray_lockfiles"
 

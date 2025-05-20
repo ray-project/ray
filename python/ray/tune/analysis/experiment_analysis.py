@@ -2,34 +2,24 @@ import copy
 import io
 import json
 import logging
-from numbers import Number
 import os
+from numbers import Number
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pyarrow.fs
 
-from ray.util.annotations import PublicAPI
-from ray.air.constants import (
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-    TRAINING_ITERATION,
-)
-from ray.train import Checkpoint
-from ray.train._internal.storage import (
-    _exists_at_fs_path,
-    get_fs_and_path,
-)
+from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE, TRAINING_ITERATION
+from ray.tune import Checkpoint
+from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-from ray.tune.result import (
-    DEFAULT_METRIC,
-    CONFIG_PREFIX,
-)
+from ray.tune.result import CONFIG_PREFIX, DEFAULT_METRIC
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
-from ray.tune.utils.util import is_nan_or_inf, is_nan, unflattened_lookup
+from ray.tune.utils.util import is_nan, is_nan_or_inf, unflattened_lookup
+from ray.util.annotations import PublicAPI
 
 try:
     import pandas as pd
@@ -266,7 +256,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.train.Checkpoint>` object.
+            :class:`Checkpoint <ray.tune.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -461,7 +451,7 @@ class ExperimentAnalysis:
             mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            A :class:`Checkpoint <ray.train.Checkpoint>` object
+            A :class:`Checkpoint <ray.tune.Checkpoint>` object
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)

@@ -1,0 +1,23 @@
+group: bisect
+depends_on:
+  - forge
+steps:
+  - name: macos test
+    if: build.env("RAYCI_TEST_TYPE") != null && build.env("RAYCI_TEST_TYPE") == "macos_test"
+    commands:
+      - if [[ "$(buildkite-agent meta-data get test-type)" != "macos_test" ]]; then exit 0; fi
+      - RAYCI_BISECT_RUN=1 ./ci/ray_ci/macos/macos_ci.sh bisect "$(buildkite-agent meta-data get test-name)"
+          "$(buildkite-agent meta-data get passing-commit)" "$(buildkite-agent meta-data get failing-commit)"
+    mount_buildkite_agent: true
+    job_env: MACOS
+    instance_type: macos
+    priority: 10
+
+  - name: linux or windows test
+    if: build.env("RAYCI_TEST_TYPE") != null && (build.env("RAYCI_TEST_TYPE") == "linux_test" || build.env("RAYCI_TEST_TYPE") == "windows_test")
+    commands:
+      - if [[ "$(buildkite-agent meta-data get test-type)" != "linux_test" && "$(buildkite-agent meta-data get test-type)" != "windows_test" ]]; then exit 0; fi
+      - bazel run //ci/ray_ci/bisect:bisect_test "$(buildkite-agent meta-data get test-name)"
+          "$(buildkite-agent meta-data get passing-commit)" "$(buildkite-agent meta-data get failing-commit)"
+    mount_buildkite_agent: true
+    priority: 10

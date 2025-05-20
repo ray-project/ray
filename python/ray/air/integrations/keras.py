@@ -110,7 +110,7 @@ class ReportCheckpointCallback(_Callback):
         in ``report_metrics_on``.
 
     Example:
-        .. code-block: python
+        .. code-block:: python
 
             ############# Using it in TrainSession ###############
             from ray.air.integrations.keras import ReportCheckpointCallback

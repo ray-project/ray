@@ -1,5 +1,6 @@
-import pytest
 from typing import Optional, Type
+
+import pytest
 
 from ray.air.execution._internal.barrier import Barrier
 

@@ -1,7 +1,7 @@
 .. _working_with_tensors:
 
-Working with Tensors
-====================
+Working with Tensors / NumPy
+============================
 
 N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide
 describes the limitations and best practices of working with such data.

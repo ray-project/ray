@@ -1,14 +1,20 @@
-from typing import Any, Dict, List, Optional
-
-import numpy as np
 import copy
 import logging
 from functools import partial
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 # Use cloudpickle instead of pickle to make lambda funcs in HyperOpt pickleable
 from ray import cloudpickle
-
+from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -18,12 +24,6 @@ from ray.tune.search.sample import (
     Normal,
     Quantized,
     Uniform,
-)
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
 )
 from ray.tune.search.variant_generator import assign_value, parse_spec_vars
 from ray.tune.utils import flatten_dict
@@ -37,7 +37,6 @@ except ImportError:
     hpo = None
     Apply = None
 
-from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
@@ -522,17 +521,25 @@ class HyperOptSearch(Searcher):
                     return hpo.hp.choice(
                         par,
                         [
-                            HyperOptSearch.convert_search_space(category, prefix=par)
-                            if isinstance(category, dict)
-                            else HyperOptSearch.convert_search_space(
-                                dict(enumerate(category)), prefix=f"{par}/{i}"
+                            (
+                                HyperOptSearch.convert_search_space(
+                                    category, prefix=par
+                                )
+                                if isinstance(category, dict)
+                                else (
+                                    HyperOptSearch.convert_search_space(
+                                        dict(enumerate(category)), prefix=f"{par}/{i}"
+                                    )
+                                    if isinstance(category, list)
+                                    and len(category) > 0
+                                    and isinstance(category[0], Domain)
+                                    else (
+                                        resolve_value(f"{par}/{i}", category)
+                                        if isinstance(category, Domain)
+                                        else category
+                                    )
+                                )
                             )
-                            if isinstance(category, list)
-                            and len(category) > 0
-                            and isinstance(category[0], Domain)
-                            else resolve_value(f"{par}/{i}", category)
-                            if isinstance(category, Domain)
-                            else category
                             for i, category in enumerate(domain.categories)
                         ],
                     )

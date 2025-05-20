@@ -1,15 +1,16 @@
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 import sklearn.datasets
 import sklearn.metrics
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+from sklearn.model_selection import train_test_split
 
 import ray
-from ray import train, tune
-from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
+from ray import tune
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+from ray.tune.schedulers import ASHAScheduler, ResourceChangingScheduler
 
 if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController
@@ -43,7 +44,7 @@ def train_breast_cancer(config: dict):
     # Checkpointing needs to be set up in order for dynamic
     # resource allocation to work as intended
     xgb_model = None
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         xgb_model = TuneReportCheckpointCallback.get_model(
             checkpoint, filename=CHECKPOINT_FILENAME
@@ -51,7 +52,7 @@ def train_breast_cancer(config: dict):
 
     # Set `nthread` to the number of CPUs available to the trial,
     # which is assigned by the scheduler.
-    config["nthread"] = int(train.get_context().get_trial_resources().head_cpus)
+    config["nthread"] = int(tune.get_context().get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
     xgb.train(
@@ -151,7 +152,7 @@ def tune_xgboost():
 
     scheduler = ResourceChangingScheduler(
         base_scheduler=base_scheduler,
-        resources_allocation_function=example_resources_allocation_function
+        resources_allocation_function=example_resources_allocation_function,
         # resources_allocation_function=DistributeResources()  # default
     )
 

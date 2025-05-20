@@ -34,6 +34,8 @@ from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
+import httplib2
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
@@ -235,6 +237,11 @@ class GCPResource(metaclass=abc.ABCMeta):
         self.cluster_name = cluster_name
 
     @abc.abstractmethod
+    def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
+        """Generate a new AuthorizedHttp object with the given credentials."""
+        return
+
+    @abc.abstractmethod
     def wait_for_operation(
         self,
         operation: dict,
@@ -327,6 +334,11 @@ class GCPResource(metaclass=abc.ABCMeta):
 class GCPCompute(GCPResource):
     """Abstraction around GCP compute resource"""
 
+    def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
+        """Generate a new AuthorizedHttp object with the given credentials."""
+        new_http = AuthorizedHttp(http.credentials, http=httplib2.Http())
+        return new_http
+
     def wait_for_operation(
         self,
         operation: dict,
@@ -347,7 +359,7 @@ class GCPCompute(GCPResource):
                     operation=operation["name"],
                     zone=self.availability_zone,
                 )
-                .execute()
+                .execute(http=self.get_new_authorized_http(self.resource._http))
             )
             if "error" in result:
                 raise Exception(result["error"])
@@ -426,7 +438,7 @@ class GCPCompute(GCPResource):
                 zone=self.availability_zone,
                 filter=filter_expr,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         instances = response.get("items", [])
@@ -461,7 +473,7 @@ class GCPCompute(GCPResource):
                 instance=node_id,
                 body=body,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -551,7 +563,7 @@ class GCPCompute(GCPResource):
                 sourceInstanceTemplate=source_instance_template,
                 body=config,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -605,7 +617,7 @@ class GCPCompute(GCPResource):
                 zone=self.availability_zone,
                 instance=node_id,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -623,6 +635,11 @@ class GCPTPU(GCPResource):
     @property
     def path(self):
         return f"projects/{self.project_id}/locations/{self.availability_zone}"
+
+    def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
+        """Generate a new AuthorizedHttp object with the given credentials."""
+        new_http = AuthorizedHttp(http.credentials, http=httplib2.Http())
+        return new_http
 
     def wait_for_operation(
         self,
@@ -642,7 +659,7 @@ class GCPTPU(GCPResource):
                 .locations()
                 .operations()
                 .get(name=f"{operation['name']}")
-                .execute()
+                .execute(http=self.get_new_authorized_http(self.resource._http))
             )
             if "error" in result:
                 raise Exception(result["error"])
@@ -668,7 +685,7 @@ class GCPTPU(GCPResource):
             .locations()
             .nodes()
             .list(parent=self.path)
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         instances = response.get("nodes", [])
@@ -701,7 +718,11 @@ class GCPTPU(GCPResource):
 
     def get_instance(self, node_id: str) -> GCPTPUNode:
         instance = (
-            self.resource.projects().locations().nodes().get(name=node_id).execute()
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .get(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         return GCPTPUNode(instance, self)
@@ -726,7 +747,7 @@ class GCPTPU(GCPResource):
                 updateMask=update_mask,
                 body=body,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -775,7 +796,7 @@ class GCPTPU(GCPResource):
                 body=config,
                 nodeId=name,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -787,7 +808,11 @@ class GCPTPU(GCPResource):
 
     def delete_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
         operation = (
-            self.resource.projects().locations().nodes().delete(name=node_id).execute()
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .delete(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         # No need to increase MAX_POLLS for deletion
@@ -800,7 +825,11 @@ class GCPTPU(GCPResource):
 
     def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
         operation = (
-            self.resource.projects().locations().nodes().stop(name=node_id).execute()
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .stop(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -812,7 +841,11 @@ class GCPTPU(GCPResource):
 
     def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
         operation = (
-            self.resource.projects().locations().nodes().start(name=node_id).execute()
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .start(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:

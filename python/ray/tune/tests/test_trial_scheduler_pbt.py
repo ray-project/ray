@@ -1,34 +1,38 @@
-import tempfile
-from functools import partial
-from typing import List
-
 import json
-import numpy as np
 import os
 import pickle
-import pytest
 import random
-import unittest
 import sys
+import tempfile
 import time
+import unittest
+from functools import partial
+from typing import List
 from unittest.mock import MagicMock
 
+import numpy as np
+import pytest
 
 import ray
-from ray import cloudpickle, train, tune
-from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
-from ray.train import Checkpoint
-from ray.tune import Trainable, Callback
+from ray import cloudpickle, tune
+from ray._private.test_utils import object_memory_usage
+from ray.tune import (
+    Callback,
+    Trainable,
+    Checkpoint,
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+)
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
+from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
-from ray._private.test_utils import object_memory_usage
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 from ray.tune.utils.util import flatten_dict
-
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -198,7 +202,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         def train_fn_sync(config):
             iter = 0
 
-            checkpoint = train.get_checkpoint()
+            checkpoint = tune.get_checkpoint()
             if checkpoint:
                 with checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
@@ -220,7 +224,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                     # comparing sync vs. async.
                     time.sleep(a / 20)
                     # Score gets better every iteration.
-                    train.report(
+                    tune.report(
                         {"mean_accuracy": iter + a, "a": a},
                         checkpoint=Checkpoint.from_directory(checkpoint_dir),
                     )
@@ -397,7 +401,7 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             c2 = config["c"]["c2"]
 
             while True:
-                train.report({"mean_accuracy": a * b * (c1 + c2)})
+                tune.report({"mean_accuracy": a * b * (c1 + c2)})
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -502,8 +506,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             a = config["a"]
             b = config["b"]
 
-            if train.get_checkpoint():
-                with train.get_checkpoint().as_directory() as checkpoint_dir:
+            if tune.get_checkpoint():
+                with tune.get_checkpoint().as_directory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "rb") as fp:
                         a, b, iter = pickle.load(fp)
@@ -514,7 +518,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                     checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, b, iter), fp)
-                    train.report(
+                    tune.report(
                         {"mean_accuracy": (a - iter) * b},
                         checkpoint=Checkpoint.from_directory(checkpoint_dir),
                     )
@@ -578,8 +582,9 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             def status(self, status):
                 pass
 
+        register_mock_trainable()
         trials = [
-            MockTrial("PPO", config=dict(num=i), storage=storage_context)
+            MockTrial(MOCK_TRAINABLE_NAME, config=dict(num=i), storage=storage_context)
             for i in range(1, 5)
         ]
         trial1, trial2, trial3, trial4 = trials
@@ -642,7 +647,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         self.assertTrue(scheduler.choose_trial_to_run(runner))
 
         # Assert that trials do not hang when a terminated trial is added
-        trial5 = Trial("PPO", config=dict(num=5))
+        trial5 = Trial(MOCK_TRAINABLE_NAME, config=dict(num=5))
         runner.add_trial(trial5)
         scheduler.on_trial_add(runner, trial5)
         trial5.set_status(Trial.TERMINATED)

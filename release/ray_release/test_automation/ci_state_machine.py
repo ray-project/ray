@@ -1,14 +1,15 @@
+from typing import List
+
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
 )
+from ray_release.test import Test, TestState, TestResult
 
-from ray_release.test import Test, TestState
 
-
-CONTINUOUS_FAILURE_TO_FLAKY = 10  # Number of continuous failures before flaky
-CONTINUOUS_PASSING_TO_PASSING = 20  # Number of continuous passing before passing
-FLAKY_PERCENTAGE_THRESHOLD = 5  # Percentage threshold to be considered as flaky
+CONTINUOUS_FAILURE_TO_FLAKY = 3  # Number of continuous failures before flaky
+CONTINUOUS_PASSING_TO_PASSING = 10  # Number of continuous passing before passing
+FLAKY_PERCENTAGE_THRESHOLD = 7  # Percentage threshold to be considered as flaky
 FAILING_TO_FLAKY_MESSAGE = (
     "This test is now considered as flaky because it has been "
     "failing on postmerge for too long. Flaky tests do not run on premerge."
@@ -25,14 +26,16 @@ MAX_REPORT_FAILURE_NO = 5
 class CITestStateMachine(TestStateMachine):
     def __init__(self, test: Test, dry_run: bool = False) -> None:
         # Need long enough test history to detect flaky tests
-        super().__init__(test, dry_run=dry_run, history_length=100)
+        super().__init__(test, dry_run=dry_run, history_length=30)
 
     def _move_hook(self, from_state: TestState, to_state: TestState) -> None:
         change = (from_state, to_state)
         if change == (TestState.PASSING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
+            self._trigger_bisect()
         elif change == (TestState.FAILING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
+            self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.FLAKY):
@@ -105,15 +108,16 @@ class CITestStateMachine(TestStateMachine):
         # recently stable, then it is not flaky.
         if self._is_recently_stable():
             return False
-        transition = 0
-        for i in range(0, len(self.test_results) - 1):
-            if (
-                self.test_results[i].is_failing()
-                and self.test_results[i + 1].is_passing()
-            ):
-                transition += 1
 
-        if transition >= FLAKY_PERCENTAGE_THRESHOLD * len(self.test_results) / 100:
+        return self.is_flaky_result_history(self.test_results)
+
+    @staticmethod
+    def is_flaky_result_history(results: List[TestResult]):
+        transition = 0
+        for i in range(0, len(results) - 1):
+            if results[i].is_failing() and results[i + 1].is_passing():
+                transition += 1
+        if transition >= FLAKY_PERCENTAGE_THRESHOLD * len(results) / 100:
             return True
         return False
 
@@ -126,8 +130,7 @@ class CITestStateMachine(TestStateMachine):
     def _flaky_to_passing(self) -> bool:
         # A flaky test is considered passing if it has been passing for a certain
         # period and the github issue is closed (by a human).
-        issue = self.ray_repo.get_issue(self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER))
-        return self._is_recently_stable() and issue.state == "closed"
+        return self._is_recently_stable()
 
     def _is_recently_stable(self) -> bool:
         return len(self.test_results) >= CONTINUOUS_PASSING_TO_PASSING and all(

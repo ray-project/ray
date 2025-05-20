@@ -1,35 +1,27 @@
 import inspect
 import logging
 import os
+import queue
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
 
-from ray.air._internal.util import StartTraceback, RunnerThread
-import queue
-
-from ray.air.constants import (
-    _ERROR_FETCH_TIMEOUT,
-)
-import ray.train
+from ray.air._internal.util import RunnerThread, StartTraceback
+from ray.air.constants import _ERROR_FETCH_TIMEOUT
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.session import (
-    init_session,
-    get_session,
-    shutdown_session,
-    _TrainSession,
     TrialInfo,
+    _TrainSession,
+    get_session,
+    init_session,
+    shutdown_session,
 )
+from ray.train.v2._internal.constants import RUN_CONTROLLER_AS_ACTOR_ENV_VAR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.result import (
-    DEFAULT_METRIC,
-    RESULT_DUPLICATE,
-    SHOULD_CHECKPOINT,
-)
-from ray.tune.trainable import Trainable
+from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
+from ray.tune.trainable.trainable import Trainable
 from ray.tune.utils import _detect_config_single
 from ray.util.annotations import DeveloperAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +49,7 @@ class FunctionTrainable(Trainable):
                 resources=self.trial_resources,
                 logdir=self._storage.trial_driver_staging_path,
                 driver_ip=None,
+                driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
             ),
             storage=self._storage,
@@ -71,6 +64,17 @@ class FunctionTrainable(Trainable):
             checkpoint=None,
         )
         self._last_training_result: Optional[_TrainingResult] = None
+
+        # NOTE: This environment variable is used to disable the
+        # spawning a new actor for Ray Train drivers being launched
+        # within Tune functions.
+        # There are 2 reasons for this:
+        # 1. Ray Tune already spawns an actor, so we can run the Ray Train
+        #    driver directly in the same actor.
+        # 2. This allows `ray.tune.report` to be called within Ray Train driver
+        #    callbacks, since it needs to be called on the same process as the
+        #    Tune FunctionTrainable actor.
+        os.environ[RUN_CONTROLLER_AS_ACTOR_ENV_VAR] = "0"
 
     def _trainable_func(self, config: Dict[str, Any]):
         """Subclasses can override this to set the trainable func."""
@@ -151,11 +155,6 @@ class FunctionTrainable(Trainable):
         # so `_last_training_result.checkpoint` holds onto the latest ckpt.
         return self._last_training_result
 
-    def _create_checkpoint_dir(
-        self, checkpoint_dir: Optional[str] = None
-    ) -> Optional[str]:
-        return None
-
     def load_checkpoint(self, checkpoint_result: _TrainingResult):
         # TODO(justinvyu): This currently breaks the `load_checkpoint` interface.
         session = get_session()
@@ -191,6 +190,7 @@ class FunctionTrainable(Trainable):
                 resources=self.trial_resources,
                 logdir=self._storage.trial_working_directory,
                 driver_ip=None,
+                driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
             ),
             storage=self._storage,
@@ -243,9 +243,9 @@ def wrap_function(
                 if not output:
                     return
                 elif isinstance(output, dict):
-                    ray.train.report(output)
+                    get_session().report(output)
                 elif isinstance(output, Number):
-                    ray.train.report({DEFAULT_METRIC: output})
+                    get_session().report({DEFAULT_METRIC: output})
                 else:
                     raise ValueError(
                         "Invalid return or yield value. Either return/yield "
@@ -264,7 +264,7 @@ def wrap_function(
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
-            ray.train.report({RESULT_DUPLICATE: True})
+            get_session().report({RESULT_DUPLICATE: True})
             return output
 
         @classmethod

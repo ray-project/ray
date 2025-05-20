@@ -2,8 +2,6 @@ from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
-# TODO (sven): add IMPALA-style option.
-# from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
 from ray.rllib.models.torch.misc import (
     normc_initializer as torch_normc_initializer,
     SlimFC,
@@ -120,7 +118,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 self.add_module("one_hot_{}".format(i), self.one_hot[i])
             # Everything else (1D Box).
             else:
-                size = int(np.product(component.shape))
+                size = int(np.prod(component.shape))
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

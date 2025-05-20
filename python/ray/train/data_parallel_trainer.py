@@ -1,7 +1,9 @@
 import logging
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
@@ -10,8 +12,10 @@ from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func, count_required_parameters
+from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
+from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.trainer import BaseTrainer, GenDataset
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -265,17 +269,22 @@ class DataParallelTrainer(BaseTrainer):
             train_total_resources.get("GPU", 0),
         )
 
-    @PublicAPI(stability="beta")
+        if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
+            from ray.train._internal.state.state_actor import get_or_create_state_actor
+
+            get_or_create_state_actor()
+
     @classmethod
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
     def restore(
-        cls: Type["DataParallelTrainer"],
+        cls,
         path: str,
         train_loop_per_worker: Optional[
             Union[Callable[[], None], Callable[[Dict], None]]
         ] = None,
         train_loop_config: Optional[Dict] = None,
         **kwargs,
-    ) -> "DataParallelTrainer":
+    ):
         """Restores a DataParallelTrainer from a previously interrupted/failed run.
 
         Args:
@@ -292,9 +301,7 @@ class DataParallelTrainer(BaseTrainer):
         See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
         for descriptions of the other arguments.
 
-        Returns:
-            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
-            subclass that is calling this method.
+        Returns a restored instance of the `DataParallelTrainer`.
         """
         return super(DataParallelTrainer, cls).restore(
             path=path,
@@ -434,7 +441,9 @@ class DataParallelTrainer(BaseTrainer):
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
             driver_ip=ray.util.get_node_ip_address(),
+            driver_node_id=ray.get_runtime_context().get_node_id(),
             experiment_name=session.get_experiment_name(),
+            run_id=uuid.uuid4().hex,
         )
 
         backend_executor = self._backend_executor_cls(

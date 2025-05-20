@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -22,23 +21,27 @@ import "src/ray/protobuf/runtime_env_common.proto";
 import "src/ray/protobuf/agent_manager.proto";
 
 message GetOrCreateRuntimeEnvRequest {
+  /// Json serialized [RuntimeEnv].
+  /// For details, checkout "//python/ray/runtime_env/runtime_env.py".
   string serialized_runtime_env = 1;
+
   RuntimeEnvConfig runtime_env_config = 2;
+  /// Hex format of [JobId].
+  /// For details, checkout "//src/ray/common/id.h".
   bytes job_id = 3;
-  // Serialized allocated resource instances. Key is resource type, value is allocated
-  // instances. For example,{"CPU":20000,"memory":40000,"GPU":[10000, 10000]} means 2 cpu
-  // cores, 2 Gi memory, GPU 0 and GPU 1.
-  string serialized_allocated_resource_instances = 4;
-  string source_process = 5;
+  string source_process = 4;
 }
 
 message GetOrCreateRuntimeEnvReply {
   AgentRpcStatus status = 1;
   string error_message = 2;
+  /// Json serialized [RuntimeEnvContext].
+  /// For details, checkeout "//python/ray/_private/runtime_env/context.py".
   string serialized_runtime_env_context = 3;
 }
 
 message DeleteRuntimeEnvIfPossibleRequest {
+  /// Json serialized [RuntimeEnv].
   string serialized_runtime_env = 1;
   string source_process = 2;
 }

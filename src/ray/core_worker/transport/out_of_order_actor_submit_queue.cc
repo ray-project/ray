@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 
+#include <map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 
@@ -54,6 +58,10 @@ void OutofOrderActorSubmitQueue::MarkTaskCanceled(uint64_t position) {
   sending_queue_.erase(position);
 }
 
+bool OutofOrderActorSubmitQueue::Empty() {
+  return pending_queue_.empty() && sending_queue_.empty();
+}
+
 void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t position) {
   // move the task from pending_requests queue to sending_requests queue.
   auto it = pending_queue_.find(position);
@@ -78,7 +86,7 @@ std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-absl::optional<std::pair<TaskSpecification, bool>>
+std::optional<std::pair<TaskSpecification, bool>>
 OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   auto it = sending_queue_.begin();
   if (it == sending_queue_.end()) {
@@ -93,8 +101,6 @@ std::map<uint64_t, TaskSpecification>
 OutofOrderActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
   return {};
 }
-
-void OutofOrderActorSubmitQueue::OnClientConnected() {}
 
 uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {

@@ -4,10 +4,12 @@ from unittest.mock import patch
 
 from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.builder import DEFAULT_PYTHON_VERSION
+from ci.ray_ci.utils import ci_init
 
 
 class RayCITestBase(unittest.TestCase):
     def setUp(self) -> None:
+        ci_init()
         self.patcher = patch.dict(
             os.environ,
             {

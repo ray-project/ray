@@ -1,18 +1,17 @@
 import io
-import tarfile
 import os
-
-import pytest
 import shutil
+import tarfile
 import tempfile
 
-from ray.exceptions import RayTaskError
+import pytest
 
+import ray.util
+from ray.exceptions import RayTaskError
 from ray.tune.utils.file_transfer import (
     _sync_dir_between_different_nodes,
     _sync_dir_on_same_node,
 )
-import ray.util
 
 
 @pytest.fixture

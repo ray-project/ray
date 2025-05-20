@@ -3,11 +3,12 @@ import pytest
 import sys
 import time
 import signal
+from typing import Tuple
 
 import ray
-from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, ActorDiedError
-from typing import Tuple
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 @ray.remote
@@ -65,10 +66,35 @@ def sigkill_actor(actor):
     os.kill(pid, signal.SIGKILL)
 
 
+def _close_common_connections(pid: int):
+    """Closes ipv2 connections between the current process and the target process."""
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+
+
 @pytest.mark.parametrize(
     "caller",
     ["actor", "task", "driver"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -77,8 +103,8 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         task = a.slow_increment.remote(3, 5)
         # Break the grpc connection from this process to the actor process. The
         # next `ray.get` call should fail with ActorUnavailableError.
-        close_common_connections(pid)
-        with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
+        _close_common_connections(pid)
+        with pytest.raises(ActorUnavailableError, match="RpcError"):
             ray.get(task)
         # Since the remote() call happens *before* the break, the actor did receive the
         # request, so the side effects are observable, and the actor recovered.
@@ -89,9 +115,9 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         # so it did not reach the actor. The actor is still in the previous state and
         # the side effects are not observable. Regardless, the method call `.remote()`
         # itself won't raise an error.
-        close_common_connections(pid)
+        _close_common_connections(pid)
         task2 = a.slow_increment.remote(5, 0.1)
-        with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
+        with pytest.raises(ActorUnavailableError, match="RpcError"):
             ray.get(task2)
         assert ray.get(a.read.remote()) == 9
 
@@ -102,6 +128,8 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
@@ -137,6 +165,8 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
     "caller",
     ["actor", "task", "driver"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -183,6 +213,8 @@ class SlowCtor:
         return os.getpid()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
     c = Counter.remote()
     # Restart config:
@@ -198,7 +230,7 @@ def test_unavailable_then_actor_error(ray_start_regular):
     # calls get ActorUnavailableError.
     sigkill_actor(a)
 
-    with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
+    with pytest.raises(ActorUnavailableError, match="RpcError"):
         print(ray.get(a.ping.remote("unavailable")))
     # When the actor is restarting, any method call raises ActorUnavailableError.
     with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
@@ -219,6 +251,8 @@ def test_unavailable_then_actor_error(ray_start_regular):
         print(ray.get(a.ping.remote("actor error")))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
     # The actor spends 2s in the init.

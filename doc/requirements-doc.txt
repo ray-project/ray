@@ -1,10 +1,13 @@
 # Production requirements. This is what readthedocs.com picks up
 
+# Required to build the docs on 3.12 due to pkg_resources deprecation
+setuptools>=70.0.0
+
 # Syntax highlighting
 Pygments==2.16.1
 
 # Sphinx
-sphinx==7.1.2
+sphinx==7.3.7
 sphinx-click==5.1.0
 sphinx-copybutton==0.5.2
 sphinxemoji==0.2.0
@@ -13,10 +16,11 @@ sphinx-sitemap==2.5.1
 sphinxcontrib-redoc==1.6.0
 sphinx-remove-toctrees==0.0.3
 sphinx_design==0.5.0
+sphinx-autobuild==2024.4.16
 pydata-sphinx-theme==0.14.1
-# Supporrt v1 pydantic schema.
-# https://autodoc-pydantic.readthedocs.io/en/stable/users/faq.html#migration-guide-from-v1-to-v2
-autodoc_pydantic==1.9.0
+autodoc_pydantic==2.2.0
+appnope
+sphinx-docsearch==0.0.7
 
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
@@ -32,3 +36,6 @@ urllib3 < 1.27
 
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
+click==8.1.7
+boto3==1.34.69
+requests==2.32.3

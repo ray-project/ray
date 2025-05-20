@@ -14,18 +14,27 @@
 
 #include "ray/raylet/local_object_manager.h"
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "src/ray/object_manager/ownership_based_object_directory.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -69,7 +78,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     msg.set_channel_type(channel_type_);
     auto *object_eviction_msg = msg.mutable_worker_object_eviction_message();
     object_eviction_msg->set_object_id(object_id.Binary());
-    callback(msg);
+    callback(std::move(msg));
     cbs->second.pop_front();
     if (cbs->second.empty()) {
       callbacks.erase(cbs);
@@ -126,7 +135,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     auto callback = update_object_location_batch_callbacks.front();
     auto reply = rpc::UpdateObjectLocationBatchReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
     update_object_location_batch_callbacks.pop_front();
     return true;
   }
@@ -155,7 +164,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
         reply.add_spilled_objects_url(url);
       }
     }
-    callback(status, reply);
+    callback(status, std::move(reply));
     callbacks.pop_front();
     return true;
   }
@@ -173,7 +182,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
       return false;
     };
     auto callback = restore_callbacks.front();
-    callback(status, reply);
+    callback(status, std::move(reply));
     restore_callbacks.pop_front();
     return true;
   }
@@ -194,7 +203,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
     auto callback = delete_callbacks.front();
     auto reply = rpc::DeleteSpilledObjectsReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
 
     auto &request = delete_requests.front();
     int deleted_urls_size = request.spilled_objects_url_size();
@@ -211,7 +220,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
     auto callback = delete_callbacks.front();
     auto reply = rpc::DeleteSpilledObjectsReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
 
     auto &request = delete_requests.front();
     int deleted_urls_size = request.spilled_objects_url_size();
@@ -339,7 +348,6 @@ class LocalObjectManagerTestWithMinSpillingSize {
             worker_pool,
             client_pool,
             /*max_io_workers=*/2,
-            /*min_spilling_size=*/min_spilling_size,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
@@ -356,6 +364,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             object_directory_.get()),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
+    manager.min_spilling_size_ = min_spilling_size;
   }
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
@@ -366,7 +375,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   void AssertNoLeaks() {
     // TODO(swang): Assert this for all tests.
-    ASSERT_TRUE(manager.pinned_objects_size_ == 0);
+    ASSERT_EQ(manager.pinned_objects_size_, 0);
     ASSERT_TRUE(manager.pinned_objects_.empty());
     ASSERT_TRUE(manager.spilled_objects_url_.empty());
     ASSERT_TRUE(manager.objects_pending_spill_.empty());
@@ -627,7 +636,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   ASSERT_EQ(GetCurrentSpilledBytes(), object_ids.size() * object_size);
 }
 
-TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
+TEST_F(LocalObjectManagerTest, TestTryToSpillObjectsZero) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
@@ -644,9 +653,9 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
     objects.push_back(std::move(object));
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  // Make sure providing 0 bytes to SpillObjectsOfSize will spill one object.
-  // This is important to cover min_spilling_size_== 0.
-  ASSERT_TRUE(manager.SpillObjectsOfSize(0));
+  // Make sure providing 0 bytes as min_spilling_size_ will spill one object.
+  manager.min_spilling_size_ = 0;
+  ASSERT_TRUE(manager.TryToSpillObjects());
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   const std::string url = BuildURL("url" + std::to_string(object_ids.size()));
@@ -680,7 +689,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
     objects.push_back(std::move(object));
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
+  manager.min_spilling_size_ = total_size;
+  ASSERT_TRUE(manager.TryToSpillObjects());
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -725,14 +735,15 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   objects.push_back(std::move(object));
 
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_FALSE(manager.SpillObjectsOfSize(1000));
+  manager.min_spilling_size_ = 1000;
+  ASSERT_FALSE(manager.TryToSpillObjects());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
   // Now object is evictable. Spill should succeed.
   unevictable_objects_.erase(object_id);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(1000));
+  ASSERT_TRUE(manager.TryToSpillObjects());
 
   AssertIOWorkersDoSpill(/*num_objects*/ 1, /*num_batches*/ 1);
   ASSERT_EQ(GetCurrentSpilledCount(), 1);
@@ -789,7 +800,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
 
   // Now, there's only one object that is current spilling.
   // SpillObjectUptoMaxThroughput will spill one more object (since one worker is
-  // availlable).
+  // available).
   manager.SpillObjectUptoMaxThroughput();
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_TRUE(manager.IsSpillingInProgress());
@@ -1253,7 +1264,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, 0);
 
-  // But 1 spilled object shoudl be deleted
+  // But 1 spilled object should be deleted
   ASSERT_EQ(GetCurrentSpilledCount(), free_objects_batch_size - 1);
   ASSERT_EQ(GetCurrentSpilledBytes(), object_size * (free_objects_batch_size - 1));
 
@@ -1358,7 +1369,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1404,7 +1415,7 @@ TEST_F(LocalObjectManagerTest, TestRetryDeleteSpilledObjects) {
   io_service_.run_one();
   // assert the request is retried.
   ASSERT_EQ(1, worker_pool.io_worker_client->FailDeleteSpilledObject());
-  // retry exhaused.
+  // retry exhausted.
   io_service_.run_one();
   ASSERT_EQ(0, worker_pool.io_worker_client->FailDeleteSpilledObject());
 }
@@ -1564,7 +1575,7 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1646,7 +1657,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1719,7 +1730,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);

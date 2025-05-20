@@ -4,9 +4,7 @@ from collections import Counter
 import pytest
 
 import ray
-from ray.air.execution.resources.placement_group import (
-    PlacementGroupResourceManager,
-)
+from ray.air.execution.resources.placement_group import PlacementGroupResourceManager
 from ray.air.execution.resources.request import ResourceRequest
 
 REQUEST_2_CPU = ResourceRequest([{"CPU": 2}])

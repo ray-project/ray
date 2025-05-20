@@ -3,16 +3,21 @@ import json
 import logging
 import os
 import random
+import time
 import ray
 import re
 import subprocess
 from collections import defaultdict
 
+from ray.serve.schema import ProxyStatus
 from serve_test_cluster_utils import NUM_CPU_PER_NODE
 from subprocess import PIPE
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 logger = logging.getLogger(__file__)
+
+
+DEFAULT_RELEASE_OUTPUT_PATH = "/tmp/release_test_out.json"
 
 
 def is_smoke_test():
@@ -192,7 +197,19 @@ def run_one_wrk_trial(
     http_host: str,
     http_port: str,
     endpoint: str = "",
+    init_timeout_s: int = 30,
 ) -> None:
+    # wait until the proxy is ready
+    start_time = time.time()
+    node_id = ray.get_runtime_context().get_node_id()
+    proxy_statuses = ray.serve.status().proxies
+    while (
+        time.time() < start_time + init_timeout_s
+        and proxy_statuses.get(node_id, ProxyStatus.UNHEALTHY) != ProxyStatus.HEALTHY
+    ):
+        time.sleep(1)
+        proxy_statuses = ray.serve.status().proxies
+
     proc = subprocess.Popen(
         [
             "wrk",
@@ -214,7 +231,7 @@ def run_one_wrk_trial(
     if err.decode() != "":
         logger.error(err.decode())
 
-    return out.decode()
+    return out.decode(), err.decode()
 
 
 def aggregate_all_metrics(metrics_from_all_nodes: Dict[str, List[Union[float, int]]]):
@@ -262,6 +279,7 @@ def run_wrk_on_all_nodes(
     http_port: str,
     all_endpoints: List[str] = None,
     ignore_output: bool = False,
+    exclude_head: bool = False,
     debug: bool = False,
 ):
     """
@@ -278,6 +296,9 @@ def run_wrk_on_all_nodes(
     all_wrk_stdout = []
     rst_ray_refs = []
     for node in ray.nodes():
+        if exclude_head and node["Resources"].get("node:__internal_head__") == 1.0:
+            continue
+
         if node["Alive"]:
             node_resource = f"node:{node['NodeManagerAddress']}"
             # Randomly pick one from all available endpoints in ray cluster
@@ -295,9 +316,11 @@ def run_wrk_on_all_nodes(
     if ignore_output:
         return
 
-    for i, decoded_output in enumerate(ray.get(rst_ray_refs)):
+    for i, (decoded_output, decoded_error) in enumerate(ray.get(rst_ray_refs)):
         if debug:
             print(f"decoded_output {i}: {decoded_output}")
+            if decoded_error != "":
+                print(f"decoded_error {i}: {decoded_error}")
         all_wrk_stdout.append(decoded_output)
         parsed_metrics = parse_wrk_decoded_stdout(decoded_output)
 
@@ -335,7 +358,12 @@ def run_wrk_on_all_nodes(
     return all_metrics, all_wrk_stdout
 
 
-def save_test_results(final_result, default_output_file="/tmp/release_test_out.json"):
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", default_output_file)
-    with open(test_output_json, "wt") as f:
-        json.dump(final_result, f)
+def save_test_results(
+    test_results: Dict,
+    output_path: Optional[str] = None,
+):
+    results_file_path = output_path or os.environ.get(
+        "TEST_OUTPUT_JSON", DEFAULT_RELEASE_OUTPUT_PATH
+    )
+    with open(results_file_path, "wt") as f:
+        json.dump(test_results, f)

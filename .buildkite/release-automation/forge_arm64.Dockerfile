@@ -16,10 +16,10 @@ apt-get install -y curl zip clang-12
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
 # Install miniconda
-curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-aarch64.sh > /tmp/miniconda.sh
-bash /tmp/miniconda.sh -b -u -p /root/miniconda3
+curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-aarch64.sh > /tmp/miniconda.sh
+bash /tmp/miniconda.sh -b -u -p /usr/local/bin/miniconda3
 rm /tmp/miniconda.sh
-/root/miniconda3/bin/conda init bash
+/usr/local/bin/miniconda3/bin/conda init bash
 
 # Install Bazelisk
 curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-arm64 --output /usr/local/bin/bazelisk
@@ -31,6 +31,5 @@ EOF
 
 ENV CC=clang
 ENV CXX=clang++-12
-ENV USE_BAZEL_VERSION=5.4.1
 
 CMD ["echo", "ray release-automation forge"]

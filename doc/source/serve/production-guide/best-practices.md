@@ -59,7 +59,7 @@ This controls the maximum number of requests that each {mod}`DeploymentHandle <r
 Once the limit is reached, enqueueing any new requests immediately raises a {mod}`BackPressureError <ray.serve.exceptions.BackPressureError>`.
 HTTP requests will return a `503` status code (service unavailable).
 
-The following example defines a deployment that emulates slow request handling and has `max_concurrent_queries` and `max_queued_requests` configured.
+The following example defines a deployment that emulates slow request handling and has `max_ongoing_requests` and `max_queued_requests` configured.
 
 ```{literalinclude} ../doc_code/load_shedding.py
 :start-after: __example_deployment_start__
@@ -68,7 +68,7 @@ The following example defines a deployment that emulates slow request handling a
 ```
 
 To test the behavior, send HTTP requests in parallel to emulate multiple clients.
-Serve accepts `max_concurrent_queries` and `max_queued_requests` requests, and rejects further requests with a `503`, or service unavailable, status.
+Serve accepts `max_ongoing_requests` and `max_queued_requests` requests, and rejects further requests with a `503`, or service unavailable, status.
 
 ```{literalinclude} ../doc_code/load_shedding.py
 :start-after: __client_test_start__

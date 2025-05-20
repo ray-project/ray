@@ -180,81 +180,82 @@ def test_execute_args(ray_start_2_cpus):
     assert all(o == 1 for o in outputs)
 
 
-def test_group_workers_by_ip(ray_start_2_cpus):
-    def create_worker_group(ips):
+def test_group_workers_by_node_id(ray_start_2_cpus):
+    def create_worker_group(node_ids):
         wg = WorkerGroup(num_workers=2)
         wg.workers = [
             Worker(
                 actor=None,
                 metadata=WorkerMetadata(
-                    node_id="dummy",
-                    node_ip=ip,
+                    node_id=node_id,
+                    node_ip="dummy",
                     hostname="dummy",
                     resource_ids={},
                     pid=0,
                 ),
             )
-            for ip in ips
+            for node_id in node_ids
         ]
         return wg
 
     wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    wg.sort_workers_by_ip_and_gpu_id()
+    wg.sort_workers_by_node_id_and_gpu_id()
     expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
-    ips = [w.metadata.node_ip for w in wg.workers]
-    assert ips == expected, (
-        "Workers should be grouped by IP "
-        "and follow the same original order of IPs encountered (2, 3, 1, 4)."
+    node_ids = [w.metadata.node_id for w in wg.workers]
+    assert node_ids == expected, (
+        "Workers should be grouped by Node ID "
+        "and follow the same original order of IDs encountered (2, 3, 1, 4)."
     )
 
     wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    wg.sort_workers_by_ip_and_gpu_id(_first_ip="1")
+    wg.sort_workers_by_node_id_and_gpu_id(_first_node_id="1")
     expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
-    ips = [w.metadata.node_ip for w in wg.workers]
+    node_ids = [w.metadata.node_id for w in wg.workers]
     assert (
-        ips == expected
-    ), "Workers should be grouped by IP, with the first IP being 1."
+        node_ids == expected
+    ), "Workers should be grouped by Node ID, with the first ID being 1."
 
 
 def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
-    def create_worker_group(pids, ips, gpu_ids):
+    def create_worker_group(pids, node_ids, gpu_ids):
         wg = WorkerGroup(num_workers=2)
         wg.workers = [
             Worker(
                 actor=None,
                 metadata=WorkerMetadata(
-                    node_id="dummy",
-                    node_ip=ip,
+                    node_id=node_id,
+                    node_ip="dummy",
                     hostname="dummy",
                     resource_ids={"GPU": gpu_id.split() if gpu_id else []},
                     pid=pid,
                 ),
             )
-            for pid, ip, gpu_id in zip(pids, ips, gpu_ids)
+            for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
         ]
         return wg
 
-    def setup_and_check_worker_group(pids, ips, gpu_ids, expected_local_ranks):
+    def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):
         """
-        Create a worker group, group workers by IP, and check local ranks assignment.
+        Create a worker group, group workers by Node ID,
+        and check local ranks assignment.
 
         Args:
             pids: List of unique process IDs.
-            ips: List of IP addresses corresponding to each PID.
+            node_ids: List of Node IDs corresponding to each PID.
             gpu_ids: List of GPU IDs or None for each PID.
             expected_local_ranks: Dictionary mapping PID to the
                 expected local rank.
         """
-        wg = create_worker_group(pids=pids, ips=ips, gpu_ids=gpu_ids)
-        wg.sort_workers_by_ip_and_gpu_id()
+        wg = create_worker_group(pids=pids, node_ids=node_ids, gpu_ids=gpu_ids)
+        wg.sort_workers_by_node_id_and_gpu_id()
 
         # Build local ranks according to the logics in
         # `BackendExecutor._create_rank_world_size_mappings()`
-        ip_dict = defaultdict(int)
+        node_id_dict = defaultdict(int)
         local_ranks_map = defaultdict(int)
         for w in wg.workers:
-            local_ranks_map[w.metadata.pid] = ip_dict[w.metadata.node_ip]
-            ip_dict[w.metadata.node_ip] += 1
+            local_ranks_map[w.metadata.pid] = node_id_dict[w.metadata.node_id]
+            node_id_dict[w.metadata.node_id] += 1
 
         local_ranks = [local_ranks_map[pid] for pid in pids]
 
@@ -267,14 +268,14 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
     # For workers without GPU resources, their original order will be preserved
     cpu_workers_config = {
         "pids": [0, 1, 2, 3, 4, 5, 6, 7],
-        "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
+        "node_ids": ["2", "2", "1", "1", "2", "1", "1", "2"],
         "gpu_ids": [None] * 8,
         "expected_local_ranks": [0, 1, 0, 1, 2, 2, 3, 3],
     }
 
     gpu_workers_single_gpu_config = {
         "pids": [0, 1, 2, 3, 4, 5, 6, 7],
-        "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
+        "node_ids": ["2", "2", "1", "1", "2", "1", "1", "2"],
         "gpu_ids": ["1", "0", "3", "2", "2", "0", "1", "3"],
         "expected_local_ranks": [1, 0, 3, 2, 2, 0, 1, 3],
     }
@@ -282,7 +283,7 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
     # For workers with multiple gpus, sort by their lowest gpu id
     gpu_workers_multiple_gpus_config = {
         "pids": [0, 1, 2, 3],
-        "ips": ["2", "1", "1", "2"],
+        "node_ids": ["2", "1", "1", "2"],
         "gpu_ids": ["1,3", "2,1", "0,3", "0,2"],
         "expected_local_ranks": [1, 1, 0, 0],
     }

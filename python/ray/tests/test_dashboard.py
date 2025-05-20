@@ -179,39 +179,6 @@ def run_tasks_with_runtime_env():
         ray.get(f.remote())
 
 
-@pytest.mark.parametrize(
-    "call_ray_start",
-    [f"ray start --head --num-cpus=1 --dashboard-grpc-port={configured_test_port}"],
-    indirect=True,
-)
-def test_configured_dashboard_grpc_port(call_ray_start):
-    address = call_ray_start
-    addresses = ray.init(address=address)
-    assert addresses.dashboard_url == "127.0.0.1:8265"
-
-
-@pytest.mark.parametrize(
-    "listen_port",
-    [conflict_port],
-    indirect=True,
-)
-def test_dashboard_grpc_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
-    try:
-        subprocess.check_output(
-            [
-                "ray",
-                "start",
-                "--head",
-                "--dashboard-grpc-port",
-                f"{conflict_port}",
-                "--include-dashboard=True",
-            ],
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as e:
-        assert f"Failed to bind to address 0.0.0.0:{conflict_port}".encode() in e.stderr
-
-
 @pytest.mark.skipif(
     sys.platform == "win32", reason="`runtime_env` with `pip` not supported on Windows."
 )

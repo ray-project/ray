@@ -2,24 +2,24 @@
 
 import json
 import os
-from packaging.version import Version
+import sys
+from unittest.mock import MagicMock, patch
 
 import pyarrow.fs
 import pytest
-from unittest.mock import MagicMock, patch
+from packaging.version import Version
 
 import ray
 from ray import train, tune
+from ray._private.usage.usage_lib import TagKey
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.integrations import wandb, mlflow, comet
+from ray.air.integrations import comet, mlflow, wandb
 from ray.train._internal.storage import StorageContext
 from ray.tune.callback import Callback
 from ray.tune.experiment.experiment import Experiment
 from ray.tune.logger import LoggerCallback
-from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
-from ray._private.usage.usage_lib import TagKey
 
 
 def _mock_record_from_module(module, monkeypatch):
@@ -49,7 +49,7 @@ def train_fn(config):
 
 @pytest.fixture
 def tuner(tmp_path):
-    yield tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=str(tmp_path)))
+    yield tune.Tuner(train_fn, run_config=tune.RunConfig(storage_path=str(tmp_path)))
 
 
 @pytest.fixture
@@ -113,7 +113,6 @@ _TEST_CALLBACKS = [
     wandb.WandbLoggerCallback,
     mlflow.MLflowLoggerCallback,
     comet.CometLoggerCallback,
-    AimLoggerCallback,
     _CustomLoggerCallback,
     _CustomLoggerCallback,
     _CustomCallback,
@@ -152,7 +151,6 @@ def test_tag_setup_mlflow(mock_record, monkeypatch):
                 "WandbLoggerCallback": 1,
                 "MLflowLoggerCallback": 1,
                 "CometLoggerCallback": 1,
-                "AimLoggerCallback": 1,
                 "CustomLoggerCallback": 2,
                 "CustomCallback": 1,
             },
@@ -204,6 +202,31 @@ def test_tag_air_entrypoint(ray_start_4_cpus, mock_record, entrypoint, tuner, tr
         trainer.fit()
 
     assert mock_record[TagKey.AIR_ENTRYPOINT] == entrypoint.value
+
+
+@pytest.mark.skipif(
+    sys.version_info.major == 3 and sys.version_info.minor >= 12,
+    reason="Python 3.12+ does not have Tensorflow installed on CI due to dependency conflicts.",
+)
+def test_tag_train_entrypoint(mock_record):
+    """Test that Train v2 entrypoints are recorded correctly."""
+    from ray.train.v2.torch.torch_trainer import TorchTrainer
+    from ray.train.v2.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.v2.xgboost.xgboost_trainer import XGBoostTrainer
+    from ray.train.v2.lightgbm.lightgbm_trainer import LightGBMTrainer
+
+    trainer_classes = [
+        TorchTrainer,
+        TensorflowTrainer,
+        XGBoostTrainer,
+        LightGBMTrainer,
+    ]
+    for trainer_cls in trainer_classes:
+        trainer = trainer_cls(
+            train_loop_per_worker=train_fn,
+            scaling_config=train.ScalingConfig(num_workers=2),
+        )
+        assert mock_record[TagKey.TRAIN_TRAINER] == trainer.__class__.__name__
 
 
 if __name__ == "__main__":

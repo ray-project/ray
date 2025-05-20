@@ -135,7 +135,7 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
 
 
 @pytest.mark.skip(
-    reason=("The guarantee in this case is too weak now. " "Need more work.")
+    reason=("The guarantee in this case is too weak now. Need more work.")
 )
 def test_in_flight_queued_requests_canceled(shutdown_only, monkeypatch):
     """
@@ -222,7 +222,7 @@ def test_async_actor_server_side_cancel(shutdown_only):
             list_tasks(
                 filters=[
                     ("name", "=", "Actor.g"),
-                    ("STATE", "=", "SUBMITTED_TO_WORKER"),
+                    ("STATE", "=", "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY"),
                 ]
             )
         )
@@ -238,9 +238,8 @@ def test_async_actor_server_side_cancel(shutdown_only):
             ray.get(ref)
 
     # Verify the task is submitted to the worker and never executed
-    # assert task.state == "SUBMITTED_TO_WORKER"
     for task in tasks:
-        assert task.state == "SUBMITTED_TO_WORKER"
+        assert task.state == "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY"
 
 
 def test_async_actor_cancel_after_task_finishes(shutdown_only):

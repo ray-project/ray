@@ -29,13 +29,11 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster
 from ray.core.generated import autoscaler_pb2
-from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
-from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.trainer import BaseTrainer, TrainingFailedError
-from ray.tune import Tuner, TuneConfig, TuneError
-
 from ray.tests.conftest import *  # noqa
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.trainer import BaseTrainer, TrainingFailedError
+from ray.tune import TuneError, Tuner
 
 
 @pytest.fixture
@@ -100,7 +98,7 @@ class FailingTrainer(BaseTrainer):
 def passing_fn(config):
     # Trigger all the driver events (on_checkpoint, on_trial_save, etc.)
     with TemporaryDirectory() as tmpdir:
-        train.report({"score": 1}, checkpoint=Checkpoint.from_directory(tmpdir))
+        train.report({"score": 1}, checkpoint=train.Checkpoint.from_directory(tmpdir))
 
 
 def failing_fn(config):
@@ -114,17 +112,14 @@ trainable_map = {
 
 
 @pytest.mark.parametrize("fail_fast", [False, True, "raise"])
-@pytest.mark.parametrize("trainable_type", ["function", "trainer"])
-def test_trainable_error_with_tuner(ray_start_4_cpus, fail_fast, trainable_type):
-    trainable = trainable_map[trainable_type]
-
+def test_trainable_error_with_tuner(ray_start_4_cpus, fail_fast):
     tuner = Tuner(
-        trainable=trainable,
-        run_config=RunConfig(
-            name=f"tuner_errors-fail_fast={fail_fast}-trainable_type={trainable_type}",
-            failure_config=FailureConfig(fail_fast=fail_fast),
+        trainable=failing_fn,
+        run_config=tune.RunConfig(
+            name=f"tuner_errors-fail_fast={fail_fast}",
+            failure_config=tune.FailureConfig(fail_fast=fail_fast),
         ),
-        tune_config=TuneConfig(num_samples=2),
+        tune_config=tune.TuneConfig(num_samples=2),
     )
 
     if fail_fast is False:
@@ -148,12 +143,12 @@ def test_trainable_error_with_tuner(ray_start_4_cpus, fail_fast, trainable_type)
 def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
     name = f"test_trainer_errors-fail_fast={fail_fast}"
     trainer = FailingTrainer(
-        run_config=RunConfig(
+        run_config=train.RunConfig(
             storage_path=str(tmp_path),
             name=name,
-            failure_config=FailureConfig(fail_fast=fail_fast),
+            failure_config=train.FailureConfig(fail_fast=fail_fast),
         ),
-        scaling_config=ScalingConfig(num_workers=1),
+        scaling_config=train.ScalingConfig(num_workers=1),
     )
 
     if fail_fast in [False, True]:
@@ -184,7 +179,7 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
 def test_driver_error_with_tuner(ray_start_4_cpus, error_on):
     tuner = Tuner(
         trainable=passing_fn,
-        run_config=RunConfig(
+        run_config=tune.RunConfig(
             name=f"test_driver_errors_with_tuner-error_on={error_on}",
             callbacks=[FailingCallback(error_on=error_on)],
         ),
@@ -196,36 +191,6 @@ def test_driver_error_with_tuner(ray_start_4_cpus, error_on):
 
     # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
     assert "_TestSpecificError" in str(exc_info.value)
-
-
-@pytest.mark.parametrize("error_on", ["on_trial_result"])
-def test_driver_error_with_trainer(ray_start_4_cpus, tmp_path, error_on):
-    name = f"test_driver_errors_with_tuner-error_on={error_on}"
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=passing_fn,
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(
-            storage_path=str(tmp_path),
-            name=name,
-            callbacks=[FailingCallback(error_on=error_on)],
-        ),
-    )
-
-    with pytest.raises(TrainingFailedError) as exc_info:
-        trainer.fit()
-
-    # The cause of the error should be the driver error
-    # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
-    assert "_TestSpecificError" in str(exc_info.value.__cause__)
-
-    # TODO(justinvyu): Re-enable after fixing the Trainer.restore(...) error
-    # message to give the correct path. Currently it recommends the local path.
-    # The error message should just recommend restore
-    # FailureConfig doesn't apply since this is not a trainable error
-    # assert TrainingFailedError._RESTORE_MSG.format(
-    #     trainer_cls_name="DataParallelTrainer", path=str(tmp_path / name)
-    # ) in str(exc_info.value)
-    assert TrainingFailedError._FAILURE_CONFIG_MSG not in str(exc_info.value)
 
 
 @pytest.mark.parametrize("error_at_level", ["worker", "coordinator"])
@@ -266,12 +231,12 @@ def test_preemption_handling(
     def launch_training():
         trainer = DataParallelTrainer(
             train_loop_per_worker=train_fn,
-            scaling_config=ScalingConfig(
+            scaling_config=train.ScalingConfig(
                 num_workers=num_workers,
                 trainer_resources={"coordinator": 1},
                 resources_per_worker={"cpu": 1},  # worker2 and worker3
             ),
-            run_config=RunConfig(
+            run_config=train.RunConfig(
                 storage_path=str(tmp_path),
                 name="test_preemption_error",
                 failure_config=train.FailureConfig(fail_fast=False, max_failures=0),

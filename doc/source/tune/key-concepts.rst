@@ -33,7 +33,7 @@ and the :ref:`Class API <tune-class-api>`.
 Both are valid ways of defining a `trainable`, but the Function API is generally recommended and is used
 throughout the rest of this guide.
 
-Let's say we want to optimize a simple objective function like ``a (x ** 2) + b`` in which ``a`` and ``b`` are the
+Consider an example of optimizing a simple objective function like ``a * (x ** 2) + b `` in which ``a`` and ``b`` are the
 hyperparameters we want to tune to `minimize` the objective.
 Since the objective also has a variable ``x``, we need to test for different values of ``x``.
 Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
@@ -69,7 +69,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
         .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
-and :doc:`have a look at our examples <examples/other-examples>`.
+and :ref:`have a look at our examples <tune-examples-others>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
 .. _tune-key-concepts-search-spaces:

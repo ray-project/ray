@@ -2,13 +2,11 @@
 
 set -xe
 
-# Python version can be specified as 3.8, 3.9, etc..
+# Python version can be specified as 3.9, etc..
 if [ -z "$1" ]; then
-    PYTHON_VERSION=${PYTHON-3.8}
+    PYTHON_VERSION=${PYTHON-3.9}
 else
-    if [ "$1" = "3.8" ]; then
-        PYTHON_VERSION="3.8"
-    elif [ "$1" = "3.9" ]; then
+    if [ "$1" = "3.9" ]; then
         PYTHON_VERSION="3.9"
     elif [ "$1" = "3.10" ]; then
         PYTHON_VERSION="3.10"

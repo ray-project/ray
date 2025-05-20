@@ -167,7 +167,7 @@ def test_shared_output(shared_ray_instance):
     x = shared_f.bind()
     dag = MultiOutputNode([g.bind(x), h.bind(x)])
 
-    ray.get(dag.execute()) == [2, 3]
+    assert ray.get(dag.execute()) == [2, 3]
 
     # Verify f ran only once.
     def verify():

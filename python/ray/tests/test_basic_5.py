@@ -149,10 +149,10 @@ ray.get(a.pid.remote())
 def test_worker_sys_path_contains_driver_script_directory(tmp_path, monkeypatch):
     package_folder = tmp_path / "package"
     package_folder.mkdir()
-    init_file = tmp_path / "package" / "__init__.py"
+    init_file = package_folder / "__init__.py"
     init_file.write_text("")
 
-    module1_file = tmp_path / "package" / "module1.py"
+    module1_file = package_folder / "module1.py"
     module1_file.write_text(
         f"""
 import sys
@@ -163,14 +163,20 @@ ray.init()
 def sys_path():
     return sys.path
 
-assert r'{str(tmp_path / "package")}' in ray.get(sys_path.remote())
+remote_sys_path = ray.get(sys_path.remote())
+assert r'{str(package_folder)}' in remote_sys_path, remote_sys_path
 """
     )
-    subprocess.check_call(["python", str(module1_file)])
+
+    # Ray's handling of sys.path does not work with PYTHONSAFEPATH.
+    env = os.environ.copy()
+    if env.get("PYTHONSAFEPATH", "") != "":
+        env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
+    subprocess.check_call([sys.executable, str(module1_file)], env=env)
 
     # If the driver script is run via `python -m`,
     # the script directory is not included in sys.path.
-    module2_file = tmp_path / "package" / "module2.py"
+    module2_file = package_folder / "module2.py"
     module2_file.write_text(
         f"""
 import sys
@@ -181,16 +187,14 @@ ray.init()
 def sys_path():
     return sys.path
 
-assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
+remote_sys_path = ray.get(sys_path.remote())
+assert r'{str(package_folder)}' not in remote_sys_path, remote_sys_path
 """
     )
     monkeypatch.chdir(str(tmp_path))
-    subprocess.check_call(["python", "-m", "package.module2"])
+    subprocess.check_call([sys.executable, "-m", "package.module2"], env=env)
 
 
-# This will be fixed on Windows once the import thread is removed, see
-# https://github.com/ray-project/ray/pull/30895
-@pytest.mark.skipif(sys.platform == "win32", reason="Currently fails on Windows.")
 def test_worker_kv_calls(monkeypatch, shutdown_only):
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     ray.init()
@@ -207,7 +211,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     """
     b'cluster' b'CLUSTER_METADATA'
     b'tracing' b'tracing_startup_hook'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
+    b'fun' b'RemoteFunction:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
     assert freqs["internal_kv_get"] == 3

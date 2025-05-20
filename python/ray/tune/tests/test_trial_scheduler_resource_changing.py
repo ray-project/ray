@@ -2,18 +2,17 @@ import shutil
 import tempfile
 import unittest
 
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.experiment import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
-    ResourceChangingScheduler,
     DistributeResources,
     DistributeResourcesToTopJob,
+    ResourceChangingScheduler,
 )
-
+from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.tests.execution.utils import create_execution_test_objects
-from ray.train.tests.util import mock_storage_context
 
 
 class MockTuneController(TuneController):
@@ -613,7 +612,8 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

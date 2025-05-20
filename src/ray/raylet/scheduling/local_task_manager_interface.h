@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
@@ -37,18 +40,16 @@ class ILocalTaskManager {
   // Schedule and dispatch tasks.
   virtual void ScheduleAndDispatchTasks() = 0;
 
-  /// Attempt to cancel an already queued task.
+  /// Attempt to cancel all queued tasks that match the predicate.
   ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  virtual bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") = 0;
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
+  virtual bool CancelTasks(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message) = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
@@ -57,6 +58,12 @@ class ILocalTaskManager {
   virtual const absl::flat_hash_map<SchedulingClass,
                                     absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const = 0;
+
+  virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
+                                const WorkerID &worker_id,
+                                int64_t backlog_size) = 0;
+
+  virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
   virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                                      bool *any_pending,
@@ -88,17 +95,9 @@ class NoopLocalTaskManager : public ILocalTaskManager {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override {}
 
-  /// Attempt to cancel an already queued task.
-  ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "") override {
+  bool CancelTasks(std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                   const std::string &scheduling_failure_message) override {
     return false;
   }
 
@@ -117,6 +116,12 @@ class NoopLocalTaskManager : public ILocalTaskManager {
         backlog_tracker;
     return backlog_tracker;
   }
+
+  void SetWorkerBacklog(SchedulingClass scheduling_class,
+                        const WorkerID &worker_id,
+                        int64_t backlog_size) override {}
+
+  void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
   bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                              bool *any_pending,

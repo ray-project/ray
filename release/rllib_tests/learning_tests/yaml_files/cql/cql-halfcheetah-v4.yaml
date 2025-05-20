@@ -53,4 +53,3 @@ cql-halfcheetah-v4:
         evaluation_duration_unit: episodes
         evaluation_config:
             input: sampler
-        always_attach_evaluation_results: True

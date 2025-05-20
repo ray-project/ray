@@ -152,7 +152,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     ...
     Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.01s
     ...
-    
+
     Operator 2 Map(<lambda>): 4 tasks executed, 4 blocks produced in 0.3s
     ...
 
@@ -191,28 +191,29 @@ By default, Ray requests 1 CPU per read task, which means one read task per CPU 
 For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-Parquet column pruning
-~~~~~~~~~~~~~~~~~~~~~~
+.. _parquet_column_pruning:
 
-Current Dataset reads all Parquet columns into memory.
+Parquet column pruning (projection pushdown)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, :func:`ray.data.read_parquet` reads all columns in the Parquet files into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
-explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
-avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", columns=["sepal.length", "variety"])`` to read
-just two of the five columns of Iris dataset.
+explicitly when calling :func:`ray.data.read_parquet` to
+avoid loading unnecessary data (projection pushdown). Note that this is more efficient than
+calling :func:`~ray.data.Dataset.select_columns`, since column selection is pushed down to the file scan.
 
-.. _parquet_row_pruning:
+.. testcode::
 
-Parquet row pruning
-~~~~~~~~~~~~~~~~~~~
+    import ray
+    # Read just two of the five columns of the Iris dataset.
+    ray.data.read_parquet(
+        "s3://anonymous@ray-example-data/iris.parquet",
+        columns=["sepal.length", "variety"],
+    )
 
-Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
-which is applied at the file scan so only rows that match the filter predicate
-are returned.
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
-(where ``pyarrow`` has to be imported)
-to read rows with sepal.length greater than 5.0.
-This can be used in conjunction with column pruning when appropriate to get the benefits of both.
+.. testoutput::
+
+    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
 
 .. _data_memory:
@@ -392,136 +393,6 @@ To illustrate these, the following code uses both strategies to coalesce the 10 
     Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 1 blocks produced in 0s
     ...
     * Output num rows: 10 min, 10 max, 10 mean, 10 total
-
-
-.. _optimizing_shuffles:
-
-Optimizing shuffles
--------------------
-
-*Shuffle* operations are all-to-all operations where the entire Dataset must be materialized in memory before execution can proceed.
-Currently, these are:
-
-* :meth:`Dataset.groupby <ray.data.Dataset.groupby>`
-* :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`
-* :meth:`Dataset.repartition <ray.data.Dataset.repartition>`
-* :meth:`Dataset.sort <ray.data.Dataset.sort>`
-
-.. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, `file a Ray Data issue on GitHub`_
-
-When should you use global per-epoch shuffling?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Use global per-epoch shuffling only if your model is sensitive to the
-randomness of the training data. Based on a
-`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ all
-gradient-descent-based model trainers benefit from improved (global) shuffle quality.
-In practice, the benefit is particularly pronounced for tabular data/models.
-However, the more global the shuffle is, the more expensive the shuffling operation.
-The increase compounds with distributed data-parallel training on a multi-node cluster due
-to data transfer costs. This cost can be prohibitive when using very large datasets.
-
-The best route for determining the best tradeoff between preprocessing time and cost and
-per-epoch shuffle quality is to measure the precision gain per training step for your
-particular model under different shuffling policies:
-
-* no shuffling,
-* local (per-shard) limited-memory shuffle buffer,
-* local (per-shard) shuffling,
-* windowed (pseudo-global) shuffling, and
-* fully global shuffling.
-
-As long as your data loading and shuffling throughput is higher than your training throughput, your GPU should
-be saturated. If you have shuffle-sensitive models, push the
-shuffle quality higher until this threshold is hit.
-
-.. _shuffle_performance_tips:
-
-Enabling push-based shuffle
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
-These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
-:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
-Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
-
-Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
-Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
-
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
-To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10 TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64 GB RAM).
-
-.. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
-   :align: center
-
-To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASED_SHUFFLE=1`` when running your application:
-
-.. code-block:: bash
-
-    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
-    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
-
-    # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
-    # [dataset]: Run `pip install tqdm` to enable progress reporting.
-    # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
-    # Finished in 9.571171760559082
-    # ...
-
-You can also specify the shuffle implementation during program execution by
-setting the ``DataContext.use_push_based_shuffle`` flag:
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.use_push_based_shuffle = True
-
-    ds = (
-        ray.data.range(1000)
-        .random_shuffle()
-    )
-
-Large-scale shuffles can take a while to finish.
-For debugging purposes, shuffle operations support executing only part of the shuffle, so that you can collect an execution profile more quickly.
-Here is an example that shows how to limit a random shuffle operation to two output blocks:
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.set_config(
-        "debug_limit_shuffle_execution_to_num_blocks", 2
-    )
-
-    ds = (
-        ray.data.range(1000, override_num_blocks=10)
-        .random_shuffle()
-        .materialize()
-    )
-    print(ds.stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Operator 1 ReadRange->RandomShuffle: executed in 0.08s
-
-        Suboperator 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
-        ...
-
 
 Configuring execution
 ---------------------

@@ -1,15 +1,9 @@
-from typing import List
 from unittest import mock
 
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.block_batching.block_batching import (
-    BlockPrefetcher,
-    _prefetch_blocks,
-    batch_blocks,
-)
-from ray.data.block import Block
+from ray.data._internal.block_batching.block_batching import batch_blocks
 
 
 def block_generator(num_rows: int, num_blocks: int):
@@ -29,33 +23,6 @@ def test_batch_blocks():
             pass
         assert mock_batch.call_count == 1
         assert mock_format.call_count == 1
-
-
-@pytest.mark.parametrize("num_blocks_to_prefetch", [1, 2])
-def test_prefetch_blocks(num_blocks_to_prefetch):
-    class DummyPrefetcher(BlockPrefetcher):
-        def __init__(self):
-            self.windows = []
-
-        def prefetch_blocks(self, blocks: List[Block]):
-            self.windows.append(blocks)
-
-    num_blocks = 10
-    prefetcher = DummyPrefetcher()
-    block_iter = block_generator(num_rows=1, num_blocks=num_blocks)
-    prefetch_block_iter = _prefetch_blocks(
-        block_iter, prefetcher=prefetcher, num_blocks_to_prefetch=num_blocks_to_prefetch
-    )
-
-    block_count = 1
-    for _ in prefetch_block_iter:
-        block_count += 1
-        if block_count < num_blocks:
-            # Test that we are actually prefetching.
-            assert len(prefetcher.windows) == block_count
-
-    windows = prefetcher.windows
-    assert all(len(window) == num_blocks_to_prefetch for window in windows)
 
 
 if __name__ == "__main__":

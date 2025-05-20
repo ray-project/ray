@@ -1,6 +1,6 @@
-from pathlib import Path
-import urllib.parse
 import os
+import urllib.parse
+from pathlib import Path
 from typing import Union
 
 

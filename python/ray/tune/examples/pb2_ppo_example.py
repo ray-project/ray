@@ -1,8 +1,9 @@
+import argparse
 import os
 import random
-import argparse
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
 
 from ray.tune import run, sample_from
 from ray.tune.schedulers import PopulationBasedTraining

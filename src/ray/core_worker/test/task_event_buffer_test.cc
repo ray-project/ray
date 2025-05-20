@@ -16,6 +16,14 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -24,6 +32,7 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/util/event.h"
 
 using ::testing::_;
 using ::testing::Return;
@@ -68,7 +77,7 @@ class TaskEventBufferTest : public ::testing::Test {
       TaskID task_id,
       int32_t attempt_num,
       int64_t running_ts = 1,
-      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt) {
     return std::make_unique<TaskStatusEvent>(task_id,
                                              JobID::FromInt(0),
@@ -174,6 +183,20 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   }
 };
 
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
+
 TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
   ASSERT_NE(task_event_buffer_, nullptr);
 
@@ -271,7 +294,7 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
       .Times(2)
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
                     ray::gcs::StatusCallback callback) {
-        callback(Status::GrpcUnknown("grpc error"));
+        callback(Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN));
         return Status::OK();
       })
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,

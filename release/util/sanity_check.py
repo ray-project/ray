@@ -1,23 +1,21 @@
-import os
+import click
 import ray
 import sys
 
-RAY_VERSION = "RAY_VERSION"
-RAY_COMMIT = "RAY_HASH"
 
-ray_version = os.getenv(RAY_VERSION)
-ray_commit = os.getenv(RAY_COMMIT)
-
-if __name__ == "__main__":
+@click.command()
+@click.option("--ray_version", required=True, type=str)
+@click.option("--ray_commit", required=True, type=str)
+def main(ray_version, ray_commit):
     print("Sanity check python version: {}".format(sys.version))
     assert (
         ray_version == ray.__version__
-    ), "Given Ray version {} is not matching with downloaded " "version {}".format(
+    ), "Given Ray version {} is not matching with downloaded version {}".format(
         ray_version, ray.__version__
     )
     assert (
         ray_commit == ray.__commit__
-    ), "Given Ray commit {} is not matching with downloaded " "version {}".format(
+    ), "Given Ray commit {} is not matching with downloaded version {}".format(
         ray_commit, ray.__commit__
     )
     assert ray.__file__ is not None
@@ -34,3 +32,7 @@ if __name__ == "__main__":
     assert ray.get(return_arg.remote(val)) == val
     ray.shutdown()
     print("Sanity check succeeded on Python {}".format(sys.version))
+
+
+if __name__ == "__main__":
+    main()

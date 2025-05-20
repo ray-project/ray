@@ -5,6 +5,7 @@ from abc import ABC
 from typing import List, Dict, Optional, Any, Type
 
 import asyncio
+from ray._common.utils import import_attr
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.constants import (
@@ -16,7 +17,6 @@ from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY,
 )
 from ray.util.annotations import DeveloperAPI
-from ray._private.utils import import_attr
 
 from ray._private.runtime_env.packaging import parse_uri
 
@@ -52,7 +52,7 @@ class RuntimeEnvPlugin(ABC):
     async def create(
         self,
         uri: Optional[str],
-        runtime_env: "RuntimeEnv",  # noqa: F821
+        runtime_env,
         context: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> float:
@@ -232,7 +232,7 @@ class RuntimeEnvPluginManager:
 
 
 async def create_for_plugin_if_needed(
-    runtime_env,
+    runtime_env: "RuntimeEnv",  # noqa: F821
     plugin: RuntimeEnvPlugin,
     uri_cache: URICache,
     context: RuntimeEnvContext,

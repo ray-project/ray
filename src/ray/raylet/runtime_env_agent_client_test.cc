@@ -13,18 +13,19 @@
 // limitations under the License.
 #include "ray/raylet/runtime_env_agent_client.h"
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/optional.hpp>
 #include <boost/thread.hpp>
 #include <memory>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
@@ -40,7 +41,7 @@ using tcp = boost::asio::ip::tcp;
 using boost::asio::ip::port_type;
 
 port_type GetFreePort() {
-  boost::asio::io_service io_service;
+  boost::asio::io_context io_service;
   boost::asio::ip::tcp::acceptor acceptor(io_service);
   boost::asio::ip::tcp::endpoint endpoint;
 
@@ -186,6 +187,8 @@ delay_after(instrumented_io_context &ioc) {
   };
 }
 
+auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
+
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   int port = GetFreePort();
   HttpServerThread http_server_thread(
@@ -195,8 +198,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
         ASSERT_TRUE(req.ParseFromString(request.body()));
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
-        ASSERT_EQ(req.serialized_allocated_resource_instances(),
-                  "serialized_allocated_resource_instances");
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -217,14 +218,13 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
-  std::string serialized_allocated_resource_instances =
-      "serialized_allocated_resource_instances";
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -236,11 +236,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -255,8 +252,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
         ASSERT_TRUE(req.ParseFromString(request.body()));
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
-        ASSERT_EQ(req.serialized_allocated_resource_instances(),
-                  "serialized_allocated_resource_instances");
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -277,14 +272,13 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
-  std::string serialized_allocated_resource_instances =
-      "serialized_allocated_resource_instances";
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -296,11 +290,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -318,8 +309,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         ASSERT_TRUE(req.ParseFromString(request.body()));
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
-        ASSERT_EQ(req.serialized_allocated_resource_instances(),
-                  "serialized_allocated_resource_instances");
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -342,14 +331,13 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
+      dummy_shutdown_raylet_gracefully,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
-  std::string serialized_allocated_resource_instances =
-      "serialized_allocated_resource_instances";
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -361,11 +349,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -398,6 +383,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -441,6 +427,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -489,6 +476,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
+      dummy_shutdown_raylet_gracefully,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
 
@@ -587,6 +575,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 

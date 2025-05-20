@@ -1,18 +1,24 @@
 import json
 import os
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-import tensorflow as tf
+from unittest.mock import MagicMock
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data import Dataset
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def tf_records_partial():
@@ -451,6 +457,38 @@ def test_read_tfrecords(
     assert np.array_equal(df["string_empty"][0], np.array([], dtype=np.bytes_))
 
 
+@pytest.fixture
+def mock_ray_data_read_tfrecords(mocker):
+    mock_read_tfrecords = mocker.patch("ray.data.read_tfrecords")
+    mock_read_tfrecords.return_value = MagicMock(spec=Dataset)
+    return mock_read_tfrecords
+
+
+@pytest.mark.parametrize("num_cpus", [1, 2, 4])
+def test_read_tfrecords_ray_remote_args(
+    ray_start_regular_shared,
+    mock_ray_data_read_tfrecords,
+    tmp_path,
+    num_cpus,
+):
+    import tensorflow as tf
+
+    example = tf_records_empty()[0]
+    path = os.path.join(tmp_path, "data.tfrecords")
+    with tf.io.TFRecordWriter(path=path) as writer:
+        writer.write(example.SerializeToString())
+    ray_remote_args = {"num_cpus": num_cpus}
+    ds = read_tfrecords_with_tfx_read_override(
+        paths=[path],
+        ray_remote_args=ray_remote_args,
+    )
+    assert isinstance(ds, Dataset)
+    mock_ray_data_read_tfrecords.assert_called_once()
+    args, kwargs = mock_ray_data_read_tfrecords.call_args
+    assert kwargs["paths"] == [path]
+    assert kwargs["ray_remote_args"] == ray_remote_args
+
+
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
 def test_read_tfrecords_ignore_missing_paths(
     ray_start_regular_shared, tmp_path, ignore_missing_paths
@@ -738,15 +776,15 @@ def test_read_with_invalid_schema(
     )
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     ray.data.range(100, override_num_blocks=20).write_tfrecords(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         dataset = tf.data.TFRecordDataset(os.path.join(tmp_path, filename))
-        assert len(list(dataset)) == num_rows_per_file
+        assert len(list(dataset)) == min_rows_per_file
 
 
 def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
@@ -763,5 +801,9 @@ def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))

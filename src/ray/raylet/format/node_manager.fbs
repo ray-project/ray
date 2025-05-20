@@ -35,9 +35,14 @@ enum MessageType:int {
   RegisterClientReply,
   // Send the worker's gRPC port to the raylet.
   AnnounceWorkerPort,
+  // Ack that the raylet has finished handling AnnounceWorkerPort.
+  AnnounceWorkerPortReply,
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
-  DisconnectClient,
+  DisconnectClientRequest,
+  // Notify the client that the raylet has deregistered this client.
+  // The client should block until it receives this message before closing the socket.
+  DisconnectClientReply,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -68,14 +73,18 @@ enum MessageType:int {
   ConnectClient,
   // Subscribe to Plasma updates.
   SubscribePlasmaReady,
+  // [RegisterClientWithPort] series is the combination for [RegisterClient] and [AnnounceWorkerPort].
+  //
+  // Send an initial connection message to the raylet with port assigned. This is sent
+  // from a worker to a raylet.
+  // The corresponding response type is [RegisterWorkerWithPortReply].
+  RegisterWorkerWithPortRequest,
+  // Response for worker registration and port announcement.
+  RegisterWorkerWithPortReply,
 }
 
 table Task {
   task_specification: string;
-}
-
-table SubmitTaskRequest {
-  task_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.
@@ -91,13 +100,16 @@ table ResourceIdSetInfo {
 }
 
 // This message is sent from a worker to the node manager.
-table DisconnectClient {
+table DisconnectClientRequest {
+  // Populated with a WorkerExitType enum.
   disconnect_type: int;
   disconnect_detail: string;
   // Creation task exception serialized by protobuf.
   // Contains a RayException defined in common.pb
   creation_task_exception_pb: [ubyte];
 }
+
+table DisconnectClientReply {}
 
 table ResourceIdSetInfos {
   resource_infos: [ResourceIdSetInfo];
@@ -129,8 +141,6 @@ table RegisterClientRequest {
   port: int;
   // The config bytes of this job serialized with protobuf.
   serialized_job_config: string;
-  // The entrypoint of the job.
-  entrypoint: string;
 }
 
 table RegisterClientReply {
@@ -144,14 +154,32 @@ table RegisterClientReply {
   port: int;
 }
 
+table RegisterWorkerWithPortRequest {
+  // Request to register client.
+  request_client_request: RegisterClientRequest;
+  // Request to assign port.
+  announcement_port_request: AnnounceWorkerPort;
+}
+
+table RegisterWorkerWithPortReply {
+  // Whether the announcement and job registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
+}
+
 table AnnounceWorkerPort {
   // Port that this worker is listening on.
   port: int;
+  // The entrypoint of the job. Only populated if the worker is a driver.
+  entrypoint: string;
 }
 
-table RegisterNodeManagerRequest {
-  // GCS ClientID of the connecting node manager.
-  client_id: string;
+table AnnounceWorkerPortReply {
+  // Whether the announcement and job registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
 }
 
 // Mimics the Address protobuf.
@@ -180,7 +208,6 @@ table NotifyUnblocked {
 }
 
 table NotifyDirectCallTaskBlocked {
-  release_resources: bool;
 }
 
 table NotifyDirectCallTaskUnblocked {
@@ -191,8 +218,9 @@ table WaitRequest {
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
-  // Number of objects expected to be returned, if available.
-  num_ready_objects: int;
+  // Minimum number of objects to wait for before returning.
+  // At most this many objects will be returned even if more are ready.
+  num_required_objects: int;
   // timeout
   timeout: long;
   // The current task ID.
@@ -241,26 +269,9 @@ table ConnectClient {
   client_id: string;
 }
 
-table SetResourceRequest {
-  // Name of the resource to be set.
-  resource_name: string;
-  // Capacity of the resource to be set.
-  capacity: double;
-  // Node ID where this resource will be set.
-  node_id: string;
-}
-
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
   // The owner address for the ObjectID
   owner_address: Address;
-}
-
-table ForceSpillObjectsRequest {
-  // List of object IDs to be spilled to external storage.
-  object_ids: [string];
-}
-
-table ForceSpillObjectsReply {
 }

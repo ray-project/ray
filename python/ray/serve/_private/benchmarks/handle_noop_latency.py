@@ -1,37 +1,11 @@
-import logging
 import time
 
 import click
 import pandas as pd
 
 from ray import serve
-from ray.serve._private.benchmarks.common import run_latency_benchmark
+from ray.serve._private.benchmarks.common import Benchmarker, Noop
 from ray.serve.handle import DeploymentHandle
-
-
-@serve.deployment
-class Noop:
-    def __init__(self):
-        logging.getLogger("ray.serve").setLevel(logging.WARNING)
-
-    def __call__(self):
-        return b""
-
-
-@serve.deployment
-class Caller:
-    def __init__(self, noop_handle: DeploymentHandle):
-        logging.getLogger("ray.serve").setLevel(logging.WARNING)
-        self._noop_handle = noop_handle
-
-    async def do_single_request(self):
-        return await self._noop_handle.remote()
-
-    async def run_latency_benchmark(self, num_requests: int) -> pd.Series:
-        return await run_latency_benchmark(
-            self.do_single_request,
-            num_requests=num_requests,
-        )
 
 
 @click.command(help="Benchmark no-op DeploymentHandle latency.")
@@ -39,10 +13,10 @@ class Caller:
 @click.option("--num-requests", type=int, default=100)
 def main(num_replicas: int, num_requests: int):
     h: DeploymentHandle = serve.run(
-        Caller.bind(Noop.options(num_replicas=num_replicas).bind())
+        Benchmarker.bind(Noop.options(num_replicas=num_replicas).bind())
     )
 
-    latencies = h.run_latency_benchmark.remote(
+    latencies: pd.Series = h.run_latency_benchmark.remote(
         num_requests,
     ).result()
 

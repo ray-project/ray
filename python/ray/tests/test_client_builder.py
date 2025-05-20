@@ -51,7 +51,7 @@ def test_client(address):
     if address in ("local", None):
         assert isinstance(builder, client_builder._LocalClientBuilder)
     else:
-        assert type(builder) == client_builder.ClientBuilder
+        assert type(builder) is client_builder.ClientBuilder
         assert builder.address == address.replace("ray://", "")
 
 

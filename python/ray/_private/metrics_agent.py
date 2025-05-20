@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 from collections import namedtuple
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Set
 
 from prometheus_client.core import (
     CounterMetricFamily,
@@ -38,6 +38,8 @@ from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 from ray._private.ray_constants import env_bool
 
+from ray.util.metrics import _is_invalid_metric_name
+
 logger = logging.getLogger(__name__)
 
 # Env var key to decide worker timeout.
@@ -56,6 +58,13 @@ class Gauge(View):
     """
 
     def __init__(self, name, description, unit, tags: List[str]):
+        if _is_invalid_metric_name(name):
+            raise ValueError(
+                f"Invalid metric name: {name}. Metric will be discarded "
+                "and data will not be collected or published. "
+                "Metric names can only contain letters, numbers, _, and :. "
+                "Metric names cannot start with numbers."
+            )
         self._measure = measure_module.MeasureInt(name, description, unit)
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
@@ -527,6 +536,9 @@ class MetricsAgent:
                 component_timeout_s=int(os.getenv(RAY_WORKER_TIMEOUT_S, 120)),
             )
 
+        # Registered view names.
+        self._registered_views: Set[str] = set()
+
     def record_and_export(self, records: List[Record], global_tags=None):
         """Directly record and export stats from the same process."""
         global_tags = global_tags or {}
@@ -541,18 +553,16 @@ class MetricsAgent:
                 self._record_gauge(gauge, value, {**tags, **global_tags})
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
-        view_data = self.view_manager.get_view(gauge.name)
-        if not view_data:
+        if gauge.name not in self._registered_views:
             self.view_manager.register_view(gauge.view)
-            # Reobtain the view.
-        view = self.view_manager.get_view(gauge.name).view
+            self._registered_views.add(gauge.name)
         measurement_map = self.stats_recorder.new_measurement_map()
         tag_map = tag_map_module.TagMap()
         for key, tag_val in tags.items():
             tag_key = tag_key_module.TagKey(key)
             tag_value = tag_value_module.TagValue(tag_val)
             tag_map.insert(tag_key, tag_value)
-        measurement_map.measure_float_put(view.measure, value)
+        measurement_map.measure_float_put(gauge.measure, value)
         # NOTE: When we record this metric, timestamp will be renewed.
         measurement_map.record(tag_map)
 
@@ -604,7 +614,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     """
 
     def __init__(self, gcs_address, temp_dir):
-        gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
+        gcs_client_options = ray._raylet.GcsClientOptions.create(
+            gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+        )
         self.gcs_address = gcs_address
 
         ray._private.state.state._initialize_global_state(gcs_client_options)
