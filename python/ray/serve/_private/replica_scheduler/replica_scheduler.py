@@ -117,7 +117,20 @@ class MultiplexScheduleMixin:
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
         """Apply multiplex scheduling to the pending request.
-        When the request is None, return all replicas.
+
+        When the request is None, return all replicas. Each call will try to
+        schedule the request to the replicas that have the multiplexed model ID
+        to the hierarchy of first the replicas with the multiplexed model ID,
+        then the replicas with the fewest multiplexed models, and finally all
+        replicas.
+
+        Args:
+            pending_request: The pending request to be scheduled based on
+                multiplexed model policy.
+
+        Returns:
+            A set of replica IDs that are candidates for the existing
+            scheduling call.
         """
         if not pending_request:
             return self._replica_id_set
