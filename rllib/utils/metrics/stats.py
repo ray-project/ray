@@ -350,6 +350,7 @@ class Stats:
             The reduced value (can be of any type, depending on the input values and
             reduction method).
         """
+        len_before_reduce = len(self)
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
             reduced, reduced_values = self._reduced_values()
@@ -394,6 +395,11 @@ class Stats:
         if compile:
             return return_values
         else:
+            if len_before_reduce == 0:
+                # return_values will be be 0 if we reduce a sum over zero elements
+                # But we don't want to create such a zero out of nothing for our new Stats object that we return here
+                return Stats.similar_to(self)
+
             return Stats.similar_to(self, init_values=return_values)
 
     def merge_on_time_axis(self, other: "Stats") -> None:

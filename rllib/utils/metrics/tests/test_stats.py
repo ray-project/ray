@@ -810,162 +810,164 @@ def test_basic_throughput():
             [66.07, 66.07],  # expected_third_round_values
             66.07,  # expected_third_round_peek
         ),
-        # (
-        #     "mean",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     4,  # window
-        #     [110, 165, 165],  # expected_first_round_values
-        #     (110 + 165 + 165) / 3,  # expected_first_round_peek
-        #     [275, 330, 330],  # expected_second_round_values
-        #     (275 + 330 + 330) / 3,  # expected_second_round_peek
-        #     [330.0, 385.0, 385.0, 411.67],  # expected_third_round_values
-        #     (465.0 + 385.0 + 385.0) / 3,  # expected_third_round_peek
-        # ),
-        # (
-        #     "sum",  # reduce_method
-        #     False,  # reduce_per_index
-        #     True,  # clear_on_reduce
-        #     None,  # window
-        #     [440],  # expected_first_round_values
-        #     110 + 165 + 165,  # expected_first_round_peek
-        #     [935],  # expected_second_round_values
-        #     275 + 330 + 330,  # expected_second_round_peek
-        #     [1100],  # expected_third_round_values
-        #     330.0 + 385.0 + 385.0,  # expected_third_round_peek
-        # ),
-        # (
-        #     "sum",  # reduce_method
-        #     False,  # reduce_per_index
-        #     True,  # clear_on_reduce
-        #     4,  # window
-        #     [110, 165, 165],  # expected_first_round_values
-        #     110 + 165 + 165,  # expected_first_round_peek
-        #     [275, 330, 330],  # expected_second_round_values
-        #     275 + 330 + 330,  # expected_second_round_peek
-        #     [330.0, 385.0, 385.0],  # expected_third_round_values
-        #     330.0 + 385.0 + 385.0,  # expected_third_round_peek
-        # ),
-        # (
-        #     "sum",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     None,  # window
-        #     [440],  # expected_first_round_values
-        #     110 + 165 + 165,  # expected_first_round_peek
-        #     [935],  # expected_second_round_values
-        #     275 + 330 + 330,  # expected_second_round_peek
-        #     [1235],  # expected_third_round_values
-        #     465.0 + 385.0 + 385.0,  # expected_third_round_peek
-        # ),
-        # (
-        #     "sum",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     4,  # window
-        #     [110, 165, 165],  # expected_first_round_values
-        #     110 + 165 + 165,  # expected_first_round_peek
-        #     [275, 330, 330],  # expected_second_round_values
-        #     275 + 330 + 330,  # expected_second_round_peek
-        #     [330.0, 385.0, 385.0, 465.0],  # expected_third_round_values
-        #     465.0 + 385.0 + 385.0,  # expected_third_round_peek
-        # ),
-        # (
-        #     "min",  # reduce_method
-        #     False,  # reduce_per_index
-        #     True,  # clear_on_reduce
-        #     None,  # window
-        #     [20],  # expected_first_round_values
-        #     20,  # expected_first_round_peek
-        #     [50],  # expected_second_round_values
-        #     50,  # expected_second_round_peek
-        #     [60],  # expected_third_round_values
-        #     60,  # expected_third_round_peek
-        # ),
-        # (
-        #     "min",  # reduce_method
-        #     False,  # reduce_per_index
-        #     True,  # clear_on_reduce
-        #     4,  # window
-        #     [20, 30, 30],  # expected_first_round_values
-        #     20,  # expected_first_round_peek
-        #     [50, 60, 60],  # expected_second_round_values
-        #     50,  # expected_second_round_peek
-        #     [60, 70, 70],  # expected_third_round_values
-        #     60,  # expected_third_round_peek
-        # ),
-        # (
-        #     "min",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     None,  # window
-        #     [20],  # expected_first_round_values
-        #     20,  # expected_first_round_peek
-        #     [50],  # expected_second_round_values
-        #     50,  # expected_second_round_peek
-        #     [60],  # expected_third_round_values
-        #     60,  # expected_third_round_peek
-        # ),
-        # (
-        #     "min",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     4,  # window
-        #     [20, 30, 30],  # expected_first_round_values
-        #     20,  # expected_first_round_peek
-        #     [50, 60, 60],  # expected_second_round_values
-        #     50,  # expected_second_round_peek
-        #     [60, 70, 70],  # expected_third_round_values
-        #     60,  # expected_third_round_peek
-        # ),
-        # (
-        #     "max",  # reduce_method
-        #     False,  # reduce_per_index
-        #     True,  # clear_on_reduce
-        #     None,  # window
-        #     [300],  # expected_first_round_values
-        #     300,  # expected_first_round_peek
-        #     [600],  # expected_second_round_values
-        #     600,  # expected_second_round_peek
-        #     [700],  # expected_third_round_values
-        #     700,  # expected_third_round_peek
-        # ),
-        # (
-        #     "max",  # reduce_method
-        #     False,  # reduce_per_index
-        #     True,  # clear_on_reduce
-        #     4,  # window
-        #     [200, 300, 300],  # expected_first_round_values
-        #     300,  # expected_first_round_peek
-        #     [500, 600, 600],  # expected_second_round_values
-        #     600,  # expected_second_round_peek
-        #     [600, 700, 700],  # expected_third_round_values
-        #     700,  # expected_third_round_peek
-        # ),
-        # (
-        #     "max",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     None,  # window
-        #     [300],  # expected_first_round_values
-        #     300,  # expected_first_round_peek
-        #     [600],  # expected_second_round_values
-        #     600,  # expected_second_round_peek
-        #     [700],  # expected_third_round_values
-        #     700,  # expected_third_round_peek
-        # ),
-        # (
-        #     "max",  # reduce_method
-        #     False,  # reduce_per_index
-        #     False,  # clear_on_reduce
-        #     4,  # window
-        #     [200, 300, 300],  # expected_first_round_values
-        #     300,  # expected_first_round_peek
-        #     [500, 600, 600],  # expected_second_round_values
-        #     600,  # expected_second_round_peek
-        #     [600, 700, 700],  # expected_third_round_values
-        #     700,  # expected_third_round_peek
-        # ),
+        (
+            "mean",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            4,  # window
+            [110, 110, 165, 165],  # expected_first_round_values
+            (110 + 110 + 165 + 165) / 4,  # expected_first_round_peek
+            [275, 275, 330, 330],  # expected_second_round_values
+            (275 + 275 + 330 + 330) / 4,  # expected_second_round_peek
+            [325, 325, 380, 380],  # expected_third_round_values
+            (325 + 325 + 380 + 380) / 4,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            None,  # window
+            [660 / 2, 660 / 2],  # expected_first_round_values
+            # 10 + 20 + 30 + 100 + 200 + 300
+            660,  # expected_first_round_peek
+            [1650 / 2, 1650 / 2],  # expected_second_round_values
+            # 40 + 50 + 60 + 400 + 500 + 600
+            1650,  # expected_second_round_peek
+            [700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            4,  # window
+            [110, 110, 165, 165],  # expected_first_round_values
+            110 + 110 + 165 + 165,  # expected_first_round_peek
+            [275, 275, 330, 330],  # expected_second_round_values
+            275 + 275 + 330 + 330,  # expected_second_round_peek
+            [700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            None,  # window
+            [330.0, 330.0],  # expected_first_round_values
+            660.0,  # expected_first_round_peek
+            [0, 1155.0, 1155.0],  # expected_second_round_values
+            2310.0,  # expected_second_round_peek
+            [0, 1505.0, 1505.0],  # expected_third_round_values
+            3010.0,  # expected_third_round_peek
+        ),
+        (
+            "sum",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            4,  # window
+            [110, 110, 165, 165],  # expected_first_round_values
+            110 + 110 + 165 + 165,  # expected_first_round_peek
+            [275, 275, 330, 330],  # expected_second_round_values
+            275 + 275 + 330 + 330,  # expected_second_round_peek
+            [325, 325, 380, 380],  # expected_third_round_values
+            325 + 325 + 380 + 380,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            None,  # window
+            [10, 10],  # expected_first_round_values
+            10,  # expected_first_round_peek
+            [40, 40],  # expected_second_round_values
+            40,  # expected_second_round_peek
+            [700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            4,  # window
+            [20, 20, 30, 30],  # expected_first_round_values
+            20,  # expected_first_round_peek
+            [50, 50, 60, 60],  # expected_second_round_values
+            50,  # expected_second_round_peek
+            [700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            None,  # window
+            [10, 10],  # expected_first_round_values
+            10,  # expected_first_round_peek
+            [10, 10, 10],  # expected_second_round_values
+            10,  # expected_second_round_peek
+            [10, 10, 10],  # expected_third_round_values
+            10,  # expected_third_round_peek
+        ),
+        (
+            "min",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            4,  # window
+            [20, 20, 30, 30],  # expected_first_round_values
+            20,  # expected_first_round_peek
+            [50, 50, 60, 60],  # expected_second_round_values
+            50,  # expected_second_round_peek
+            [50, 50, 60, 60],  # expected_third_round_values
+            50,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            None,  # window
+            [300, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [600, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            False,  # reduce_per_index
+            True,  # clear_on_reduce
+            4,  # window
+            [200, 200, 300, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [500, 500, 600, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            None,  # window
+            [300, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [300, 600, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [600, 700, 700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
+        (
+            "max",  # reduce_method
+            False,  # reduce_per_index
+            False,  # clear_on_reduce
+            4,  # window
+            [200, 200, 300, 300],  # expected_first_round_values
+            300,  # expected_first_round_peek
+            [500, 500, 600, 600],  # expected_second_round_values
+            600,  # expected_second_round_peek
+            [600, 600, 700, 700],  # expected_third_round_values
+            700,  # expected_third_round_peek
+        ),
     ],
 )
 def test_merging_multiples_rounds(
@@ -980,7 +982,7 @@ def test_merging_multiples_rounds(
     expected_third_round_values,
     expected_third_round_peek,
 ):
-    """Test reduce_per_index_on_parallel_merge with different reduction methods and clear_on_reduce setting."""
+    """Test reduce_per_index_on_parallel_merge with different reduction methods, clear_on_reduce,  setting."""
     # First round: Create and fill two stats objects
     incoming_stats1 = Stats(
         reduce=reduce_method,
