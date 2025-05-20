@@ -12,7 +12,7 @@ from ray._private.auto_init_hook import wrap_auto_init
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
-    ENABLE_CONTROLLER_LOGGING_ENV_VAR,
+    ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
@@ -114,7 +114,8 @@ class TrainController:
     ):
         self._train_run_context = train_run_context
         if ray_constants.env_bool(
-            ENABLE_CONTROLLER_LOGGING_ENV_VAR, DEFAULT_ENABLE_CONTROLLER_LOGGING
+            ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+            DEFAULT_ENABLE_CONTROLLER_LOGGING,
         ):
             configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref

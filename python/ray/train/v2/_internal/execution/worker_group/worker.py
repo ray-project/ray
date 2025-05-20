@@ -13,7 +13,7 @@ from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
-    ENABLE_WORKER_LOGGING_ENV_VAR,
+    ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
@@ -213,7 +213,7 @@ class RayTrainWorker:
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(
-            ENABLE_WORKER_LOGGING_ENV_VAR, DEFAULT_ENABLE_WORKER_LOGGING
+            ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR, DEFAULT_ENABLE_WORKER_LOGGING
         ):
             configure_worker_logger(context)
         patch_print_function()
