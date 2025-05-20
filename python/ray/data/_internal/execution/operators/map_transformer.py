@@ -625,7 +625,7 @@ class CallableClassUDFMapTransformFn(AbstractUDFMapTransformFn):
             self._udf_map_fn = None
 
 
-class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
+class AsyncCallableClassUDFMapTransformFn(AbstractUDFMapTransformFn):
     """A MapTransformFn that applies a asynchronous callable class UDF. If the UDF is not async, use CallableClassUDFMapTransformFn."""
 
     def __init__(
@@ -636,12 +636,11 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
         map_transform_fn_type: MapTransformFnOpType,
     ):
         super().__init__(
+            udf_context,
             input_type,
             output_type,
-            category=MapTransformFnCategory.DataProcess,
+            map_transform_fn_type,
         )
-        self._udf_context = udf_context
-        self._is_udf = True
 
     def __call__(
         self, input: Iterable[MapTransformFnData], ctx: TaskContext
@@ -756,16 +755,6 @@ class AsyncCallableClassUDFMapTransformFn(MapTransformFn):
         if self._udf_map_fn is not None:
             del self._udf_map_fn
             self._udf_map_fn = None
-
-    def __repr__(self) -> str:
-        op_fn_name = self._udf_context.op_fn.__name__
-        return f"{self.__class__.__name__}({op_fn_name}[{self._input_type} -> {self._output_type}])"
-
-    def __eq__(self, other):
-        return super().__eq__(other) and (
-            self._udf_context.op_fn == other._udf_context.op_fn
-            and self._udf_context.is_async == other._udf_context.is_async
-        )
 
 
 class BlocksToRowsMapTransformFn(MapTransformFn):
