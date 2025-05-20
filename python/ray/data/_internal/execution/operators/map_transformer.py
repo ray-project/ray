@@ -111,7 +111,6 @@ class MapTransformUDFContext:
     map_actor_context: Optional[_MapActorContext] = None
 
 
-# TODO: deduplicate with ray.data._internal.planner.plan_udf_map_op.py
 def _handle_debugger_exception(e: Exception, item: Any = None):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
