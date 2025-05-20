@@ -52,13 +52,25 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._active_tree_actor = PrefixTreeActor.options(
-            name="ActivePrefixTreeActor", get_if_exists=True
+        self._tree_actor = PrefixTreeActor.options(
+            name="PrefixTreeActor", get_if_exists=True
         ).remote()
+
+        # === Prefix-aware scheduling logic hyperparameters ===
         self._imbalanced_threshold = 10
 
+        # === Eviction policy ===
+        self._do_eviction = True
+        self._eviction_task = None
+
+        # 400K chars = 100K tokens, 1M chars = 250K tokens (benchmark reaches about 200K tokens per replica)
+        self._char_count_eviction_threshold = 500_000
+        self._char_count_eviction_target = 400_000
+        self._eviction_interval_secs = 10
+
         # === Metrics tracking ===
-        self._do_track_metrics = False
+        # Just used for benchmarking, will remove for PR eventually
+        self._do_track_metrics = True
         self._track_metrics_task = None
         self._vllm_metrics_path = "/home/ray/default/work/_testing/results/vllm_metrics"
         self._char_count_over_time_path = (
@@ -70,104 +82,37 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._num_requests_seen = 0
         self._zero_load_count = 0
 
-        # === Eviction policy ===
-        self._do_eviction = False
-        self._use_swapped_tree = False
-        # 400K chars = 100K tokens, 1M chars = 250K tokens (benchmark reaches about 200K tokens per replica)
-        self._max_char_count = 400_000
-        self._eviction_interval_secs = 10
-
-        # === Start tasks (if enabled) ===
-        if self._do_eviction:
-            if self._use_swapped_tree:
-                self._updating_tree_actor = PrefixTreeActor.options(
-                    name="UpdatingPrefixTreeActor", get_if_exists=True
-                ).remote()
-                self._dual_tree_actor = PrefixTreeActor.options(
-                    name="DualPrefixTreeActor", get_if_exists=True
-                ).remote()
-            self._eviction_task = self._event_loop.create_task(self._eviction_loop())
-
-        if self._do_track_metrics:
-            self._track_metrics_task = self._event_loop.create_task(
-                self._track_metrics()
-            )
-
-    # This doesn't seem to copy ray actors correctly
-    # async def copy_tree_to_tree(self, copy_from, copy_to):
-    # copyable_attrs = ["root", "tenant_to_char_count", "tenant_to_lru_tail"]
-    # for attr in copyable_attrs:
-    #     value = await copy_from.getattr.remote(attr)
-    #     await copy_to.setattr.remote(attr, value)
-
     async def _eviction_loop(self):
-        os.makedirs("/home/ray/default/work/_testing/results", exist_ok=True)
-        log_file_path = f"/home/ray/default/work/_testing/results/eviction_times/{int(time.time())}_id_{random.randint(0, 1000000)}.txt"
+        """Periodically checks and evicts excess characters from tenants in the prefix tree.
 
+        Runs in a continuous loop every `_eviction_interval_secs` seconds, checking each tenant's
+        character count. If a tenant exceeds `_char_count_eviction_threshold`, it removes characters
+        until the count is below the `_char_count_eviction_target` using LRU eviction.
+
+        This prevents unbounded memory growth in the prefix tree while maintaining
+        the most recent and relevant prefix matches, closely simulating the eviction policy of vLLM replicas.
+        """
         while True:
             try:
                 await asyncio.sleep(self._eviction_interval_secs)
-                after_sleep_time = time.time()
-
-                with open(log_file_path, "a") as f:
-                    f.write(f"{after_sleep_time},after_asyncio_sleep\n")
-
-                if self._use_swapped_tree:
-                    # === Swapped-tree eviction ===
-                    # 1. Copy active tree to updating tree
-                    await self._dual_tree_actor.copy_active_to_updating.remote()
-                    # 2. Run eviction in updating tree
-                    updating_tree = await self._dual_tree_actor.getattr.remote(
-                        "updating_tree"
-                    )
-                    tenant_to_char_count = updating_tree.getattr("tenant_to_char_count")
-                    for tenant, char_count in tenant_to_char_count.items():
-                        if char_count > self._max_char_count:
-                            excess = char_count - self._max_char_count
-                            updating_tree.evict_tenant_by_lru(tenant, excess)
-
-                            # Log time after each eviction
-                            after_evict_time = time.time()
-                            with open(log_file_path, "a") as f:
-                                f.write(f"{after_evict_time},after_evict_{tenant}\n")
-
-                    # 3. Copy updating tree to active tree
-                    await self._dual_tree_actor.copy_updating_to_active.remote()
-                else:
-                    # === In-place eviction ===
-                    tenant_char_count = await self._active_tree_actor.getattr.remote(
-                        "tenant_to_char_count"
-                    )
-                    if tenant_char_count:
-                        for tenant, char_count in tenant_char_count.items():
-                            if char_count > self._max_char_count:
-                                excess = char_count - self._max_char_count
-                                self._active_tree_actor.evict_tenant_by_lru.remote(
-                                    tenant, excess
-                                )
-
-                                # Log time after each eviction
-                                after_evict_time = time.time()
-                                with open(log_file_path, "a") as f:
-                                    f.write(
-                                        f"{after_evict_time},after_evict_{tenant}\n"
-                                    )
-
-                # Log end of iteration time
-                end_time = time.time()
-                with open(log_file_path, "a") as f:
-                    f.write(f"{end_time},end_of_iteration\n")
+                tenant_char_count = await self._tree_actor.getattr.remote(
+                    "tenant_to_char_count"
+                )
+                if tenant_char_count:
+                    for tenant, char_count in tenant_char_count.items():
+                        if char_count > self._char_count_eviction_threshold:
+                            # Evict down to the target level rather than just below threshold
+                            excess = char_count - self._char_count_eviction_target
+                            self._tree_actor.evict_tenant_by_lru.remote(tenant, excess)
 
             except Exception as e:
-                logger.exception(f"[Eviction Loop] error: {e}")
-
-                # Log error time
-                error_time = time.time()
-                with open(log_file_path, "a") as f:
-                    f.write(f"{error_time},error_occurred\n")
+                logger.exception(
+                    f"[PrefixAwareReplicaScheduler] Eviction Loop error: {e}"
+                )
 
     async def _track_metrics(self):
-        """Track vLLM metrics by WorkerId every 0.1s, save to JSON at end."""
+        # Remove this function for PR, currently only used for benchmarking
+        """Track metrics every 1s, save to JSON at end."""
         try:
             self._benchmark_start_time = time.time()
             print("Beginning to track metrics immediately")
@@ -241,7 +186,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                     print(f"[WARN] Failed to curl or parse /metrics: {e}")
 
                 # === Character count over time ===
-                tenant_char_count = await self._active_tree_actor.getattr.remote(
+                tenant_char_count = await self._tree_actor.getattr.remote(
                     "tenant_to_char_count"
                 )
                 from collections import defaultdict
@@ -285,6 +230,21 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             self._track_metrics_task = None
 
     async def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
+        """Extracts the text content from a pending request for prefix matching.
+
+        Searches through request arguments for either 'messages' or 'prompt' attributes,
+        then normalizes the content to a single string representation that can be used
+        for prefix tree operations.
+
+        Args:
+            pending_request: The request to extract text from
+
+        Returns:
+            A string containing the prompt text or concatenated message contents
+
+        Raises:
+            ValueError: If no prompt or messages attribute is found in the request
+        """
         prompt = None
         for arg in pending_request.args:
             valid_input_types = ["messages", "prompt"]
@@ -355,13 +315,13 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                     (
                         matched_text,
                         matched_tenant_ids,
-                    ) = await self._active_tree_actor.prefix_match.remote(
+                    ) = await self._tree_actor.prefix_match.remote(
                         input_text, candidate_replica_ids_strings
                     )
                     match_rate = len(matched_text) / len(input_text)
                     if match_rate < 0.1:
                         smallest_tenants = (
-                            await self._active_tree_actor.get_smallest_tenants.remote()
+                            await self._tree_actor.get_smallest_tenants.remote()
                         )
                         if smallest_tenants is not None and len(smallest_tenants) > 0:
                             chosen_replica_ids_strings = smallest_tenants
@@ -380,7 +340,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
-        self._active_tree_actor.remove_tenant.remote(replica_id.to_full_id_str())
+        self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()])
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for scheduling.
@@ -400,11 +360,22 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         removed = old_ids - new_ids
 
         # 4) Update the prefix tree with the changes
-        for rid in added:
-            self._active_tree_actor._add_tenant.remote(rid.to_full_id_str())
+        if added:
+            added_strings = [rid.to_full_id_str() for rid in added]
+            self._tree_actor.add_tenants.remote(added_strings, time.time())
 
-        for rid in removed:
-            self._active_tree_actor.remove_tenant.remote(rid.to_full_id_str())
+        if removed:
+            removed_strings = [rid.to_full_id_str() for rid in removed]
+            self._tree_actor.remove_tenants.remote(removed_strings)
+
+        # === Start tasks (if enabled and not already running) ===
+        if self._do_eviction and self._eviction_task is None:
+            self._eviction_task = self._event_loop.create_task(self._eviction_loop())
+
+        if self._do_track_metrics and self._track_metrics_task is None:
+            self._track_metrics_task = self._event_loop.create_task(
+                self._track_metrics()
+            )
 
     async def choose_replicas(
         self,
@@ -471,6 +442,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         ):
             input_text = await self._extract_text_from_request(pending_request)
             if input_text is not None:
-                self._active_tree_actor.insert.remote(
+                self._tree_actor.insert.remote(
                     input_text, replica_id.to_full_id_str(), time.time()
                 )
