@@ -1175,8 +1175,6 @@ void CoreWorker::Exit(
            "raylet disconnects the client because it kills this worker.";
   }
 
-  RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
-
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
@@ -1229,12 +1227,16 @@ void CoreWorker::Exit(
             // tasks in the task_receiver_, otherwise there might still be user code
             // running that relies on the state of the reference counter.
             // See: https://github.com/ray-project/ray/pull/53002.
+            RAY_LOG(INFO)
+                << "Releasing local references, then draining reference counter.";
             reference_counter_->ReleaseAllLocalReferences();
             reference_counter_->DrainAndShutdown(shutdown);
           } else {
             // If we are an actor, then we may be holding object references in the
             // heap. Then, we should not wait to drain the object references before
             // shutdown since this could hang.
+            RAY_LOG(INFO)
+                << "Not draining reference counter since this is an actor worker.";
             shutdown();
           }
         },
