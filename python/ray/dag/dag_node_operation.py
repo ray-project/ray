@@ -258,11 +258,12 @@ def _update_ready_sync_idxs(
     node: _DAGOperationGraphNode,
 ) -> None:
     """
-    Update the readiness of the synchronous nodes.
+    Mark the node as ready for its synchronous nodes.
     """
+    idx = (node.task_idx, node.operation.type)
     for task_idx, op_type in node.sync_idxs:
         sync_node = graph[task_idx][op_type]
-        sync_node.ready_sync_idxs.add((node.task_idx, node.operation.type))
+        sync_node.ready_sync_idxs.add(idx)
 
 
 def _push_candidate_node_if_ready(
@@ -271,17 +272,18 @@ def _push_candidate_node_if_ready(
     node: _DAGOperationGraphNode,
 ) -> None:
     """
-    Push the node to the candidates if ready. If it has synchronous nodes, push them
-    together to the candidates if ready.
+    Push the node to the candidates if ready. If it has synchronous nodes and they are
+    ready, push all of them to the candidates.
     """
-    # Update the NCCL read nodes.
+    # For the NCCL write node, mark the downstream NCCL read nodes as ready. The NCCL
+    # operation becomes ready after both the write and read nodes are updated.
     if node.is_nccl_write:
         for task_idx, op_type in node.out_edges:
             read_node = graph[task_idx][op_type]
             read_node.in_edges.pop((node.task_idx, node.operation.type))
             assert read_node.is_nccl_read and len(read_node.in_edges) == 0
             _update_ready_sync_idxs(graph, read_node)
-    # Update the NCCL collective nodes.
+    # For the NCCL operation, update the synchronous nodes.
     if len(node.sync_idxs) != 0:
         _update_ready_sync_idxs(graph, node)
     # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
