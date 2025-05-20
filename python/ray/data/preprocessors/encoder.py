@@ -707,12 +707,14 @@ def _get_unique_value_indices(
     unique_values_with_indices = OrderedDict()
     for column in columns:
         if column in max_categories:
-            # Output sorted by freq.
+            # Output sorted by freq and also lexicographically by column value
+            most_common = sorted(
+                final_counters[column].most_common(max_categories[column]),
+                key=lambda x: (x[1], x[0]),
+                reverse=True,
+            )
             unique_values_with_indices[key_format.format(column)] = {
-                k[0]: j
-                for j, k in enumerate(
-                    final_counters[column].most_common(max_categories[column])
-                )
+                k[0]: j for j, k in enumerate(most_common[: max_categories[column]])
             }
         else:
             # Output sorted by column name.
