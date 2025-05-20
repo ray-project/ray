@@ -423,9 +423,9 @@ def run_release_test(
                 "working_dir": working_dir_upload_path
             }
         }
-        # Get token from AWS Secrets Manager
+
         session = boto3.session.Session()
-        client = session.client('secretsmanager')
+        client = session.client('secretsmanager', region_name='us-west-2')
         try:
             secret_response = client.get_secret_value(
                 SecretId='kuberay_service_secret_key'  # Adjust secret name as needed
