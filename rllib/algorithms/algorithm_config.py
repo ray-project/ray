@@ -1022,7 +1022,24 @@ class AlgorithmConfig(_Config):
         # Create an env-to-module connector pipeline (including RLlib's default
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
-            val_ = self._env_to_module_connector(env)
+            try:
+                val_ = self._env_to_module_connector(env, spaces, device)
+            # Try deprecated signature, if necessary.
+            except TypeError as e:
+                if "positional argument" in e.args[0]:
+                    if log_once("env-to-module-wrong-signature"):
+                        logger.error(
+                            "Your `config.env_to_module_connector` function seems to "
+                            "have a wrong or outdated signature! It should be: "
+                            "`def myfunc(env, spaces, device): ...`, where any of "
+                            "these arguments are optional and may be None.\n"
+                            "`env` is the (vectorized) gym env.\n"
+                            "`spaces` is a dict of structure `{__env__: (["
+                            "env_vector_obs_space, env_vector_act_space]),"
+                            "__env_single__: ([env_obs_space, env_act_space])}`.\n"
+                            "`device` is a (torch) device.\n"
+                        )
+                    val_ = self._env_to_module_connector(env)
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1110,7 +1127,23 @@ class AlgorithmConfig(_Config):
         # Create a module-to-env connector pipeline (including RLlib's default
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
-            val_ = self._module_to_env_connector(env)
+            try:
+                val_ = self._module_to_env_connector(env, spaces)
+            # Try deprecated signature, if necessary.
+            except TypeError as e:
+                if "positional argument" in e.args[0]:
+                    if log_once("module-to-env-wrong-signature"):
+                        logger.error(
+                            "Your `config.env_to_module_connector` function seems to "
+                            "have a wrong or outdated signature! It should be: "
+                            "`def myfunc(env, spaces): ...`, where any of "
+                            "these arguments are optional and may be None.\n"
+                            "`env` is the (vectorized) gym env.\n"
+                            "`spaces` is a dict of structure `{__env__: (["
+                            "env_vector_obs_space, env_vector_act_space]),"
+                            "__env_single__: ([env_obs_space, env_act_space])}`.\n"
+                        )
+                    val_ = self._module_to_env_connector(env)
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
