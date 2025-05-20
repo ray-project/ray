@@ -100,9 +100,7 @@ class ProtocolsProvider:
                     "AZURE_STORAGE_ACCOUNT environment variable to be set."
                 )
 
-            account_url = (
-                f"https://{azure_storage_account_name}.blob.core.windows.net/"
-            )
+            account_url = f"https://{azure_storage_account_name}.blob.core.windows.net/"
             tp = {
                 "client": BlobServiceClient(
                     account_url=account_url, credential=DefaultAzureCredential()
