@@ -707,7 +707,10 @@ def _get_unique_value_indices(
     unique_values_with_indices = OrderedDict()
     for column in columns:
         if column in max_categories:
-            # Output sorted by freq and also lexicographically by column value
+            # Output sorted by freq and also lexicographically by column value.
+            # This is to ensure that the order of the categories is consistent
+            # across different runs when there is a tie in frequency between
+            # two different values
             most_common = sorted(
                 final_counters[column].most_common(max_categories[column]),
                 key=lambda x: (x[1], x[0]),
