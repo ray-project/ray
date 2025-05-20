@@ -92,7 +92,6 @@ python/ray/_private/internal_api.py
 python/ray/_private/metrics_agent.py
     DOC101: Method `OpenCensusProxyCollector.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OpenCensusProxyCollector.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [component_timeout_s: int].
-    DOC201: Method `OpenCensusProxyCollector.to_metrics` does not have a return section in docstring
     DOC201: Method `MetricsAgent.proxy_export_metrics` does not have a return section in docstring
     DOC106: Method `PrometheusServiceDiscoveryWriter.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `PrometheusServiceDiscoveryWriter.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -282,9 +281,7 @@ python/ray/_private/test_utils.py
     DOC101: Function `run_string_as_driver_nonblocking`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `run_string_as_driver_nonblocking`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `run_string_as_driver_nonblocking`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [env: Dict].
-    DOC101: Function `wait_for_condition`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `wait_for_condition`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `wait_for_condition`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: Any].
     DOC201: Function `wait_for_condition` does not have a return section in docstring
     DOC101: Function `async_wait_for_condition`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `async_wait_for_condition`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -831,13 +828,6 @@ python/ray/client_builder.py
     DOC111: Method `ClientBuilder.env`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC201: Method `ClientBuilder.env` does not have a return section in docstring
     DOC201: Method `ClientBuilder.namespace` does not have a return section in docstring
---------------------
-python/ray/cloudpickle/cloudpickle.py
-    DOC101: Function `_find_imported_submodules`: Docstring contains fewer arguments than in function signature.
-    DOC106: Function `_find_imported_submodules`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `_find_imported_submodules`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `_find_imported_submodules`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [code: , top_level_dependencies: ].
-    DOC201: Function `_find_imported_submodules` does not have a return section in docstring
 --------------------
 python/ray/cluster_utils.py
     DOC101: Method `AutoscalingCluster.__init__`: Docstring contains fewer arguments than in function signature.
