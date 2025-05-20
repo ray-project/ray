@@ -148,7 +148,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --parallelism-per-worker 3
-        --except-tags soft_imports,gpu_only,rllib
+        --except-tags doctest,soft_imports,gpu_only,rllib
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
@@ -166,7 +166,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml
         --parallelism-per-worker 3
-        --except-tags gpu
+        --except-tags gpu,doctest
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml
         --parallelism-per-worker 3
         --only-tags ray_air

@@ -968,6 +968,41 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         assert line in file_response
 
 
+def test_log_download_filename(ray_start_with_dashboard):
+    """Test that the download filename can be specified when downloading a log."""
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    download_filename = "dummy.out"
+
+    def verify():
+        stream_response = requests.get(
+            webui_url
+            + (
+                f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
+                f"&lines=5&download_filename={download_filename}"
+            ),
+            stream=True,
+        )
+        if stream_response.status_code != 200:
+            raise ValueError(stream_response.content.decode("utf-8"))
+
+        assert (
+            stream_response.headers["Content-Disposition"]
+            == f'attachment; filename="{download_filename}"'
+        )
+        return True
+
+    # Node ID may not be found immediately, so may need to retry the check a few times.
+    wait_for_condition(verify)
+
+
 def test_log_list(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5

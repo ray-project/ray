@@ -1874,64 +1874,7 @@ class Algorithm(Checkpointable, Trainable):
         return env_runner_results, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
-    def restore_offline_eval_runners(self, runner_group: RunnerGroup) -> None:
-        if not runner_group or not runner_group.local_runner:
-            return
-
-        restored = runner_group.probe_unhealthy_runners()
-
-        if restored:
-            # Count the restored workers.
-            self._counters["total_num_restored_workers"] += len(restored)
-
-            # Get the state of the correct (reference) worker.
-            from_runner = runner_group.healthy_runner_ids()[0]
-            state = runner_group.foreach_runner(
-                "get_state",
-                local_runner=False,
-                remote_worker_ids=from_runner,
-            )[0]
-            state_ref = ray.put(state)
-
-            def _sync_runner(r):
-                r.set_state(ray.get(state_ref))
-
-            # By default, entire `Runner`` state is synced after restoration
-            # to bring the previously failed `Runner` up to date.
-            runner_group.foreach_runner(
-                func=_sync_runner,
-                remote_worker_ids=restored,
-                # Don't update the local `Runner`.
-                local_runner=False,
-                timeout_seconds=self.evaluation_config.offline_eval_runner_restore_timeout_s,
-            )
-            # Restore the correct data iterator split stream.
-            # TODO (simon): Define a `restore` method in the `RunnerGroup`
-            # such that we do not have to check here for the group.
-            # Also get a different streaming split if a runner fails and is not
-            # recreated.
-            runner_group.foreach_runner(
-                func="set_dataset_iterator",
-                remote_worker_ids=restored,
-                local_runner=False,
-                timeout_seconds=self.evaluation_config.offline_eval_runner_restore_timeout_s,
-                kwargs={"iterator": runner_group._offline_data_iterators[restored]},
-            )
-
-            # Fire the callback for re-created workers.
-            make_callback(
-                "on_offline_eval_runners_recreated",
-                callbacks_objects=self.callbacks,
-                callbacks_functions=self.config.callbacks_on_offline_eval_runners_recreated,
-                kwargs=dict(
-                    algorithm=self,
-                    env_runner_group=runner_group,
-                    env_runner_indices=restored,
-                ),
-            )
-
-    @OverrideToImplementCustomLogic
-    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> None:
+    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> List[int]:
         """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
@@ -1942,6 +1885,10 @@ class Algorithm(Checkpointable, Trainable):
         Args:
             env_runner_group: The EnvRunnerGroup to restore. This may be the training or
                 the evaluation EnvRunnerGroup.
+
+        Returns:
+            A list of EnvRunner indices that have been restored during the call of
+            this method.
         """
         # If `env_runner_group` is None, or
         # 1. `env_runner_group` (EnvRunnerGroup) does not have a local worker, and
@@ -1951,7 +1898,7 @@ class Algorithm(Checkpointable, Trainable):
         if not env_runner_group or (
             not env_runner_group.local_env_runner and not self.env_runner
         ):
-            return
+            return []
 
         # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
@@ -2006,33 +1953,54 @@ class Algorithm(Checkpointable, Trainable):
                 timeout_seconds=self.config.env_runner_restore_timeout_s,
             )
 
-            # Fire the callback for re-created workers.
-            make_callback(
-                "on_env_runners_recreated",
-                callbacks_objects=self.callbacks,
-                callbacks_functions=self.config.callbacks_on_env_runners_recreated,
-                kwargs=dict(
-                    algorithm=self,
-                    env_runner_group=env_runner_group,
-                    env_runner_indices=restored,
-                    is_evaluation=(
-                        env_runner_group.local_env_runner.config.in_evaluation
-                    ),
-                ),
+        return restored
+
+    @OverrideToImplementCustomLogic
+    def restore_offline_eval_runners(self, runner_group: RunnerGroup) -> List[int]:
+        if not runner_group or not runner_group.local_runner:
+            return []
+
+        restored = runner_group.probe_unhealthy_runners()
+
+        if restored:
+            # Count the restored workers.
+            self._counters["total_num_restored_workers"] += len(restored)
+
+            # Get the state of the correct (reference) worker.
+            from_runner = runner_group.healthy_runner_ids()[0]
+            state = runner_group.foreach_runner(
+                "get_state",
+                local_runner=False,
+                remote_worker_ids=from_runner,
+            )[0]
+            state_ref = ray.put(state)
+
+            def _sync_runner(r):
+                r.set_state(ray.get(state_ref))
+
+            # By default, entire `Runner`` state is synced after restoration
+            # to bring the previously failed `Runner` up to date.
+            runner_group.foreach_runner(
+                func=_sync_runner,
+                remote_worker_ids=restored,
+                # Don't update the local `Runner`.
+                local_runner=False,
+                timeout_seconds=self.evaluation_config.offline_eval_runner_restore_timeout_s,
             )
-            # TODO (sven): Deprecate this call.
-            make_callback(
-                "on_workers_recreated",
-                callbacks_objects=self.callbacks,
-                kwargs=dict(
-                    algorithm=self,
-                    worker_set=env_runner_group,
-                    worker_ids=restored,
-                    is_evaluation=(
-                        env_runner_group.local_env_runner.config.in_evaluation
-                    ),
-                ),
+            # Restore the correct data iterator split stream.
+            # TODO (simon): Define a `restore` method in the `RunnerGroup`
+            # such that we do not have to check here for the group.
+            # Also get a different streaming split if a runner fails and is not
+            # recreated.
+            runner_group.foreach_runner(
+                func="set_dataset_iterator",
+                remote_worker_ids=restored,
+                local_runner=False,
+                timeout_seconds=self.evaluation_config.offline_eval_runner_restore_timeout_s,
+                kwargs={"iterator": runner_group._offline_data_iterators[restored]},
             )
+
+        return restored
 
     @OverrideToImplementCustomLogic
     def training_step(self) -> None:
@@ -3329,7 +3297,14 @@ class Algorithm(Checkpointable, Trainable):
                 while not train_iter_ctx.should_stop(has_run_once):
                     # Before training step, try to bring failed workers back.
                     with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
-                        self.restore_env_runners(self.env_runner_group)
+                        restored = self.restore_env_runners(self.env_runner_group)
+                        # Fire the callback for re-created EnvRunners.
+                        if restored:
+                            self._make_on_env_runners_recreated_callbacks(
+                                config=self.config,
+                                env_runner_group=self.env_runner_group,
+                                restored_env_runner_indices=restored,
+                            )
 
                     # Try to train one step.
                     with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
@@ -3396,7 +3371,23 @@ class Algorithm(Checkpointable, Trainable):
         # Restore crashed offline evaluation runners.
         if self.offline_eval_runner_group is not None:
             with self.metrics.log_time((TIMERS, RESTORE_OFFLINE_EVAL_RUNNERS_TIMER)):
-                self.restore_offline_eval_runners(self.offline_eval_runner_group)
+                restored = self.restore_offline_eval_runners(
+                    self.offline_eval_runner_group
+                )
+                if restored:
+                    # Fire the callback for re-created workers.
+                    make_callback(
+                        "on_offline_eval_runners_recreated",
+                        callbacks_objects=self.callbacks,
+                        callbacks_functions=(
+                            self.config.callbacks_on_offline_eval_runners_recreated
+                        ),
+                        kwargs=dict(
+                            algorithm=self,
+                            env_runner_group=self.offline_eval_runner_group,
+                            env_runner_indices=restored,
+                        ),
+                    )
 
         # Run one offline evaluation and time it.
         with self.metrics.log_time((TIMERS, OFFLINE_EVALUATION_ITERATION_TIMER)):
@@ -3437,10 +3428,17 @@ class Algorithm(Checkpointable, Trainable):
         if self.eval_env_runner_group is not None:
             if self.config.enable_env_runner_and_connector_v2:
                 with self.metrics.log_time((TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)):
-                    self.restore_env_runners(self.eval_env_runner_group)
+                    restored = self.restore_env_runners(self.eval_env_runner_group)
             else:
                 with self._timers["restore_eval_workers"]:
-                    self.restore_env_runners(self.eval_env_runner_group)
+                    restored = self.restore_env_runners(self.eval_env_runner_group)
+            # Fire the callback for re-created EnvRunners.
+            if restored:
+                self._make_on_env_runners_recreated_callbacks(
+                    config=self.evaluation_config,
+                    env_runner_group=self.eval_env_runner_group,
+                    restored_env_runner_indices=restored,
+                )
 
         # Run `self.evaluate()` only once per training iteration.
         if self.config.enable_env_runner_and_connector_v2:
@@ -3607,6 +3605,36 @@ class Algorithm(Checkpointable, Trainable):
             }
 
         return results
+
+    def _make_on_env_runners_recreated_callbacks(
+        self,
+        *,
+        config,
+        env_runner_group,
+        restored_env_runner_indices,
+    ):
+        make_callback(
+            "on_env_runners_recreated",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=(config.callbacks_on_env_runners_recreated),
+            kwargs=dict(
+                algorithm=self,
+                env_runner_group=env_runner_group,
+                env_runner_indices=restored_env_runner_indices,
+                is_evaluation=config.in_evaluation,
+            ),
+        )
+        # TODO (sven): Deprecate this call.
+        make_callback(
+            "on_workers_recreated",
+            callbacks_objects=self.callbacks,
+            kwargs=dict(
+                algorithm=self,
+                worker_set=env_runner_group,
+                worker_ids=restored_env_runner_indices,
+                is_evaluation=config.in_evaluation,
+            ),
+        )
 
     def __repr__(self):
         if self.config.enable_rl_module_and_learner:
@@ -3972,7 +4000,14 @@ class Algorithm(Checkpointable, Trainable):
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 while not train_iter_ctx.should_stop(training_step_results):
                     with self._timers["restore_workers"]:
-                        self.restore_env_runners(self.env_runner_group)
+                        restored = self.restore_env_runners(self.env_runner_group)
+                        # Fire the callback for re-created EnvRunners.
+                        if restored:
+                            self._make_on_env_runners_recreated_callbacks(
+                                config=self.config,
+                                env_runner_group=self.env_runner_group,
+                                restored_env_runner_indices=restored,
+                            )
 
                     with self._timers[TRAINING_STEP_TIMER]:
                         training_step_results = self.training_step()
@@ -4303,13 +4338,13 @@ class Algorithm(Checkpointable, Trainable):
         else:
             return actions
 
-    @Deprecated(new="Algorithm.restore_env_runners", error=False)
+    @Deprecated(new="Algorithm.restore_env_runners", error=True)
     def restore_workers(self, *args, **kwargs):
-        return self.restore_env_runners(*args, **kwargs)
+        pass
 
     @Deprecated(
         new="Algorithm.env_runner_group",
-        error=False,
+        error=True,
     )
     @property
     def workers(self):
@@ -4317,7 +4352,7 @@ class Algorithm(Checkpointable, Trainable):
 
     @Deprecated(
         new="Algorithm.eval_env_runner_group",
-        error=False,
+        error=True,
     )
     @property
     def evaluation_workers(self):

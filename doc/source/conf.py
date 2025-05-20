@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 from datetime import datetime
+from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
 
@@ -514,6 +515,13 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     )
 
 
+def process_signature(app, what, name, obj, options, signature, return_annotation):
+    # Sphinx is unable to render dataclass with factory/`field`
+    # https://github.com/sphinx-doc/sphinx/issues/10893
+    if what == "class" and is_dataclass(obj):
+        return signature.replace("<factory>", "..."), return_annotation
+
+
 def setup(app):
     # Only generate versions JSON during RTD build
     if os.getenv("READTHEDOCS") == "True":
@@ -561,6 +569,8 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
+
+    app.connect("autodoc-process-signature", process_signature)
 
     class DuplicateObjectFilter(logging.Filter):
         def filter(self, record):
