@@ -41,6 +41,7 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
+from ray._private.custom_types import TENSOR_TRANSPORT
 
 if TYPE_CHECKING:
     import torch
@@ -154,8 +155,6 @@ class ActorMethod:
             The valid values are "nccl", "gloo", or None.
     """
 
-    valid_transports = ["nccl", "gloo"]
-
     def __init__(
         self,
         actor,
@@ -205,10 +204,10 @@ class ActorMethod:
         # Validate and set the tensor transport protocol
         if (
             tensor_transport is not None
-            and tensor_transport.lower() not in self.valid_transports
+            and tensor_transport.upper() not in TENSOR_TRANSPORT
         ):
             raise ValueError(
-                f"tensor_transport must be one of {self.valid_transports} or None"
+                f"tensor_transport must be one of {TENSOR_TRANSPORT} or None"
             )
         self._tensor_transport = tensor_transport
 
@@ -371,10 +370,7 @@ class ActorMethod:
             )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
-        assert (
-            tensor_transport is None
-            or tensor_transport.lower() in self.valid_transports
-        )
+        assert tensor_transport is None or tensor_transport.upper() in TENSOR_TRANSPORT
         args = args or []
         kwargs = kwargs or {}
 
