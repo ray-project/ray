@@ -73,9 +73,9 @@
         "type": "query",
         "description": "Filter queries to specific Ray Train run names.",
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_run_name)",
+        "definition": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_name)",
         "query": {
-          "query": "label_values(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_run_name)",
+          "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_name)",
           "refId": "StandardVariableQuery"
         },
         "hide": 0,
@@ -96,9 +96,9 @@
         "type": "query",
         "description": "Filter queries to specific Ray Train run ids.",
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_run_id)",
+        "definition": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_id)",
         "query": {
-          "query": "label_values(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_run_id)",
+          "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_id)",
           "refId": "StandardVariableQuery"
         },
         "hide": 0,
@@ -119,9 +119,9 @@
         "type": "query",
         "description": "Filter queries to specific Ray Train worker world ranks.",
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_worker_world_rank)",
+        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_world_rank)",
         "query": {
-          "query": "label_values(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_worker_world_rank)",
+          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_world_rank)",
           "refId": "StandardVariableQuery"
         },
         "hide": 0,
@@ -142,9 +142,9 @@
         "type": "query",
         "description": "Filter queries to specific Ray Train worker actor ids.",
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_worker_actor_id)",
+        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
         "query": {
-          "query": "label_values(ray_train_report_total_blocked_time_s{{SessionName=~\"$SessionName\",{global_filters}}}, ray_train_worker_actor_id)",
+          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
           "refId": "StandardVariableQuery"
         },
         "hide": 0,
