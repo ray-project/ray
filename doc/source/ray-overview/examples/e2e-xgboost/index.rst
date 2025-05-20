@@ -7,7 +7,7 @@ An end-to-end tutorial to train a distributed XGBoost model and perform offline 
 
 .. toctree::
 
-    ./README
+    ./README.ipynb
     ./notebooks/01-Distributed_Training.ipynb
     ./notebooks/02-Validation.ipynb
     ./notebooks/03-Serving.ipynb
