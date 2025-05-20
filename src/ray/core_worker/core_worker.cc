@@ -370,7 +370,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_.get_executor()),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
+      client_call_manager_(
+          std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
@@ -550,39 +551,20 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
     }
   }
-
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
             *client_call_manager_,
-            /*core_worker_unavailable_timeout_callback=*/[this, addr]() {
-              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
-              const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
-              const rpc::GcsNodeInfo *node_info =
-                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
-              if (node_info != nullptr && node_info->state() == rpc::GcsNodeInfo::DEAD) {
-                RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-                    << "Disconnect core worker client since its node is dead";
-                core_worker_client_pool_->Disconnect(worker_id);
-                return;
-              }
-
-              raylet::RayletClient raylet_client(
-                  rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                                     node_info->node_manager_port(),
-                                                     *client_call_manager_));
-              raylet_client.IsLocalWorkerDead(
-                  worker_id,
-                  [this, worker_id](const Status &status,
-                                    rpc::IsLocalWorkerDeadReply &&reply) {
-                    if (status.ok() && reply.is_dead()) {
-                      RAY_LOG(INFO).WithField(worker_id)
-                          << "Disconnect core worker client since it is dead";
-                      core_worker_client_pool_->Disconnect(worker_id);
-                    }
-                  });
-            });
+            rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                gcs_client_.get(),
+                core_worker_client_pool_.get(),
+                [this](const std::string &node_manager_address, int32_t port) {
+                  return std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_manager_address, port, *client_call_manager_));
+                },
+                addr));
       });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
@@ -1573,6 +1555,12 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
           {object_id},
           /*generator_id=*/ObjectID::Nil(),
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+            // RPC to the local raylet should never fail.
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
+                             << status.ToString();
+              return;
+            }
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
             if (!plasma_store_provider_->Release(object_id).ok()) {
@@ -1767,6 +1755,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         {object_id},
         generator_id,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // RPC to the local raylet should never fail.
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
+                           << status.ToString();
+            return;
+          }
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
           if (!plasma_store_provider_->Release(object_id).ok()) {
@@ -3579,7 +3573,13 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         generator_id,
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
-          if (!status.ok() || !reply.successes(0)) {
+          // RPC to the local raylet should never fail.
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
+                           << status.ToString();
+            return;
+          }
+          if (!reply.successes(0)) {
             RAY_LOG(INFO).WithField(return_id)
                 << "Failed to pin existing copy of the task return object. "
                    "This object may get evicted while there are still "

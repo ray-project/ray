@@ -93,7 +93,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     # Create some values to close over.
     val1 = 1
@@ -140,7 +140,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     @ray.remote
     class Actor1:
@@ -217,7 +217,7 @@ def test_use_actor_twice(ray_start_10_cpus):
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+    # Make sure we can define and actors within remote functions.
 
     @ray.remote
     def f(x, n):
@@ -239,7 +239,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+    # Make sure we can create and use actors within remote functions.
 
     @ray.remote
     class Actor1:
@@ -1651,7 +1651,4 @@ def test_get_local_actor_state(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

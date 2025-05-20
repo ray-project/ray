@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Optional, List, Type, Callable, Dict, Union, Tuple
+from typing import Optional, List, Type, Callable, Dict, Union, Tuple, Any
 
 from pydantic import Field
 
@@ -51,6 +51,54 @@ class ProcessorConfig(BaseModelExtended):
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
+
+
+class OfflineProcessorConfig(ProcessorConfig):
+    """The processor configuration for offline processing."""
+
+    model_source: str = Field(
+        description="The model source to use for the offline processing.",
+    )
+    runtime_env: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="The runtime environment to use for the offline processing.",
+    )
+    max_pending_requests: Optional[int] = Field(
+        default=None,
+        description="The maximum number of pending requests. If not specified, "
+        "will use the default value from the backend engine.",
+    )
+    max_concurrent_batches: int = Field(
+        default=8,
+        description="The maximum number of concurrent batches in the engine. "
+        "This is to overlap the batch processing to avoid the tail latency of "
+        "each batch. The default value may not be optimal when the batch size "
+        "or the batch processing latency is too small, but it should be good "
+        "enough for batch size >= 32.",
+    )
+
+    # Processor stage configurations.
+    apply_chat_template: bool = Field(
+        default=True, description="Whether to apply chat template."
+    )
+    chat_template: Optional[str] = Field(
+        default=None,
+        description="The chat template to use. This is usually not needed if the "
+        "model checkpoint already contains the chat template.",
+    )
+    tokenize: bool = Field(
+        default=True,
+        description="Whether to tokenize the input before passing it to the "
+        "backend engine. If not, the backend engine will tokenize the prompt.",
+    )
+    detokenize: bool = Field(
+        default=True,
+        description="Whether to detokenize the output.",
+    )
+    has_image: bool = Field(
+        default=False,
+        description="Whether the input messages have images.",
+    )
 
 
 @PublicAPI(stability="alpha")

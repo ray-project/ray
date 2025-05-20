@@ -59,7 +59,7 @@
           "query": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "{SessionName=\"(?<value>.*)\".*",
         "skipUrlSync": false,
         "sort": 2,
@@ -88,7 +88,7 @@
           "query": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "{ray_train_run_name=\"(?<value>.*)\".*",
         "skipUrlSync": false,
         "sort": 2,

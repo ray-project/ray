@@ -5,11 +5,14 @@ from typing import Any, Dict, Optional
 from pydantic import Field, root_validator
 
 from ray.data.block import UserDefinedFunction
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
+)
 
 import ray
 from ray.llm._internal.batch.processor.base import (
     Processor,
-    ProcessorConfig,
+    OfflineProcessorConfig,
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.stages import (
@@ -33,13 +36,10 @@ import transformers
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
 
-class SGLangEngineProcessorConfig(ProcessorConfig):
+class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     """The configuration for the SGLang engine processor."""
 
     # SGLang stage configurations.
-    model_source: str = Field(
-        description="The model source to use for the SGLang engine.",
-    )
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description="The kwargs to pass to the SGLang engine. See "
@@ -50,42 +50,6 @@ class SGLangEngineProcessorConfig(ProcessorConfig):
         default=SGLangTaskType.GENERATE,
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
-    )
-    runtime_env: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="The runtime environment to use for the SGLang engine.",
-    )
-    max_pending_requests: Optional[int] = Field(
-        default=None,
-        description="The maximum number of pending requests. If not specified, "
-        "will use the default value from the SGLang engine.",
-    )
-    max_concurrent_batches: int = Field(
-        default=4,
-        description="The maximum number of concurrent batches in the engine. "
-        "This is to overlap the batch processing to avoid the tail latency of "
-        "each batch. The default value may not be optimal when the batch size "
-        "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 64.",
-    )
-
-    # Processor stage configurations.
-    apply_chat_template: bool = Field(
-        default=True, description="Whether to apply chat template."
-    )
-    chat_template: Optional[str] = Field(
-        default=None,
-        description="The chat template to use. This is usually not needed if the "
-        "model checkpoint already contains the chat template.",
-    )
-    tokenize: bool = Field(
-        default=True,
-        description="Whether to tokenize the input before passing it to the "
-        "SGLang engine. If not, SGLang will tokenize the prompt in the engine.",
-    )
-    detokenize: bool = Field(
-        default=True,
-        description="Whether to detokenize the output.",
     )
 
     @root_validator(pre=True)
@@ -160,14 +124,22 @@ def build_sglang_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas. Note that we use a single
-                # integer to let Ray Data prepare all replicas before kicking
-                # off the processing for now.
-                concurrency=config.concurrency,
+                # The number of running replicas. This is a deprecated field, but
+                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+                # which initiates enough many overlapping UDF calls per actor, to
+                # saturate `max_concurrency`.
+                compute=ray.data.ActorPoolStrategy(
+                    min_size=config.concurrency,
+                    max_size=config.concurrency,
+                    max_tasks_in_flight_per_actor=max(
+                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                    ),
+                ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
+                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),

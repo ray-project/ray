@@ -55,8 +55,6 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-  /// Get the task's sequence number according to the internal offset.
-  uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
   bool Empty() override;
 
  private:
