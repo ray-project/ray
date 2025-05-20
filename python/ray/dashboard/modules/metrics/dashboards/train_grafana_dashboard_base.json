@@ -39,12 +39,9 @@
         "datasource": null,
         "query": "prometheus",
         "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
         "hide": 2,
         "includeAll": false,
         "multi": false,
-        "options": [],
         "current": {
           "selected": false
         }
@@ -61,8 +58,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
@@ -86,8 +81,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
@@ -111,8 +104,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
@@ -136,8 +127,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
@@ -161,8 +150,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
         "hide": 0,
         "includeAll": true,
         "multi": false,
