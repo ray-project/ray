@@ -1,11 +1,11 @@
-import os
 import subprocess
 import time
-from typing import Tuple, Literal
+from typing import Literal
 
 import requests
 import pytest
 from openai import OpenAI
+import ray
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
 
@@ -13,9 +13,6 @@ MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 RAY_MODEL_ID = "qwen-0.5b"
 MAX_OUTPUT_TOKENS = 256
 SEED = 42
-
-# vLLM has started using this with V1 instead of xgrammar
-os.environ["RAYLLM_GUIDED_DECODING_BACKEND"] = "auto"
 
 
 def get_llm_config(
@@ -31,7 +28,7 @@ def get_llm_config(
             autoscaling_config=dict(
                 min_replicas=1,
                 max_replicas=1,
-            )
+            ),
         ),
         engine_kwargs=dict(
             tensor_parallel_size=tensor_parallel_size,
@@ -50,28 +47,6 @@ def start_ray_serve(
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     return ray_url
-
-
-def start_vllm_server(
-    tensor_parallel_size: int = 1, pipeline_parallel_size: int = 1
-) -> Tuple[str, subprocess.Popen]:
-    """Start vLLM server with specified parallelism parameters."""
-    vllm_port = 8001
-    cmd = [
-        "vllm",
-        "serve",
-        MODEL_ID,
-        "--port",
-        str(vllm_port),
-        "--distributed-executor-backend=ray",
-        "--generation-config=vllm",  # Force vLLM to ignore HF generation_config.json
-        "--tensor-parallel-size",
-        str(tensor_parallel_size),
-        "--pipeline-parallel-size",
-        str(pipeline_parallel_size),
-    ]
-    process = subprocess.Popen(cmd)
-    return f"http://localhost:{vllm_port}", process
 
 
 def create_openai_client(server_url: str) -> OpenAI:
@@ -104,6 +79,59 @@ def generate_chat_completion(client: OpenAI, model_id: str, test_message: str) -
         seed=SEED,
     )
     return response.choices[0].message.content
+
+
+@ray.remote
+class VllmServer:
+    def __init__(
+        self,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        model_id: str = MODEL_ID,
+    ):
+        self.tensor_parallel_size = tensor_parallel_size
+        self.pipeline_parallel_size = pipeline_parallel_size
+        self.model_id = model_id
+        self.vllm_url = self._start_vllm_server()
+        self.openai_client = create_openai_client(self.vllm_url)
+        wait_for_server_ready(self.vllm_url, server_type="vllm", timeout=240)
+
+    def _start_vllm_server(self) -> str:
+        """Start vLLM server with specified parallelism parameters."""
+        vllm_port = 8001
+        cmd = [
+            "vllm",
+            "serve",
+            self.model_id,
+            "--port",
+            str(vllm_port),
+            "--distributed-executor-backend=ray",
+            "--generation-config=vllm",  # Force vLLM to ignore HF generation_config.json
+            "--tensor-parallel-size",
+            str(self.tensor_parallel_size),
+            "--pipeline-parallel-size",
+            str(self.pipeline_parallel_size),
+        ]
+        self.process = subprocess.Popen(cmd)
+        return f"http://localhost:{vllm_port}"
+
+    def generate_completion(self, test_prompt: str) -> str:
+        """Generate completion using the provided OpenAI client."""
+        return generate_completion(self.openai_client, self.model_id, test_prompt)
+
+    def generate_chat_completion(self, test_message: str) -> str:
+        """Generate chat completion using the provided OpenAI client."""
+        return generate_chat_completion(self.openai_client, self.model_id, test_message)
+
+    def shutdown(self):
+        """Shutdown the vLLM server."""
+        self.process.terminate()
+        for _ in range(5):
+            if self.process.poll() is not None:
+                break
+            time.sleep(1)
+        if self.process.poll() is None:
+            self.process.kill()
 
 
 def wait_for_server_ready(
@@ -173,27 +201,25 @@ def test_llm_serve_correctness(
     ray_client = create_openai_client(ray_url)
 
     wait_for_server_ready(ray_url, server_type="ray", timeout=240)
-    time.sleep(5)  # Buffer time for the servers to be ready
+    time.sleep(5)  # Buffer time for server to be ready
 
     ray_completion_output = generate_completion(ray_client, RAY_MODEL_ID, test_prompt)
     ray_chat_output = generate_chat_completion(ray_client, RAY_MODEL_ID, test_message)
-
     serve.shutdown()
 
     print(
         f"Starting vLLM server with tensor_parallel_size={tensor_parallel_size}, pipeline_parallel_size={pipeline_parallel_size}"
     )
-    # Start vLLM Server
-    vllm_url, vllm_process = start_vllm_server(
-        tensor_parallel_size, pipeline_parallel_size
-    )
-    vllm_client = create_openai_client(vllm_url)
-    # Wait for servers to be ready
-    wait_for_server_ready(vllm_url, server_type="vllm", timeout=240)
-    time.sleep(5)  # Buffer time for the servers to be ready
+    vllm_server_handle = VllmServer.remote(tensor_parallel_size, pipeline_parallel_size)
+    time.sleep(5)  # Buffer time for server to be ready
 
-    vllm_completion_output = generate_completion(vllm_client, MODEL_ID, test_prompt)
-    vllm_chat_output = generate_chat_completion(vllm_client, MODEL_ID, test_message)
+    vllm_completion_output = ray.get(
+        vllm_server_handle.generate_completion.remote(test_prompt)
+    )
+    vllm_chat_output = ray.get(
+        vllm_server_handle.generate_chat_completion.remote(test_message)
+    )
+    ray.get(vllm_server_handle.shutdown.remote())
 
     assert ray_completion_output == vllm_completion_output, (
         f"Ray and vLLM outputs do not match with TP={tensor_parallel_size}, PP={pipeline_parallel_size}\n"
@@ -206,14 +232,6 @@ def test_llm_serve_correctness(
         f"Ray output: {ray_chat_output}\n"
         f"vLLM output: {vllm_chat_output}"
     )
-
-    vllm_process.terminate()
-    for _ in range(5):
-        if vllm_process.poll() is not None:
-            break
-        time.sleep(1)
-    if vllm_process.poll() is None:
-        vllm_process.kill()
 
 
 if __name__ == "__main__":
