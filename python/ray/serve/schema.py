@@ -260,8 +260,8 @@ class RayActorOptionsSchema(BaseModel):
         if v is None:
             return
 
-        uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
+        uris = v.get("py_modules", []).copy()
+        if "working_dir" in v:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -574,8 +574,8 @@ class ServeApplicationSchema(BaseModel):
         if v is None:
             return
 
-        uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
+        uris = v.get("py_modules", []).copy()
+        if "working_dir" in v:
             uris.append(v["working_dir"])
 
         for uri in uris:
