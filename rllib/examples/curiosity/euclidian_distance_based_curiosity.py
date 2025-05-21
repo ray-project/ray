@@ -99,7 +99,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("MountainCar-v0")
         .env_runners(
-            env_to_module_connector=lambda env: MeanStdFilter(),
+            env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
             num_envs_per_env_runner=5,
         )
         .training(
