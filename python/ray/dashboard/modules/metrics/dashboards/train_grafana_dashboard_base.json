@@ -138,6 +138,29 @@
       },
 
       {
+        "name": "TrainWorkerActorId",
+        "type": "query",
+        "description": "Filter queries to specific Ray Train worker actor ids.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
+        "query": {
+          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+
+      {
         "name": "Instance",
         "type": "query",
         "description": "Filter queries to specific node instances.",

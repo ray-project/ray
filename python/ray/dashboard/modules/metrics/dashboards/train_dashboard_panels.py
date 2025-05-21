@@ -5,6 +5,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
+# Ray Train Metrics (Worker)
 WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
     id=1,
     title="Checkpoint Report Time",
@@ -20,10 +21,11 @@ WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
     stack=False,
 )
 
+# Ray Train Metrics (Controller)
 CONTROLLER_OPERATION_TIME_PANEL = Panel(
     id=2,
-    title="Train Controller Operation Time",
-    description="Time taken by the controller to perform various operations.",
+    title="Controller Operation Time",
+    description="Time taken by the controller for worker group operations.",
     unit="seconds",
     targets=[
         Target(
@@ -41,8 +43,8 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
 
 CONTROLLER_STATE_PANEL = Panel(
     id=3,
-    title="Train Controller State",
-    description="State of the train controller.",
+    title="Controller State",
+    description="Current state of the train controller.",
     unit="",
     targets=[
         Target(
@@ -52,65 +54,11 @@ CONTROLLER_STATE_PANEL = Panel(
     ],
 )
 
-# IOPS
-IOPS_PANEL = Panel(
-    id=4,
-    title="Train Worker IOPS",
-    description="Input/Output operations per second for train workers.",
-    unit="ops/s",
-    targets=[
-        Target(
-            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Read IOPS: {{instance}}",
-        ),
-        Target(
-            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Write IOPS: {{instance}}",
-        ),
-    ],
-)
-
-# Network Utilization
-NETWORK_UTILIZATION_PANEL = Panel(
-    id=5,
-    title="Train Worker Network Utilization",
-    description="Network utilization for train workers.",
-    unit="Bps",
-    targets=[
-        Target(
-            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Receive: {{instance}}",
-        ),
-        Target(
-            expr='sum(ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Send: {{instance}}",
-        ),
-    ],
-)
-
-# Disk Utilization
-DISK_UTILIZATION_PANEL = Panel(
-    id=6,
-    title="Train Worker Disk Utilization",
-    description="Disk utilization for train workers.",
-    unit="bytes",
-    targets=[
-        Target(
-            expr='sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Disk Used: {{instance}}",
-        ),
-        Target(
-            expr='sum(ray_node_disk_free{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}})',
-            legend="MAX",
-        ),
-    ],
-)
-
-# CPU Utilization
+# Core System Resources
 CPU_UTILIZATION_PANEL = Panel(
-    id=7,
-    title="Train Worker CPU Utilization",
-    description="CPU utilization for train workers.",
+    id=4,
+    title="CPU Usage",
+    description="CPU core utilization across all workers.",
     unit="cores",
     targets=[
         Target(
@@ -124,11 +72,10 @@ CPU_UTILIZATION_PANEL = Panel(
     ],
 )
 
-# Memory Utilization
 MEMORY_UTILIZATION_PANEL = Panel(
-    id=8,
-    title="Train Worker Memory Utilization",
-    description="Memory utilization for train workers.",
+    id=5,
+    title="Total Memory Usage",
+    description="Total physical memory used vs total available memory.",
     unit="bytes",
     targets=[
         Target(
@@ -137,16 +84,17 @@ MEMORY_UTILIZATION_PANEL = Panel(
         ),
         Target(
             expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
-            legend="MAX",
+            legend="Total Memory: {{instance}}",
         ),
     ],
 )
 
-# GPU Utilization
+# GPU Resources
+# TODO: Add GPU Device/Index as a filter.
 GPU_UTILIZATION_PANEL = Panel(
-    id=9,
-    title="Train Worker GPU Utilization",
-    description="GPU utilization for train workers.",
+    id=6,
+    title="GPU Usage",
+    description="GPU utilization across all workers.",
     unit="GPUs",
     targets=[
         Target(
@@ -160,11 +108,10 @@ GPU_UTILIZATION_PANEL = Panel(
     ],
 )
 
-# GPU Memory Utilization
 GPU_MEMORY_UTILIZATION_PANEL = Panel(
-    id=10,
-    title="Train Worker GPU Memory Utilization",
-    description="GPU memory utilization for train workers.",
+    id=7,
+    title="GPU Memory Usage",
+    description="GPU memory usage across all workers.",
     unit="bytes",
     targets=[
         Target(
@@ -178,20 +125,130 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
     ],
 )
 
+# Storage Resources
+DISK_UTILIZATION_PANEL = Panel(
+    id=8,
+    title="Disk Space Usage",
+    description="Disk space usage across all workers.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Disk Used: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_disk_free{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}})',
+            legend="MAX",
+        ),
+    ],
+)
+
+DISK_THROUGHPUT_PANEL = Panel(
+    id=9,
+    title="Disk Throughput",
+    description="Current disk read/write throughput.",
+    unit="Bps",
+    targets=[
+        Target(
+            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Read Speed: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Write Speed: {{instance}}",
+        ),
+    ],
+)
+
+DISK_OPERATIONS_PANEL = Panel(
+    id=10,
+    title="Disk Operations",
+    description="Current disk read/write operations per second.",
+    unit="ops/s",
+    targets=[
+        Target(
+            expr='sum(ray_node_disk_read_iops{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Read IOPS: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_disk_write_iops{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Write IOPS: {{instance}}",
+        ),
+    ],
+)
+
+# Network Resources
+NETWORK_THROUGHPUT_PANEL = Panel(
+    id=11,
+    title="Network Throughput",
+    description="Current network send/receive throughput.",
+    unit="Bps",
+    targets=[
+        Target(
+            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Receive Speed: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Send Speed: {{instance}}",
+        ),
+    ],
+)
+
+NETWORK_TOTAL_PANEL = Panel(
+    id=12,
+    title="Network Total Traffic",
+    description="Total network traffic sent/received.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_network_sent{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Total Sent: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_network_received{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Total Received: {{instance}}",
+        ),
+    ],
+)
+
+MEMORY_DETAILED_PANEL = Panel(
+    id=13,
+    title="Memory Allocation Details",
+    description="Memory allocation details including available and shared memory.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_mem_available{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Available Memory: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Shared Memory: {{instance}}",
+        ),
+    ],
+)
+
 TRAIN_GRAFANA_PANELS = [
+    # Ray Train Metrics (Controller)
+    CONTROLLER_STATE_PANEL,
+    CONTROLLER_OPERATION_TIME_PANEL,
     # Ray Train Metrics (Worker)
     WORKER_CHECKPOINT_REPORT_TIME_PANEL,
-    # Ray Train Metrics (Controller)
-    CONTROLLER_OPERATION_TIME_PANEL,
-    CONTROLLER_STATE_PANEL,
-    # Resource Utilization Metrics
-    IOPS_PANEL,
-    NETWORK_UTILIZATION_PANEL,
-    DISK_UTILIZATION_PANEL,
+    # Core System Resources
     CPU_UTILIZATION_PANEL,
     MEMORY_UTILIZATION_PANEL,
+    MEMORY_DETAILED_PANEL,
+    # GPU Resources
     GPU_UTILIZATION_PANEL,
     GPU_MEMORY_UTILIZATION_PANEL,
+    # Storage Resources
+    DISK_UTILIZATION_PANEL,
+    DISK_THROUGHPUT_PANEL,
+    DISK_OPERATIONS_PANEL,
+    # Network Resources
+    NETWORK_THROUGHPUT_PANEL,
+    NETWORK_TOTAL_PANEL,
 ]
 
 
