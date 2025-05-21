@@ -7,6 +7,6 @@ head_node_type:
 worker_node_types:
   - name: "gpu-workers"
     instance_type: "g6.4xlarge"
-    min_nodes: 5
-    max_nodes: 5
+    min_workers: 5
+    max_workers: 5
 auto_select_worker_config: false
