@@ -304,6 +304,22 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Task Submission Backpressure Time",
         pathParams: "orgId=1&theme=light&panelId=37",
       },
+      {
+        title: "(p50) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=40",
+      },
+      {
+        title: "(p75) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=41",
+      },
+      {
+        title: "(p99) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=44",
+      },
+      {
+        title: "(p100) Task Completion Time",
+        pathParams: "orgId=1&theme=light&panelId=45",
+      },
     ],
   },
   {

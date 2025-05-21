@@ -1,4 +1,19 @@
 {
+  "title": "Train Dashboard",
+  "uid": "rayTrainDashboard",
+  "version": 1,
+  "schemaVersion": 27,
+  "style": "dark",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": false,
+  "panels": [],
+
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+
   "annotations": {
     "list": [
       {
@@ -12,101 +27,138 @@
       }
     ]
   },
-  "editable": true,
-  "gnetId": null,
-  "graphTooltip": 0,
-  "iteration": 1667344411089,
-  "links": [],
-  "panels": [],
-  "refresh": false,
-  "schemaVersion": 27,
-  "style": "dark",
-  "tags": [],
+
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false
-        },
+        "name": "datasource",
+        "type": "datasource",
         "description": "Filter queries of a specific Prometheus type.",
+        "datasource": null,
+        "query": "prometheus",
+        "refresh": 1,
         "hide": 2,
         "includeAll": false,
         "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "allValue": ".+",
         "current": {
           "selected": false
-        },
-        "datasource": "${datasource}",
-        "definition": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
-        "description": "Filter queries to specific ray sessions.",
-        "error": null,
-        "hide": 0,
-        "includeAll": true,
-        "label": null,
-        "multi": false,
+        }
+      },
+
+      {
         "name": "SessionName",
-        "options": [],
+        "type": "query",
+        "description": "Filter queries to specific ray sessions.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, SessionName)",
         "query": {
-          "query": "query_result(count by (SessionName)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+          "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, SessionName)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "{SessionName=\"(?<value>.*)\".*",
-        "skipUrlSync": false,
-        "sort": 2,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
-      },
-      {
-        "allValue": ".+",
-        "current": {
-          "selected": false
-        },
-        "datasource": "${datasource}",
-        "definition": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
-        "description": "Filter queries to specific Ray Train run names.",
-        "error": null,
         "hide": 0,
         "includeAll": true,
-        "label": null,
         "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+
+      {
         "name": "TrainRunName",
-        "options": [],
+        "type": "query",
+        "description": "Filter queries to specific Ray Train run names.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_name)",
         "query": {
-          "query": "query_result(count by (ray_train_run_name)(last_over_time(ray_train_worker_group_start_total_time_s{{SessionName=~\"$SessionName\",{global_filters}}}[$__range])))",
+          "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "{ray_train_run_name=\"(?<value>.*)\".*",
-        "skipUrlSync": false,
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
         "sort": 2,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+
+      {
+        "name": "TrainRunId",
         "type": "query",
-        "useTags": false
+        "description": "Filter queries to specific Ray Train run ids.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_id)",
+        "query": {
+          "query": "label_values(ray_train_worker_group_start_total_time_s{{{global_filters}}}, ray_train_run_id)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 2,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+
+      {
+        "name": "TrainWorkerWorldRank",
+        "type": "query",
+        "description": "Filter queries to specific Ray Train worker world ranks.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_world_rank)",
+        "query": {
+          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_world_rank)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+
+      {
+        "name": "TrainWorkerActorId",
+        "type": "query",
+        "description": "Filter queries to specific Ray Train worker actor ids.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
+        "query": {
+          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 2,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
       }
     ]
-  },
-  "time": {
-    "from": "now-30m",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "",
-  "title": "Train Dashboard",
-  "uid": "rayTrainDashboard",
-  "version": 1
+  }
 }
