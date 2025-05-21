@@ -4,6 +4,7 @@ import inspect
 import itertools
 import logging
 import queue
+import threading
 import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
@@ -212,6 +213,19 @@ class MapTransformer:
         self._output_block_size_option = None
         self._udf_time = 0
         self._initialized = False
+        self._lock = threading.Lock()
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the lock from the state to avoid pickling issues.
+        del state["_lock"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Recreate the lock after unpickling.
+        self._lock = threading.Lock()
+        self._initialized = False
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
@@ -270,11 +284,12 @@ class MapTransformer:
 
         Should be called before applying the transform.
         """
-        if not self._initialized:
-            self._init_fn()
-            for transform_fn in self._transform_fns:
-                transform_fn.init()
-            self._initialized = True
+        with self._lock:
+            if not self._initialized:
+                self._init_fn()
+                for transform_fn in self._transform_fns:
+                    transform_fn.init()
+                self._initialized = True
 
     def _udf_timed_iter(
         self, input: Iterable[MapTransformFnData]
