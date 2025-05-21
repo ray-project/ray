@@ -56,7 +56,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask
         --install-mask all-ray-libraries
 
   - label: ":ray: core: cgraph python tests"
@@ -82,7 +82,7 @@ steps:
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
     depends_on: corebuild-multipy
     matrix:
       setup:
@@ -111,7 +111,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
 
   - label: ":ray: core: memory pressure tests"
     tags:
@@ -188,7 +188,11 @@ steps:
         --skip-ray-installation
 
   - label: ":ray: core: dask & modin tests"
-    tags: python
+    tags:
+      # These tests are only triggered on premerge if there are changes under
+      # `ray/util/dask/`. This is not technically related to modin, but modin tests can
+      # run postmerge-only and are too small for their own build.
+      - dask
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
