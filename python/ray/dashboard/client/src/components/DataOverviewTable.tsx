@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
 import { sliceToPage } from "../common/util";
@@ -83,6 +83,10 @@ const DataOverviewTable = ({
     maxPage,
   } = sliceToPage(datasetList, pageNo, pageSize);
 
+  const hasGpuRows = useMemo(() => {
+    return list.some((dataset) => dataset.ray_data_gpu_usage_cores.max > 0);
+  }, [list]);
+
   return (
     <div>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -142,6 +146,7 @@ const DataOverviewTable = ({
                   setExpandedDatasets(copy);
                 }}
                 key={dataset.dataset}
+                hasGpuRows={hasGpuRows}
               />
             ))}
           </TableBody>
@@ -156,11 +161,13 @@ const DataRow = ({
   operatorMetrics,
   isExpanded,
   setIsExpanded,
+  hasGpuRows,
 }: {
   datasetMetrics?: DatasetMetrics;
   operatorMetrics?: OperatorMetrics;
   isExpanded?: boolean;
   setIsExpanded?: CallableFunction;
+  hasGpuRows: boolean;
 }) => {
   const isDatasetRow = datasetMetrics !== undefined;
   const isOperatorRow = operatorMetrics !== undefined;
@@ -223,10 +230,12 @@ const DataRow = ({
         {data.ray_data_cpu_usage_cores.value}/
         {data.ray_data_cpu_usage_cores.max}
       </TableCell>
-      <TableCell align="center" style={{ width: 200 }}>
-        {data.ray_data_gpu_usage_cores.value}/
-        {data.ray_data_gpu_usage_cores.max}
-      </TableCell>
+      {hasGpuRows && (
+        <TableCell align="center" style={{ width: 200 }}>
+          {data.ray_data_gpu_usage_cores.value}/
+          {data.ray_data_gpu_usage_cores.max}
+        </TableCell>
+      )}
       <TableCell align="center">
         {isDatasetRow && formatDateFromTimeMs(datasetMetrics.start_time * 1000)}
       </TableCell>
@@ -243,15 +252,17 @@ const DatasetTable = ({
   datasetMetrics,
   isExpanded,
   setIsExpanded,
+  hasGpuRows,
 }: {
   datasetMetrics: DatasetMetrics;
   isExpanded: boolean;
   setIsExpanded: CallableFunction;
+  hasGpuRows: boolean;
 }) => {
   const operatorRows =
     isExpanded &&
     datasetMetrics.operators.map((operator) => (
-      <DataRow operatorMetrics={operator} key={operator.operator} />
+      <DataRow operatorMetrics={operator} key={operator.operator} hasGpuRows={hasGpuRows} />
     ));
   return (
     <React.Fragment>
@@ -259,6 +270,7 @@ const DatasetTable = ({
         datasetMetrics={datasetMetrics}
         isExpanded={isExpanded}
         setIsExpanded={setIsExpanded}
+        hasGpuRows={hasGpuRows}
       />
       {operatorRows}
     </React.Fragment>
