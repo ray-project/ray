@@ -5,10 +5,17 @@ import pytest
 
 import ray
 from ray.tests.conftest import *  # noqa: F403, F401
+from ray.util.dask import enable_dask_on_ray
 
 pytestmark = pytest.mark.skipif(
     sys.version_info >= (3, 12), reason="Skip dask tests for Python version 3.12+"
 )
+
+
+@pytest.fixture
+def ray_enable_dask_on_ray():
+    with enable_dask_on_ray():
+        yield
 
 
 def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
