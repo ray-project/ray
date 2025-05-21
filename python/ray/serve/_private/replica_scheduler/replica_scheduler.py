@@ -163,6 +163,7 @@ class LocalityScheduleMixin:
 
 class MultiplexScheduleMixin:
     """Mixin for multiplex scheduling.
+
     This mixin is used to schedule requests to replicas that are multiplexed.
     It adds necessary attributes and methods to keep track of multiplexed
     model IDs and offer the helpers to apply multiplex scheduling and rank
@@ -187,7 +188,8 @@ class MultiplexScheduleMixin:
         self, replicas: List[RunningReplica]
     ):
         """Update the multiplexed model IDs based on the replicas.
-        This is called when the replicas are updated.
+
+        This should be called when the replicas are updated.
         """
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
@@ -227,7 +229,20 @@ class MultiplexScheduleMixin:
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
         """Apply multiplex scheduling to the pending request.
-        When the request is None, return all replicas.
+
+        When the request is None, return all replicas. Each call will try to
+        schedule the request to the replicas that have the multiplexed model ID
+        to the hierarchy of first the replicas with the multiplexed model ID,
+        then the replicas with the fewest multiplexed models, and finally all
+        replicas.
+
+        Args:
+            pending_request: The pending request to be scheduled based on
+                multiplexed model policy.
+
+        Returns:
+            A set of replica IDs that are candidates for the existing
+            scheduling call.
         """
         if not pending_request:
             return self._replica_id_set
@@ -311,6 +326,8 @@ class ReplicaScheduler(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        *args,
+        **kwargs,
     ):
         self._deployment_id = deployment_id
         self._handle_source = handle_source
@@ -932,8 +949,22 @@ class ReplicaScheduler(ABC):
         replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        """One iteration of choosing available replicas.
-        This is the main function each custom scheduler should implement to
-        decide which replica to send the request.
+        """Chooses a subset of candidate replicas from available replicas.
+
+        This is the main function each replica scheduler should implement to
+        decide which replica to send the request to. This is one iteration of
+        replica selection.
+
+        Args:
+            replicas_ranks: A list of lists of replicas, where each inner list
+                represents a rank of replicas. The first rank is the most
+                preferred and the last rank is the least preferred.
+            pending_request: The request to be scheduled. This is used to
+                determine which replicas are eligible for scheduling.
+
+        Returns:
+            A list of lists of replicas, where each inner list represents a
+            rank of replicas. The first rank is the most preferred and the last
+            rank is the least preferred.
         """
         pass

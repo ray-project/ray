@@ -143,7 +143,6 @@ steps:
     tags:
       - python
       - data
-      - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data

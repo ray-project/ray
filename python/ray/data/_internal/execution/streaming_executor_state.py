@@ -23,6 +23,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
+    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -254,15 +255,18 @@ class OpState:
         """Move a bundle produced by the operator to its outqueue."""
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
+
         if self.progress_bar:
             assert (
                 ref.num_rows() is not None
             ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
-        active, restarting, pending = self.op.actor_info_counts()
-        self.op.metrics.num_alive_actors = active
-        self.op.metrics.num_restarting_actors = restarting
-        self.op.metrics.num_pending_actors = pending
+
+        actor_info = self.op.get_actor_info()
+
+        self.op.metrics.num_alive_actors = actor_info.running
+        self.op.metrics.num_restarting_actors = actor_info.restarting
+        self.op.metrics.num_pending_actors = actor_info.pending
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -288,7 +292,7 @@ class OpState:
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
-        desc += self.op.actor_info_progress_str()
+        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
         desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
@@ -702,3 +706,13 @@ def _rank_operators(
         )
 
     return [_ranker(op) for op in ops]
+
+
+def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
+    total = info.running + info.pending + info.restarting
+    base = f"Actors: {total}"
+
+    if total == info.running:
+        return base
+    else:
+        return f"{base} ({info})"
