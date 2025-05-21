@@ -388,11 +388,12 @@ def test_hierarchical_metrics_system():
     """Test a hierarchical system of MetricsLoggers.
 
     This test creates a tree structure of MetricsLoggers:
-        Root        (Driver)
+
+        Root        (Root/Algorithm object)
         ┌─┴─┐
-      A      B      (AggregatorActor)
+      A1    A2      (AggregatorActor)
     ┌─┴─┐  ┌─┴─┐
-    A1 A2  B1 B2    (EnvRunner)
+    E1 E2  E3  E4   (EnvRunner)
 
     We test the aggregation of all these metrics through multiple reduction steps.
     """
