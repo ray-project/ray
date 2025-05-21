@@ -75,3 +75,4 @@ VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs
+VS Code
