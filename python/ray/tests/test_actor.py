@@ -1650,5 +1650,17 @@ def test_get_local_actor_state(ray_start_regular_shared):
     )
 
 
+def test_one_liner_actor_method_invocation(shutdown_only):
+    @ray.remote
+    class Foo:
+        def method(self):
+            return "ok"
+
+    # This one‐liner used to fail with “Lost reference to actor”.
+    # Now it should succeed and return our value.
+    result = ray.get(Foo.remote().method.remote())
+    assert result == "ok"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
