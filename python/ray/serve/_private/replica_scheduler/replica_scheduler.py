@@ -864,5 +864,17 @@ class ReplicaScheduler(ABC):
         This is the main function each replica scheduler should implement to
         decide which replica to send the request to. This is one iteration of
         replica selection.
+
+        Args:
+            replicas_ranks: A list of lists of replicas, where each inner list
+                represents a rank of replicas. The first rank is the most
+                preferred and the last rank is the least preferred.
+            pending_request: The request to be scheduled. This is used to
+                determine which replicas are eligible for scheduling.
+
+        Returns:
+            A list of lists of replicas, where each inner list represents a
+            rank of replicas. The first rank is the most preferred and the last
+            rank is the least preferred.
         """
         pass
