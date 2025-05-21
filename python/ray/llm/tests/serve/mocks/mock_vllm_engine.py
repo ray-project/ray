@@ -584,7 +584,13 @@ class MockPDDisaggVLLMEngine(VLLMEngine):
         return MockPDDisaggVLLMEngineClient(
             VllmConfig(
                 model_config=ModelConfig(
-                    model=self.llm_config.model_loading_config.model_id
+                    model=self.llm_config.model_loading_config.model_id,
+                    task="auto",
+                    tokenizer=None,
+                    tokenizer_mode="auto",
+                    trust_remote_code=False,
+                    dtype="auto",
+                    seed=None,
                 )
             )
         )
