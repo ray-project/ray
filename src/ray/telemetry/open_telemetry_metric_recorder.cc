@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "ray/telemetry/open_telemetry_metric_recorder.h"
+#include "ray/util/logging.h"
 
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/provider.h>
