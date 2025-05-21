@@ -116,8 +116,8 @@ class LocalityScheduleMixin:
         pending request.
 
         When the reqeust is None, return all replicas. Each call will try to
-        schedule the request to the replicas to the hierarchy of first on the
-        same node, then on the same availability zone, and finally all
+        schedule the request to replicas in the priority of first on the
+        same node, then in the same availability zone, and finally all
         replicas.
 
         Args:
