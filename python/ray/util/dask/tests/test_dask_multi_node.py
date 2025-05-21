@@ -68,7 +68,5 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
         result = c().compute(resources={"pin": 0.01})
 
 
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
