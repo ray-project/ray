@@ -14,7 +14,7 @@ def setup_test_environment():
     """
     # Save current working directory and original sys.path
     original_cwd = os.getcwd()
-    original_sys_path = list(sys.path) # Make a copy for restoration
+    original_sys_path = list(sys.path)  # Make a copy for restoration
 
     # Calculate the path to the project's base directory.
     conftest_file_path = os.path.abspath(__file__)
@@ -24,7 +24,6 @@ def setup_test_environment():
     # Enable imports like 'from dist_xgboost.serve import ...'
     if project_base_dir not in sys.path:
         sys.path.insert(0, project_base_dir)
-
 
     yield
 
