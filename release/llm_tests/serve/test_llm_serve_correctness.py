@@ -5,7 +5,6 @@ from typing import Literal
 import requests
 import pytest
 from openai import OpenAI
-import ray
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
 
@@ -81,7 +80,6 @@ def generate_chat_completion(client: OpenAI, model_id: str, test_message: str) -
     return response.choices[0].message.content
 
 
-@ray.remote
 class VllmServer:
     def __init__(
         self,
@@ -211,16 +209,12 @@ def test_llm_serve_correctness(
     print(
         f"Starting vLLM server with tensor_parallel_size={tensor_parallel_size}, pipeline_parallel_size={pipeline_parallel_size}"
     )
-    vllm_server_handle = VllmServer.remote(tensor_parallel_size, pipeline_parallel_size)
+    vllm_server = VllmServer(tensor_parallel_size, pipeline_parallel_size)
     time.sleep(5)  # Buffer time for server to be ready
 
-    vllm_completion_output = ray.get(
-        vllm_server_handle.generate_completion.remote(test_prompt)
-    )
-    vllm_chat_output = ray.get(
-        vllm_server_handle.generate_chat_completion.remote(test_message)
-    )
-    ray.get(vllm_server_handle.shutdown.remote())
+    vllm_completion_output = vllm_server.generate_completion(test_prompt)
+    vllm_chat_output = vllm_server.generate_chat_completion(test_message)
+    vllm_server.shutdown()
 
     assert ray_completion_output == vllm_completion_output, (
         f"Ray and vLLM outputs do not match with TP={tensor_parallel_size}, PP={pipeline_parallel_size}\n"

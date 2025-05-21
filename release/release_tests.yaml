@@ -4221,21 +4221,21 @@
   python: "3.11"
   group: llm-serve
   team: llm
-  working_dir: llm_tests/
+  working_dir: llm_tests/serve
 
   cluster:
     byod:
       type: llm-cu124
       runtime_env:
         - VLLM_USE_V1=1
-    cluster_compute: batch/llm_4xl4.yaml
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
     long_running: false
-    script: pytest -vs serve/test_llm_serve_correctness.py
+    script: pytest -vs test_llm_serve_correctness.py
 
 
 ##############
