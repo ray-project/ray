@@ -2,7 +2,6 @@ import sys
 import pytest
 
 from vllm.config import KVTransferConfig
-from vllm.envs import set_vllm_use_v1
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
     VLLMEngine,
     _get_vllm_engine_config,
@@ -80,7 +79,6 @@ class TestPDDisaggVLLMEngine:
         llm_config: LLMConfig,
     ):
         """Test vLLM engine under PD disagg."""
-        set_vllm_use_v1(True)
         llm_config = llm_config.model_copy(deep=True)
         llm_config.engine_kwargs.update(
             {
