@@ -35,11 +35,11 @@ pip install -e .
 ## Development
 
 This application was developed on [Anyscale Workspaces](https://docs.anyscale.com/platform/workspaces/), enabling development without thinking about infrastructure, just like on a laptop. Workspaces come with:
-- **Development tools**: Spin up a remote session from your local IDE (cursor, VSCode) and start coding, using the same tools you love but with the power of Anyscale's compute.
+- **Development tools**: Spin up a remote session from your local IDE (cursor, VS Code) and start coding, using the same tools you love but with the power of Anyscale's compute.
 - **Dependencies**: Continue to install dependencies using familiar tools like pip. Anyscale ensures proper dependency distribution to your cluster.
 - **Scalable Compute**: Leverage any reserved instance capacity, spot instance from any compute provider of your choice by deploying Anyscale into your account. Alternatively, you can use the Anyscale cloud for a full cloud-native experience.
   - Under the hood, Anyscale creates and smartly manages a cluster.
-- **Debugging**: Leverage a [distributed debugger](https://docs.anyscale.com/platform/workspaces/workspaces-debugging/#distributed-debugger) to get the same VSCode-like debugging experience.
+- **Debugging**: Leverage a [distributed debugger](https://docs.anyscale.com/platform/workspaces/workspaces-debugging/#distributed-debugger) to get the same VS Code-like debugging experience.
 
 Learn more about Anyscale Workspaces through the [official documentation](https://docs.anyscale.com/platform/workspaces/).
 
