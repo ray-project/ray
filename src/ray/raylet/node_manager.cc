@@ -2127,14 +2127,14 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
-  // Cancel lease requests that are waiting for workers
-  // to free the acquired pg bundle resources
-  // so that pg bundle can be returned.
+  // The PG bundle resource must be committed before a lease request asking for it
+  // can be added to local_task_manager and the only reason why we cancel
+  // a committed bundle is when the placement group is removed.
+  // In the case of placement group removal, we should cancel all the lease requests.
   local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return (bundle_id.first == bundle_spec.PlacementGroupId()) &&
-               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
+        return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
       absl::StrCat("Required placement group ",
