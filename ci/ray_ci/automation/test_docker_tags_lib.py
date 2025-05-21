@@ -651,14 +651,16 @@ def _start_local_registry():
     """Start local registry for testing."""
     port = random.randint(2000, 20000)
     temp_dir = tempfile.mkdtemp()
-    config_content = "\n".join([
-        "version: 0.1",
-        "storage:",
-        "    filesystem:",
-        f"        rootdirectory: {temp_dir}",
-        "http:",
-        f"    addr: :{port}",
-    ])
+    config_content = "\n".join(
+        [
+            "version: 0.1",
+            "storage:",
+            "    filesystem:",
+            f"        rootdirectory: {temp_dir}",
+            "http:",
+            f"    addr: :{port}",
+        ]
+    )
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yml") as config_file:
         config_file.write(config_content)
@@ -670,8 +672,7 @@ def _start_local_registry():
             stderr=sys.stderr,
         )
         registry_thread = threading.Thread(
-            target=lambda: registry_proc.wait(),
-            daemon=True
+            target=lambda: registry_proc.wait(), daemon=True
         )
         registry_thread.start()
 
