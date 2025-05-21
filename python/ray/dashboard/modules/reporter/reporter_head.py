@@ -515,10 +515,14 @@ class ReportHead(SubprocessModule):
         This is a Torch-specific API. It is not supported for other frameworks.
 
         Params:
-            pid: Required. The PID of the GPU training worker.
-            ip: Required. The IP address of the node where the GPU training worker is running.
-            num_iterations: Number of training steps for profiling. Defaults to 4
-                This is the number of calls to the torch Optimizer.step().
+            req: A request with the following query parameters:
+                pid: Required. The PID of the GPU training worker.
+                ip: Required. The IP address of the node where the GPU training worker is running.
+                num_iterations: Number of training steps for profiling. Defaults to 4
+                    This is the number of calls to the torch Optimizer.step().
+
+        Returns:
+            A redirect to the log API to download the GPU profiling trace file.
 
         Raises:
             aiohttp.web.HTTPInternalServerError: if one of the following happens:
