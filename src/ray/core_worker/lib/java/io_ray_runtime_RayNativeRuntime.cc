@@ -211,8 +211,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
               _env,
               java_return_objects,
               &return_objects,
-              [](JNIEnv *_env, jobject java_native_ray_object) {
-                return JavaNativeRayObjectToNativeRayObject(_env, java_native_ray_object);
+              [](JNIEnv *e, jobject java_native_ray_object) {
+                return JavaNativeRayObjectToNativeRayObject(e, java_native_ray_object);
               });
           for (size_t i = 0; i < return_objects.size(); i++) {
             auto &result_id = (*returns)[i].first;
