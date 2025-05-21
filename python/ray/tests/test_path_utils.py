@@ -1,6 +1,4 @@
-import os
 import sys
-
 
 import pytest
 
@@ -35,9 +33,4 @@ def test_is_path_raises_error_for_non_string_input():
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

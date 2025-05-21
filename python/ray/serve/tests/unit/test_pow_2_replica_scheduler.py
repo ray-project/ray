@@ -26,7 +26,7 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 
@@ -135,7 +135,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     # construct the scheduler on a different loop to mimic the deployment handle path.
     async def construct_scheduler(loop: asyncio.AbstractEventLoop):
         scheduler = PowerOfTwoChoicesReplicaScheduler(
-            DeploymentID(name="TEST_DEPLOYMENT"),
+            deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=request.param.get(
                 "handle_source", DeploymentHandleSource.REPLICA
             ),

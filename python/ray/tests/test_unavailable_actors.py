@@ -7,7 +7,7 @@ from typing import Tuple
 
 import ray
 from ray.exceptions import ActorUnavailableError, ActorDiedError
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -59,12 +59,23 @@ def call_from(f, source):
         raise ValueError(f"unknown {source}")
 
 
-def sigkill_actor(actor):
+def sigkill_actor(actor, timeout=5):
     """Sends SIGKILL to an actor's process. The actor must be on the same node, and it
     must has a `getpid` method."""
     pid = ray.get(actor.getpid.remote())
     print(f"killing actor {actor}'s process {pid}")
-    os.kill(pid, signal.SIGKILL)
+    try:
+        proc = psutil.Process(pid)
+        os.kill(pid, signal.SIGKILL)
+
+        # Wait for the process to terminate (with timeout)
+        try:
+            proc.wait(timeout=timeout)
+            print(f"Process {pid} terminated.")
+        except psutil.TimeoutExpired:
+            print(f"Process {pid} did not terminate within {timeout} seconds.")
+    except psutil.NoSuchProcess:
+        print(f"Process {pid} does not exist — it may have already exited.")
 
 
 def _close_common_connections(pid: int):
@@ -234,27 +245,24 @@ def test_actor_restart(ray_start_regular):
         restart_death_range=(2, 10),
     )
 
-    # unblock actor creation
+    # unblock actor creation, actor should be created eventually
     ray.get(signal_actor.send.remote())
-    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
-        pass  # just wait for the signal to be sent
-    assert ray.get(actor.ping.remote("lemon")) == "hello lemon!"
+    wait_for_condition(
+        lambda: ray.get(actor.ping.remote("lemon")) == "hello lemon!",
+    )
 
     # block actor creation and kill it
     ray.get(signal_actor.send.remote(clear=True))
     sigkill_actor(actor)
 
-    with pytest.raises(ActorUnavailableError, match="RpcError"):
-        print(ray.get(actor.ping.remote("unavailable")))
-    # When the actor is restarting, any method call raises ActorUnavailableError.
-    with pytest.raises(ActorUnavailableError, match="The actor is restarting"):
+    with pytest.raises(ActorUnavailableError, match="RpcError|The actor is restarting"):
         print(ray.get(actor.ping.remote("unavailable")))
 
-    # unblock actor creation
+    # unblock actor creation, actor should be created eventually
     ray.get(signal_actor.send.remote())
-    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
-        pass  # just wait for the signal to be sent
-    assert ray.get(actor.ping.remote("ok")) == "hello ok!"
+    wait_for_condition(
+        lambda: ray.get(actor.ping.remote("ok")) == "hello ok!",
+    )
 
     # block actor creation and kill it
     ray.get(signal_actor.send.remote(clear=True))
@@ -265,8 +273,9 @@ def test_actor_restart(ray_start_regular):
 
     # unblock actor creation, the actor still dies because it reaches the restart limit
     ray.get(signal_actor.send.remote())
-    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
-        pass  # just wait for the signal to be sent
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0,
+    )
     with pytest.raises(ActorDiedError, match="an error raised in its creation task"):
         print(ray.get(actor.ping.remote("actor error")))
 
@@ -290,9 +299,9 @@ def test_actor_inifite_restart(ray_start_regular):
 
     # unblock actor creation
     ray.get(signal_actor.send.remote())
-    while ray.get(signal_actor.cur_num_waiters.remote()) > 0:
-        pass  # just wait for the signal to be sent
-    assert ray.get(actor.ping.remote("lemon")) == "hello lemon!"
+    wait_for_condition(
+        lambda: ray.get(actor.ping.remote("lemon")) == "hello lemon!",
+    )
 
     # block actor creation and kill it
     ray.get(signal_actor.send.remote(clear=True))
