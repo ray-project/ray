@@ -58,7 +58,7 @@ namespace
 NER
 Nsight
 NumPy
-Nvidia
+NVIDIA
 pretraining
 Pythonic
 QPS
@@ -80,4 +80,4 @@ URI[s]
 [Ss]pectogram(s)?
 [Dd]etokenizer?s?
 [Dd]etokenization
-
+VS Code
