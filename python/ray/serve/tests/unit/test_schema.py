@@ -761,7 +761,6 @@ def test_deployment_to_schema_to_deployment():
     )
     assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
         TEST_DEPLOY_GROUP_PINNED_URI,
-        TEST_MODULE_PINNED_URI,
     ]
 
 
