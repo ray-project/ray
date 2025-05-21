@@ -7,7 +7,6 @@ from ray.serve.llm.openai_api_models import ChatCompletionRequest
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import LLMRawResponse
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockPDDisaggVLLMEngine
-from ray.llm.tests.serve.cpu.deployments.utils.test_utils import create_server
 
 
 class TestPDDisaggLLMServer:
@@ -21,6 +20,7 @@ class TestPDDisaggLLMServer:
     @pytest.mark.asyncio
     async def test_chat_non_streaming(
         self,
+        create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
     ):
@@ -70,6 +70,7 @@ class TestPDDisaggLLMServer:
     @pytest.mark.asyncio
     async def test_predict_non_streaming(
         self,
+        create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
     ):
