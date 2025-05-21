@@ -136,5 +136,66 @@ std::optional<double> OpenTelemetryMetricRecorder::GetMetricValue(
   return std::nullopt;
 }
 
+void OpenTelemetryMetricRecorder::Shutdown() {
+  // Flush the remaining metrics and shutdown the OpenTelemetryMetricRecorder
+  std::lock_guard<std::mutex> lock(mutex_);
+  meter_provider_->ForceFlush();
+  observations_by_name_.clear();
+}
+
+void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
+    const std::string &name,
+    const std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>> &observer) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    return;  // Not registered
+  }
+  for (const auto &observation : it->second) {
+    observer->Observe(observation.second, observation.first);
+  }
+  // Clear the observations after exporting so the next interval starts fresh
+  observations_by_name_[name].clear();
+}
+
+void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
+                                                      const std::string &description) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (registered_instruments_.find(name) != registered_instruments_.end()) {
+    return;  // Already registered
+  }
+  auto instrument = getMeter()->CreateDoubleObservableGauge(name, description, "");
+  std::string *name_ptr = new std::string(name);
+  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+  observations_by_name_[name] = {};
+  registered_instruments_[name] = instrument;
+}
+
+void OpenTelemetryMetricRecorder::SetMetricValue(
+    const std::string &name,
+    absl::flat_hash_map<std::string, std::string> &&tags,
+    double value) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    return;  // Not registered
+  }
+  it->second[std::move(tags)] = value;  // Set or update the value
+}
+
+std::optional<double> OpenTelemetryMetricRecorder::GetMetricValue(
+    const std::string &name,
+    const absl::flat_hash_map<std::string, std::string> &tags) const {
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    return std::nullopt;  // Not registered
+  }
+  auto tag_it = it->second.find(tags);
+  if (tag_it != it->second.end()) {
+    return tag_it->second;  // Get the value
+  }
+  return std::nullopt;
+}
+
 }  // namespace telemetry
 }  // namespace ray
