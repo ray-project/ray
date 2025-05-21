@@ -8,5 +8,4 @@ Examples
 
 
    ./entity-recognition-with-llms/README.ipynb
-..      ./entity-recognition-with-llms/index
    ./e2e-audio/index.rst
