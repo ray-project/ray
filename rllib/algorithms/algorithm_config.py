@@ -82,8 +82,6 @@ from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
 
-Space = gym.Space
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -1134,7 +1132,7 @@ class AlgorithmConfig(_Config):
                 if "positional argument" in e.args[0]:
                     if log_once("module-to-env-wrong-signature"):
                         logger.error(
-                            "Your `config.env_to_module_connector` function seems to "
+                            "Your `config.module_to_env_connector` function seems to "
                             "have a wrong or outdated signature! It should be: "
                             "`def myfunc(env, spaces): ...`, where any of "
                             "these arguments are optional and may be None.\n"
@@ -1732,8 +1730,8 @@ class AlgorithmConfig(_Config):
         env: Optional[Union[str, EnvType]] = NotProvided,
         *,
         env_config: Optional[EnvConfigDict] = NotProvided,
-        observation_space: Optional[gym.spaces.Space] = NotProvided,
-        action_space: Optional[gym.spaces.Space] = NotProvided,
+        observation_space: Optional[gym.Space] = NotProvided,
+        action_space: Optional[gym.Space] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -4419,7 +4417,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: bool = False,
         # @HybridAPIStack
         policy_dict: Optional[Dict[str, PolicySpec]] = None,
@@ -5480,7 +5478,7 @@ class AlgorithmConfig(_Config):
         *,
         policies: Optional[MultiAgentPolicyConfigDict] = None,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
         r"""Compiles complete multi-agent config (dict) from the information in `self`.
