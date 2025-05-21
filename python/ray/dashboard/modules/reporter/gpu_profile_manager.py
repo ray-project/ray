@@ -260,18 +260,34 @@ class GpuProfilingManager:
         # The actual trace file gets dumped with a suffix of `_{pid}.json
         trace_file_name_pattern = trace_file_name.replace(".json", "*.json")
 
+        return await self._wait_for_trace_file(pid, trace_file_name_pattern, _timeout_s)
+
+    async def _wait_for_trace_file(
+        self,
+        pid: int,
+        trace_file_name_pattern: str,
+        timeout_s: int,
+        sleep_interval_s: float = 0.25,
+    ) -> Tuple[bool, str]:
+        """Wait for the trace file to be created.
+
+        Args:
+            pid: The target process to be profiled.
+            trace_file_name_pattern: The pattern of the trace file to be created
+                within the `<log_dir>/profiles` directory.
+            timeout_s: Maximum time in seconds to wait for profiling to complete.
+            sleep_interval_s: Time in seconds to sleep between checking for the trace file.
+
+        Returns:
+            Tuple[bool, str]: (success, trace file path relative to the *root* log directory)
+        """
+        remaining_timeout_s = timeout_s
+
         logger.info(
             "[GpuProfilingManager] Waiting for trace file to be created "
             f"with the pattern: {trace_file_name_pattern}"
         )
 
-        return await self._wait_for_trace_file(pid, trace_file_name_pattern, _timeout_s)
-
-    async def _wait_for_trace_file(
-        self, pid: int, trace_file_name_pattern: str, timeout_s: int
-    ) -> Tuple[bool, str]:
-        remaining_timeout_s = timeout_s
-        sleep_interval_s = 1
         while True:
             dumped_trace_file_path = next(
                 self._profile_dir_path.glob(trace_file_name_pattern), None
