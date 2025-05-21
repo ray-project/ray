@@ -1,6 +1,5 @@
 import sys
 
-import sys
 
 import dask
 import pytest
