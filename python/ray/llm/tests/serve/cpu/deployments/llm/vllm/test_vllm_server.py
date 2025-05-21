@@ -1,7 +1,6 @@
 import pytest
 import sys
 from vllm.config import KVTransferConfig
-from vllm.envs import set_vllm_use_v1, VLLM_USE_V1
 
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.serve.llm.openai_api_models import ChatCompletionRequest
@@ -27,7 +26,11 @@ class TestPDDisaggLLMServer:
     ):
         """This is smoke testing that normal chat completion works."""
         llm_config = LLMConfig(
-            # Put a non-NVIDIA type here to avoid GPU placement.
+            # Here we
+            # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
+            # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
+            # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
+            # so we select a non-NVIDIA type here: Intel-GAUDI.
             accelerator_type="Intel-GAUDI",
             model_loading_config=ModelLoadingConfig(
                 model_id=model_pixtral_12b,
@@ -71,7 +74,11 @@ class TestPDDisaggLLMServer:
     ):
         """Test non-streaming predict."""
         llm_config = LLMConfig(
-            # Put a non-NVIDIA type here to avoid GPU placement.
+            # Here we
+            # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
+            # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
+            # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
+            # so we select a non-NVIDIA type here: Intel-GAUDI.
             accelerator_type="Intel-GAUDI",
             model_loading_config=ModelLoadingConfig(
                 model_id=model_pixtral_12b,
