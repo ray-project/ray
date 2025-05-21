@@ -1,17 +1,22 @@
 # Use 'API' judiciously: https://developers.google.com/style/word-list#api.
 [Aa]pplication
 [Aa]sync
+[Aa]sync
 [Cc]odec
 [Cc]omposable
 [Dd]eduplication
 [Dd]ict(s)?
 [Ee]xoshuffle
 [Gg]rafana
+[Ee]xoshuffle
+[Gg]rafana
 [Ii]nteroperates
 [Ii]nterpretability
 [Mm]ultimodal
+[Mm]ultimodal
 [Pp]arallelization
 [Pp]erformant
+[Pp]rofiler
 [Pp]rofiler
 [Ss]ubclassing
 [Tt][Ll][Ss]
