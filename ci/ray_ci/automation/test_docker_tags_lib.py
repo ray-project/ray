@@ -8,7 +8,9 @@ import tempfile
 import runfiles
 import platform
 import time
+import threading
 import shutil
+import random
 
 from ci.ray_ci.automation.docker_tags_lib import (
     _get_docker_auth_token,
@@ -646,53 +648,50 @@ def _registry_binary():
 
 
 def _start_local_registry():
-    """Start local registry at localhost:5678 for testing."""
-
+    """Start local registry for testing."""
+    port = random.randint(2000, 20000)
     temp_dir = tempfile.mkdtemp()
-    config_content = f"""
-version: 0.1
-storage:
-    filesystem:
-        rootdirectory: {temp_dir}
-http:
-    addr: :5678
-    """
+    config_content = "\n".join([
+        "version: 0.1",
+        "storage:",
+        "    filesystem:",
+        f"        rootdirectory: {temp_dir}",
+        "http:",
+        f"    addr: :{port}",
+    ])
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yml") as config_file:
         config_file.write(config_content)
         config_file.flush()
 
-        proc = subprocess.Popen(
-            [
-                _registry_binary(),
-                "serve",
-                config_file.name,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+        registry_proc = subprocess.Popen(
+            [_registry_binary(), "serve", config_file.name],
+            stdout=sys.stdout,
+            stderr=sys.stderr,
         )
+        registry_thread = threading.Thread(
+            target=lambda: registry_proc.wait(),
+            daemon=True
+        )
+        registry_thread.start()
+
         for _ in range(10):  # Wait for 10 seconds for registry to start
             try:
-                response = requests.get("http://localhost:5678/v2/")
+                response = requests.get(f"http://localhost:{port}/v2/")
                 if response.status_code == 200:
-                    return proc, temp_dir
+                    return registry_proc, registry_thread, temp_dir, port
             except requests.exceptions.ConnectionError:
                 pass
             time.sleep(1)
 
-        proc.kill()
-        stdout, stderr = proc.communicate()
-        raise RuntimeError(
-            f"Registry failed to start. stdout: {stdout}, stderr: {stderr}"
-        )
+        raise TimeoutError("Registry failed to start within 10 seconds")
 
 
 def test_generate_index():
-    proc, temp_dir = _start_local_registry()
+    registry_proc, registry_thread, temp_dir, port = _start_local_registry()
     try:
-        test_image1 = "localhost:5678/test-image:1.0"
-        test_image2 = "localhost:5678/test-image:2.0"
+        test_image1 = f"localhost:{port}/test-image:1.0"
+        test_image2 = f"localhost:{port}/test-image:2.0"
 
         subprocess.run(["docker", "tag", "alpine:3.16", test_image1], check=True)
         subprocess.run(["docker", "tag", "alpine:3.17", test_image2], check=True)
@@ -702,20 +701,19 @@ def test_generate_index():
 
         # Generate index
         index_repo = "test-index"
-        index_name = f"localhost:5678/{index_repo}:latest"
+        index_name = f"localhost:{port}/{index_repo}:latest"
         generate_index(index_name=index_name, tags=[test_image1, test_image2])
 
         # Verify index was created with 2 image manifests
         response = requests.get(
-            f"http://localhost:5678/v2/{index_repo}/manifests/latest"
+            f"http://localhost:{port}/v2/{index_repo}/manifests/latest"
         )
         assert response.status_code == 200
         assert "manifests" in response.json()
         assert len(response.json()["manifests"]) == 2
-
     finally:
-        proc.kill()
-        proc.wait()
+        registry_proc.kill()
+        registry_thread.join()
         shutil.rmtree(temp_dir)
 
 
