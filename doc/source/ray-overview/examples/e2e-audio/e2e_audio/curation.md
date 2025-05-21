@@ -4,17 +4,18 @@ This script demonstrates an end-to-end *batch inference* pipeline that turns raw
 audio files into a curated subset using **Ray Data's streaming
 execution engine**.
 
-We chain together four stages that each run on the same Ray cluster using heterogeneous resources:
+The pipeline chains together four stages that each run on the same Ray cluster using heterogeneous resources:
 
 1. 🔍 Distributed ingestion from the `common_voice_11_0` dataset (CPU)
-2. 🎚️ Audio preprocessing – format conversion, resampling, feature extraction (CPU)
-3. 🗣️ Speech-to-text transcription with Whisper (GPU), with mel spectogram extractor and detokenizer stages offloaded to CPU.
-4. 🏷️ LLM-based educational rating & filtering (GPU/CPU)
+2. 🎚️ Audio preprocessing – format conversion, sample rate adjustment, mel spectogram feature extraction (CPU)
+3. 🗣️ Speech-to-text transcription with Whisper (GPU)
+4. Detokenization (CPU)
+5. 🏷️ LLM-based educational rating & filtering (GPU)
 
 Ray Datasets enable stages to begin
 processing as soon as the first data *block* becomes available. This **streaming
 execution** model drastically reduces time-to-first-result and eliminates large
-intermediate materializations.
+intermediate data storage.
 
 Ray Data is particularly powerful for this use case because it:
 - **Parallelizes work** across a cluster of machines automatically
@@ -22,7 +23,7 @@ Ray Data is particularly powerful for this use case because it:
 - Uses **lazy execution** to optimize the execution plan
 - Supports efficient **streaming** to minimize time-to-first-result and maximize resource utilization
 
-Note: this tutorial was tested on a cluster with five L4 GPU worker nodes.
+Note: this tutorial runs on a cluster with five L4 GPU worker nodes.
 
 
 ```python
@@ -43,10 +44,10 @@ JUDGE_MODEL = "unsloth/Meta-Llama-3.1-8B-Instruct"
 
 ## 1. Streaming data ingestion
 
-`ray.data.read_parquet` reads the records lazily **and** sharded across the cluster.
-This enables us to use every node's network bandwidth and start work without waiting
-for the entire dataset to be downloaded.
-As the data is read, it is divided into blocks and dispatched to the workers for processing.
+`ray.data.read_parquet` reads the records lazily **and** distributes them across the cluster.
+This approach leverages every node's network bandwidth and starts work immediately without waiting
+for the entire dataset download.
+After loading, Ray divides the data into blocks and dispatches them to workers for processing.
 
 
 ```python
@@ -63,11 +64,11 @@ raw_ds = raw_ds.limit(1000)
 ## 2. Audio preprocessing
 
 The Whisper checkpoint expects 16 kHz mono audio.  
-We perform the resampling on CPU using TorchAudio and stream the tensors right
-back into the Dataset. The operation is embarrassingly parallel, so a simple `ds.map` fans the work out across the cluster's CPU cores.
+The sample rate adjustment happens on CPU using TorchAudio, streaming the tensors right
+back into the Dataset. The operation runs in parallel, so a simple `ds.map` distributes the work across the cluster's CPU cores.
 
 
-`ds.map()` applies the transformation function to each record in parallel across the cluster. Whenever possible, Ray avoids transfering objects across the the network when possible to take advantage of zero-copy reads, avoiding serialization/deserialization overhead.
+`ds.map()` applies the transformation function to each record in parallel across the cluster. Whenever possible, Ray avoids transferring objects across network connections to take advantage of zero-copy reads, avoiding serialization/deserialization overhead.
 
 As soon as blocks of data finish preprocessing, they can move to the next stage without waiting for the entire dataset.
 
@@ -87,9 +88,9 @@ def resample(item):
 ds = raw_ds.map(resample)
 ```
 
-Next let's preprocess the data using Whisper's preprocessor. We run this as a separate stage so that we can scale it independently from the Whisper model itself.
+Next, preprocess the data using Whisper's preprocessor. This runs as a separate stage to scale it independently from the Whisper model itself.
 
-Here, we use `map_batches()` to transformation entire batches of records at a time rather than individual items. By passing a class to `map_batches()`, Ray creates an Actor process that allows us to recycle state between batches. The `concurrency` parameter lets us control how many parallel workers process batches. The `batch_format="pandas"` setting converts batches to pandas DataFrames before processing.
+Here, `map_batches()` transforms entire batches of records at a time rather than individual items. By passing a class to `map_batches()`, Ray creates an Actor process that recycles state between batches. The `concurrency` parameter controls how many parallel workers process batches. The `batch_format="pandas"` setting converts batches to pandas DataFrames before processing.
 
 
 ```python
@@ -115,7 +116,7 @@ ds = ds.map_batches(WhisperPreprocessor, batch_size=2, batch_format="pandas", co
 # ds.show(1)
 ```
 
-If we run `ds.show(1)` here, we will see an output that looks something like:
+Running `ds.show(1)` displays an output similar to:
 
 `[{'id': '19ba96...', 'transcription': ' It is from Westport above the villages of Morrisk and La Canvae.'}]`
 
