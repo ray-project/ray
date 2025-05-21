@@ -154,13 +154,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -198,7 +198,6 @@ download_mnist() {
 }
 
 retry_pip_install() {
-  local pip_command=$1
   local status="0"
   local errmsg=""
 
@@ -206,7 +205,7 @@ retry_pip_install() {
   # that break the entire CI job: Simply retry installation in this case
   # after n seconds.
   for _ in {1..3}; do
-    errmsg=$(eval "${pip_command}" 2>&1) && break
+    errmsg=$("$@" 2>&1) && break
     status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30
   done
   if [[ "$status" != "0" ]]; then
@@ -218,6 +217,8 @@ install_pip_packages() {
   # Install modules needed in all jobs.
   # shellcheck disable=SC2262
   alias pip="python -m pip"
+
+  pip install "pip>=25.0"
 
   # Array to hold all requirements files to install later
   requirements_files=()
@@ -317,7 +318,8 @@ install_pip_packages() {
     fi
   fi
 
-  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt" \
+    -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
@@ -367,7 +369,7 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" && "${OSTYPE}" != "msys" ]]; then
+  if [[ "${OSTYPE}" != "msys" ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
@@ -446,8 +448,18 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" ]]; then
-    install_pip_packages
+  if [[ "${SKIP_PYTHON_PACKAGES:-}" != 1 ]]; then
+    if [[ "${RAY_MACOS_TEST_INSTALL-}" == 1 ]]; then
+      # CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_macos_test.txt" \
+      #   -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+      python -m pip install "pip==25.1.1" "setuptools==75.8.0"
+      CC=gcc retry_pip_install python -m pip install -U \
+        -r "${WORKSPACE_DIR}/python/requirements.txt" \
+        -r "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+        -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+    elif [[ "${MINIMAL_INSTALL:-}" != "1" ]]; then
+      install_pip_packages
+    fi
   fi
 
   install_thirdparty_packages

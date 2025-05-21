@@ -106,9 +106,22 @@ _prelude() {
     rm -rf /tmp/bazel_event_logs
     (which bazel && bazel clean) || true;
   fi
+  export RAY_MACOS_TEST_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build
+
+  # When building on x86_64, we need to remove homebrew installed header files from the system
+  # to avoid conflicts with the one in the build environment.
+  #
+  # Brew links openssl to /usr/local/include/openssl, and recent MacOS's toolchain will always
+  # pick them up.
+  #
+  # This is not required for arm64, because brew is installed in /opt/homebrew/
+  if [[ "$(uname -m)" == "x86_64" ]]; then
+    rm -rf /usr/local/include/*
+  fi
+
+  RAYCI_INSTALL_NO_DEPS=1 ./ci/ci.sh build
   ./ci/env/env_info.sh
 }
 
