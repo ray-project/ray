@@ -36,7 +36,7 @@ class MetricsLogger:
     We mostly use this to aggregate stats from across components in a tree structure.
     For example, we aggregate stats from across parallel EnvRunners like so:
 
-        Root        (Driver/Algorithm object)
+        Root        (Root/Algorithm object)
         ┌─┴─┐
       A1    A2      (AggregatorActor)
     ┌─┴─┐  ┌─┴─┐
@@ -725,11 +725,13 @@ class MetricsLogger:
             # env runner 1: [50, 25, 10, 5]
             # env runner 2: [75, 100]
             # Move backwards from index=-1 (each time, loop through both loggers)
-            # index=-1 -> [5, 100] -> leave as-is, b/c we are sum'ing -> [5, 100]
-            # index=-2 -> [10, 75] -> leave as-is -> [5, 100, 10, 75] -> STOP b/c we
-            # have reached >= window.
-            # reverse the list -> [75, 10, 100, 5]
-            check(main_logger.peek("some_stat"), 115)  # last 3 items (window) get sum'd
+            # index=-1 -> [5, 100] -> reduce over both two indices -> [(5 + 100) / 2, (5 + 100) / 2] = [52.5, 52.5]
+            # Result = [52.5, 52.5]
+            # len() = 2 < window = 3
+            # index=-2 -> [10, 75] -> reduce over both two indices -> [(10 + 75) / 2, (10 + 75) / 2] = [42.5, 42.5]
+            # result = [42.5, 42.5, 52.5, 52.5]
+            # len() = 4 >= window = 3
+            check(main_logger.peek("some_stat"), 147.5)  # last 3 items (window) get sum'd
 
         Args:
             stats_dicts: List of n stats dicts to be merged and then logged.
