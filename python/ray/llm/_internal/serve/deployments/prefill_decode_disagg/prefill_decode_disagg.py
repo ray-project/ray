@@ -157,17 +157,7 @@ class PDProxyServer(LLMServer):
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
-        """Turns PDProxyServer into a Ray Serve deployment.
-
-        Usage:
-        >>> prefill_deploy = ray.serve.llm.build_llm_deployment(prefill_config)
-        >>> decode_deploy = ray.serve.llm.build_llm_deployment(decode_config)
-        >>> PDProxyServer.as_deployment().bind(
-        ...     prefill_server=prefill_deploy,
-        ...     decode_server=decode_deploy,
-        ... )
-        >>> ray.serve.run(deployment)
-        """
+        """Turns PDProxyServer into a Ray Serve deployment."""
         return serve.deployment()(cls)
 
 
