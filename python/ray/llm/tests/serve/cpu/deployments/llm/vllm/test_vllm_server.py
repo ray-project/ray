@@ -114,7 +114,7 @@ class TestPDDisaggLLMServer:
 
         # Collect responses (should be just one)
         assert len(responses) == 1
-        assert responses[0].generated_text == "test_0 "
+        assert responses[0].generated_text == "mock_pd_client_response_0 "
         assert responses[0].metadata is not None
 
 
