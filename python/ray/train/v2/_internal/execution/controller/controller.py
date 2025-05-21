@@ -3,7 +3,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Type
+from typing import Callable, List, Optional
 
 import pandas as pd
 
@@ -338,7 +338,6 @@ class TrainController:
     def _make_and_handle_scaling_decision_for_non_running_worker_group(
         self,
         controller_state: TrainControllerState,
-        next_state_cls: Type[TrainControllerState],
     ) -> TrainControllerLoopIterationResult:
         """Make a scaling decision for a non-running worker group and return the appropriate next state.
 
@@ -352,7 +351,6 @@ class TrainController:
 
         Args:
             controller_state: The current controller state
-            next_state_cls: The state class to use when a NoopDecision is made.
 
         Returns:
             TrainControllerLoopIterationResult with the appropriate next state
@@ -362,7 +360,7 @@ class TrainController:
         )
 
         if isinstance(scaling_decision, NoopDecision):
-            next_state = next_state_cls()
+            next_state = controller_state
         elif isinstance(scaling_decision, ResizeDecision):
             next_state = SchedulingState(scaling_decision)
         else:
@@ -384,14 +382,14 @@ class TrainController:
 
         if isinstance(controller_state, InitializingState):
             return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state, next_state_cls=InitializingState
+                controller_state
             )
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, ReschedulingState):
             return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state, next_state_cls=ReschedulingState
+                controller_state
             )
         elif isinstance(controller_state, RunningState):
             worker_group_status = self._poll_workers()
@@ -431,7 +429,7 @@ class TrainController:
                 )
         elif isinstance(controller_state, RestartingState):
             return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state, next_state_cls=RestartingState
+                controller_state
             )
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
