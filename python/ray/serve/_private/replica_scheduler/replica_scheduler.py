@@ -112,20 +112,18 @@ class LocalityScheduleMixin:
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        """Apply locality scheduling to the pending request based on the
-        pending request.
+        """Apply locality scheduling to the pending request.
 
         When the reqeust is None, return all replicas. Each call will try to
-        schedule the request to the replicas to the hierarchy of first on the
-        same node, then on the same availability zone, and finally all
+        schedule the request to replicas in the priority of first on the
+        same node, then in the same availability zone, and finally all
         replicas.
 
         Args:
-            pending_request: The pending request to be scheduled based on
-                locality policy.
+            pending_request: The pending request to be scheduled.
         Returns:
-            A set of replica IDs that are candidates for the existing
-            scheduling call.
+            A set of replica IDs that are candidates based on
+            the locality policy.
         """
 
         if not pending_request:
