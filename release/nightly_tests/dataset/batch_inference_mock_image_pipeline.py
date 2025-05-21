@@ -85,7 +85,7 @@ class EmbedPatches:
             return batch
 
 
-def main(scale_factor: int):
+def main():
     benchmark = Benchmark()
 
     def benchmark_fn():
