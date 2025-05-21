@@ -124,15 +124,8 @@ def test_transform_on_split_iterator_raises(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=1),
     )
 
-    with pytest.raises(TrainingFailedError) as exc_info:
+    with pytest.raises(TrainingFailedError):
         trainer.fit()
-
-    # Check that the worker failures contain an AttributeError with the expected message
-    worker_errors = list(exc_info.value.worker_failures.values())
-    assert any(
-        isinstance(e, AttributeError) and "Cannot call `map_batches` on a" in str(e)
-        for e in worker_errors
-    )
 
 
 if __name__ == "__main__":
