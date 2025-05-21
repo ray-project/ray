@@ -231,7 +231,11 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -e .
+    if [[ "${RAYCI_INSTALL_NO_DEPS-}" != 1 ]]; then
+      keep_alive pip install -v -e .
+    else
+      keep_alive pip install --no-deps -v -e .
+    fi
   )
   (
     # For runtime_env tests, wheels are needed

@@ -121,7 +121,7 @@ _prelude() {
     rm -rf /usr/local/include/*
   fi
 
-  ./ci/ci.sh build
+  RAYCI_INSTALL_NO_DEPS=1 ./ci/ci.sh build
   ./ci/env/env_info.sh
 }
 
