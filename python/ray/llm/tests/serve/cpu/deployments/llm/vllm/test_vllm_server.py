@@ -1,6 +1,5 @@
 import pytest
 import sys
-import unittest
 from vllm.config import KVTransferConfig
 from vllm.envs import set_vllm_use_v1, VLLM_USE_V1
 
