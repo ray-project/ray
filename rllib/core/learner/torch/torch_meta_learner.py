@@ -204,7 +204,7 @@ class TorchMetaLearner(TorchLearner):
             # Log training results from the `DifferentiableLearner`s.
             # TODO (simon): Right now metrics are not carried over b/c of
             #   the double tensormode problem.
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 stats_dicts=[others_results], key=DIFFERENTIABLE_LEARNER_RESULTS
             )
 

@@ -88,7 +88,7 @@ class MetricsLogger:
         remote_results_1 = remote_logger_1.reduce()
         remote_results_2 = remote_logger_2.reduce()
         # .. then merge the two results into the controller logger.
-        main_logger.merge_and_log_n_dicts([remote_results_1, remote_results_2])
+        main_logger.aggregate([remote_results_1, remote_results_2])
         check(main_logger.peek("count"), 5)
 
         # 4) Time blocks of code using EMA (coeff=0.1). Note that the higher the coeff
@@ -490,7 +490,7 @@ class MetricsLogger:
     ) -> None:
         """Logs all leafs of a possibly nested dict of values to this logger.
 
-        To aggregate logs from upstream components, use `merge_and_log_n_dicts`.
+        To aggregate logs from upstream components, use `aggregate`.
 
         This is a convinience function that is equivalent to:
         ```
@@ -608,7 +608,7 @@ class MetricsLogger:
         with self._threading_lock:
             tree.map_structure_with_path(_map, value_dict)
 
-    def merge_and_log_n_dicts(
+    def aggregate(
         self,
         stats_dicts: List[Dict[str, Any]],
         *,
@@ -642,7 +642,7 @@ class MetricsLogger:
             learner2_results = logger_learner2.reduce()
 
             # Merge the stats from both Learners.
-            main_logger.merge_and_log_n_dicts(
+            main_logger.aggregate(
                 [learner1_results, learner2_results],
                 key="learners",
             )
@@ -666,7 +666,7 @@ class MetricsLogger:
             env_runner2_results = logger_env_runner2.reduce()
 
             # Merge the stats from both EnvRunners.
-            main_logger.merge_and_log_n_dicts(
+            main_logger.aggregate(
                 [env_runner1_results, env_runner2_results],
                 key="env_runners",
             )
@@ -700,7 +700,7 @@ class MetricsLogger:
             logger2_results = logger2.reduce()
 
             # Merge the stats from both Learners.
-            main_logger.merge_and_log_n_dicts([logger1_results, logger2_results])
+            main_logger.aggregate([logger1_results, logger2_results])
             check(main_logger.peek("some_stat"), 150)
 
             # Example: Sum over n parallel components' stats with a window of 3.
@@ -719,7 +719,7 @@ class MetricsLogger:
             logger2_results = logger2.reduce()
 
             # Merge the stats from both Learners.
-            main_logger.merge_and_log_n_dicts([logger1_results, logger2_results])
+            main_logger.aggregate([logger1_results, logger2_results])
             # The expected procedure is as follows:
             # The individual internal values lists of the two loggers are as follows:
             # env runner 1: [50, 25, 10, 5]
@@ -923,7 +923,7 @@ class MetricsLogger:
         which returns an equivalent, reduced dict with values at the leafs.
         Component A can then further log these n result dicts through its own
         MetricsLogger through:
-        `logger.merge_and_log_n_dicts([n returned result dicts from n subcomponents])`.
+        `logger.aggregate([n returned result dicts from n subcomponents])`.
 
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger

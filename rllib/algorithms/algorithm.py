@@ -1421,7 +1421,7 @@ class Algorithm(Checkpointable, Trainable):
                 keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
             )
         else:
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 [env_runner_results],
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
@@ -1567,7 +1567,7 @@ class Algorithm(Checkpointable, Trainable):
             )
             num_episodes = env_runner_results[NUM_EPISODES]
         else:
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 all_metrics,
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
@@ -1674,7 +1674,7 @@ class Algorithm(Checkpointable, Trainable):
                 "restart_failed_offline_eval_runners=True)` setting."
             )
 
-        self.metrics.merge_and_log_n_dicts(
+        self.metrics.aggregate(
             all_metrics,
             key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
         )
@@ -1843,7 +1843,7 @@ class Algorithm(Checkpointable, Trainable):
             )
             num_episodes = env_runner_results[NUM_EPISODES]
         else:
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 all_metrics,
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
@@ -2086,7 +2086,7 @@ class Algorithm(Checkpointable, Trainable):
                     _return_metrics=True,
                 )
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+        self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update(
@@ -3377,7 +3377,7 @@ class Algorithm(Checkpointable, Trainable):
                 remote_aggregator_metrics,
                 ignore_ray_errors=False,
             )
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 [res.get() for res in remote_aggregator_metrics.result_or_errors],
                 key=AGGREGATOR_ACTOR_RESULTS,
             )

@@ -192,7 +192,7 @@ def test_state_management(logger):
     check(new_logger.peek("state_test"), 0.101)
 
 
-def test_merge_and_log_n_dicts(logger):
+def test_aggregate(logger):
     """Test merging multiple stats dictionaries."""
     # Create two loggers with different values
     logger1 = MetricsLogger()
@@ -211,7 +211,7 @@ def test_merge_and_log_n_dicts(logger):
     results2 = logger2.reduce()
 
     # Merge results into main logger
-    logger.merge_and_log_n_dicts([results1, results2])
+    logger.aggregate([results1, results2])
 
     # Check merged results
     # This may seem counterintuitive, because mean(0.1, 0.2, 0.3, 0.4, 0.5, 0.6) = 0.35.
@@ -366,7 +366,7 @@ def test_lifetime_stats():
     # Reduce both children and merge into root
     results1 = child1.reduce()
     results2 = child2.reduce()
-    root_logger.merge_and_log_n_dicts([results1, results2])
+    root_logger.aggregate([results1, results2])
     check(root_logger.peek("lifetime_metric"), 30)
 
     # Log more values to child loggers
@@ -380,7 +380,7 @@ def test_lifetime_stats():
     check(results2["lifetime_metric"], [35])  # 35 (20+15)
 
     # Merge new results into root - root should accumulate
-    root_logger.merge_and_log_n_dicts([results1, results2])
+    root_logger.aggregate([results1, results2])
     check(root_logger.peek("lifetime_metric"), 50)  # 30 + 5 + 15
 
 
@@ -439,15 +439,15 @@ def test_hierarchical_metrics_system():
         check(result[metric_name], expected_leaf_results_round1[i])
 
     # Merge level 2 results into level 1 nodes
-    node_a.merge_and_log_n_dicts([results_a1, results_a2])
-    node_b.merge_and_log_n_dicts([results_b1, results_b2])
+    node_a.aggregate([results_a1, results_a2])
+    node_b.aggregate([results_b1, results_b2])
 
     # Reduce level 1 and merge into root
     results_a = node_a.reduce()
     results_b = node_b.reduce()
 
     # Merge level 1 results into root
-    root.merge_and_log_n_dicts([results_a, results_b])
+    root.aggregate([results_a, results_b])
 
     # Verify root aggregation from first round
     if isinstance(metric_name, list):
@@ -466,11 +466,11 @@ def test_hierarchical_metrics_system():
     results_b1 = leaf_b1.reduce()
     results_b2 = leaf_b2.reduce()
 
-    node_a.merge_and_log_n_dicts([results_a1, results_a2])
-    node_b.merge_and_log_n_dicts([results_b1, results_b2])
+    node_a.aggregate([results_a1, results_a2])
+    node_b.aggregate([results_b1, results_b2])
     results_a = node_a.reduce()
     results_b = node_b.reduce()
-    root.merge_and_log_n_dicts([results_a, results_b])
+    root.aggregate([results_a, results_b])
 
     # Verify all metrics using compile() to get a complete snapshot
     compiled_results = root.compile()
