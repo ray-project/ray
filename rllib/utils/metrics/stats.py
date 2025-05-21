@@ -437,7 +437,7 @@ class Stats:
         """
         win = self._window or float("inf")
 
-        # If any of the value lists have a length of 0 or if there is only one value and it is nan,
+        # If any of the value lists have a length of 0 or if there is only one value and it is nan, we skip
         stats_to_merge = [
             s
             for s in [self, *others]
