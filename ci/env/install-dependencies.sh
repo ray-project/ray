@@ -450,7 +450,11 @@ install_dependencies() {
 
   if [[ "${SKIP_PYTHON_PACKAGES:-}" != 1 ]]; then
     if [[ "${RAY_MACOS_TEST_INSTALL-}" == 1 ]]; then
-      CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_macos_test.txt" \
+      # CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_macos_test.txt" \
+      #   -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+      CC=gcc retry_pip_install pip install -U \
+        -r "${WORKSPACE_DIR}/python/requirements.txt" \
+        -r "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
         -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
     elif [[ "${MINIMAL_INSTALL:-}" != "1" ]]; then
       install_pip_packages
