@@ -49,6 +49,7 @@ class SingleTensorArrowBatchCollateFn(ArrowBatchCollateFn):
     """Collate function that returns only the id column as a tensor."""
 
     def __call__(self, batch: pa.Table) -> torch.Tensor:
+        """Return only the id column as a tensor."""
         assert isinstance(batch, pa.Table)
         tensor_dict = arrow_batch_to_tensors(batch, combine_chunks=True)
         return tensor_dict["id"]
@@ -58,6 +59,7 @@ class TupleArrowBatchCollateFn(ArrowBatchCollateFn):
     """Collate function that returns id and value as a tuple of tensors."""
 
     def __call__(self, batch: pa.Table) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Return id and value as a tuple of tensors."""
         assert isinstance(batch, pa.Table)
         tensor_dict = arrow_batch_to_tensors(batch, combine_chunks=True)
         return tensor_dict["id"], tensor_dict["value"]
