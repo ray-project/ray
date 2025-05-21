@@ -142,16 +142,16 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
-def create_scheduler(
+def create_request_router(
     actor_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
     is_inside_ray_client_context: bool,
-    replica_scheduler_class: ReplicaScheduler = PowerOfTwoChoicesReplicaScheduler,
+    request_router_class: ReplicaScheduler = PowerOfTwoChoicesReplicaScheduler,
 ):
     node_id, availability_zone = _get_node_id_and_az()
 
-    replica_scheduler = replica_scheduler_class(
+    request_router = request_router_class(
         deployment_id=deployment_id,
         handle_source=handle_options._source,
         self_node_id=node_id,
@@ -166,34 +166,34 @@ def create_scheduler(
         prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
         self_availability_zone=availability_zone,
     )
-    return replica_scheduler
+    return request_router
 
 
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
-    replica_scheduler_class: Optional[ReplicaScheduler] = None,
+    request_router_class: Optional[ReplicaScheduler] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
 
     actor_id = get_current_actor_id()
     controller_handle = _get_global_client()._controller
-    if not replica_scheduler_class:
+    if not request_router_class:
         deployment_config = ray.get(
             controller_handle.get_deployment_config.remote(deployment_id)
         )
-        replica_scheduler_class = deployment_config.get_replica_scheduler_class()
+        request_router_class = deployment_config.get_request_router_class()
 
     is_inside_ray_client_context = inside_ray_client_context()
 
-    replica_scheduler = create_scheduler(
+    request_router = create_request_router(
         actor_id=actor_id,
         deployment_id=deployment_id,
         handle_options=handle_options,
         is_inside_ray_client_context=is_inside_ray_client_context,
-        replica_scheduler_class=replica_scheduler_class,
+        request_router_class=request_router_class,
     )
 
     return SingletonThreadRouter(
@@ -202,7 +202,7 @@ def create_router(
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        replica_scheduler=replica_scheduler,
+        replica_scheduler=request_router,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,

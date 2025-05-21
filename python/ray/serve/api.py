@@ -334,9 +334,7 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    replica_scheduler_class: Default[
-        Union[str, ReplicaScheduler, None]
-    ] = DEFAULT.VALUE,
+    request_router_class: Default[Union[str, ReplicaScheduler, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -401,10 +399,10 @@ def deployment(
             check method to return before considering it as failed. Defaults to 30s.
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
-        replica_scheduler_class: The class of the replica scheduler used for this
+        request_router_class: The class of the request router used for this
             deployment. This can be a string or a class. All the deployment
             handle created for this deployment will use the scheduling policy
-            defined by the replica scheduler. Default to Serve's
+            defined by the request router. Default to Serve's
             PowerOfTwoChoicesReplicaScheduler.
 
     Returns:
@@ -474,8 +472,8 @@ def deployment(
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
-    if replica_scheduler_class is not DEFAULT.VALUE:
-        deployment_config.replica_scheduler_class = replica_scheduler_class
+    if request_router_class is not DEFAULT.VALUE:
+        deployment_config.request_router_class = request_router_class
 
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(

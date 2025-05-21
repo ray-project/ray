@@ -26,7 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_REPLICA_SCHEDULER_PATH,
+    DEFAULT_REQUEST_ROUTER_PATH,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
@@ -184,12 +184,12 @@ class DeploymentConfig(BaseModel):
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
-    # Cloudpickled replica scheduler class.
-    serialized_replica_scheduler_cls: bytes = Field(default=b"")
+    # Cloudpickled request router class.
+    serialized_request_router_cls: bytes = Field(default=b"")
 
-    # Custom replica scheduler config. Defaults to the power of two replica scheduler.
-    replica_scheduler_class: Union[str, Callable] = Field(
-        default=DEFAULT_REPLICA_SCHEDULER_PATH
+    # Custom request router config. Defaults to the power of two request router.
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH
     )
 
     class Config:
@@ -236,31 +236,31 @@ class DeploymentConfig(BaseModel):
         return v
 
     @root_validator
-    def import_and_serialize_replica_scheduler_cls(cls, values) -> Dict[str, Any]:
-        """Import and serialize replica scheduler class with cloudpickle.
+    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
+        """Import and serialize request router class with cloudpickle.
 
-        Import the replica scheduler if it's passed in as a string import path.
-        Then cloudpickle the replica scheduler and set to
-        `serialized_replica_scheduler_cls`.
+        Import the request router if it's passed in as a string import path.
+        Then cloudpickle the request router and set to
+        `serialized_request_router_cls`.
         """
-        replica_scheduler_class = values.get("replica_scheduler_class")
-        if isinstance(replica_scheduler_class, Callable):
-            replica_scheduler_class = f"{replica_scheduler_class.__module__}.{replica_scheduler_class.__name__}"
+        request_router_class = values.get("request_router_class")
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
 
-        replica_scheduler_path = (
-            replica_scheduler_class or DEFAULT_REPLICA_SCHEDULER_PATH
-        )
-        replica_scheduler_class = import_attr(replica_scheduler_path)
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
 
-        values["serialized_replica_scheduler_cls"] = cloudpickle.dumps(
-            replica_scheduler_class
+        values["serialized_request_router_cls"] = cloudpickle.dumps(
+            request_router_class
         )
-        values["replica_scheduler_class"] = replica_scheduler_path
+        values["request_router_class"] = request_router_path
         return values
 
-    def get_replica_scheduler_class(self) -> Callable:
-        """Deserialize replica scheduler from cloudpickled bytes."""
-        return cloudpickle.loads(self.serialized_replica_scheduler_cls)
+    def get_request_router_class(self) -> Callable:
+        """Deserialize request router from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_request_router_cls)
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
