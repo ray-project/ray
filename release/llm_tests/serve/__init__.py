@@ -1,3 +1,3 @@
-from .test_llm_serve_correctness import VllmServer
+from serve.test_llm_serve_correctness import VllmServer
 
 __all__ = ["VllmServer"]
