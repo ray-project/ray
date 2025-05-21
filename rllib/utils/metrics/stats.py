@@ -450,10 +450,15 @@ class Stats:
         ]
 
         # If there is only one stat to merge, and it is the same as self, return.
-        if len(stats_to_merge) == 1:
+        if len(stats_to_merge) == 0:
+            # If none of the stats have values, return.
+            return
+        elif len(stats_to_merge) == 1:
             if stats_to_merge[0] == self:
+                # If no incoming stats have values, return.
                 return
             else:
+                # If there is only one stat with values, and it's incoming, copy its values.
                 self.values = stats_to_merge[0].values
                 return
 
@@ -464,6 +469,7 @@ class Stats:
         tmp_values = []
         # Loop from index=-1 backward to index=start until our new_values list has
         # at least a len of `win`.
+
         for i in range(1, max(map(len, stats_to_merge)) + 1):
             # Per index, loop through all involved stats, including `self` and add
             # to `tmp_values`.

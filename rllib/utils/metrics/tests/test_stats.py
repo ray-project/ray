@@ -1057,6 +1057,41 @@ def test_merging_multiples_rounds(
     result_stats.reduce(compile=True)
 
 
+def test_merge_in_parallel_empty_and_nan_values():
+    """Test the merge_in_parallel method with empty and NaN value stats."""
+
+    # Root stat and all other stats are empty/nan
+    empty_stats = Stats(init_values=[])
+    empty_stats2 = Stats(init_values=[])
+    nan_stats = Stats(init_values=[np.nan])
+    empty_stats.merge_in_parallel(empty_stats, empty_stats2, nan_stats)
+    # Root stat should remain empty
+    check(empty_stats.values, [])
+
+    # Root stat has values but others are empty or NaN
+    empty_stats = Stats(init_values=[])
+    nan_stats = Stats(init_values=[np.nan])
+    stats_with_values = Stats(init_values=[1.0, 2.0])
+    original_values = stats_with_values.values.copy()
+    stats_with_values.merge_in_parallel(empty_stats, nan_stats)
+    # Values should remain unchanged since all other stats are filtered out
+    check(stats_with_values.values, original_values)
+
+    # Root stat is empty but one other stat has values
+    empty_stats3 = Stats(init_values=[])
+    stats_with_values2 = Stats(init_values=[3.0, 4.0])
+    empty_stats3.merge_in_parallel(stats_with_values2)
+    # empty_stats3 should now have stats_with_values2's values
+    check(empty_stats3.values, stats_with_values2.values)
+
+    # Root stat has NaN and other stat has values
+    nan_stats3 = Stats(init_values=[np.nan])
+    stats_with_values3 = Stats(init_values=[5.0, 6.0])
+    nan_stats3.merge_in_parallel(stats_with_values3)
+    # nan_stats3 should now have stats_with_values3's values
+    check(nan_stats3.values, stats_with_values3.values)
+
+
 if __name__ == "__main__":
     import sys
 
