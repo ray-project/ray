@@ -60,6 +60,8 @@ py_test_module_list(
         "test_multiprocessing.py",
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
+        "test_object_spilling_2.py",
+        "test_reference_counting_2.py",
         "test_runtime_env_agent.py",
     ],
     tags = [
@@ -279,14 +281,11 @@ py_test_module_list(
         "test_serialization.py",
         "test_shuffle.py",
         "test_state_api_log.py",
-        "test_state_api_summary.py",
         "test_streaming_generator.py",
         "test_streaming_generator_2.py",
         "test_streaming_generator_3.py",
         "test_streaming_generator_4.py",
         "test_streaming_generator_backpressure.py",
-        "test_streaming_generator_regression.py",
-        "test_system_metrics.py",
         "test_task_metrics.py",
         "test_tempfile.py",
         "test_tls_auth.py",
@@ -474,7 +473,12 @@ py_test_module_list(
         "test_raylet_output.py",
         "test_reconstruction_stress.py",
         "test_reconstruction_stress_spill.py",
+        "test_state_api_summary.py",
+        "test_streaming_generator_regression.py",
+        "test_system_metrics.py",
+        "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
+        "test_tqdm.py",
         "test_unhandled_error.py",
         "test_wait.py",
         "test_widgets.py",
@@ -482,6 +486,23 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_channel_serialization.py",
+    ],
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "no_windows",
         "team:core",
     ],
     deps = [
@@ -721,7 +742,6 @@ py_test_module_list(
         "test_state_api_2.py",
         "test_storage.py",
         "test_task_events.py",
-        "test_task_metrics_reconstruction.py",
         "test_unavailable_actors.py",
     ],
     tags = [
@@ -749,7 +769,6 @@ py_test_module_list(
         "test_placement_group_5.py",
         "test_reconstruction.py",
         "test_reconstruction_2.py",
-        "test_reference_counting_2.py",
         "test_state_api.py",
         "test_task_events_2.py",
         "test_task_events_3.py",
@@ -823,12 +842,10 @@ py_test_module_list(
     files = [
         "test_failure_4.py",
         "test_object_spilling.py",
-        "test_object_spilling_2.py",
         "test_object_spilling_3.py",
         "test_placement_group_mini_integration.py",
         "test_reference_counting.py",
         "test_scheduling_2.py",
-        "test_tqdm.py",
     ],
     tags = [
         "exclusive",
