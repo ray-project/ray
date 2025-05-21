@@ -2,12 +2,10 @@ import argparse
 import asyncio
 import json
 import logging
-import logging.handlers
 import os
 import signal
 import sys
 
-import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -79,11 +77,9 @@ class DashboardAgent:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
-        from ray._private.gcs_pubsub import GcsAioPublisher
         from ray.dashboard.http_server_agent import HttpServerAgent
-
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
         from grpc import aio as aiogrpc
+        from ray._private.tls_utils import add_port_to_grpc_server
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
@@ -113,7 +109,7 @@ class DashboardAgent:
         )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
-            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.grpc_port = add_port_to_grpc_server(
                 self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
             )
         except Exception:
@@ -157,13 +153,6 @@ class DashboardAgent:
             self.http_server
         ), "Accessing unsupported API (HttpServerAgent) in a minimal ray."
         return self.http_server.http_session
-
-    @property
-    def publisher(self):
-        assert (
-            self.aio_publisher
-        ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
-        return self.aio_publisher
 
     def get_node_id(self) -> str:
         return self.node_id
@@ -223,7 +212,7 @@ class DashboardAgent:
                 )
 
             check_parent_task = create_check_raylet_task(
-                self.log_dir, self.gcs_address, callback, loop
+                self.log_dir, self.gcs_client, callback, loop
             )
             tasks.append(check_parent_task)
 

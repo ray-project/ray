@@ -15,16 +15,22 @@ Here is the example to export models to be in ONNX format.
 
 ```python
 import torch
-from diffusers import AutoencoderKL
-from transformers import CLIPTextModel, CLIPTokenizer
 
-prompt = "Draw a dog"
-vae = AutoencoderKL.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", subfolder="vae", use_auth_token=True
-)
+from pathlib import Path
+from diffusers import StableDiffusionPipeline
 
-tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+# Load a specific model version that's known to work well with ONNX conversion
+model_id = "runwayml/stable-diffusion-v1-5"  # This is often the most compatible
+model_path = Path("model_repository/stable_diffusion/1")
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+pipe = StableDiffusionPipeline.from_pretrained(model_id)\
+    .to(device)
+
+vae = pipe.vae
+unet = pipe.unet
+text_encoder = pipe.text_encoder
+hidden_size = text_encoder.config.hidden_size
 
 vae.forward = vae.decode
 torch.onnx.export(
@@ -40,17 +46,11 @@ torch.onnx.export(
     opset_version=14,
 )
 
-text_input = tokenizer(
-    prompt,
-    padding="max_length",
-    max_length=tokenizer.model_max_length,
-    truncation=True,
-    return_tensors="pt",
-)
+dummy_text_input = torch.ones((1, 77), dtype=torch.int64, device=device)
 
 torch.onnx.export(
     text_encoder,
-    (text_input.input_ids.to(torch.int32)),
+    dummy_text_input,
     "encoder.onnx",
     input_names=["input_ids"],
     output_names=["last_hidden_state", "pooler_output"],
@@ -113,7 +113,13 @@ app = FastAPI()
 class TritonDeployment:
     def __init__(self):
         self._triton_server = tritonserver
-
+        
+        # NOTE: Each worker node needs to have access to this directory.
+        # If you are using distributed multi-node setup, prefer to use
+        # remote storage like S3 to save the model repository and use it.
+        #
+        # If triton server is not able to access this location,
+        # the triton server will complain `failed to stat /workspace/models`.
         model_repository = ["/workspace/models"]
 
         self._triton_server = tritonserver.Server(

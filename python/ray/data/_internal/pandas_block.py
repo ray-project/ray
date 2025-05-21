@@ -7,6 +7,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -14,8 +15,8 @@ from typing import (
 )
 
 import numpy as np
+from pandas.api.types import is_object_dtype, is_string_dtype
 
-from pandas.api.types import is_string_dtype, is_object_dtype
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
@@ -569,3 +570,13 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        for i in range(self.num_rows()):
+            row = self._get_row(i)
+            if public_row_format and isinstance(row, TableRow):
+                yield row.as_pydict()
+            else:
+                yield row

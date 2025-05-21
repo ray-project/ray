@@ -1,7 +1,7 @@
 # flake8: noqa
 
 # __function_api_start__
-from ray import train
+from ray import tune
 
 
 def objective(x, a, b):  # Define an objective function.

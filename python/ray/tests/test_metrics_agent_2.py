@@ -1,6 +1,6 @@
-import os
-import time
 import sys
+import time
+from unittest.mock import patch
 
 import pytest
 
@@ -8,12 +8,27 @@ import ray._private.prometheus_exporter as prometheus_exporter
 
 from typing import List
 
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
 from prometheus_client.core import REGISTRY
-from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
+
+
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
+from opencensus.stats.aggregation_data import (
+    LastValueAggregationData,
+    SumAggregationData,
+    CountAggregationData,
+    DistributionAggregationData,
+)
+from opencensus.metrics.export.value import ValueDouble
+from ray._private.metrics_agent import (
+    MetricCardinalityLevel,
+    OpenCensusProxyCollector,
+    OpencensusProxyMetric,
+    WORKER_ID_TAG_KEY,
+)
 from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
     Metric,
@@ -24,7 +39,6 @@ from ray.core.generated.metrics_pb2 import (
     LabelValue,
 )
 from ray._raylet import WorkerID
-
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
@@ -192,6 +206,41 @@ def test_metrics_agent_record_and_export(get_agent):
     assert samples[0].labels == {"tag": "a"}
     assert samples[1].value == 6
     assert samples[1].labels == {"tag": "aa"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_agent_record_and_export_failed_records_dont_block_other_records(
+    get_agent,
+    capsys,
+):
+    namespace = "test"
+    agent, agent_port = get_agent
+
+    metric_name = "test"
+    test_gauge = Gauge(metric_name, "desc", "unit", ["tag"])
+    record_a = Record(
+        gauge=test_gauge,
+        value=1,
+        tags={"tag": "a"},
+    )
+    record_b = Record(
+        gauge=test_gauge,
+        value=1,
+        # this tag is much too long (>255 characters), so recording this metric will fail
+        tags={"tag": "b" * 1000},
+    )
+    record_c = Record(
+        gauge=test_gauge,
+        value=1,
+        tags={"tag": "c"},
+    )
+    agent.record_and_export([record_a, record_b, record_c])
+
+    name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
+    assert name == get_prom_metric_name(namespace, metric_name)
+
+    # a and c should be recorded, b's failure should be ignored
+    assert {sample.labels["tag"] for sample in samples} == {"a", "c"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -456,11 +505,121 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert response.count("# TYPE test_test2 gauge") == 1
 
 
-if __name__ == "__main__":
-    import sys
+@patch(
+    "ray._private.metrics_agent.OpenCensusProxyCollector._get_metric_cardinality_level_setting"
+)
+def test_get_metric_cardinality_level(
+    mock_get_metric_cardinality_level_setting,
+):
+    """
+    Test the core metric cardinality level.
+    """
+    collector = OpenCensusProxyCollector("")
+    mock_get_metric_cardinality_level_setting.return_value = "recommended"
+    assert (
+        collector._get_metric_cardinality_level() == MetricCardinalityLevel.RECOMMENDED
+    )
 
-    # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    mock_get_metric_cardinality_level_setting.return_value = "legacy"
+    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
+
+    mock_get_metric_cardinality_level_setting.return_value = "unknown"
+    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
+
+
+def _stub_node_level_metric(label: str, value: float) -> OpencensusProxyMetric:
+    metric = OpencensusProxyMetric(
+        name="test_metric_01",
+        desc="",
+        unit="",
+        label_keys=["NodeId"],
+    )
+    metric.add_data(
+        (label,),
+        LastValueAggregationData(ValueDouble, value),
+    )
+    return metric
+
+
+def _stub_worker_level_metric(label: str, value: float) -> OpencensusProxyMetric:
+    metric = OpencensusProxyMetric(
+        name="test_metric_01",
+        desc="",
+        unit="",
+        label_keys=["NodeId", WORKER_ID_TAG_KEY],
+    )
+    metric.add_data(
+        (label, "worker_01"),
+        LastValueAggregationData(ValueDouble, value),
+    )
+    return metric
+
+
+def test_aggregate_metric_data():
+    collector = OpenCensusProxyCollector("")
+    collector._aggregate_metric_data(
+        [
+            LastValueAggregationData(ValueDouble, 1.0),
+            LastValueAggregationData(ValueDouble, 2.0),
+            LastValueAggregationData(ValueDouble, 3.0),
+        ]
+    ).value == 6.0
+    collector._aggregate_metric_data(
+        [
+            SumAggregationData(ValueDouble, 1.0),
+            SumAggregationData(ValueDouble, 4.0),
+        ]
+    ).sum_data == 5.0
+    collector._aggregate_metric_data(
+        [
+            CountAggregationData(1),
+            CountAggregationData(1),
+        ]
+    ).count_data == 2
+    with pytest.raises(ValueError, match="Unsupported aggregation type"):
+        collector._aggregate_metric_data(
+            [
+                DistributionAggregationData(
+                    mean_data=1.0,
+                    count_data=1,
+                    sum_of_sqd_deviations=1.0,
+                )
+            ]
+        )
+
+
+def test_collect_worker_metrics_with_recommended_cardinality():
+    aggregated_metrics = OpenCensusProxyCollector(
+        ""
+    )._aggregate_with_recommended_cardinality(
+        [
+            _stub_worker_level_metric("node_01", 1.0),
+            _stub_worker_level_metric("node_01", 3.0),
+            _stub_worker_level_metric("node_02", 2.0),
+        ]
+    )
+    assert len(aggregated_metrics) == 1
+    metric = aggregated_metrics[0]
+    assert metric.name == "test_metric_01"
+    assert metric.label_keys == ["NodeId"]
+    # Check that the worker id is removed from the label keys, and the correct metric
+    # values are returned.
+    assert metric._data.get(("node_01",)).value == 4.0
+    assert metric._data.get(("node_02",)).value == 2.0
+
+
+def test_collect_node_metrics_with_recommended_cardinality():
+    aggregated_metrics = OpenCensusProxyCollector(
+        ""
+    )._aggregate_with_recommended_cardinality(
+        [
+            _stub_node_level_metric("node_01", 1.0),
+            _stub_node_level_metric("node_02", 2.0),
+        ]
+    )
+    # Metrics are already at node level, so they should be returned as is.
+    assert len(aggregated_metrics) == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

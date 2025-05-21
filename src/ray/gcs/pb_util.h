@@ -277,6 +277,8 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
+  task_info->mutable_labels()->insert(task_spec.GetLabels().begin(),
+                                      task_spec.GetLabels().end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(

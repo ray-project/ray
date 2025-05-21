@@ -167,6 +167,8 @@ class TorchMetaLearner(TorchLearner):
         if not others_training_data:
             others_training_data = cycle([training_data])
 
+        self.metrics.activate_tensor_mode()
+
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -191,13 +193,17 @@ class TorchMetaLearner(TorchLearner):
                 params, other_loss_per_module, other_results = other.update(
                     training_data=other_training_data,
                     params=params,
+                    # TODO (simon): Check, if this is still needed.
                     _no_metrics_reduce=_no_metrics_reduce,
                     **kwargs,
                 )
                 others_loss_per_module.append(other_loss_per_module)
+                # TODO (simon): Find a more elegant way for naming.
                 others_results[to_snake_case(other.__class__.__name__)] = other_results
 
             # Log training results from the `DifferentiableLearner`s.
+            # TODO (simon): Right now metrics are not carried over b/c of
+            #   the double tensormode problem.
             self.metrics.log_dict(others_results, key=DIFFERENTIABLE_LEARNER_RESULTS)
 
             # Make the actual in-graph/traced meta-`_update` call. This should return
@@ -245,6 +251,8 @@ class TorchMetaLearner(TorchLearner):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         self.after_gradient_based_update(timesteps=timesteps or {})
+
+        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:

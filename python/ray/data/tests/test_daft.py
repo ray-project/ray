@@ -14,9 +14,9 @@ def ray_start(request):
 
 
 def test_daft_round_trip(ray_start):
-    import pandas as pd
-    import numpy as np
     import daft
+    import numpy as np
+    import pandas as pd
 
     data = {
         "int_col": list(range(128)),
