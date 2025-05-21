@@ -293,6 +293,7 @@ def test_state_serialization():
     stats = Stats(
         init_values=None,
         reduce="sum",
+        reduce_per_index_on_parallel_merge=True,
         window=3,
         ema_coeff=None,
         clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,

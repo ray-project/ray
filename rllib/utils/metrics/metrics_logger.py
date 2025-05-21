@@ -338,7 +338,7 @@ class MetricsLogger:
 
         Args:
             key: The key (or nested key-tuple) to log the `value` under.
-            value: The value to log.
+            value: The value to log. This should be a numeric value.
             reduce: The reduction method to apply, once `self.reduce()` is called.
                 If None, will collect all logged values under `key` in a list (and
                 also return that list upon calling `self.reduce()`).
@@ -463,7 +463,7 @@ class MetricsLogger:
 
     def log_dict(
         self,
-        stats_dict,
+        value_dict,
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
@@ -474,7 +474,9 @@ class MetricsLogger:
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_parallel_merge: bool = False,
     ) -> None:
-        """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
+        """Logs all leafs of a (nested) dict of values to this logger.
+
+        To aggregate logs from upstream components, use `merge_and_log_n_dicts`.
 
         Traverses through all leafs of `stats_dict` and - if a path cannot be found in
         this logger yet, will add the `Stats` found at the leaf under that new key.
@@ -482,6 +484,11 @@ class MetricsLogger:
         already logged before. This way, `stats_dict` does NOT have to have
         the same structure as what has already been logged to `self`, but can be used to
         log values under new keys or nested key paths.
+
+        This is a convinience function that is equivalent to:
+        ```
+        tree.map_structure_with_path(lambda path, value: logger.log_value(path, value, ...), value_dict)
+        ```
 
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -520,7 +527,7 @@ class MetricsLogger:
             })
 
         Args:
-            stats_dict: The (possibly nested) dict with `Stats` or individual values as
+            value_dict: The (possibly nested) dict with individual values as
                 leafs to be logged to this logger.
             key: An additional key (or tuple of keys) to prepend to all the keys
                 (or tuples of keys in case of nesting) found inside `stats_dict`.
@@ -564,8 +571,8 @@ class MetricsLogger:
                 values will be the reduced values of all incoming values at index `1`, etc.
         """
         assert isinstance(
-            stats_dict, dict
-        ), f"`stats_dict` ({stats_dict}) must be dict!"
+            value_dict, dict
+        ), f"`stats_dict` ({value_dict}) must be dict!"
 
         prefix_key = force_tuple(key)
 
@@ -585,7 +592,7 @@ class MetricsLogger:
             )
 
         with self._threading_lock:
-            tree.map_structure_with_path(_map, stats_dict)
+            tree.map_structure_with_path(_map, value_dict)
 
     def merge_and_log_n_dicts(
         self,
@@ -709,6 +716,7 @@ class MetricsLogger:
             key: Optional top-level key under which to log all keys/key sequences
                 found in the n `stats_dicts`.
         """
+        assert isinstance(stats_dicts, list), "stats_dicts must be a list"
         all_keys = set()
 
         def traverse_and_add_paths(d, path=()):

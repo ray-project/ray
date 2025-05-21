@@ -634,6 +634,7 @@ class Stats:
         state = {
             "values": self.values,
             "reduce": self._reduce_method,
+            "reduce_per_index_on_parallel_merge": self._reduce_per_index_on_parallel_merge,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
@@ -650,6 +651,9 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
+                reduce_per_index_on_parallel_merge=state.get(
+                    "reduce_per_index_on_parallel_merge", False
+                ),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],

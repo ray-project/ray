@@ -1421,8 +1421,8 @@ class Algorithm(Checkpointable, Trainable):
                 keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
             )
         else:
-            self.metrics.log_dict(
-                env_runner_results,
+            self.metrics.merge_and_log_n_dicts(
+                [env_runner_results],
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             env_runner_results = None
