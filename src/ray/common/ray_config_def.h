@@ -416,9 +416,6 @@ RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
-/// DEPRECATED. No longer used anywhere.
-RAY_CONFIG(bool, start_python_importer_thread, true)
-
 /// Determines if forking in Ray actors / tasks are supported.
 /// Note that this only enables forking in workers, but not drivers.
 RAY_CONFIG(bool, support_fork, false)
