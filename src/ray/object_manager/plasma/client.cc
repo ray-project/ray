@@ -930,8 +930,7 @@ PlasmaClient::~PlasmaClient() {}
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
                              int num_retries) {
-  return impl_->Connect(
-      store_socket_name, manager_socket_name, num_retries);
+  return impl_->Connect(store_socket_name, manager_socket_name, num_retries);
 }
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
