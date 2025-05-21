@@ -353,12 +353,13 @@ def deployment(
         app = MyDeployment.bind()
 
     Args:
+        _func_or_class: The class or function to be decorated.
         name: Name uniquely identifying this deployment within the application.
             If not provided, the name of the class or function is used.
+        version: Version of the deployment. Deprecated.
         num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.
-        autoscaling_config: Parameters to configure autoscaling behavior. If this
-            is set, `num_replicas` cannot be set.
+        route_prefix: Route prefix for HTTP requests. Defaults to '/'. Deprecated.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `resources`, and `runtime_env`.
@@ -372,6 +373,10 @@ def deployment(
             This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
+        max_replicas_per_node: The max number of replicas of this deployment that can
+            run on a single node. Valid values are None (default, no limit)
+            or an integer in the range of [1, 100].
+            This cannot be set together with placement_group_bundles.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
@@ -382,20 +387,18 @@ def deployment(
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
             requests). Defaults to -1 (no limit).
+        autoscaling_config: Parameters to configure autoscaling behavior. If this
+            is set, `num_replicas` cannot be set.
+        graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
+            no more work to be done before shutting down. Defaults to 2s.
+        graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
+            shut down before being forcefully killed. Defaults to 20s.
         health_check_period_s: Duration between health check calls for the replica.
             Defaults to 10s. The health check is by default a no-op Actor call to the
             replica, but you can define your own health check using the "check_health"
             method in your deployment that raises an exception when unhealthy.
         health_check_timeout_s: Duration in seconds, that replicas wait for a health
             check method to return before considering it as failed. Defaults to 30s.
-        graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
-            no more work to be done before shutting down. Defaults to 2s.
-        graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
-            shut down before being forcefully killed. Defaults to 20s.
-        max_replicas_per_node: The max number of replicas of this deployment that can
-            run on a single node. Valid values are None (default, no limit)
-            or an integer in the range of [1, 100].
-            This cannot be set together with placement_group_bundles.
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
         replica_scheduler_class: The class of the replica scheduler used for this
