@@ -6,7 +6,6 @@ from ray.experimental.util.types import ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    import cupy as cp
     import torch
 
 
@@ -108,17 +107,17 @@ class Communicator(ABC):
 
     @property
     @abstractmethod
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def recv_stream(self):
         """
-        Return the cuda stream used for receiving tensors.
+        Return the torch stream context used for receiving tensors.
         """
         raise NotImplementedError
 
     @property
     @abstractmethod
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def send_stream(self):
         """
-        Return the cuda stream used for sending tensors.
+        Return the torch stream context used for sending tensors.
         """
         raise NotImplementedError
 
@@ -188,5 +187,13 @@ class Communicator(ABC):
     def get_transport_name(self) -> str:
         """
         Return the type of the communicator (gpu or cpu).
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def generate_communicator_id(cls) -> str:
+        """
+        Return the unique id of the communicator.
         """
         raise NotImplementedError
