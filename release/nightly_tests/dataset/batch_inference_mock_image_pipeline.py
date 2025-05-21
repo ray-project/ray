@@ -100,7 +100,7 @@ def main():
         ctx.execution_options.actor_locality_enabled = True
 
         (
-            ray.data.read_images(READ_PATH)
+            ray.data.read_images(READ_PATH, mode="RGB")
             .filter(lambda row: row["image"].size != 0)
             .map(process_image)
             .flat_map(patch_image)
