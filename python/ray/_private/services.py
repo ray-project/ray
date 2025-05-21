@@ -1331,20 +1331,30 @@ def start_api_server(
         # Retrieve the dashboard url
         dashboard_url = None
         dashboard_returncode = None
-        for _ in range(3000):
+        dashboard_start_tiemout_time = (
+            time.perf_counter() + ray_constants.DASHBOARD_START_TIMEOUT_S
+        )
+        while True:
             dashboard_url = gcs_client.internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS.encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
+
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
                 break
+
             dashboard_returncode = process_info.process.poll()
             if dashboard_returncode is not None:
                 break
-            # This is often on the critical path of ray.init() and ray start,
-            # so we need to poll often.
-            time.sleep(0.1)
+
+            if dashboard_start_tiemout_time <= time.perf_counter():
+                # Dashboard start timed out.
+                break
+            else:
+                # This is often on the critical path of ray.init() and ray start,
+                # so we need to poll often.
+                time.sleep(0.1)
 
         # Dashboard couldn't be started.
         if dashboard_url is None:
