@@ -1035,12 +1035,13 @@ class Node:
         port isn't already cached, an unused port is generated and cached.
 
         Args:
-            port_name: the name of the port, e.g. metrics_export_port
-            default_port (Optional[int]): The port to return and cache if no
-            port has already been cached for the given port_name.  If None, an
-            unused port is generated and cached.
+            port_name: The name of the port, e.g. metrics_export_port.
+            default_port: The port to return and cache if no port has already been
+                cached for the given port_name. If None, an unused port is generated
+                and cached.
+
         Returns:
-            port: the port number.
+            int: The port number.
         """
         file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
 
