@@ -90,93 +90,40 @@ class ChunkedDictArrowBatchCollateFn(ArrowBatchCollateFn):
         return arrow_batch_to_tensors(modified_batch, combine_chunks=False)
 
 
-class BaseNumpyBatchCollateFn(NumpyBatchCollateFn):
-    """Base class for Numpy batch collate functions that process and convert to tensors.
-
-    This class provides common functionality for processing Numpy arrays and converting
-    them to PyTorch tensors. It handles device placement and dtype conversion.
-
-    Attributes:
-        device: Optional device to place tensors on. Can be a string (e.g. "cpu", "cuda:0")
-            or a torch.device object.
-    """
-
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        if isinstance(device, str):
-            self.device = torch.device(device)
-        else:
-            self.device = device
-
-    def _get_tensors(self, batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-        """Convert batch to tensors.
-
-        Args:
-            batch: Input dictionary of numpy arrays to convert to tensors.
-
-        Returns:
-            Dictionary mapping column names to PyTorch tensors.
-        """
-        return convert_ndarray_batch_to_torch_tensor_batch(
-            batch, dtypes=None, device=None
-        )
-
-
-class SingleTensorNumpyBatchCollateFn(BaseNumpyBatchCollateFn):
+class SingleTensorNumpyBatchCollateFn(NumpyBatchCollateFn):
     """Collate function that returns only the id array as a tensor."""
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
         """Return only the id array as a tensor."""
         assert isinstance(batch, dict)
-        tensor_dict = convert_ndarray_batch_to_torch_tensor_batch(batch, dtypes=None)
+        tensor_dict = convert_ndarray_batch_to_torch_tensor_batch(batch)
+        return tensor_dict["id"]
 
 
-class TupleNumpyBatchCollateFn(BaseNumpyBatchCollateFn):
+class TupleNumpyBatchCollateFn(NumpyBatchCollateFn):
     """Collate function that returns id and value as a tuple of tensors."""
 
     def __call__(
         self, batch: Dict[str, np.ndarray]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Return id and value as a tuple of tensors."""
         assert isinstance(batch, dict)
-        modified_batch = self._process_batch(batch)
-        tensors = self._get_tensors(modified_batch)
-        return tensors["id"], tensors["value"]
+        tensor_dict = convert_ndarray_batch_to_torch_tensor_batch(batch)
+        return tensor_dict["id"], tensor_dict["value"]
 
 
-class DictNumpyBatchCollateFn(BaseNumpyBatchCollateFn):
-    """Collate function that returns id and value as a dictionary of tensors."""
-
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        super().__init__(device)
-
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-        """Return id and value as a dictionary of tensors."""
-        assert isinstance(batch, dict)
-        modified_batch = self._process_batch(batch)
-        return self._get_tensors(modified_batch)
-
-
-class ListNumpyBatchCollateFn(BaseNumpyBatchCollateFn):
+class ListNumpyBatchCollateFn(TupleNumpyBatchCollateFn):
     """Collate function that returns id and value as a list of tensors."""
 
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        super().__init__(device)
-
     def __call__(self, batch: Dict[str, np.ndarray]) -> List[torch.Tensor]:
-        """Return id and value as a list of tensors."""
+        return list(super().__call__(batch))
+
+
+class DictNumpyBatchCollateFn(NumpyBatchCollateFn):
+    """Collate function that returns id and value as a dictionary of tensors."""
+
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
         assert isinstance(batch, dict)
-        modified_batch = self._process_batch(batch)
-        tensors = self._get_tensors(modified_batch)
-        return [tensors["id"], tensors["value"]]
+        return convert_ndarray_batch_to_torch_tensor_batch(batch)
 
 
 class BasePandasBatchCollateFn(PandasBatchCollateFn):
@@ -227,76 +174,44 @@ class BasePandasBatchCollateFn(PandasBatchCollateFn):
         )
 
 
-class SingleTensorPandasBatchCollateFn(BasePandasBatchCollateFn):
+class SingleTensorPandasBatchCollateFn(PandasBatchCollateFn):
     """Collate function that returns only the id column as a tensor."""
 
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        super().__init__(device)
-
     def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
-        """Return only the id column as a tensor."""
-        modified_batch = self._process_batch(batch)
-        return self._get_tensors(modified_batch)["id"]
+        tensor_dict = convert_ndarray_batch_to_torch_tensor_batch(
+            batch.to_dict("series")
+        )
+        return tensor_dict["id"]
 
 
-class TuplePandasBatchCollateFn(BasePandasBatchCollateFn):
+class TuplePandasBatchCollateFn(PandasBatchCollateFn):
     """Collate function that returns id and value as a tuple of tensors."""
 
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        super().__init__(device)
-
     def __call__(self, batch: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Return id and value as a tuple of tensors."""
-        assert isinstance(batch, pd.DataFrame)
-        modified_batch = self._process_batch(batch)
-        tensors = self._get_tensors(modified_batch)
-        return tensors["id"], tensors["value"]
+        tensor_dict = convert_ndarray_batch_to_torch_tensor_batch(
+            batch.to_dict("series")
+        )
+        return tensor_dict["id"], tensor_dict["value"]
 
 
-class DictPandasBatchCollateFn(BasePandasBatchCollateFn):
-    """Collate function that returns id and value as a dictionary of tensors."""
-
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        super().__init__(device)
-
-    def __call__(self, batch: pd.DataFrame) -> Dict[str, torch.Tensor]:
-        """Return id and value as a dictionary of tensors."""
-        assert isinstance(batch, pd.DataFrame)
-        modified_batch = self._process_batch(batch)
-        return self._get_tensors(modified_batch)
-
-
-class ListPandasBatchCollateFn(BasePandasBatchCollateFn):
+class ListPandasBatchCollateFn(TuplePandasBatchCollateFn):
     """Collate function that returns id and value as a list of tensors."""
 
-    def __init__(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        super().__init__(device)
-
     def __call__(self, batch: pd.DataFrame) -> List[torch.Tensor]:
-        """Return id and value as a list of tensors."""
-        assert isinstance(batch, pd.DataFrame)
-        modified_batch = self._process_batch(batch)
-        tensors = self._get_tensors(modified_batch)
-        return [tensors["id"], tensors["value"]]
+        return list(super().__call__(batch))
+
+
+class DictPandasBatchCollateFn(PandasBatchCollateFn):
+    """Collate function that returns id and value as a dictionary of tensors."""
+
+    def __call__(self, batch: pd.DataFrame) -> Dict[str, torch.Tensor]:
+        return convert_ndarray_batch_to_torch_tensor_batch(batch.to_dict("series"))
 
 
 @pytest.fixture
 def collate_fn_map():
     """Fixture that provides Arrow, Numpy, Pandas custom collate functions."""
 
-    device = None
     return {
         "arrow": {
             "single": SingleTensorArrowBatchCollateFn(),
@@ -306,16 +221,16 @@ def collate_fn_map():
             "chunked_dict": ChunkedDictArrowBatchCollateFn(),
         },
         "numpy": {
-            "single": SingleTensorNumpyBatchCollateFn(device=device),
-            "tuple": TupleNumpyBatchCollateFn(device=device),
-            "dict": DictNumpyBatchCollateFn(device=device),
-            "list": ListNumpyBatchCollateFn(device=device),
+            "single": SingleTensorNumpyBatchCollateFn(),
+            "tuple": TupleNumpyBatchCollateFn(),
+            "dict": DictNumpyBatchCollateFn(),
+            "list": ListNumpyBatchCollateFn(),
         },
         "pandas": {
-            "single": SingleTensorPandasBatchCollateFn(device=device),
-            "tuple": TuplePandasBatchCollateFn(device=device),
-            "dict": DictPandasBatchCollateFn(device=device),
-            "list": ListPandasBatchCollateFn(device=device),
+            "single": SingleTensorPandasBatchCollateFn(),
+            "tuple": TuplePandasBatchCollateFn(),
+            "dict": DictPandasBatchCollateFn(),
+            "list": ListPandasBatchCollateFn(),
         },
     }
 
@@ -334,7 +249,11 @@ def test_custom_batch_collate_fn(
     collate_fn_map,
 ):
     """Tests that custom batch collate functions can be used to modify
-    the batch before it is converted to a PyTorch tensor."""
+    the batch before it is converted to a PyTorch tensor.
+
+    Note that the collate_fn doesn't move the tensors to the device --
+    that happens in the iterator (finalize_fn).
+    """
     # Skip GPU tests if CUDA is not available
     if device == "cuda:0" and not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
