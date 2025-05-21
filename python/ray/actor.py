@@ -110,17 +110,60 @@ def method(*args, **kwargs):
     return annotate_method
 
 
+# ActorMethodShell holds static metadata without referencing the handle.
+class ActorMethodShell:
+    def __init__(
+        self,
+        method_name: str,
+        num_returns: Optional[Union[int, Literal["streaming"]]],
+        max_task_retries: int,
+        retry_exceptions: Union[bool, list, tuple],
+        is_generator: bool,
+        generator_backpressure_num_objects: int,
+        enable_task_events: bool,
+        decorator=None,
+        signature: Optional[List[inspect.Parameter]] = None,
+    ):
+        self.method_name = method_name
+        self.num_returns = num_returns
+        self.max_task_retries = max_task_retries
+        self.retry_exceptions = retry_exceptions
+        self.is_generator = is_generator
+        self.generator_backpressure_num_objects = generator_backpressure_num_objects
+        self.enable_task_events = enable_task_events
+        self.decorator = decorator
+        self.signature = signature
+
+    def bind(self, actor_handle):
+        """
+        Produce a bound ActorMethod that holds a strong reference to actor_handle.
+        """
+        return ActorMethod(
+            actor_handle,
+            self.method_name,
+            self.num_returns,
+            self.max_task_retries,
+            self.retry_exceptions,
+            self.is_generator,
+            self.generator_backpressure_num_objects,
+            self.enable_task_events,
+            decorator=self.decorator,
+            signature=self.signature,
+        )
+
+
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
 @PublicAPI
 class ActorMethod:
     """A class used to invoke an actor method.
 
-    Note: This class only keeps a weak ref to the actor, unless it has been
-    passed to a remote function. This avoids delays in GC of the actor.
+    Note: When bound (via ActorMethodShell.bind), each instance holds a
+    strong reference to its ActorHandle for the duration of the invocation,
+    preventing premature GC and simplifying lifecycle semantics.
 
     Attributes:
-        _actor_ref: A weakref handle to the actor.
+        _actor: A handle to the actor.
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return. If None is given, it uses
@@ -158,9 +201,8 @@ class ActorMethod:
         enable_task_events: bool,
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
-        hardref=False,
     ):
-        self._actor_ref = weakref.ref(actor)
+        self._actor = actor
         self._method_name = method_name
         self._num_returns = num_returns
 
@@ -183,13 +225,6 @@ class ActorMethod:
         # cases, it should call the function that was passed into the decorator
         # and return the resulting ObjectRefs.
         self._decorator = decorator
-
-        # Acquire a hard ref to the actor, this is useful mainly when passing
-        # actor method handles to remote functions.
-        if hardref:
-            self._actor_hard_ref = actor
-        else:
-            self._actor_hard_ref = None
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -349,7 +384,7 @@ class ActorMethod:
             )
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref()
+            actor = self._actor
 
             if actor is None:
                 # See https://github.com/ray-project/ray/issues/6265 for more details.
@@ -402,7 +437,6 @@ class ActorMethod:
             state["generator_backpressure_num_objects"],
             state["enable_task_events"],
             state["decorator"],
-            hardref=True,
         )
 
 
@@ -1424,6 +1458,29 @@ class ActorHandle:
                 )
                 setattr(self, method_name, method)
 
+        # Build one ActorMethodShell per method, avoid cycles
+        self._method_shells = {}
+        for method_name, signature in self._ray_method_signatures.items():
+            # grab the other per-method configs from existing attrs:
+            self._method_shells[method_name] = ActorMethodShell(
+                method_name=method_name,
+                num_returns=self._ray_method_num_returns.get(method_name, None),
+                max_task_retries=self._ray_method_max_task_retries.get(
+                    method_name, self._ray_max_task_retries
+                )
+                or 0,
+                retry_exceptions=self._ray_method_retry_exceptions.get(method_name),
+                is_generator=self._ray_method_is_generator.get(method_name),
+                generator_backpressure_num_objects=self._ray_method_generator_backpressure_num_objects.get(
+                    method_name
+                ),
+                enable_task_events=self._ray_method_enable_task_events.get(
+                    method_name, self._ray_enable_task_events
+                ),
+                decorator=self._ray_method_decorators.get(method_name),
+                signature=signature,
+            )
+
     def __del__(self):
         # Weak references don't count towards the distributed ref count, so no
         # need to decrement the ref count.
@@ -1558,6 +1615,10 @@ class ActorHandle:
         return object_refs
 
     def __getattr__(self, item):
+        # first, if this name matches a remote method, bind and return it
+        if hasattr(self, "_method_shells") and item in self._method_shells:
+            return self._method_shells[item].bind(self)
+
         if not self._ray_is_cross_language:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
