@@ -112,8 +112,7 @@ class LocalityScheduleMixin:
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        """Apply locality scheduling to the pending request based on the
-        pending request.
+        """Apply locality scheduling to the pending request.
 
         When the reqeust is None, return all replicas. Each call will try to
         schedule the request to replicas in the priority of first on the
