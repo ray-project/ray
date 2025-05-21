@@ -556,6 +556,11 @@ RAY_CONFIG(bool, experimental_enable_open_telemetry_on_core, false)
 /// backend from OpenCensus to OpenTelemetry. It will be removed in the future.
 RAY_CONFIG(bool, experimental_enable_open_telemetry_on_core_worker, false)
 
+/// Whether enable OpenTelemetry as the metrics collection backend on the worker
+/// component. This flag is only used during the migration of the  metric collection
+/// backend from OpenCensus to OpenTelemetry. It will be removed in the future.
+RAY_CONFIG(bool, experimental_enable_open_telemetry_on_worker, false)
+
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
 /// degredations.
