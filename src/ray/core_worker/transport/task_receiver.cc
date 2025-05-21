@@ -60,9 +60,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   }
 
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
-                             const TaskSpecification &task_spec,
-                             const rpc::SendReplyCallback &send_reply_callback) mutable {
-    auto num_returns = task_spec.NumReturns();
+                             const TaskSpecification &_task_spec,
+                             const rpc::SendReplyCallback &_send_reply_callback) mutable {
+    auto num_returns = _task_spec.NumReturns();
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
@@ -70,7 +70,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error;
-    auto status = task_handler_(task_spec,
+    auto status = task_handler_(_task_spec,
                                 std::move(resource_ids),
                                 &return_objects,
                                 &dynamic_return_objects,
@@ -117,8 +117,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
 
     if (objects_valid) {
-      if (task_spec.ReturnsDynamic()) {
-        size_t num_dynamic_returns_expected = task_spec.DynamicReturnIds().size();
+      if (_task_spec.ReturnsDynamic()) {
+        size_t num_dynamic_returns_expected = _task_spec.DynamicReturnIds().size();
         if (num_dynamic_returns_expected > 0) {
           RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
               << "Expected " << num_dynamic_returns_expected
@@ -141,39 +141,39 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
             return_object.first, return_object.second, return_object_proto);
       }
 
-      if (task_spec.IsActorCreationTask()) {
-        if (task_spec.IsAsyncioActor()) {
+      if (_task_spec.IsActorCreationTask()) {
+        if (_task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              task_spec.ConcurrencyGroups(),
+              _task_spec.ConcurrencyGroups(),
               fiber_max_concurrency_,
               initialize_thread_callback_);
         } else {
           // If the actor is an asyncio actor, then this concurrency group manager
           // for BoundedExecutor will never be used, so we don't need to initialize it.
-          const int default_max_concurrency = task_spec.MaxActorConcurrency();
+          const int default_max_concurrency = _task_spec.MaxActorConcurrency();
           pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-              task_spec.ConcurrencyGroups(),
+              _task_spec.ConcurrencyGroups(),
               default_max_concurrency,
               initialize_thread_callback_);
         }
-        concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
-            task_spec.ConcurrencyGroups();
+        concurrency_groups_cache_[_task_spec.TaskId().ActorId()] =
+            _task_spec.ConcurrencyGroups();
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
         RAY_CHECK_OK(actor_creation_task_done_());
         if (status.IsCreationTaskError()) {
           RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
-                           << task_spec.TaskId()
-                           << ", actor_id: " << task_spec.ActorCreationId()
+                           << _task_spec.TaskId()
+                           << ", actor_id: " << _task_spec.ActorCreationId()
                            << ", status: " << status;
         } else {
           // Set the actor repr name if it's customized by the actor.
           if (!actor_repr_name_.empty()) {
             reply->set_actor_repr_name(actor_repr_name_);
           }
-          RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
-                        << ", actor_id: " << task_spec.ActorCreationId()
+          RAY_LOG(INFO) << "Actor creation task finished, task_id: " << _task_spec.TaskId()
+                        << ", actor_id: " << _task_spec.ActorCreationId()
                         << ", actor_repr_name: " << actor_repr_name_;
         }
       }
@@ -184,27 +184,27 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       reply->set_worker_exiting(true);
       if (objects_valid) {
         // This happens when max_calls is hit. We still need to return the objects.
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+        _send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        send_reply_callback(status, nullptr, nullptr);
+        _send_reply_callback(status, nullptr, nullptr);
       }
     } else {
       RAY_CHECK(objects_valid);
-      send_reply_callback(status, nullptr, nullptr);
+      _send_reply_callback(status, nullptr, nullptr);
     }
   };
 
-  auto cancel_callback = [reply](const TaskSpecification &task_spec,
+  auto cancel_callback = [reply](const TaskSpecification &_task_spec,
                                  const Status &status,
-                                 const rpc::SendReplyCallback &send_reply_callback) {
-    if (task_spec.IsActorTask()) {
+                                 const rpc::SendReplyCallback &_send_reply_callback) {
+    if (_task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
-      send_reply_callback(status, nullptr, nullptr);
+      _send_reply_callback(status, nullptr, nullptr);
     } else {
       // We consider cancellation of normal tasks to be an in-band cancellation of a
       // successful RPC.
       reply->set_was_cancelled_before_running(true);
-      send_reply_callback(status, nullptr, nullptr);
+      _send_reply_callback(status, nullptr, nullptr);
     }
   };
 

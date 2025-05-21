@@ -69,18 +69,18 @@ jobject ToJavaArgs(JNIEnv *env,
     jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<RayObject>>(
         env,
         args,
-        [check_results, &i](JNIEnv *env,
+        [check_results, &i](JNIEnv *_env,
                             const std::shared_ptr<RayObject> &native_object) {
           if (*(check_results + (i++))) {
             // If the type of this argument is ByteBuffer, we create a
             // DirectByteBuffer here To avoid data copy.
             // TODO(kfstorm): Check native_object->GetMetadata() == "RAW"
-            jobject obj = env->NewDirectByteBuffer(native_object->GetData()->Data(),
+            jobject obj = _env->NewDirectByteBuffer(native_object->GetData()->Data(),
                                                    native_object->GetData()->Size());
             RAY_CHECK(obj);
             return obj;
           }
-          return NativeRayObjectToJavaNativeRayObject(env, native_object);
+          return NativeRayObjectToJavaNativeRayObject(_env, native_object);
         });
     env->ReleaseBooleanArrayElements(java_check_results, check_results, JNI_ABORT);
     return args_array_list;
@@ -150,7 +150,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         // errors for Java.
         *is_retryable_error = false;
 
-        JNIEnv *env = GetJNIEnv();
+        JNIEnv *_env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
         // convert RayFunction
@@ -166,53 +166,53 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         }
         if (!ray_function_array_list) {
           ray_function_array_list =
-              NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
+              NativeRayFunctionDescriptorToJavaStringList(_env, function_descriptor);
           fd_vector.emplace_back(function_descriptor, ray_function_array_list);
         }
 
         // convert args
         // TODO(kfstorm): Avoid copying binary data from Java to C++
         jbooleanArray java_check_results = static_cast<jbooleanArray>(
-            env->CallObjectMethod(java_task_executor,
-                                  java_task_executor_parse_function_arguments,
-                                  ray_function_array_list));
+            _env->CallObjectMethod(java_task_executor,
+                                   java_task_executor_parse_function_arguments,
+                                   ray_function_array_list));
         RAY_CHECK_JAVA_EXCEPTION(env);
-        jobject args_array_list = ToJavaArgs(env, java_check_results, args);
+        jobject args_array_list = ToJavaArgs(_env, java_check_results, args);
 
         // invoke Java method
-        jobject java_return_objects = env->CallObjectMethod(java_task_executor,
+        jobject java_return_objects = _env->CallObjectMethod(java_task_executor,
                                                             java_task_executor_execute,
                                                             ray_function_array_list,
                                                             args_array_list);
         // Check whether the exception is `IntentionalSystemExit`.
-        jthrowable throwable = env->ExceptionOccurred();
+        jthrowable throwable = _env->ExceptionOccurred();
         if (throwable) {
           Status status_to_return = Status::OK();
-          if (env->IsInstanceOf(throwable,
+          if (_env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
             status_to_return = Status::IntentionalSystemExit("");
-          } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
-            creation_task_exception_pb = SerializeActorCreationException(env, throwable);
+          } else if (_env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
+            creation_task_exception_pb = SerializeActorCreationException(_env, throwable);
             status_to_return = Status::CreationTaskError("");
           } else {
             RAY_LOG(ERROR) << "Unknown java exception was thrown while executing tasks.";
           }
           *application_error = status_to_return.ToString();
-          env->ExceptionClear();
+          _env->ExceptionClear();
           return status_to_return;
         }
-        RAY_CHECK_JAVA_EXCEPTION(env);
+        RAY_CHECK_JAVA_EXCEPTION(_env);
 
         int64_t task_output_inlined_bytes = 0;
         // Process return objects.
         if (!returns->empty()) {
           std::vector<std::shared_ptr<RayObject>> return_objects;
           JavaListToNativeVector<std::shared_ptr<RayObject>>(
-              env,
+              _env,
               java_return_objects,
               &return_objects,
-              [](JNIEnv *env, jobject java_native_ray_object) {
-                return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
+              [](JNIEnv *_env, jobject java_native_ray_object) {
+                return JavaNativeRayObjectToNativeRayObject(_env, java_native_ray_object);
               });
           for (size_t i = 0; i < return_objects.size(); i++) {
             auto &result_id = (*returns)[i].first;
@@ -249,9 +249,9 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
           }
         }
 
-        env->DeleteLocalRef(java_check_results);
-        env->DeleteLocalRef(java_return_objects);
-        env->DeleteLocalRef(args_array_list);
+        _env->DeleteLocalRef(java_check_results);
+        _env->DeleteLocalRef(java_return_objects);
+        _env->DeleteLocalRef(args_array_list);
         return Status::OK();
       };
 
@@ -271,9 +271,9 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     absl::MutexLock lock(&mutex);
     int64_t start = current_time_ms();
     if (last_gc_time_ms + 1000 < start) {
-      JNIEnv *env = GetJNIEnv();
+      JNIEnv *_env = GetJNIEnv();
       RAY_LOG(DEBUG) << "Calling System.gc() ...";
-      env->CallStaticObjectMethod(java_system_class, java_system_gc);
+      _env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
       RAY_LOG(DEBUG) << "GC finished in "
                      << static_cast<double>(last_gc_time_ms - start) / 1000
@@ -315,34 +315,34 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
       return std::make_shared<ray::RayObject>(
           object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
     }
-    JNIEnv *env = GetJNIEnv();
-    auto java_byte_array = NativeBufferToJavaByteArray(env, object.GetData());
-    auto raw_object_id_byte_array = NativeStringToJavaByteArray(env, object_id.Binary());
+    JNIEnv *_env = GetJNIEnv();
+    auto java_byte_array = NativeBufferToJavaByteArray(_env, object.GetData());
+    auto raw_object_id_byte_array = NativeStringToJavaByteArray(_env, object_id.Binary());
     RAY_LOG(DEBUG) << "Allocating Java byte array for object " << object_id;
-    env->CallStaticVoidMethod(java_object_ref_impl_class,
+    _env->CallStaticVoidMethod(java_object_ref_impl_class,
                               java_object_ref_impl_class_on_memory_store_object_allocated,
                               raw_object_id_byte_array,
                               java_byte_array);
-    auto java_weak_ref = CreateJavaWeakRef(env, java_byte_array);
+    auto java_weak_ref = CreateJavaWeakRef(_env, java_byte_array);
     // This shared_ptr will be captured by the data_factory. So when the data_factory
     // is destructed, we deference the java_weak_ref.
     std::shared_ptr<void> java_weak_ref_ptr{
         reinterpret_cast<void *>(java_weak_ref), [](auto p) {
-          JNIEnv *env = GetJNIEnv();
-          env->DeleteLocalRef(reinterpret_cast<jobject>(p));
+          JNIEnv *e = GetJNIEnv();
+          e->DeleteLocalRef(reinterpret_cast<jobject>(p));
         }};
     // Remove this local reference because this byte array is fate-sharing with the
     // ObjectRefImpl in Java frontend.
-    env->DeleteLocalRef(java_byte_array);
-    env->DeleteLocalRef(raw_object_id_byte_array);
+    _env->DeleteLocalRef(java_byte_array);
+    _env->DeleteLocalRef(raw_object_id_byte_array);
     auto data_factory = [java_weak_ref_ptr, object_id]() -> std::shared_ptr<ray::Buffer> {
-      JNIEnv *env = GetJNIEnv();
-      jbyteArray java_byte_array = (jbyteArray)env->CallObjectMethod(
+      JNIEnv *e = GetJNIEnv();
+      jbyteArray _java_byte_array = (jbyteArray)e->CallObjectMethod(
           reinterpret_cast<jobject>(java_weak_ref_ptr.get()), java_weak_reference_get);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      RAY_CHECK(java_byte_array != nullptr)
+      RAY_CHECK_JAVA_EXCEPTION(e);
+      RAY_CHECK(_java_byte_array != nullptr)
           << "The java byte array is null of object " << object_id;
-      return std::make_shared<JavaByteArrayBuffer>(env, java_byte_array);
+      return std::make_shared<JavaByteArrayBuffer>(e, _java_byte_array);
     };
     std::shared_ptr<ray::Buffer> metadata_buffer = object.GetMetadata();
     return std::make_shared<ray::RayObject>(metadata_buffer,
@@ -407,22 +407,22 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
-  auto key_converter = [](JNIEnv *env, const std::string &str) -> jstring {
-    return env->NewStringUTF(str.c_str());
+  auto key_converter = [](JNIEnv *_env, const std::string &str) -> jstring {
+    return _env->NewStringUTF(str.c_str());
   };
   auto value_converter =
-      [](JNIEnv *env, const std::vector<std::pair<int64_t, double>> &value) -> jobject {
-    auto elem_converter = [](JNIEnv *env,
+      [](JNIEnv *_env, const std::vector<std::pair<int64_t, double>> &value) -> jobject {
+    auto elem_converter = [](JNIEnv *e,
                              const std::pair<int64_t, double> &elem) -> jobject {
-      jobject java_item = env->NewObject(java_resource_value_class,
+      jobject java_item = e->NewObject(java_resource_value_class,
                                          java_resource_value_init,
                                          (jlong)elem.first,
                                          (jdouble)elem.second);
-      RAY_CHECK_JAVA_EXCEPTION(env);
+      RAY_CHECK_JAVA_EXCEPTION(e);
       return java_item;
     };
     return NativeVectorToJavaList<std::pair<int64_t, double>>(
-        env, value, std::move(elem_converter));
+        _env, value, std::move(elem_converter));
   };
   ResourceMappingType resource_mapping =
       CoreWorkerProcess::GetCoreWorker().GetResourceIDs();

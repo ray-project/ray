@@ -116,12 +116,12 @@ void ActorSchedulingQueue::Add(
       RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
       auto it = pending_actor_tasks_.find(seq_no);
       if (it != pending_actor_tasks_.end()) {
-        const TaskSpecification &task_spec = it->second.TaskSpec();
+        const TaskSpecification &_task_spec = it->second.TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            task_spec.TaskId(),
-            task_spec.JobId(),
-            task_spec.AttemptNumber(),
-            task_spec,
+            _task_spec.TaskId(),
+            _task_spec.JobId(),
+            _task_spec.AttemptNumber(),
+            _task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
         it->second.MarkDependenciesSatisfied();

@@ -66,10 +66,10 @@ inline const RayFunction &ToRayFunction(JNIEnv *env,
   return fd_vector.back().second;
 }
 
-inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject args) {
+inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *_env, jobject args) {
   std::vector<std::unique_ptr<TaskArg>> task_args;
   JavaListToNativeVector<std::unique_ptr<TaskArg>>(
-      env, args, &task_args, [](JNIEnv *env, jobject arg) {
+      _env, args, &task_args, [](JNIEnv *env, jobject arg) {
         auto java_id = env->GetObjectField(arg, java_function_arg_id);
         if (java_id) {
           auto java_id_bytes = static_cast<jbyteArray>(
@@ -99,12 +99,12 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
   return JavaMapToNativeMap<std::string, double>(
       env,
       java_resources,
-      [](JNIEnv *env, jobject java_key) {
-        return JavaStringToNativeString(env, (jstring)java_key);
+      [](JNIEnv *_env, jobject java_key) {
+        return JavaStringToNativeString(_env, (jstring)java_key);
       },
-      [](JNIEnv *env, jobject java_value) {
-        double value = env->CallDoubleMethod(java_value, java_double_double_value);
-        RAY_CHECK_JAVA_EXCEPTION(env);
+      [](JNIEnv *_env, jobject java_value) {
+        double value = _env->CallDoubleMethod(java_value, java_double_double_value);
+        RAY_CHECK_JAVA_EXCEPTION(_env);
         return value;
       });
 }
@@ -231,34 +231,34 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         env,
         java_concurrency_groups_field,
         &concurrency_groups,
-        [](JNIEnv *env, jobject java_concurrency_group_impl) {
+        [](JNIEnv *_env, jobject java_concurrency_group_impl) {
           RAY_CHECK(java_concurrency_group_impl != nullptr);
           jobject java_func_descriptors =
-              env->CallObjectMethod(java_concurrency_group_impl,
+              _env->CallObjectMethod(java_concurrency_group_impl,
                                     java_concurrency_group_impl_get_function_descriptors);
-          RAY_CHECK_JAVA_EXCEPTION(env);
+          RAY_CHECK_JAVA_EXCEPTION(_env);
           std::vector<ray::FunctionDescriptor> native_func_descriptors;
           JavaListToNativeVector<ray::FunctionDescriptor>(
-              env,
+              _env,
               java_func_descriptors,
               &native_func_descriptors,
-              [](JNIEnv *env, jobject java_func_descriptor) {
+              [](JNIEnv *e, jobject java_func_descriptor) {
                 RAY_CHECK(java_func_descriptor != nullptr);
-                const jint hashcode = GetHashCodeOfJavaObject(env, java_func_descriptor);
+                const jint hashcode = GetHashCodeOfJavaObject(e, java_func_descriptor);
                 ray::FunctionDescriptor native_func =
-                    ToRayFunction(env, java_func_descriptor, hashcode)
+                    ToRayFunction(e, java_func_descriptor, hashcode)
                         .GetFunctionDescriptor();
                 return native_func;
               });
           // Put func_descriptors into this task group.
           const std::string concurrency_group_name = JavaStringToNativeString(
-              env,
-              (jstring)env->GetObjectField(java_concurrency_group_impl,
+              _env,
+              (jstring)_env->GetObjectField(java_concurrency_group_impl,
                                            java_concurrency_group_impl_name));
-          const uint32_t max_concurrency = env->GetIntField(
+          const uint32_t _max_concurrency = _env->GetIntField(
               java_concurrency_group_impl, java_concurrency_group_impl_max_concurrency);
           return ray::ConcurrencyGroup{
-              concurrency_group_name, max_concurrency, native_func_descriptors};
+              concurrency_group_name, _max_concurrency, native_func_descriptors};
         });
     auto java_serialized_runtime_env = (jstring)env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_serialized_runtime_env);
@@ -337,16 +337,16 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
       placementGroupCreationOptions, java_placement_group_creation_options_bundles);
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
-      env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
+      env, java_bundles, &bundles, [](JNIEnv *_env, jobject java_bundle) {
         return JavaMapToNativeMap<std::string, double>(
-            env,
+            _env,
             java_bundle,
-            [](JNIEnv *env, jobject java_key) {
-              return JavaStringToNativeString(env, (jstring)java_key);
+            [](JNIEnv *e, jobject java_key) {
+              return JavaStringToNativeString(e, (jstring)java_key);
             },
-            [](JNIEnv *env, jobject java_value) {
-              double value = env->CallDoubleMethod(java_value, java_double_double_value);
-              RAY_CHECK_JAVA_EXCEPTION(env);
+            [](JNIEnv *e, jobject java_value) {
+              double value = e->CallDoubleMethod(java_value, java_double_double_value);
+              RAY_CHECK_JAVA_EXCEPTION(e);
               return value;
             });
       });

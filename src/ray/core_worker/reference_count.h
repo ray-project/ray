@@ -638,20 +638,20 @@ class ReferenceCounter : public ReferenceCounterInterface,
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() = default;
-    Reference(std::string call_site, int64_t object_size)
-        : call_site(std::move(call_site)), object_size(object_size) {}
+    Reference(std::string _call_site, int64_t _object_size)
+        : call_site(std::move(_call_site)), object_size(_object_size) {}
     /// Constructor for a reference that we created.
-    Reference(rpc::Address owner_address,
-              std::string call_site,
-              int64_t object_size,
-              bool is_reconstructable,
-              std::optional<NodeID> pinned_at_raylet_id)
-        : call_site(std::move(call_site)),
-          object_size(object_size),
-          owner_address(std::move(owner_address)),
-          pinned_at_raylet_id(std::move(pinned_at_raylet_id)),
+    Reference(rpc::Address _owner_address,
+              std::string _call_site,
+              int64_t _object_size,
+              bool _is_reconstructable,
+              std::optional<NodeID> _pinned_at_raylet_id)
+        : call_site(std::move(_call_site)),
+          object_size(_object_size),
+          owner_address(std::move(_owner_address)),
+          pinned_at_raylet_id(std::move(_pinned_at_raylet_id)),
           owned_by_us(true),
-          is_reconstructable(is_reconstructable),
+          is_reconstructable(_is_reconstructable),
           pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
