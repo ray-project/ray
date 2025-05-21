@@ -3,6 +3,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
+import re
 from typing import Optional
 
 import aiohttp.web
@@ -246,11 +247,15 @@ class StateHead(SubprocessModule, RateLimitedModule):
         response.content_type = "text/plain"
 
         logs_gen = self._log_api.stream_logs(options, get_actor_fn)
+        # For filtering ANSI escape codes; the byte string used in the regex is equivalent to r'\x1b\[[\d;]+m'.
+        ansi_esc_pattern = re.compile(b"\x1b\\x5b[(\x30-\x39)\x3b]+\x6d")
         # Handle the first chunk separately and returns 500 if an error occurs.
         try:
             first_chunk = await logs_gen.__anext__()
+            # Filter ANSI escape codes
+            filtered_first_chunk = ansi_esc_pattern.sub(b"", first_chunk)
             await response.prepare(req)
-            await response.write(first_chunk)
+            await response.write(filtered_first_chunk)
         except StopAsyncIteration:
             pass
         except asyncio.CancelledError:
@@ -264,7 +269,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
         try:
             async for logs in logs_gen:
-                await response.write(logs)
+                # Filter ANSI escape codes
+                filtered_logs = ansi_esc_pattern.sub(b"", logs)
+                await response.write(filtered_logs)
         except Exception:
             logger.exception("Error while streaming logs")
             response.force_close()
