@@ -96,7 +96,7 @@ class MockVLLMEngine(LLMEngine):
             request_id=request_id,
             prompt=prompt_text,
             stream=stream,
-            sampling_params=self._parse_sampling_params(prompt),
+            sampling_params=VLLMSamplingParams.from_prompt(prompt),
         )
 
     async def generate(self, vllm_engine_request: VLLMGenerationRequest):

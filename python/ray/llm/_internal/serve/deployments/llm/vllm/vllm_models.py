@@ -254,10 +254,11 @@ class VLLMSamplingParams(SamplingParams):
 class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    # Intentionally override the base class's `sampling_params` field.
     sampling_params: Optional[
         Union[
-            vllm.SamplingParams,
-            List[vllm.SamplingParams],
+            VLLMSamplingParams,
+            List[VLLMSamplingParams],
         ]
     ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None

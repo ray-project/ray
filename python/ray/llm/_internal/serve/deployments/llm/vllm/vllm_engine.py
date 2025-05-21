@@ -580,7 +580,7 @@ class VLLMEngine(LLMEngine):
             "prompt": prompt_text,
             "prompt_token_ids": prompt_token_ids,
             "request_id": request_id,
-            "sampling_params": self._parse_sampling_params(prompt),
+            "sampling_params": VLLMSamplingParams.from_prompt(prompt),
             "disk_multiplex_config": disk_lora_model,
             "stream": stream,
         }
@@ -626,7 +626,7 @@ class VLLMEngine(LLMEngine):
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=prompt,
-            sampling_params=request.sampling_params,
+            sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
         )
@@ -945,11 +945,9 @@ class VLLMEngine(LLMEngine):
                 ] = sampling_params.response_format.to_guided_decoding_params(
                     backend=RAYLLM_GUIDED_DECODING_BACKEND
                 )
-            if KV_TRANSFER_PARAMS_KEY in prompt.parameters:
+            if sampling_params.kv_transfer_params is not None:
                 kwargs["extra_args"] = {
-                    KV_TRANSFER_PARAMS_KEY: prompt.parameters.pop(
-                        KV_TRANSFER_PARAMS_KEY
-                    )
+                    KV_TRANSFER_PARAMS_KEY: sampling_params.kv_transfer_params
                 }
 
             return vllm.SamplingParams(**kwargs)
