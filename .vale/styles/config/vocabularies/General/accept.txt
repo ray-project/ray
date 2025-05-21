@@ -75,3 +75,8 @@ VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs
+[Rr]esampling
+[Ss]pectogram(s)?
+[Dd]etokenizer?s?
+[Dd]etokenization
+
