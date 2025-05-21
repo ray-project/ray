@@ -42,6 +42,7 @@ class MetricsLogger:
     ┌─┴─┐  ┌─┴─┐
     E1 E2  E3  E4   (EnvRunner)
 
+
     Here, the Driver will call MetricsLogger.compile() to get the aggregated stats once per
     Algorithm iteration and reports them. If you want to log custom metrics, you can do so by
     calling `log_value` or `log_dict` with the appropriate arguments on an existing MetricsLogger.
