@@ -253,44 +253,43 @@ def test_schema_validation():
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["frequency"] = "invalid"
 
-    assert validate_test(Test(**invalid_test), schema)
+    assert validate_test(invalid_test, schema)
 
     # Faulty job type
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["type"] = "invalid"
 
-    assert validate_test(Test(**invalid_test), schema)
+    assert validate_test(invalid_test, schema)
 
     # Faulty file manager type
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["file_manager"] = "invalid"
 
-    assert validate_test(Test(**invalid_test), schema)
+    assert validate_test(invalid_test, schema)
 
     # Faulty smoke test
 
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     del invalid_test["smoke_test"]["frequency"]
 
-    assert validate_test(Test(**invalid_test), schema)
+    assert validate_test(invalid_test, schema)
 
     # Faulty Python version
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["python"] = "invalid"
 
-    assert validate_test(Test(**invalid_test), schema)
+    assert validate_test(invalid_test, schema)
 
     # Faulty BYOD type
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["cluster"]["byod"]["type"] = "invalid"
-    assert validate_test(Test(**invalid_test), schema)
+    assert validate_test(invalid_test, schema)
 
     # Faulty BYOD and Python version match
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["cluster"]["byod"]["type"] = "gpu"
     invalid_test["python"] = "3.11"
-    assert validate_test(Test(**invalid_test), schema)
-
+    assert validate_test(invalid_test, schema)
 
 def test_compute_config_invalid_ebs():
     compute_config = {
