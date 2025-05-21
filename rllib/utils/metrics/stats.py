@@ -835,6 +835,7 @@ class Stats:
                 return [reduced], values
 
 
+@DeveloperAPI
 def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Stats:
     """Merges Stats objects.
 
