@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
 import time
+import copy
 import threading
 import heapq
 from typing import Any, Dict, List, Union, Optional, Tuple
@@ -20,7 +21,8 @@ class Stats:
 
     The individual values in a Stats object may be of any type, for example python int
     or float, numpy arrays, or more complex structured (tuple, dict) and are stored in
-    a list under `self.values`.
+    a list under `self.values`. This class is not meant to be interfaced with directly
+    from application code. Instead, use `MetricsLogger` to log and manipulate Stats.
 
     Stats can be used to store metrics of the same type over time, for example a loss
     or a learning rate, and to reduce all stored values applying a certain reduction
@@ -42,7 +44,7 @@ class Stats:
         init_values: Optional[Any] = None,
         reduce: Optional[str] = "mean",
         percentiles: Union[List[int], bool] = False,
-        reduce_per_index_on_merge: Optional[bool] = None,
+        reduce_per_index_on_parallel_merge: Optional[bool] = None,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -74,12 +76,7 @@ class Stats:
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
                 "mean".
-                TODO (sven): Allow window=float("inf"), iff clear_on_reduce=True.
-                This would enable cases where we want to accumulate n data points (w/o
-                limitation, then average over these, then reset the data pool on reduce,
-                e.g. for evaluation env_runner stats, which should NOT use any window,
-                just like in the old API stack).
-            reduce_per_index_on_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -170,12 +167,17 @@ class Stats:
         self._window = window
         self._ema_coeff = ema_coeff
 
-        if self._reduce_method != "mean" and reduce_per_index_on_merge:
+        if (
+            self._reduce_method not in ["mean", "sum", "min", "max"]
+            and reduce_per_index_on_parallel_merge
+        ):
             raise ValueError(
-                "reduce_per_index_on_merge is only supported for mean reduction!"
+                "reduce_per_index_on_parallel_merge is only supported for mean, sum, min, and max reduction!"
             )
 
-        self._reduce_per_index_on_merge = reduce_per_index_on_merge or False
+        self._reduce_per_index_on_parallel_merge = (
+            reduce_per_index_on_parallel_merge or False
+        )
 
         # Timing functionality (keep start times per thread).
         self._start_times = defaultdict(lambda: None)
@@ -385,6 +387,7 @@ class Stats:
             The reduced value (can be of any type, depending on the input values and
             reduction method).
         """
+        len_before_reduce = len(self)
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
             reduced, reduced_internal_values_list = self._reduced_values()
@@ -398,6 +401,7 @@ class Stats:
                 # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
                 self._set_values(reduced_internal_values_list)
         else:
+            reduced_internal_values_list = None
             reduced = self.get_reduce_history()[-1]
 
         reduced = self._numpy_if_necessary(reduced)
@@ -418,9 +422,23 @@ class Stats:
             reduced = reduced[0]
 
         if not compile and not self._inf_window:
-            return self._numpy_if_necessary(self.values).copy()
+            if reduced_internal_values_list is None:
+                _, reduced_internal_values_list = self._reduced_values()
+            return_values = self._numpy_if_necessary(
+                reduced_internal_values_list
+            ).copy()
+        else:
+            return_values = reduced
 
-        return reduced
+        if compile:
+            return return_values
+        else:
+            if len_before_reduce == 0:
+                # return_values will be be 0 if we reduce a sum over zero elements
+                # But we don't want to create such a zero out of nothing for our new Stats object that we return here
+                return Stats.similar_to(self)
+
+            return Stats.similar_to(self, init_values=return_values)
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -428,16 +446,6 @@ class Stats:
         Args:
             other: The other Stats object to merge values from.
         """
-        # Make sure `others` have same reduction settings.
-        assert self._reduce_method == other._reduce_method, (
-            self._reduce_method,
-            other._reduce_method,
-        )
-        assert self._ema_coeff == other._ema_coeff, (self._ema_coeff, other._ema_coeff)
-        if self._window != other._window:
-            self._window = other._window
-
-        # Extend `self`'s values by `other`'s.
         self.values.extend(other.values)
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
@@ -465,16 +473,32 @@ class Stats:
                 into `self, meaning with equal weighting as the existing values in
                 `self`.
         """
-        # Make sure `others` have same reduction settings.
-        for o in others:
-            assert (
-                self._reduce_method == o._reduce_method
-            ), f"Mismatch beweteen stats {str(self)} (reduce_method={self._reduce_method}) and {str(o)} (reduce_method={o._reduce_method})"
-            assert (
-                self._ema_coeff == o._ema_coeff
-            ), f"Mismatch beweteen stats {str(self)} (ema_coeff={self._ema_coeff}) and {str(o)} (ema_coeff={o._ema_coeff})"
-
         win = self._window or float("inf")
+
+        # If any of the value lists have a length of 0 or if there is only one value and it is nan, we skip
+        stats_to_merge = [
+            s
+            for s in [self, *others]
+            if not (
+                len(s) == 0
+                or (
+                    len(s) == 1 and np.all(np.isnan(self._numpy_if_necessary(s.values)))
+                )
+            )
+        ]
+
+        # If there is only one stat to merge, and it is the same as self, return.
+        if len(stats_to_merge) == 0:
+            # If none of the stats have values, return.
+            return
+        elif len(stats_to_merge) == 1:
+            if stats_to_merge[0] == self:
+                # If no incoming stats have values, return.
+                return
+            else:
+                # If there is only one stat with values, and it's incoming, copy its values.
+                self.values = stats_to_merge[0].values
+                return
 
         # Take turns stepping through `self` and `*others` values, thereby moving
         # backwards from last index to beginning and will up the resulting values list.
@@ -490,10 +514,10 @@ class Stats:
             merged = list(heapq.merge(*lists_to_merge))
             self._set_values(merged)
         else:
-            for i in range(1, max(map(len, [self, *others])) + 1):
+            for i in range(1, max(map(len, stats_to_merge)) + 1):
                 # Per index, loop through all involved stats, including `self` and add
                 # to `tmp_values`.
-                for stats in [self, *others]:
+                for stats in stats_to_merge:
                     if len(stats) < i:
                         continue
                     tmp_values.append(stats.values[-i])
@@ -501,15 +525,22 @@ class Stats:
                 # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
                 # TODO (sven) : explain why all this
 
-                if self._reduce_per_index_on_merge:
+                if self._reduce_per_index_on_parallel_merge:
                     n_values = 1
                 else:
                     n_values = len(tmp_values)
 
                 if self._ema_coeff is not None:
                     new_values.extend([np.nanmean(tmp_values)] * n_values)
-                elif self._reduce_method in [None, "sum"]:
+                elif self._reduce_method is None:
                     new_values.extend(tmp_values)
+                elif self._reduce_method == "sum":
+                    # We add [sum(tmp_values) / n_values] * n_values to the new values list
+                    # Instead of tmp_values, because every incoming element should have the same weight
+                    reduced_value = (
+                        self._reduced_values(values=tmp_values)[0][0] / n_values
+                    )
+                    new_values.extend([reduced_value] * n_values)
                 else:
                     new_values.extend(
                         self._reduced_values(values=tmp_values)[0] * n_values
@@ -517,6 +548,7 @@ class Stats:
 
                 tmp_values.clear()
                 if len(new_values) >= win:
+                    new_values = new_values[:win]
                     break
 
             self._set_values(list(reversed(new_values)))
@@ -651,6 +683,7 @@ class Stats:
             "values": self.values,
             "reduce": self._reduce_method,
             "percentiles": self._percentiles,
+            "reduce_per_index_on_parallel_merge": self._reduce_per_index_on_parallel_merge,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
@@ -668,6 +701,9 @@ class Stats:
                 state["values"],
                 reduce=state["reduce"],
                 percentiles=state.get("percentiles", False),
+                reduce_per_index_on_parallel_merge=state.get(
+                    "reduce_per_index_on_parallel_merge", False
+                ),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
@@ -733,6 +769,7 @@ class Stats:
             init_values=init_values,
             reduce=other._reduce_method,
             percentiles=other._percentiles,
+            reduce_per_index_on_parallel_merge=other._reduce_per_index_on_parallel_merge,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
@@ -752,6 +789,8 @@ class Stats:
         # For infinite windows, use `new_values` as-is (a list).
         else:
             self.values = new_values
+
+        self._has_new_values = True
 
     def _reduced_values(self, values=None) -> Tuple[Any, Any]:
         """Runs a non-commited reduction procedure on given values (or `self.values`).
@@ -849,3 +888,61 @@ class Stats:
                 # In all other cases, keep the values that were also used for the reduce
                 # operation.
                 return [reduced], values
+
+
+def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Stats:
+    """Merges Stats objects.
+
+    If `base_stats` is None, we use the first incoming Stats object as the new base Stats object.
+    If `base_stats` is not None, we merge all incoming Stats objects into the base Stats object.
+
+    Args:
+        base_stats: The base Stats object to merge into.
+        incoming_stats: The list of Stats objects to merge.
+
+    Returns:
+        The merged Stats object.
+    """
+    if base_stats is None:
+        new_root_stats = True
+    else:
+        new_root_stats = False
+
+    if new_root_stats:
+        # We need to deepcopy here first because stats from incoming_stats may be altered in the future
+        base_stats = copy.deepcopy(incoming_stats[0])
+    elif len(incoming_stats) > 0:
+        # Special case: `base_stats` is a lifetime sum (reduce=sum,
+        # clear_on_reduce=False) -> We subtract the previous value (from 2
+        # `reduce()` calls ago) from all to-be-merged stats, so we don't count
+        # twice the older sum from before.
+        if (
+            base_stats._reduce_method == "sum"
+            and base_stats._inf_window
+            and base_stats._clear_on_reduce is False
+        ):
+            for stat in incoming_stats:
+                base_stats.push(-stat.get_reduce_history()[-2][0])
+    else:
+        # Nothing to be merged
+        return base_stats
+
+    if new_root_stats:
+        # Note that we may take a mean of means here, which is not the same as a mean of all values
+        # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
+        if len(incoming_stats) > 1:
+            base_stats.merge_in_parallel(*incoming_stats[1:])
+    elif len(incoming_stats) > 0:
+        if len(incoming_stats) > 1:
+            # There are more than one incoming parallel others -> Merge all of them
+            # in parallel (equal importance)
+            incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
+
+        # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
+        if base_stats._reduce_method == "mean" and not base_stats._clear_on_reduce:
+            # If we don't clear values, values that are not cleared would contribute to the mean multiple times.
+            base_stats._set_values(incoming_stats[0].values.copy())
+        else:
+            base_stats.merge_on_time_axis(incoming_stats[0])
+
+    return base_stats
