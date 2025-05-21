@@ -41,7 +41,7 @@ struct TaskFailureEntry {
 class TaskArg {
  public:
   virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
-  virtual ~TaskArg(){};
+  virtual ~TaskArg() {};
 };
 
 class TaskArgByReference : public TaskArg {

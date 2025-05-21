@@ -76,7 +76,7 @@ jobject ToJavaArgs(JNIEnv *env,
             // DirectByteBuffer here To avoid data copy.
             // TODO(kfstorm): Check native_object->GetMetadata() == "RAW"
             jobject obj = _env->NewDirectByteBuffer(native_object->GetData()->Data(),
-                                                   native_object->GetData()->Size());
+                                                    native_object->GetData()->Size());
             RAY_CHECK(obj);
             return obj;
           }
@@ -181,15 +181,15 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
 
         // invoke Java method
         jobject java_return_objects = _env->CallObjectMethod(java_task_executor,
-                                                            java_task_executor_execute,
-                                                            ray_function_array_list,
-                                                            args_array_list);
+                                                             java_task_executor_execute,
+                                                             ray_function_array_list,
+                                                             args_array_list);
         // Check whether the exception is `IntentionalSystemExit`.
         jthrowable throwable = _env->ExceptionOccurred();
         if (throwable) {
           Status status_to_return = Status::OK();
           if (_env->IsInstanceOf(throwable,
-                                java_ray_intentional_system_exit_exception_class)) {
+                                 java_ray_intentional_system_exit_exception_class)) {
             status_to_return = Status::IntentionalSystemExit("");
           } else if (_env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
             creation_task_exception_pb = SerializeActorCreationException(_env, throwable);
@@ -319,10 +319,11 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     auto java_byte_array = NativeBufferToJavaByteArray(_env, object.GetData());
     auto raw_object_id_byte_array = NativeStringToJavaByteArray(_env, object_id.Binary());
     RAY_LOG(DEBUG) << "Allocating Java byte array for object " << object_id;
-    _env->CallStaticVoidMethod(java_object_ref_impl_class,
-                              java_object_ref_impl_class_on_memory_store_object_allocated,
-                              raw_object_id_byte_array,
-                              java_byte_array);
+    _env->CallStaticVoidMethod(
+        java_object_ref_impl_class,
+        java_object_ref_impl_class_on_memory_store_object_allocated,
+        raw_object_id_byte_array,
+        java_byte_array);
     auto java_weak_ref = CreateJavaWeakRef(_env, java_byte_array);
     // This shared_ptr will be captured by the data_factory. So when the data_factory
     // is destructed, we deference the java_weak_ref.
@@ -415,9 +416,9 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
     auto elem_converter = [](JNIEnv *e,
                              const std::pair<int64_t, double> &elem) -> jobject {
       jobject java_item = e->NewObject(java_resource_value_class,
-                                         java_resource_value_init,
-                                         (jlong)elem.first,
-                                         (jdouble)elem.second);
+                                       java_resource_value_init,
+                                       (jlong)elem.first,
+                                       (jdouble)elem.second);
       RAY_CHECK_JAVA_EXCEPTION(e);
       return java_item;
     };

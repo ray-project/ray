@@ -36,7 +36,7 @@ class CoreWorkerClientPool {
 
   /// Creates a CoreWorkerClientPool by a given connection function.
   explicit CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
-      : core_worker_client_factory_(std::move(client_factory)){};
+      : core_worker_client_factory_(std::move(client_factory)) {};
 
   /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
   /// core worker and node manager.

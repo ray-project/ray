@@ -233,9 +233,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         &concurrency_groups,
         [](JNIEnv *_env, jobject java_concurrency_group_impl) {
           RAY_CHECK(java_concurrency_group_impl != nullptr);
-          jobject java_func_descriptors =
-              _env->CallObjectMethod(java_concurrency_group_impl,
-                                    java_concurrency_group_impl_get_function_descriptors);
+          jobject java_func_descriptors = _env->CallObjectMethod(
+              java_concurrency_group_impl,
+              java_concurrency_group_impl_get_function_descriptors);
           RAY_CHECK_JAVA_EXCEPTION(_env);
           std::vector<ray::FunctionDescriptor> native_func_descriptors;
           JavaListToNativeVector<ray::FunctionDescriptor>(
@@ -254,7 +254,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           const std::string concurrency_group_name = JavaStringToNativeString(
               _env,
               (jstring)_env->GetObjectField(java_concurrency_group_impl,
-                                           java_concurrency_group_impl_name));
+                                            java_concurrency_group_impl_name));
           const uint32_t _max_concurrency = _env->GetIntField(
               java_concurrency_group_impl, java_concurrency_group_impl_max_concurrency);
           return ray::ConcurrencyGroup{

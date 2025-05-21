@@ -78,7 +78,7 @@ Status JobInfoAccessor::AsyncSubscribeAll(
   RAY_CHECK(subscribe != nullptr);
   fetch_all_data_operation_ = [this, subscribe](const StatusCallback &_done) {
     auto callback = [subscribe, _done](const Status &status,
-                                      std::vector<rpc::JobTableData> &&job_info_list) {
+                                       std::vector<rpc::JobTableData> &&job_info_list) {
       for (auto &job_info : job_info_list) {
         subscribe(JobID::FromBinary(job_info.job_id()), std::move(job_info));
       }
@@ -651,7 +651,7 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
 
   fetch_node_data_operation_ = [this](const StatusCallback &_done) {
     auto callback = [this, _done](const Status &status,
-                                 std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+                                  std::vector<rpc::GcsNodeInfo> &&node_info_list) {
       for (auto &node_info : node_info_list) {
         HandleNotification(std::move(node_info));
       }

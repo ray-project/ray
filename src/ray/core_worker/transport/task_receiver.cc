@@ -172,7 +172,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
           if (!actor_repr_name_.empty()) {
             reply->set_actor_repr_name(actor_repr_name_);
           }
-          RAY_LOG(INFO) << "Actor creation task finished, task_id: " << _task_spec.TaskId()
+          RAY_LOG(INFO) << "Actor creation task finished, task_id: "
+                        << _task_spec.TaskId()
                         << ", actor_id: " << _task_spec.ActorCreationId()
                         << ", actor_repr_name: " << actor_repr_name_;
         }

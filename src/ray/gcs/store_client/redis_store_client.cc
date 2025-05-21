@@ -542,10 +542,9 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto delete_one_sync = [context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
     std::promise<std::shared_ptr<CallbackReply>> prom;
-    context->RunArgvAsync(del_cmd,
-                          [&prom](const std::shared_ptr<CallbackReply> &_reply) {
-                            prom.set_value(_reply);
-                          });
+    context->RunArgvAsync(del_cmd, [&prom](const std::shared_ptr<CallbackReply> &_reply) {
+      prom.set_value(_reply);
+    });
     auto del_reply = prom.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
