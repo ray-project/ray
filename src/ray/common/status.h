@@ -53,10 +53,10 @@ class error_code;
 
 // If the status is not OK, CHECK-fail immediately, appending the status to the
 // logged message. The message can be appended with <<.
-#define RAY_CHECK_OK(s)                                    \
-  if (const ::ray::Status &_status_##__LINE__ = (s); true) \
-    RAY_CHECK_WITH_DISPLAY(_status_##__LINE__.ok(), #s)    \
-      << "Status not OK: " << _status_##__LINE__.ToString() << " "
+#define RAY_CHECK_OK(s)                                             \
+  if (const ::ray::Status &RAY_UNIQUE_VARIABLE(status) = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(status).ok(), #s)      \
+      << "Status not OK: " << RAY_UNIQUE_VARIABLE(status).ToString() << " "
 
 namespace ray {
 
