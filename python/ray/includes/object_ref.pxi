@@ -152,6 +152,3 @@ cdef class ObjectRef(BaseID):
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.set_get_async_callback(self, py_callback)
         return self
-
-    def set_tensor_meta(self, tensor_meta):
-        self._tensor_meta = tensor_meta

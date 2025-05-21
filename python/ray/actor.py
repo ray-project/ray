@@ -401,8 +401,11 @@ class ActorMethod:
 
         obj_ref = invocation(args, kwargs)
         if tensor_transport != "OBJECT_STORE":
-            # print(f"_remote tensor_transport: {tensor_transport}")
-            assert num_returns == 1
+            if num_returns != 1:
+                raise ValueError(
+                    "Currently, GPU objects only support 1 return value. Please "
+                    "make sure the actor method returns a single object."
+                )
 
             def get_tensor_sizes(self, obj_id):
                 worker = ray._private.worker.global_worker

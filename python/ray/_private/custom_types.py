@@ -130,7 +130,7 @@ TypeTensorTransport = Literal[tuple(TENSOR_TRANSPORT)]
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
-    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name)
+    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name.keys())
     # Sometimes, the grpc enum is mocked, and it
     # doesn't include any values in that case.
     if len(enum_vals) > 0:
