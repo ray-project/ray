@@ -459,9 +459,9 @@ void ActorInfoAccessor::AsyncResubscribe() {
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   for (auto &[actor_id, resubscribe_op] : resubscribe_operations_) {
-    RAY_CHECK_OK(resubscribe_op([this, actor_id = actor_id](const Status &status) {
+    RAY_CHECK_OK(resubscribe_op([this, id = actor_id](const Status &status) {
       absl::MutexLock lock(&mutex_);
-      auto fetch_data_operation = fetch_data_operations_[actor_id];
+      auto fetch_data_operation = fetch_data_operations_[id];
       // `fetch_data_operation` is called in the callback function of subscribe.
       // Before that, if the user calls `AsyncUnsubscribe` function, the corresponding
       // fetch function will be deleted, so we need to check if it's null.
