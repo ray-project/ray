@@ -147,6 +147,21 @@ def test_metrics_folder_with_dashboard_override(
             for panel in contents["panels"]:
                 assert panel["gridPos"]["h"] > 0
                 assert panel["gridPos"]["w"] > 0
+            # Check for series overrides for MAX and MAX + PENDING
+            found_max = False
+            found_max_pending = False
+            for panel in contents["panels"]:
+                for override in panel.get("seriesOverrides", []):
+                    if override.get("alias") == "MAX":
+                        assert override["fill"] == 0
+                        assert override["stack"] is False
+                        found_max = True
+                    if override.get("alias") == "MAX + PENDING":
+                        assert override["fill"] == 0
+                        assert override["stack"] is False
+                        found_max_pending = True
+            assert found_max
+            assert found_max_pending
 
         # Serve Dashboard
         with open(f"{override_dashboard_dir}/serve_grafana_dashboard.json") as f:
