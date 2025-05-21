@@ -138,13 +138,13 @@
       },
 
       {
-        "name": "TrainWorkerActorId",
+        "name": "Instance",
         "type": "query",
-        "description": "Filter queries to specific Ray Train worker actor ids.",
+        "description": "Filter queries to specific node instances.",
         "datasource": "${datasource}",
-        "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
+        "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, instance)",
         "query": {
-          "query": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_worker_actor_id)",
+          "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -159,6 +159,8 @@
           "value": ["$__all"]
         }
       }
+
+
     ]
   }
 }

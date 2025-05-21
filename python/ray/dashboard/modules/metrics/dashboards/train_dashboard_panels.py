@@ -5,7 +5,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
-CHECKPOINT_REPORT_TIME_PANEL = Panel(
+WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
     id=1,
     title="Checkpoint Report Time",
     description="Time taken to report a checkpoint to storage.",
@@ -52,13 +52,146 @@ CONTROLLER_STATE_PANEL = Panel(
     ],
 )
 
+# IOPS
+IOPS_PANEL = Panel(
+    id=4,
+    title="Train Worker IOPS",
+    description="Input/Output operations per second for train workers.",
+    unit="ops/s",
+    targets=[
+        Target(
+            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Read IOPS: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Write IOPS: {{instance}}",
+        ),
+    ],
+)
+
+# Network Utilization
+NETWORK_UTILIZATION_PANEL = Panel(
+    id=5,
+    title="Train Worker Network Utilization",
+    description="Network utilization for train workers.",
+    unit="Bps",
+    targets=[
+        Target(
+            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Receive: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Send: {{instance}}",
+        ),
+    ],
+)
+
+# Disk Utilization
+DISK_UTILIZATION_PANEL = Panel(
+    id=6,
+    title="Train Worker Disk Utilization",
+    description="Disk utilization for train workers.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Disk Used: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_disk_free{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}})',
+            legend="MAX",
+        ),
+    ],
+)
+
+# CPU Utilization
+CPU_UTILIZATION_PANEL = Panel(
+    id=7,
+    title="Train Worker CPU Utilization",
+    description="CPU utilization for train workers.",
+    unit="cores",
+    targets=[
+        Target(
+            expr='sum(ray_node_cpu_utilization{{instance=~"$Instance",{global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100) by (instance)',
+            legend="CPU Usage: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_cpu_count{{instance=~"$Instance",{global_filters}}})',
+            legend="MAX",
+        ),
+    ],
+)
+
+# Memory Utilization
+MEMORY_UTILIZATION_PANEL = Panel(
+    id=8,
+    title="Train Worker Memory Utilization",
+    description="Memory utilization for train workers.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Memory Used: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+            legend="MAX",
+        ),
+    ],
+)
+
+# GPU Utilization
+GPU_UTILIZATION_PANEL = Panel(
+    id=9,
+    title="Train Worker GPU Utilization",
+    description="GPU utilization for train workers.",
+    unit="GPUs",
+    targets=[
+        Target(
+            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100) by (instance, GpuIndex, GpuDeviceName)',
+            legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+        ),
+        Target(
+            expr='sum(ray_node_gpus_available{{instance=~"$Instance",{global_filters}}})',
+            legend="MAX",
+        ),
+    ],
+)
+
+# GPU Memory Utilization
+GPU_MEMORY_UTILIZATION_PANEL = Panel(
+    id=10,
+    title="Train Worker GPU Memory Utilization",
+    description="GPU memory utilization for train workers.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
+            legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+        ),
+        Target(
+            expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 1024 * 1024',
+            legend="MAX",
+        ),
+    ],
+)
 
 TRAIN_GRAFANA_PANELS = [
     # Ray Train Metrics (Worker)
-    CHECKPOINT_REPORT_TIME_PANEL,
+    WORKER_CHECKPOINT_REPORT_TIME_PANEL,
     # Ray Train Metrics (Controller)
     CONTROLLER_OPERATION_TIME_PANEL,
     CONTROLLER_STATE_PANEL,
+    # Resource Utilization Metrics
+    IOPS_PANEL,
+    NETWORK_UTILIZATION_PANEL,
+    DISK_UTILIZATION_PANEL,
+    CPU_UTILIZATION_PANEL,
+    MEMORY_UTILIZATION_PANEL,
+    GPU_UTILIZATION_PANEL,
+    GPU_MEMORY_UTILIZATION_PANEL,
 ]
 
 
@@ -71,10 +204,6 @@ train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",
     panels=TRAIN_GRAFANA_PANELS,
-    standard_global_filters=[
-        'SessionName=~"$SessionName"',
-        'ray_train_run_name=~"$TrainRunName"',
-        'ray_train_run_id=~"$TrainRunId"',
-    ],
+    standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="train_grafana_dashboard_base.json",
 )
