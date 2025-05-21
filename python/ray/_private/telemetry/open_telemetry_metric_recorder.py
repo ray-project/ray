@@ -32,10 +32,6 @@ class OpenTelemetryMetricRecorder:
         metrics.set_meter_provider(provider)
         self.meter = metrics.get_meter(__name__)
 
-    def record_gauge_metric()
-
-    def set_metric_value()
-
     def record_and_export(self, records: List[Record], global_tags=None):
         """
         Record a list of telemetry records and export them to Prometheus.
