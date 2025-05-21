@@ -5,7 +5,7 @@
 <a href="https://github.com/anyscale/e2e-audio" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-### Overview
+## Overview
 
 This example demonstrates how to build a scalable, end-to-end audio curation pipeline with **Ray**.
 
@@ -17,7 +17,7 @@ This example demonstrates how to build a scalable, end-to-end audio curation pip
 
 Because every step is expressed as a Ray transformation the same script scales seamlessly from a laptop to a multi-node GPU cluster.
 
-### Quick start
+## Quick start
 
 ```bash
 # Install dependencies
@@ -28,7 +28,7 @@ pip install -q "ray[data]==2.23.0" "torch==2.5.1" "torchaudio==2.2.3" \
 python e2e_audio/curation.py
 ```
 
-### Development on Anyscale Workspaces
+## Development on Anyscale Workspaces
 
 Developing directly in an [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) provides:
 
@@ -39,10 +39,10 @@ Developing directly in an [Anyscale Workspace](https://docs.anyscale.com/platfor
 
 Learn more from the [official documentation](https://docs.anyscale.com/platform/workspaces/).
 
-### Production
+## Production
 
 Promote the same script to production by submitting an [Anyscale Job](https://docs.anyscale.com/platform/jobs/). Since development already happens on a Ray cluster, the dev → prod hand-off is straightforward.
 
-### No infrastructure headaches
+## No infrastructure headaches
 
 Abstract away infrastructure so ML engineers can focus on ML. Anyscale offers governance, cost controls, and observability features—including resource quotas, workload prioritization, and a Telescope dashboard—to keep your compute fleet under control.
