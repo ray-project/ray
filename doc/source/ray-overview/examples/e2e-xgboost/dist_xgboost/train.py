@@ -11,8 +11,8 @@ from ray.data.preprocessors import StandardScaler
 from ray.train import CheckpointConfig, Result, RunConfig, ScalingConfig
 from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
-from dist_xgboost.constants import local_storage_path, preprocessor_path
-from dist_xgboost.data import log_run_to_mlflow, prepare_data
+from constants import local_storage_path, preprocessor_path
+from data import log_run_to_mlflow, prepare_data
 
 NUM_WORKERS = 5
 USE_GPU = True

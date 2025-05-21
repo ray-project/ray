@@ -8,7 +8,7 @@ import pandas as pd
 import xgboost
 from sklearn.metrics import confusion_matrix
 
-from dist_xgboost.data import load_model_and_preprocessor, prepare_data
+from data import load_model_and_preprocessor, prepare_data
 
 
 def transform_with_preprocessor(batch_df, preprocessor):

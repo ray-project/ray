@@ -14,7 +14,7 @@ from ray import serve
 from ray.serve.handle import DeploymentHandle
 from starlette.requests import Request
 
-from dist_xgboost.data import load_model_and_preprocessor
+from data import load_model_and_preprocessor
 
 
 @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 2})
