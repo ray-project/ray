@@ -248,7 +248,7 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
     byod_type = test.get_byod_type()
     if byod_type not in ["gpu", "cpu", "cu123", "llm-cu124"]:
         return f"Invalid BYOD type: {byod_type}"
-    
+
     python_version = test.get_python_version()
     if byod_type == "gpu" and python_version != "3.9":
         return "GPU BYOD tests must use Python 3.9"
