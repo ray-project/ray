@@ -49,12 +49,6 @@ class AggregatorActor(FaultAwareApply):
         # Set device and node.
         self._node = platform.node()
         self._device = torch.device("cpu")
-        # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-        # self._device = torch.device(
-        #    f"cuda:{ray.get_gpu_ids()[0]}"
-        #    if self.config.num_gpus_per_learner > 0
-        #    else "cpu"
-        # )
         self.metrics = MetricsLogger()
 
         # Create the RLModule.
