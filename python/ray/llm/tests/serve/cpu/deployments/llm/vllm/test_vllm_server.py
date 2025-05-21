@@ -26,9 +26,6 @@ class TestPDDisaggLLMServer:
         model_pixtral_12b,
     ):
         """This is smoke testing that normal chat completion works."""
-        if not VLLM_USE_V1:
-            # Cannot call set_vllm_use_v1() twice.
-            set_vllm_use_v1(True)
         llm_config = LLMConfig(
             # Put a non-NVIDIA type here to avoid GPU placement.
             accelerator_type="Intel-GAUDI",
@@ -73,9 +70,6 @@ class TestPDDisaggLLMServer:
         model_pixtral_12b,
     ):
         """Test non-streaming predict."""
-        if not VLLM_USE_V1:
-            # Cannot call set_vllm_use_v1() twice.
-            set_vllm_use_v1(True)
         llm_config = LLMConfig(
             # Put a non-NVIDIA type here to avoid GPU placement.
             accelerator_type="Intel-GAUDI",
