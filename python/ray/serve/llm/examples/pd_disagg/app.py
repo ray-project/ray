@@ -139,15 +139,10 @@ class PDProxyServer(LLMServer):
             KV_TRANSFER_PARAMS_KEY
         ]
 
-        import time
-
-        start_time = time.perf_counter()
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
         ):
             yield chunk
-        prefill_end = time.perf_counter()
-        # TODO(lk-chen): propagate prefill time.
 
     async def check_health(self) -> None:
         """Check the health of the llm engine."""
