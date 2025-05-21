@@ -50,21 +50,22 @@ class TestPDDisaggLLMServer:
             model="test_model",
             messages=[dict(role="user", content="Hello")],
             stream=False,
-            max_tokens=1,
+            max_tokens=5,
         )
 
         # Get the response
         response_stream = await server.chat(request)
 
         # Collect responses (should be just one)
-        responses = []
-        async for response in response_stream:
-            responses.append(response)
+        responses = [r async for r in response_stream]
 
         # Check that we got one response
         assert len(responses) == 1
         assert responses[0].choices[0].message.role == "assistant"
-        assert responses[0].choices[0].message.content == "test_0 "
+        assert (
+            responses[0].choices[0].message.content
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
 
     @pytest.mark.asyncio
     async def test_predict_non_streaming(

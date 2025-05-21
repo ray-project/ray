@@ -470,7 +470,11 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
             kv_transfer_params = {}
 
         async def generate_response():
+            # vLLM EngineClient spits accumulated output in the response.
+            # ray serve's engine spits output in chunk.
+            accumulated_output = ""
             async for i in self.async_range(max_tokens):
+                accumulated_output += f"mock_pd_client_response_{i} "
                 yield RequestOutput(
                     finished=(i == max_tokens - 1),
                     request_id=request_id,
@@ -480,7 +484,7 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
                     outputs=[
                         CompletionOutput(
                             index=i,
-                            text=f"test_{i} ",
+                            text=accumulated_output,
                             token_ids=[i],
                             cumulative_logprob=None,
                             logprobs=None,
