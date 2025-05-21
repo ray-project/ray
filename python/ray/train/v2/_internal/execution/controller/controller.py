@@ -380,17 +380,15 @@ class TrainController:
         """
         controller_state = self.get_state()
 
-        if isinstance(controller_state, InitializingState):
+        if isinstance(
+            controller_state, (InitializingState, ReschedulingState, RestartingState)
+        ):
             return self._make_and_handle_scaling_decision_for_non_running_worker_group(
                 controller_state
             )
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
-        elif isinstance(controller_state, ReschedulingState):
-            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state
-            )
         elif isinstance(controller_state, RunningState):
             worker_group_status = self._poll_workers()
 
@@ -427,10 +425,6 @@ class TrainController:
                     previous_state=controller_state,
                     next_state=next_state,
                 )
-        elif isinstance(controller_state, RestartingState):
-            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state
-            )
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
