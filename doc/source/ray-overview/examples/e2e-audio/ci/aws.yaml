@@ -1,10 +1,12 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-head_node:
+head_node_type:
+  name: head
   instance_type: m5.2xlarge
-
-worker_nodes:
-- instance_type: g6.4xlarge
-  min_nodes: 5
-  max_nodes: 5
+worker_node_types:
+  - name: "gpu-workers"
+    instance_type: "g6.4xlarge"
+    min_nodes: 5
+    max_nodes: 5
+auto_select_worker_config: false
