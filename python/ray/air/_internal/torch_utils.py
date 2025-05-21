@@ -378,7 +378,7 @@ def arrow_batch_to_tensors(
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
+    non_blocking: bool = True,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
@@ -460,7 +460,7 @@ def _get_type_str(batch: Any) -> str:
 def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
+    non_blocking: bool = True,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
