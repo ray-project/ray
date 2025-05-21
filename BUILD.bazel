@@ -481,18 +481,6 @@ ray_cc_library(
     deps = [
         ":grpc_common_lib",  # This is a large dependency, should be refined in the future.
         ":pubsub_cc_grpc",
-<<<<<<< HEAD
-=======
-    ],
-)
-
-# Combined PubSub Library
-ray_cc_library(
-    name = "pubsub_lib",
-    deps = [
-        ":publisher_lib",
-        ":subscriber_lib",
->>>>>>> 601b4c0cec ([core] Introduce ConcurrentFlatMap and use for InMemoryStoreClient (#50375))
     ],
 )
 
