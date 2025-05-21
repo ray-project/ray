@@ -122,8 +122,8 @@ class LocalityScheduleMixin:
         Args:
             pending_request: The pending request to be scheduled.
         Returns:
-            A set of replica IDs that are candidates for the existing
-            scheduling call.
+            A set of replica IDs that are candidates based on
+            the locality policy.
         """
 
         if not pending_request:
