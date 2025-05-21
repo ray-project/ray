@@ -1,5 +1,8 @@
 import os
 import pickle
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 # Enable Ray Train v2. This will be the default in an upcoming release.
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
