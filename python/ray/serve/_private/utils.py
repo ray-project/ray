@@ -6,6 +6,7 @@ import inspect
 import logging
 import os
 import random
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -40,6 +41,8 @@ try:
     import numpy as np
 except ImportError:
     np = None
+
+FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
@@ -558,7 +561,8 @@ def get_component_file_name(
     component_type: Optional[ServeComponentType],
     suffix: str = "",
 ) -> str:
-    """Get the component's file name."""
+    """Get the component's file name. Replaces special characters with underscores."""
+    component_name = re.sub(FILE_NAME_REGEX, "_", component_name)
 
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.

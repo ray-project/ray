@@ -1436,7 +1436,7 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   //
   // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
   // `retry_task_callback_` is invoked. In order to record the correct status change for
-  // the new task attempt, we pass the the attempt number explicitly.
+  // the new task attempt, we pass the attempt number explicitly.
   SetTaskStatus(task_entry,
                 rpc::TaskStatus::PENDING_ARGS_AVAIL,
                 /* state_update */ std::nullopt,

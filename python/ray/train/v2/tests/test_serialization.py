@@ -49,7 +49,7 @@ def test_deserialization_error(ray_start_4_cpus):
     """Test that train_fn deserialization errors are propagated properly.
 
     This test showcases a common deserialization error example, where
-    the the driver script successfully imports torch, but torch is not
+    the driver script successfully imports torch, but torch is not
     installed on the worker nodes.
     """
     import torch

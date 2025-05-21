@@ -1,10 +1,11 @@
-import conda
-import pytest
-import time
-import sys
 import fnmatch
 import os
+import time
+import sys
 from typing import List
+
+import conda
+import pytest
 
 import ray
 from ray.dashboard.modules.job.common import JobStatus
@@ -246,10 +247,4 @@ class TestNoUserInfoInLogs:
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

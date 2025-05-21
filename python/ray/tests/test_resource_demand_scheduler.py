@@ -2,6 +2,7 @@ import copy
 import os
 import json
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -9,9 +10,9 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
+import yaml
 
 import pytest
-import yaml
 
 import ray
 import ray._private.ray_constants
@@ -4080,9 +4081,4 @@ def test_utilization_score_plugin_2(lexical_score_plugin):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
