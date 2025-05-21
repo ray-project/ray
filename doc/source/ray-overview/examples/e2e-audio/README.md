@@ -30,9 +30,9 @@ python e2e_audio/curation.py
 
 ### Development on Anyscale Workspaces
 
-We recommend developing directly in an [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/), which provides:
+Developing directly in an [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) provides:
 
-* **Remote development**: connect your local IDE (Cursor, VS Code, etc.) to a fully-managed Ray cluster.
+* **Remote development**: connect your local IDE (Cursor, VS Code, etc.) to a fully managed Ray cluster.
 * **Dependency management**: install Python packages with `pip`; Anyscale propagates them to every node.
 * **Compute elasticity**: scale from CPU-only machines to large multi-GPU clusters without changing code.
 * **Distributed debugging**: get the same VS Code-like debugging experience across all workers.
