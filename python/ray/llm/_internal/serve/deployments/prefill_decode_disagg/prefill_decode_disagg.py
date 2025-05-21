@@ -83,6 +83,10 @@ class PDProxyServer(LLMServer):
             async def start(self, *args, **kwargs):
                 pass
 
+        # We pass `llm_config` here to let super() extract the model_id, such that /v1/models
+        # endpoint can work correctly.
+        # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router query model_id through
+        # API, instead of passing it in as an argument.
         await super().__init__(
             llm_config,
             engine_cls=FakeEngine,
@@ -170,12 +174,12 @@ class PDProxyServer(LLMServer):
 def build_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing P/D disaggregation."""
 
-    rayllm_args = PDServingArgs.model_validate(pd_serving_args).parse_args()
+    pd_config = PDServingArgs.model_validate(pd_serving_args).parse_args()
 
-    model_id = rayllm_args.decode_config.model_id
-    assert model_id == rayllm_args.prefill_config.model_id, "P/D model id mismatch"
+    model_id = pd_config.decode_config.model_id
+    assert model_id == pd_config.prefill_config.model_id, "P/D model id mismatch"
 
-    for config in [rayllm_args.prefill_config, rayllm_args.decode_config]:
+    for config in [pd_config.prefill_config, pd_config.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
             config.engine_kwargs.update(
                 {
@@ -185,8 +189,10 @@ def build_app(pd_serving_args: dict) -> Application:
                 }
             )
 
-    prefill_deployment = build_llm_deployment(rayllm_args.prefill_config)
-    decode_deployment = build_llm_deployment(rayllm_args.decode_config)
+    # TODO(lk-chen): here we should update build_llm_deployment to allow `name_prefix` argument
+    # so that we can better distinguish P/D deployments.
+    prefill_deployment = build_llm_deployment(pd_config.prefill_config)
+    decode_deployment = build_llm_deployment(pd_config.decode_config)
 
     proxy_server_deployment = PDProxyServer.as_deployment().bind(
         llm_config=LLMConfig(
