@@ -20,7 +20,8 @@ class Stats:
 
     The individual values in a Stats object may be of any type, for example python int
     or float, numpy arrays, or more complex structured (tuple, dict) and are stored in
-    a list under `self.values`.
+    a list under `self.values`. This class is not meant to be interfaced with directly
+    from application code. Instead, use `MetricsLogger` to log and manipulate Stats.
 
     Stats can be used to store metrics of the same type over time, for example a loss
     or a learning rate, and to reduce all stored values applying a certain reduction
