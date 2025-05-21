@@ -24,7 +24,7 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
         assert source_type in all_source_types, f"Invalid source type: {source_type}"
         files = []
         for n in event_log_names:
-            if fnmatch.fnmatch(n, f"*{source_type}*"):
+            if fnmatch.fnmatch(n, f"*{source_type}*.log"):
                 f = os.path.join(event_dir, n)
                 if event_file_filter is not None and not event_file_filter(f):
                     continue
@@ -137,8 +137,6 @@ def monitor_events(
     MonitorFile = collections.namedtuple("MonitorFile", ["size", "mtime", "position"])
 
     def _source_file_filter(source_file):
-        if source_file.endswith(".gz"):
-            return False
         stat = os.stat(source_file)
         return stat.st_mtime > start_mtime
 
