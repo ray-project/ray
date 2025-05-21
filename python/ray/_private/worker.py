@@ -445,7 +445,13 @@ class Worker:
         self.mode = None
         self.actors = {}
         self.in_actor_object_store: Dict[ObjectRef, List[torch.Tensor]] = {}
-        self.in_actor_object_refs = {}
+        # A dictionary that maps from an object ref to a tuple of (actor handle, object ref).
+        # The key of the dictionary is an object ref that points to data consisting of tensors.
+        # These tensors are stored in the in-actor object store of the actor referenced by the ActorHandle.
+        # The object ref in the tuple is the object ref of a list of tuples, each containing the shape and dtype of a tensor.
+        self.in_actor_object_refs: Dict[
+            ObjectRef, Tuple["ray.actor.ActorHandle", ObjectRef]
+        ] = {}
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.

@@ -407,17 +407,8 @@ class ActorMethod:
                     "make sure the actor method returns a single object."
                 )
 
-            def get_tensor_sizes(self, obj_id):
-                worker = ray._private.worker.global_worker
-                return [
-                    (t.shape, t.dtype) for t in worker.in_actor_object_store[obj_id]
-                ]
-
             actor = self._actor_hard_ref or self._actor_ref()
-            tensor_meta = actor.__ray_call__.remote(get_tensor_sizes, obj_ref.hex())
-            # Metadata: (actor that hosts the object, tensor shapes)
-            # Driver will provide the NCCL metadata upon submission of a
-            # dependent task.
+            tensor_meta = actor.__ray_get_tensor_meta__.remote(obj_ref.hex())
             worker = ray._private.worker.global_worker
             worker.in_actor_object_refs[obj_ref] = (self._actor_ref(), tensor_meta)
 
@@ -1845,6 +1836,13 @@ def _modify_class(cls):
                 dist.recv(tensor, src_rank)
                 tensors.append(tensor)
             worker.in_actor_object_store[obj_id] = tensors
+
+        def __ray_get_tensor_meta__(self, obj_id: str):
+            # Gets the tensor metadata from `in_actor_object_store` and
+            # returns a list of tuples, each containing the shape and dtype
+            # of a tensor in the object store.
+            worker = ray._private.worker.global_worker
+            return [(t.shape, t.dtype) for t in worker.in_actor_object_store[obj_id]]
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
