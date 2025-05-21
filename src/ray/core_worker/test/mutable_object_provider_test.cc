@@ -14,6 +14,7 @@
 
 #include <limits>
 #include <memory>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -36,8 +37,6 @@ namespace {
 
 class TestPlasma : public plasma::PlasmaClientInterface {
  public:
-  virtual ~TestPlasma() {}
-
   Status Release(const ObjectID &object_id) override { return Status::OK(); }
 
   Status Disconnect() override { return Status::OK(); }
@@ -82,6 +81,28 @@ class TestPlasma : public plasma::PlasmaClientInterface {
   }
 
   Status Delete(const std::vector<ObjectID> &object_ids) override { return Status::OK(); }
+
+  Status Connect(const std::string &store_socket_name,
+                 const std::string &manager_socket_name = "",
+                 int release_delay = 0,
+                 int num_retries = -1) override {
+    return Status::OK();
+  }
+
+  Status Contains(const ObjectID &object_id, bool *has_object) override {
+    return Status::OK();
+  }
+
+  Status TryCreateImmediately(const ObjectID &object_id,
+                              const ray::rpc::Address &owner_address,
+                              int64_t data_size,
+                              const uint8_t *metadata,
+                              int64_t metadata_size,
+                              std::shared_ptr<Buffer> *data,
+                              plasma::flatbuf::ObjectSource source,
+                              int device_num = 0) override {
+    return Status::OK();
+  }
 
  private:
   // Creates a new mutable object. It is the caller's responsibility to free the backing
