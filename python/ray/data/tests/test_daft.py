@@ -3,6 +3,11 @@ import sys
 import pytest
 
 import ray
+import pyarrow as pa
+from packaging.version import parse as parse_version
+
+if parse_version(pa.__version__) >= parse_version("14.0.0"):
+    pytest.skip("Incompatible pyarrow version; please install pyarrow<14.0.0", allow_module_level=True)
 
 
 @pytest.fixture(scope="module")
