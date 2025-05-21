@@ -452,7 +452,7 @@ install_dependencies() {
     if [[ "${RAY_MACOS_TEST_INSTALL-}" == 1 ]]; then
       # CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_macos_test.txt" \
       #   -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
-      python -m pip install "pip==25.1.1" "setuptools==69.5.1" "cffi==1.16.0"
+      python -m pip install "pip==25.1.1" "setuptools==75.8.0"
       CC=gcc retry_pip_install python -m pip install -U \
         -r "${WORKSPACE_DIR}/python/requirements.txt" \
         -r "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
