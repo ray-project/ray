@@ -440,8 +440,6 @@ class _MapWorker:
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
-        # Initialize state for this actor.
-        self._map_transformer.init()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()

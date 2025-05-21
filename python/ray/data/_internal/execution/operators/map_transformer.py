@@ -17,7 +17,6 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.util import make_callable_class_concurrent
@@ -295,7 +294,6 @@ class MapTransformer:
         ctx: TaskContext,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
-        self.init()
         assert (
             self.target_max_block_size is not None
         ), "target_max_block_size must be set before running"
@@ -658,7 +656,7 @@ class AsyncCallableClassUDFMapTransformFn(AbstractUDFMapTransformFn):
         )
 
         # init async loop
-        loop = get_or_create_event_loop()
+        loop = asyncio.new_event_loop()
 
         def run_loop():
             asyncio.set_event_loop(loop)
