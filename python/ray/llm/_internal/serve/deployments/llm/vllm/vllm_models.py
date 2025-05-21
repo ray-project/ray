@@ -241,7 +241,10 @@ class VLLMSamplingParams(SamplingParams):
         Extend the base class's `_get_model_validate_kwargs` to include vllm-specific parameters.
         """
         generate_kwargs = super()._get_model_validate_kwargs(prompt)
-        if KV_TRANSFER_PARAMS_KEY in prompt.parameters:
+        if (
+            prompt.parameters is not None
+            and KV_TRANSFER_PARAMS_KEY in prompt.parameters
+        ):
             generate_kwargs[KV_TRANSFER_PARAMS_KEY] = prompt.parameters[
                 KV_TRANSFER_PARAMS_KEY
             ]
