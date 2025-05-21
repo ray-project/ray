@@ -1,24 +1,32 @@
 # coding: utf-8
 import os
 import sys
+from typing import Dict, List, Tuple
 
 import pytest
 
-from ray.tests.conftest import *  # noqa
-from ray.dag import InputNode, MultiOutputNode, ClassMethodNode
+from ray.actor import ActorHandle
+from ray.dag import ClassMethodNode, InputNode, MultiOutputNode
+from ray.dag.compiled_dag_node import CompiledTask
 from ray.dag.dag_node_operation import (
     _DAGNodeOperationType,
+    _NCCLOperationType_EXP,
     _DAGOperationGraphNode,
+    _DAGOperationGraphNode_EXP,
     _DAGNodeOperation,
+    _DAGNodeOperation_EXP,
     _extract_execution_schedule,
     _select_next_nodes,
+    _select_next_nodes_EXP,
     _build_dag_node_operation_graph,
+    _build_dag_node_operation_graph_EXP,
     _add_edge,
+    _add_edge_EXP,
     _generate_actor_to_execution_schedule,
+    _generate_actor_to_execution_schedule_EXP,
 )
 from ray.dag.compiled_dag_node import CompiledTask
-from typing import List, Dict, Tuple
-from ray.actor import ActorHandle
+from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -43,7 +51,7 @@ def generate_dag_graph_nodes(
     requires_nccl_read=False,
     requires_nccl_compute=False,
     requires_nccl_write=False,
-):
+) -> Dict[_DAGNodeOperationType, _DAGOperationGraphNode]:
     graph_nodes = {}
     for op_type in _DAGNodeOperationType:
         requires_nccl = (
@@ -58,6 +66,30 @@ def generate_dag_graph_nodes(
             requires_nccl,
         )
     return graph_nodes
+
+
+def generate_dag_graph_nodes_EXP(
+    exec_task_idx,
+    task_idx,
+    actor_handle,
+    requires_nccl_read=False,
+    requires_nccl_compute=False,
+    requires_nccl_write=False,
+) -> _DAGOperationGraphNode_EXP:
+    nccl_op_type = None
+    if requires_nccl_read:
+        nccl_op_type = _NCCLOperationType_EXP.P2P_READ
+    elif requires_nccl_compute:
+        nccl_op_type = _NCCLOperationType_EXP.COLLECTIVE
+    elif requires_nccl_write:
+        nccl_op_type = _NCCLOperationType_EXP.P2P_WRITE
+    graph_node = _DAGOperationGraphNode_EXP(
+        _DAGNodeOperation_EXP(exec_task_idx),
+        task_idx,
+        actor_handle,
+        nccl_op_type,
+    )
+    return graph_node
 
 
 def set_sync_idxs_p2p(
@@ -76,6 +108,19 @@ def set_sync_idxs_p2p(
         node.ready_sync_idxs.update(p2p_idxs)
 
 
+def set_sync_idxs_p2p_EXP(
+    graph: Dict[int, _DAGOperationGraphNode_EXP],
+    write_idx: int,
+    read_idx: int,
+) -> None:
+    write_node = graph[write_idx]
+    read_node = graph[read_idx]
+    p2p_idxs = {write_idx, read_idx}
+    for node in [write_node, read_node]:
+        node.sync_idxs.update(p2p_idxs)
+        node.ready_sync_idxs.update(p2p_idxs)
+
+
 def set_sync_idxs_collective(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     task_idxs: List[int],
@@ -85,6 +130,17 @@ def set_sync_idxs_collective(
     }
     for task_idx in task_idxs:
         node = graph[task_idx][_DAGNodeOperationType.COMPUTE]
+        node.sync_idxs.update(collective_idxs)
+        node.ready_sync_idxs.update(collective_idxs)
+
+
+def set_sync_idxs_collective_EXP(
+    graph: Dict[int, _DAGOperationGraphNode_EXP],
+    task_idxs: List[int],
+) -> None:
+    collective_idxs = {task_idx for task_idx in task_idxs}
+    for task_idx in task_idxs:
+        node = graph[task_idx]
         node.sync_idxs.update(collective_idxs)
         node.ready_sync_idxs.update(collective_idxs)
 
@@ -406,6 +462,286 @@ class TestSelectNextNodes:
         assert set(next_nodes) == {
             mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE],
             mock_graph[dag_idx_4][_DAGNodeOperationType.COMPUTE],
+        }
+
+
+class TestSelectNextNodes_EXP:
+    """
+    Test whether `_select_next_nodes` function selects the next nodes for
+    topological sort to generate execution schedule correctly.
+
+    task_idx: Each DAG node has a unique global index.
+    exec_task_idx: The DAG node's index in the actor's `executable_tasks` list.
+    """
+
+    def test_two_candidates_on_same_actor(self, monkeypatch):
+        """
+        Simulate the case where there are two candidates on the same actor.
+        The candidate with the smaller index in the `executable_tasks` list
+        should be selected.
+
+        driver -> fake_actor.op -> fake_actor.op -> driver
+
+        In the example above, both READ operations on the fake_actor have zero
+        in-degree. The operation with the smaller index in the executable_tasks
+        list should be selected first; therefore, the one on the left side will
+        be selected first.
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor = ActorHandle("fake_actor")
+        # The DAG node has a global index of 1, and its index in the
+        # actor's `executable_tasks` list is 0.
+        task_idx_1 = 1
+        dag_node_1 = _DAGOperationGraphNode_EXP(
+            _DAGNodeOperation_EXP(0),
+            task_idx_1,
+            fake_actor,
+            False,
+        )
+        # The DAG node has a global index of 2, and its index in the
+        # actor's `executable_tasks` list is 1.
+        task_idx_2 = 2
+        dag_node_2 = _DAGOperationGraphNode_EXP(
+            _DAGNodeOperation_EXP(1),
+            task_idx_2,
+            fake_actor,
+            False,
+        )
+        mock_actor_to_candidates = {
+            fake_actor: [
+                dag_node_1,
+                dag_node_2,
+            ],
+        }
+        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, None)
+        assert next_nodes == [dag_node_1]
+
+    def test_only_one_nccl_write(self, monkeypatch):
+        """
+        Simulate the case where there is only one candidate which is a NCCL
+        WRITE operation. In this case, `_select_next_nodes` should return both
+        the NCCL WRITE operation and the corresponding READ operation.
+
+        driver -> fake_actor_1.op -> fake_actor_2.op -> driver
+
+        In the example above, communication between fake_actor_1 and fake_actor_2
+        is done using NCCL. The following test case simulates a scenario where the
+        READ and COMPUTE operations on fake_actor_1 have already been added to the
+        execution schedule.
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor_1, task_idx_1, exec_task_idx_1 = ActorHandle("fake_actor_1"), 1, 0
+        fake_actor_2, task_idx_2, exec_task_idx_2 = ActorHandle("fake_actor_2"), 2, 0
+        mock_graph = {
+            task_idx_1: generate_dag_graph_nodes_EXP(
+                exec_task_idx_1,
+                task_idx_1,
+                fake_actor_1,
+                requires_nccl_write=True,
+            ),
+            task_idx_2: generate_dag_graph_nodes_EXP(
+                exec_task_idx_2,
+                task_idx_2,
+                fake_actor_2,
+                requires_nccl_read=True,
+            ),
+        }
+
+        _add_edge_EXP(mock_graph[task_idx_1], mock_graph[task_idx_2])
+        set_sync_idxs_p2p_EXP(mock_graph, task_idx_1, task_idx_2)
+        mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[task_idx_1]],
+            fake_actor_2: [mock_graph[task_idx_2]],
+        }
+        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        assert next_nodes == [
+            mock_graph[task_idx_1],
+            mock_graph[task_idx_2],
+        ]
+
+    def test_two_nccl_writes(self, monkeypatch):
+        """
+        Simulate a scenario where there are two candidates that are NCCL WRITE
+        operations. In this case, _select_next_nodes can choose either of the
+        two NCCL WRITE operations and their corresponding READ operations.
+
+        driver -> fake_actor_1.op -> fake_actor_2.op -> driver
+               |                                     |
+               -> fake_actor_2.op -> fake_actor_1.op -
+
+        In the example above, communication between fake_actor_1 and fake_actor_2 is
+        done using NCCL. The following test case simulates a scenario where the READ
+        and COMPUTE operations on both the DAG nodes with smaller bind_index on
+        fake_actor_1 and fake_actor_2 have already been added to the execution schedule.
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+
+        fake_actor_1 = ActorHandle("fake_actor_1")
+        task_idx_1_0, exec_task_idx_1_0 = 1, 0
+        task_idx_1_1, exec_task_idx_1_1 = 3, 1
+        fake_actor_2 = ActorHandle("fake_actor_2")
+        task_idx_2_0, exec_task_idx_2_0 = 2, 0
+        task_idx_2_1, exec_task_idx_2_1 = 4, 1
+
+        # Run the test 20 times to ensure that the result of `_select_next_nodes`
+        # is deterministic.
+        for _ in range(20):
+            mock_graph = {
+                task_idx_1_0: generate_dag_graph_nodes_EXP(
+                    exec_task_idx_1_0,
+                    task_idx_1_0,
+                    fake_actor_1,
+                    requires_nccl_write=True,
+                ),
+                task_idx_1_1: generate_dag_graph_nodes_EXP(
+                    exec_task_idx_1_1,
+                    task_idx_1_1,
+                    fake_actor_1,
+                    requires_nccl_read=True,
+                ),
+                task_idx_2_0: generate_dag_graph_nodes_EXP(
+                    exec_task_idx_2_0,
+                    task_idx_2_0,
+                    fake_actor_2,
+                    requires_nccl_write=True,
+                ),
+                task_idx_2_1: generate_dag_graph_nodes_EXP(
+                    exec_task_idx_2_1,
+                    task_idx_2_1,
+                    fake_actor_2,
+                    requires_nccl_read=True,
+                ),
+            }
+
+            _add_edge_EXP(mock_graph[task_idx_1_0], mock_graph[task_idx_2_1])
+            _add_edge_EXP(mock_graph[task_idx_2_0], mock_graph[task_idx_1_1])
+            _add_edge_EXP(mock_graph[task_idx_2_1], mock_graph[task_idx_2_1])
+            _add_edge_EXP(mock_graph[task_idx_2_1], mock_graph[task_idx_2_1])
+            _add_edge_EXP(mock_graph[task_idx_1_1], mock_graph[task_idx_1_1])
+            _add_edge_EXP(mock_graph[task_idx_1_1], mock_graph[task_idx_1_1])
+            set_sync_idxs_p2p_EXP(mock_graph, task_idx_1_0, task_idx_2_1)
+            set_sync_idxs_p2p_EXP(mock_graph, task_idx_2_0, task_idx_1_1)
+            mock_actor_to_candidates = {
+                fake_actor_1: [
+                    mock_graph[task_idx_1_0],
+                    mock_graph[task_idx_1_1],
+                ],
+                fake_actor_2: [
+                    mock_graph[task_idx_2_0],
+                    mock_graph[task_idx_2_1],
+                ],
+            }
+
+            next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+            assert next_nodes == [
+                mock_graph[task_idx_1_0],
+                mock_graph[task_idx_2_1],
+            ]
+
+    def test_only_one_nccl_collective(self, monkeypatch):
+        """
+        Simulate the case where there is only one candidate which is a NCCL
+        collective operation. In this case, `_select_next_nodes` should return
+        all the NCCL collective nodes.
+
+        driver -> fake_actor_1.allreduce_1 -> driver
+               |                            |
+               -> fake_actor_2.allreduce_1 ->
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor_1, dag_idx_1, local_idx_1 = ActorHandle("fake_actor_1"), 1, 0
+        fake_actor_2, dag_idx_2, local_idx_2 = ActorHandle("fake_actor_2"), 2, 0
+
+        mock_graph = {
+            dag_idx_1: generate_dag_graph_nodes_EXP(
+                local_idx_1,
+                dag_idx_1,
+                fake_actor_1,
+                requires_nccl_compute=True,
+            ),
+            dag_idx_2: generate_dag_graph_nodes_EXP(
+                local_idx_2,
+                dag_idx_2,
+                fake_actor_2,
+                requires_nccl_compute=True,
+            ),
+        }
+        set_sync_idxs_collective_EXP(mock_graph, [dag_idx_1, dag_idx_2])
+
+        mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[dag_idx_1]],
+            fake_actor_2: [mock_graph[dag_idx_2]],
+        }
+        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        assert set(next_nodes) == {
+            mock_graph[dag_idx_1],
+            mock_graph[dag_idx_2],
+        }
+
+    def test_two_nccl_collectives(self, monkeypatch):
+        """
+        Simulate the case where there are two candidates that are NCCL collective
+        operations. In this case, `_select_next_nodes` should return all the NCCL
+        collective nodes that are bond earlier.
+
+        driver -> fake_actor_1.allreduce_1 -> driver
+               |                            |
+               -> fake_actor_2.allreduce_1 ->
+               |                            |
+               -> fake_actor_3.allreduce_2 ->
+               |                            |
+               -> fake_actor_4.allreduce_2 ->
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor_1, dag_idx_1, local_idx_1 = ActorHandle("fake_actor_1"), 1, 0
+        fake_actor_2, dag_idx_2, local_idx_2 = ActorHandle("fake_actor_2"), 2, 0
+        fake_actor_3, dag_idx_3, local_idx_3 = ActorHandle("fake_actor_3"), 3, 0
+        fake_actor_4, dag_idx_4, local_idx_4 = ActorHandle("fake_actor_4"), 4, 0
+
+        mock_graph = {
+            dag_idx_1: generate_dag_graph_nodes_EXP(
+                local_idx_1,
+                dag_idx_1,
+                fake_actor_1,
+                requires_nccl_compute=True,
+            ),
+            dag_idx_2: generate_dag_graph_nodes_EXP(
+                local_idx_2,
+                dag_idx_2,
+                fake_actor_2,
+                requires_nccl_compute=True,
+            ),
+            dag_idx_3: generate_dag_graph_nodes_EXP(
+                local_idx_3,
+                dag_idx_3,
+                fake_actor_3,
+                requires_nccl_compute=True,
+            ),
+            dag_idx_4: generate_dag_graph_nodes_EXP(
+                local_idx_4,
+                dag_idx_4,
+                fake_actor_4,
+                requires_nccl_compute=True,
+            ),
+        }
+        set_sync_idxs_collective_EXP(mock_graph, [dag_idx_1, dag_idx_2])
+        set_sync_idxs_collective_EXP(mock_graph, [dag_idx_3, dag_idx_4])
+
+        mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[dag_idx_1]],
+            fake_actor_2: [mock_graph[dag_idx_2]],
+            fake_actor_3: [mock_graph[dag_idx_3]],
+            fake_actor_4: [mock_graph[dag_idx_4]],
+        }
+        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        assert set(next_nodes) == {
+            mock_graph[dag_idx_1],
+            mock_graph[dag_idx_2],
+        }
+        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        assert set(next_nodes) == {
+            mock_graph[dag_idx_3],
+            mock_graph[dag_idx_4],
         }
 
 
