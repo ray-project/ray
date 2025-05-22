@@ -97,7 +97,6 @@ for each integration:
    :widths: 50 30 20
    :header-rows: 1
 
-<<<<<<< HEAD
    * - Description
      - Library
      - Colab link
