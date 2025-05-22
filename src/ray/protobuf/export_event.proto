@@ -16,14 +16,14 @@ syntax = "proto3";
 
 package ray.rpc;
 
-import "src/ray/protobuf/export_api/export_task_event.proto";
-import "src/ray/protobuf/export_api/export_node_data.proto";
-import "src/ray/protobuf/export_api/export_actor_data.proto";
-import "src/ray/protobuf/export_api/export_driver_job_event.proto";
-import "src/ray/protobuf/export_api/export_submission_job_event.proto";
+import "src/ray/protobuf/export_task_event.proto";
+import "src/ray/protobuf/export_node_data.proto";
+import "src/ray/protobuf/export_actor_data.proto";
+import "src/ray/protobuf/export_driver_job_event.proto";
+import "src/ray/protobuf/export_submission_job_event.proto";
 
-import "src/ray/protobuf/export_api/export_train_state.proto";
-import "src/ray/protobuf/export_api/export_dataset_metadata.proto";
+import "src/ray/protobuf/export_train_state.proto";
+import "src/ray/protobuf/export_dataset_metadata.proto";
 
 // ExportEvent defines events stored by the export API. This
 // schema is public and any changes must be backward compatible.
