@@ -4,6 +4,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats import Stats, merge_stats
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
 from ray.util import log_once
@@ -264,7 +265,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_parallel_merge: bool = False,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -369,7 +370,7 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
-            reduce_per_index_on_parallel_merge: If True, when merging Stats objects in parallel, we reduce
+            reduce_per_index_on_aggregate: If True, when merging Stats objects in parallel, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -406,7 +407,7 @@ class MetricsLogger:
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
                             throughput_ema_coeff=throughput_ema_coeff,
-                            reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
+                            reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
                         )
                     ),
                 )
@@ -449,14 +450,14 @@ class MetricsLogger:
                         f"has window={stats._window}."
                     )
                 if (
-                    reduce_per_index_on_parallel_merge
-                    != stats._reduce_per_index_on_parallel_merge
-                    and log_once(f"reduce_per_index_on_parallel_merge_warning_{key}")
+                    reduce_per_index_on_aggregate
+                    != stats._reduce_per_index_on_aggregate
+                    and log_once(f"reduce_per_index_on_aggregate_warning_{key}")
                 ):
                     logger.warning(
-                        f"reduce_per_index_on_parallel_merge should be the same for all logged values under the same key, "
-                        f"but got argument reduce_per_index_on_parallel_merge={reduce_per_index_on_parallel_merge} while the existing Stats object {key} "
-                        f"has reduce_per_index_on_parallel_merge={stats._reduce_per_index_on_parallel_merge}."
+                        f"reduce_per_index_on_aggregate should be the same for all logged values under the same key, "
+                        f"but got argument reduce_per_index_on_aggregate={reduce_per_index_on_aggregate} while the existing Stats object {key} "
+                        f"has reduce_per_index_on_aggregate={stats._reduce_per_index_on_aggregate}."
                     )
 
                 # Otherwise, we just push the value into self's `Stats`.
@@ -473,7 +474,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_parallel_merge: bool = False,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> None:
         """Logs all leafs of a possibly nested dict of values to this logger.
 
@@ -564,7 +565,7 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
-            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -589,11 +590,15 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
-                reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
+                reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
             )
 
         with self._threading_lock:
             tree.map_structure_with_path(_map, value_dict)
+
+    @Deprecated(new="aggregate", error=False)
+    def merge_and_log_n_dicts(self, *args, **kwargs):
+        return self.aggregate(*args, **kwargs)
 
     def aggregate(
         self,
@@ -796,7 +801,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
-        reduce_per_index_on_parallel_merge: bool = False,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -859,7 +864,7 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
-            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -886,7 +891,7 @@ class MetricsLogger:
                     clear_on_reduce=clear_on_reduce,
                     throughput=with_throughput,
                     throughput_ema_coeff=throughput_ema_coeff,
-                    reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
+                    reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
                 ),
             )
 
@@ -947,7 +952,6 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
-            # In comse cases, we
             return stats.reduce(compile=self._is_root_logger)
 
         try:
@@ -996,7 +1000,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
-        reduce_per_index_on_parallel_merge: bool = False,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -1043,7 +1047,7 @@ class MetricsLogger:
                 <MetricsLogger>.peek([key], throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
-            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -1070,7 +1074,7 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
-                reduce_per_index_on_parallel_merge=reduce_per_index_on_parallel_merge,
+                reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
             )
 
     def reset(self) -> None:

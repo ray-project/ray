@@ -293,7 +293,7 @@ def test_state_serialization():
     stats = Stats(
         init_values=None,
         reduce="sum",
-        reduce_per_index_on_parallel_merge=True,
+        reduce_per_index_on_aggregate=True,
         window=3,
         ema_coeff=None,
         clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
@@ -983,13 +983,13 @@ def test_merging_multiples_rounds(
     expected_third_round_values,
     expected_third_round_peek,
 ):
-    """Test reduce_per_index_on_parallel_merge with different reduction methods, clear_on_reduce,  setting."""
+    """Test reduce_per_index_on_aggregate with different reduction methods, clear_on_reduce,  setting."""
     # First round: Create and fill two stats objects
     incoming_stats1 = Stats(
         reduce=reduce_method,
         window=window,
         clear_on_reduce=clear_on_reduce,
-        reduce_per_index_on_parallel_merge=reduce_per_index,
+        reduce_per_index_on_aggregate=reduce_per_index,
     )
     incoming_stats1.push(10)
     incoming_stats1.push(20)
@@ -999,7 +999,7 @@ def test_merging_multiples_rounds(
         reduce=reduce_method,
         window=window,
         clear_on_reduce=clear_on_reduce,
-        reduce_per_index_on_parallel_merge=reduce_per_index,
+        reduce_per_index_on_aggregate=reduce_per_index,
     )
     incoming_stats2.push(100)
     incoming_stats2.push(200)

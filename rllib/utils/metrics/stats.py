@@ -42,7 +42,7 @@ class Stats:
         self,
         init_values: Optional[Any] = None,
         reduce: Optional[str] = "mean",
-        reduce_per_index_on_parallel_merge: Optional[bool] = None,
+        reduce_per_index_on_aggregate: Optional[bool] = None,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -67,7 +67,7 @@ class Stats:
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
                 "mean".
-            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
@@ -133,15 +133,13 @@ class Stats:
 
         if (
             self._reduce_method not in ["mean", "sum", "min", "max"]
-            and reduce_per_index_on_parallel_merge
+            and reduce_per_index_on_aggregate
         ):
             raise ValueError(
-                "reduce_per_index_on_parallel_merge is only supported for mean, sum, min, and max reduction!"
+                "reduce_per_index_on_aggregate is only supported for mean, sum, min, and max reduction!"
             )
 
-        self._reduce_per_index_on_parallel_merge = (
-            reduce_per_index_on_parallel_merge or False
-        )
+        self._reduce_per_index_on_aggregate = reduce_per_index_on_aggregate or False
 
         # Timing functionality (keep start times per thread).
         self._start_times = defaultdict(lambda: None)
@@ -482,7 +480,7 @@ class Stats:
             # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
             # TODO (sven) : explain why all this
 
-            if self._reduce_per_index_on_parallel_merge:
+            if self._reduce_per_index_on_aggregate:
                 n_values = 1
             else:
                 n_values = len(tmp_values)
@@ -635,7 +633,7 @@ class Stats:
         state = {
             "values": self.values,
             "reduce": self._reduce_method,
-            "reduce_per_index_on_parallel_merge": self._reduce_per_index_on_parallel_merge,
+            "reduce_per_index_on_aggregate": self._reduce_per_index_on_aggregate,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
@@ -652,8 +650,8 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
-                reduce_per_index_on_parallel_merge=state.get(
-                    "reduce_per_index_on_parallel_merge", False
+                reduce_per_index_on_aggregate=state.get(
+                    "reduce_per_index_on_aggregate", False
                 ),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
@@ -717,7 +715,7 @@ class Stats:
         stats = Stats(
             init_values=init_values,
             reduce=other._reduce_method,
-            reduce_per_index_on_parallel_merge=other._reduce_per_index_on_parallel_merge,
+            reduce_per_index_on_aggregate=other._reduce_per_index_on_aggregate,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
