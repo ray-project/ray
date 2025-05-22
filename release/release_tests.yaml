@@ -103,6 +103,7 @@
       frequency: manual
       cluster:
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
+    - __suffix__: kuberay
 
   alert: default
 
