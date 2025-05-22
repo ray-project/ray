@@ -1648,6 +1648,7 @@ def test_random_sample_fixed_seed_0002(
     assert set(ds.to_pandas()["item"].to_list()) == set(expected.tolist())
 
 
+@pytest.mark.skip(reason="Depends on https://github.com/ray-project/ray/issues/53246")
 def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
     """Test that for the actor map operator, the UDF object is deleted properly."""
     test_file = tmp_path / "test.txt"

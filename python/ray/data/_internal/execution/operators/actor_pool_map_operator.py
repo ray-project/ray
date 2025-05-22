@@ -464,13 +464,7 @@ class _MapWorker:
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
 
-    def on_exit(self):
-        """Called when the actor is about to exist.
-        This enables performing cleanup operations via `UDF.__del__`.
-
-        Note, this only ensures cleanup is performed when the job exists gracefully.
-        If the driver or the actor is forcefully killed, `__del__` will not be called.
-        """
+    def __del__(self):
         # `_map_actor_context` is a global variable that references the UDF object.
         # Delete it to trigger `UDF.__del__`.
         del ray.data._map_actor_context
@@ -852,25 +846,17 @@ class _ActorPool(AutoscalingActorPool):
     def _release_running_actors(self, force: bool):
         running = list(self._running_actors.keys())
 
-        on_exit_refs = []
-
-        # First release actors and collect their shutdown hook object-refs
+        # First release actors
         for actor in running:
-            on_exit_refs.append(self._release_running_actor(actor))
-
-        # Wait for all actors to shutdown gracefully before killing them
-        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
-
+            self._release_running_actor(actor)
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
         if force:
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(
-        self, actor: ray.actor.ActorHandle
-    ) -> Optional[ObjectRef]:
-        """Remove the given actor from the pool and trigger its `on_exit` callback.
+    def _release_running_actor(self, actor: ray.actor.ActorHandle):
+        """Remove the given actor from the pool.
 
         This method returns a ``ref`` to the result
         """
@@ -879,15 +865,8 @@ class _ActorPool(AutoscalingActorPool):
         #
         # Otherwise, actor cannot be reconstructed for the purposes of produced
         # object's lineage reconstruction.
-        if actor not in self._running_actors:
-            return None
-
-        # Call `on_exit` to trigger `UDF.__del__` which may perform
-        # cleanup operations.
-        ref = actor.on_exit.remote()
-        del self._running_actors[actor]
-
-        return ref
+        if actor in self._running_actors:
+            del self._running_actors[actor]
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
