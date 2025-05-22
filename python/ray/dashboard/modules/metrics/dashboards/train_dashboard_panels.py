@@ -5,23 +5,20 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
-# Ray Train Metrics (Worker)
-WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
+# Ray Train Metrics (Controller)
+CONTROLLER_STATE_PANEL = Panel(
     id=1,
-    title="Checkpoint Report Time",
-    description="Time taken to report a checkpoint to storage.",
-    unit="seconds",
+    title="Controller State",
+    description="Current state of the train controller.",
+    unit="",
     targets=[
         Target(
-            expr="sum(ray_train_report_total_blocked_time_s{{ray_train_worker_world_rank=~'$TrainWorkerWorldRank', ray_train_worker_actor_id=~'$TrainWorkerActorId', {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)",
-            legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
-        )
+            expr="sum(ray_train_controller_state{{{global_filters}}}) by (ray_train_run_name, ray_train_controller_state)",
+            legend="Run Name: {{ray_train_run_name}}, Controller State: {{ray_train_controller_state}}",
+        ),
     ],
-    fill=0,
-    stack=False,
 )
 
-# Ray Train Metrics (Controller)
 CONTROLLER_OPERATION_TIME_PANEL = Panel(
     id=2,
     title="Controller Operation Time",
@@ -41,17 +38,20 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
     stack=False,
 )
 
-CONTROLLER_STATE_PANEL = Panel(
+# Ray Train Metrics (Worker)
+WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
     id=3,
-    title="Controller State",
-    description="Current state of the train controller.",
-    unit="",
+    title="Checkpoint Report Time",
+    description="Time taken to report a checkpoint to storage.",
+    unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_train_controller_state{{{global_filters}}}) by (ray_train_run_name, ray_train_controller_state)",
-            legend="Run Name: {{ray_train_run_name}}, Controller State: {{ray_train_controller_state}}",
-        ),
+            expr="sum(ray_train_report_total_blocked_time_s{{ray_train_worker_world_rank=~'$TrainWorkerWorldRank', ray_train_worker_actor_id=~'$TrainWorkerActorId', {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)",
+            legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
+        )
     ],
+    fill=0,
+    stack=False,
 )
 
 # Core System Resources
@@ -89,10 +89,27 @@ MEMORY_UTILIZATION_PANEL = Panel(
     ],
 )
 
+MEMORY_DETAILED_PANEL = Panel(
+    id=6,
+    title="Memory Allocation Details",
+    description="Memory allocation details including available and shared memory.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_node_mem_available{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Available Memory: {{instance}}",
+        ),
+        Target(
+            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            legend="Shared Memory: {{instance}}",
+        ),
+    ],
+)
+
 # GPU Resources
 # TODO: Add GPU Device/Index as a filter.
 GPU_UTILIZATION_PANEL = Panel(
-    id=6,
+    id=7,
     title="GPU Usage",
     description="GPU utilization across all workers.",
     unit="GPUs",
@@ -109,7 +126,7 @@ GPU_UTILIZATION_PANEL = Panel(
 )
 
 GPU_MEMORY_UTILIZATION_PANEL = Panel(
-    id=7,
+    id=8,
     title="GPU Memory Usage",
     description="GPU memory usage across all workers.",
     unit="bytes",
@@ -127,7 +144,7 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
 
 # Storage Resources
 DISK_UTILIZATION_PANEL = Panel(
-    id=8,
+    id=9,
     title="Disk Space Usage",
     description="Disk space usage across all workers.",
     unit="bytes",
@@ -144,7 +161,7 @@ DISK_UTILIZATION_PANEL = Panel(
 )
 
 DISK_THROUGHPUT_PANEL = Panel(
-    id=9,
+    id=10,
     title="Disk Throughput",
     description="Current disk read/write throughput.",
     unit="Bps",
@@ -161,7 +178,7 @@ DISK_THROUGHPUT_PANEL = Panel(
 )
 
 DISK_OPERATIONS_PANEL = Panel(
-    id=10,
+    id=11,
     title="Disk Operations",
     description="Current disk read/write operations per second.",
     unit="ops/s",
@@ -179,7 +196,7 @@ DISK_OPERATIONS_PANEL = Panel(
 
 # Network Resources
 NETWORK_THROUGHPUT_PANEL = Panel(
-    id=11,
+    id=12,
     title="Network Throughput",
     description="Current network send/receive throughput.",
     unit="Bps",
@@ -196,7 +213,7 @@ NETWORK_THROUGHPUT_PANEL = Panel(
 )
 
 NETWORK_TOTAL_PANEL = Panel(
-    id=12,
+    id=13,
     title="Network Total Traffic",
     description="Total network traffic sent/received.",
     unit="bytes",
@@ -208,23 +225,6 @@ NETWORK_TOTAL_PANEL = Panel(
         Target(
             expr='sum(ray_node_network_received{{instance=~"$Instance",{global_filters}}}) by (instance)',
             legend="Total Received: {{instance}}",
-        ),
-    ],
-)
-
-MEMORY_DETAILED_PANEL = Panel(
-    id=13,
-    title="Memory Allocation Details",
-    description="Memory allocation details including available and shared memory.",
-    unit="bytes",
-    targets=[
-        Target(
-            expr='sum(ray_node_mem_available{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Available Memory: {{instance}}",
-        ),
-        Target(
-            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (instance)',
-            legend="Shared Memory: {{instance}}",
         ),
     ],
 )

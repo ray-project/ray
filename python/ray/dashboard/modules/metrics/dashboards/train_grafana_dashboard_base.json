@@ -148,7 +148,7 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "hide": 0,
+        "hide": 2,
         "includeAll": true,
         "multi": false,
         "allValue": ".*",
