@@ -1,7 +1,6 @@
-# coding: utf-8
-import logging
 import os
 import sys
+import random
 import torch
 import pytest
 import ray
@@ -10,9 +9,6 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel import ChannelContext
 
 
-logger = logging.getLogger(__name__)
-
-# Actor definition for the new test
 @ray.remote
 class GPUTestActor:
     def register_custom_serializer(self):
@@ -24,11 +20,13 @@ class GPUTestActor:
             backend="gloo", world_size=world_size, rank=rank, init_method=init_method
         )
 
-    @ray.method(tensor_transport="GLOO")
+    @ray.method(tensor_transport="gloo")
     def echo(self, data):
         return data
 
     def double(self, data):
+        if isinstance(data, list):
+            return [d * 2 for d in data]
         return data * 2
 
 
@@ -67,24 +65,47 @@ def test_mix_cpu_gpu_data(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     init_process_group(actors)
 
-    class Wrapper:
-        def __init__(self, tensor, cpu_data):
-            self.tensor = tensor
-            self.cpu_data = cpu_data
-
-        def __mul__(self, other):
-            return Wrapper(self.tensor * other, self.cpu_data)
-
     tensor = torch.randn((1,))
-    data = Wrapper(tensor, "hello world")
+    cpu_data = random.randint(0, 100)
+    data = [tensor, cpu_data]
 
     sender, receiver = actors[0], actors[1]
     ref = sender.echo.remote(data)
     ref = receiver.double.remote(ref)
     result = ray.get(ref)
 
-    assert result.tensor == pytest.approx(tensor * 2)
-    assert result.cpu_data == "hello world"
+    assert result[0] == pytest.approx(tensor * 2)
+    assert result[1] == cpu_data * 2
+
+
+def test_multiple_tensors(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    init_process_group(actors)
+
+    tensor1 = torch.randn((1,))
+    tensor2 = torch.randn((2,))
+    cpu_data = random.randint(0, 100)
+    data = [tensor1, tensor2, cpu_data]
+
+    sender, receiver = actors[0], actors[1]
+    ref = sender.echo.remote(data)
+    ref = receiver.double.remote(ref)
+    result = ray.get(ref)
+
+    assert result[0] == pytest.approx(tensor1 * 2)
+    assert result[1] == pytest.approx(tensor2 * 2)
+    assert result[2] == cpu_data * 2
+
+
+def test_invalid_tensor_transport(ray_start_regular):
+    with pytest.raises(ValueError, match="Invalid tensor transport"):
+
+        @ray.remote
+        class InvalidActor:
+            @ray.method(tensor_transport="invalid")
+            def echo(self, data):
+                return data
 
 
 if __name__ == "__main__":
