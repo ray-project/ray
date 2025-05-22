@@ -4132,7 +4132,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
@@ -4153,7 +4153,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
@@ -4173,7 +4173,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-serve-llm-profiler
 
 
 - name: llm_serve_llama_3dot1_8B_lora
@@ -4194,7 +4194,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
@@ -4214,7 +4214,28 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
+
+- name: llm_serve_correctness
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+      runtime_env:
+        - VLLM_USE_V1=1
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_correctness.py
 
 
 ##############
