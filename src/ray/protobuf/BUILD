@@ -400,7 +400,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_dataset_metadata_py_proto",
-    deps = [":export_dataset_metadata_proto"],
+    protos = [":export_dataset_metadata_proto"],
 )
 
 # Agent manager gRPC lib.
@@ -525,6 +525,11 @@ cc_proto_library(
     deps = [":events_actor_task_definition_event_proto"],
 )
 
+python_grpc_compile(
+    name = "events_actor_task_definition_event_py_proto",
+    protos = [":events_actor_task_definition_event_proto"],
+)
+
 proto_library(
     name = "events_actor_task_execution_event_proto",
     srcs = ["events_actor_task_execution_event.proto"],
@@ -537,6 +542,11 @@ proto_library(
 cc_proto_library(
     name = "events_actor_task_execution_event_cc_proto",
     deps = [":events_actor_task_execution_event_proto"],
+)
+
+python_grpc_compile(
+    name = "events_actor_task_execution_event_py_proto",
+    protos = [":events_actor_task_execution_event_proto"],
 )
 
 proto_library(
@@ -553,6 +563,11 @@ cc_proto_library(
     deps = [":events_task_definition_event_proto"],
 )
 
+python_grpc_compile(
+    name = "events_task_definition_event_py_proto",
+    protos = [":events_task_definition_event_proto"],
+)
+
 proto_library(
     name = "events_task_execution_event_proto",
     srcs = ["events_task_execution_event.proto"],
@@ -565,6 +580,11 @@ proto_library(
 cc_proto_library(
     name = "events_task_execution_event_cc_proto",
     deps = [":events_task_execution_event_proto"],
+)
+
+python_grpc_compile(
+    name = "events_task_execution_event_py_proto",
+    protos = [":events_task_execution_event_proto"],
 )
 
 proto_library(
@@ -580,6 +600,11 @@ proto_library(
 cc_proto_library(
     name = "events_base_event_cc_proto",
     deps = [":events_base_event_proto"],
+)
+
+python_grpc_compile(
+    name = "events_base_event_py_proto",
+    protos = [":events_base_event_proto"],
 )
 
 proto_library(
@@ -633,4 +658,6 @@ proto_library(
 python_grpc_compile(
     name = "serve_py_proto",
     deps = [":serve_proto"],
+    name = "events_event_aggregator_service_py_proto",
+    protos = [":events_event_aggregator_service_proto"],
 )
