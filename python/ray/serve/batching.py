@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Collection
 import io
 import logging
 import time
@@ -18,6 +19,7 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Set,
     Tuple,
     TypeVar,
     overload,
@@ -259,18 +261,20 @@ class _BatchQueue:
 
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
-        tasks: List[asyncio.Task] = []
+        tasks: Set[asyncio.Task] = set()
         while not self._loop.is_closed():
             self.curr_iteration_start_time = time.time()  # TODO: what do we do when there are many ongoing at once?
             batch = await self.wait_for_batch()
-            promise = self._process_batch(func, batch, self.semaphore)
-            tasks.append(asyncio.create_task(promise))
-            tasks[-1].add_done_callback(lambda task: tasks.remove(task))
+            promise = self._process_batch(func, batch)
+            task = asyncio.create_task(promise)
+            tasks.add(task)
+            task.add_done_callback(lambda task: tasks.remove(task))
             await self._poll_tasks(tasks)
 
-    async def _process_batch(self, func: Callable, batch: List[_SingleRequest], semaphore: asyncio.Semaphore) -> None:
+    async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
         """Processes queued request batch."""
-        async with semaphore:
+        # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
+        async with self.semaphore:
             # Remove requests that have been cancelled from the batch. If
             # all requests have been cancelled, simply return and wait for
             # the next batch.
@@ -307,7 +311,7 @@ class _BatchQueue:
                 for future in futures:
                     _set_exception_if_not_done(future, e)
 
-    async def _poll_tasks(self, tasks: List[asyncio.Task]) -> None:
+    async def _poll_tasks(self, tasks: Collection[asyncio.Task]) -> None:
         for task in tasks:
             if task.done():
                 try:
