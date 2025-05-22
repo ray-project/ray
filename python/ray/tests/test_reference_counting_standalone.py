@@ -7,7 +7,6 @@ to reduce overheads & overall test runtime.
 import logging
 import platform
 import random
-import signal
 import sys
 import time
 
@@ -21,8 +20,6 @@ from ray._private.test_utils import (
     SignalActor,
     wait_for_condition,
 )
-
-SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 logger = logging.getLogger(__name__)
 
