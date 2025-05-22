@@ -699,7 +699,7 @@ def batch(
         )
 
         # Store debugging methods in the lazy_batch_queue wrapper
-        wrapper._get_curr_iteration_start_time = (
+        wrapper._get_curr_iteration_start_times = (
             lazy_batch_queue_wrapper._get_curr_iteration_start_times
         )
         wrapper._is_batching_task_alive = (

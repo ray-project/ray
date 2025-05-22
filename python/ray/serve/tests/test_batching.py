@@ -158,7 +158,7 @@ def test_observability_helpers():
     """Checks observability helper methods that are used for batching.
 
     Tests three observability helper methods:
-        * _get_curr_iteration_start_time: gets the current iteration's start
+        * _get_curr_iteration_start_times: gets the current iteration's start
             time.
         * _is_batching_task_alive: returns whether the batch-handler task is
             alive.
