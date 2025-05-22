@@ -93,10 +93,9 @@ def ray_deps_setup():
         urls = [
             "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v28.2.tar.gz",
         ],
-        patches = select({
-            "@platforms//os:windows": ["@com_github_ray_project_ray//thirdparty/patches:protobuf-windows-const-nan.patch"],
-            "//conditions:default": [],
-        }),
+        patches = [
+            "@com_github_ray_project_ray//thirdparty/patches:protobuf-windows-const-nan.patch",
+        ],
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
