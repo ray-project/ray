@@ -711,7 +711,8 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
-  // Inline or not.
+  // `is_inlined` is true if the argument is an ObjectRef, but it is small enough
+  // to be inlined in the task spec instead of being pushed to the object store.
   bool is_inlined = 5;
 }
 
