@@ -182,7 +182,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=12,
         title="P99 latency of multiplexed model loads per replica",
-        description="P99 latency of mutliplexed model load per replica.",
+        description="P99 latency of multiplexed model load per replica.",
         unit="ms",
         targets=[
             Target(
@@ -197,7 +197,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=13,
         title="P99 latency of multiplexed model unloads per replica",
-        description="P99 latency of mutliplexed model unload per replica.",
+        description="P99 latency of multiplexed model unload per replica.",
         unit="ms",
         targets=[
             Target(

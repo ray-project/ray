@@ -142,7 +142,9 @@ if __name__ == "__main__":
 
     base_config = (
         (PPOConfig().environment("CartPole-v1"))
-        .env_runners(env_to_module_connector=lambda env: Float16Connector())
+        .env_runners(
+            env_to_module_connector=lambda env, spaces, device: Float16Connector()
+        )
         # Plug in our custom callback (on_algorithm_init) to make EnvRunner RLModules
         # float16 models.
         .callbacks(on_algorithm_init=on_algorithm_init)

@@ -44,7 +44,7 @@ class Stats:
         init_values: Optional[Any] = None,
         reduce: Optional[str] = "mean",
         percentiles: Union[List[int], bool] = False,
-        reduce_per_index_on_parallel_merge: Optional[bool] = None,
+        reduce_per_index_on_aggregate: bool = False,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -76,13 +76,12 @@ class Stats:
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
                 "mean".
-            reduce_per_index_on_parallel_merge: If True, when merging Stats objects, we reduce
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
                 incoming values per index such that the new value at index `n` will be
                 the reduced value of all incoming values at index `n`.
                 If False, when reducing `n` Stats, the first `n` merged values will be
                 the reduced value of all incoming values at index `0`, the next `n` merged
                 values will be the reduced values of all incoming values at index `1`, etc.
-                If None, the default behavior is False.
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
@@ -169,15 +168,13 @@ class Stats:
 
         if (
             self._reduce_method not in ["mean", "sum", "min", "max"]
-            and reduce_per_index_on_parallel_merge
+            and reduce_per_index_on_aggregate
         ):
             raise ValueError(
-                "reduce_per_index_on_parallel_merge is only supported for mean, sum, min, and max reduction!"
+                "reduce_per_index_on_aggregate is only supported for mean, sum, min, and max reduction!"
             )
 
-        self._reduce_per_index_on_parallel_merge = (
-            reduce_per_index_on_parallel_merge or False
-        )
+        self._reduce_per_index_on_aggregate = reduce_per_index_on_aggregate
 
         # Timing functionality (keep start times per thread).
         self._start_times = defaultdict(lambda: None)
@@ -254,7 +251,7 @@ class Stats:
         """
         self.check_value(value)
         # If throughput tracking is enabled, calculate it based on time between pushes
-        if self._throughput_stats is not None:
+        if self.has_throughput:
             current_time = time.perf_counter()
             if self._last_push_time >= 0:
                 time_diff = current_time - self._last_push_time
@@ -357,7 +354,7 @@ class Stats:
         Returns:
             The current throughput estimate per second.
         """
-        if self._throughput_stats is None:
+        if not self.has_throughput:
             raise ValueError("Throughput tracking is not enabled for this Stats object")
         # We can always return the first value here because throughput is a single value
         return self._throughput_stats.peek()
@@ -449,7 +446,7 @@ class Stats:
         self.values.extend(other.values)
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput_stats is not None:
+        if self.has_throughput:
             self._throughput_stats.merge_on_time_axis(other._throughput_stats)
 
         # Mark that we have new values since we modified the values list
@@ -554,11 +551,9 @@ class Stats:
             self._set_values(list(reversed(new_values)))
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput_stats is not None:
+        if self.has_throughput:
             other_throughput_stats = [
-                other._throughput_stats
-                for other in others
-                if other._throughput_stats is not None
+                other._throughput_stats for other in others if other.has_throughput
             ]
             self._throughput_stats.merge_in_parallel(*other_throughput_stats)
 
@@ -683,7 +678,7 @@ class Stats:
             "values": self.values,
             "reduce": self._reduce_method,
             "percentiles": self._percentiles,
-            "reduce_per_index_on_parallel_merge": self._reduce_per_index_on_parallel_merge,
+            "reduce_per_index_on_aggregate": self._reduce_per_index_on_aggregate,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
@@ -701,8 +696,8 @@ class Stats:
                 state["values"],
                 reduce=state["reduce"],
                 percentiles=state.get("percentiles", False),
-                reduce_per_index_on_parallel_merge=state.get(
-                    "reduce_per_index_on_parallel_merge", False
+                reduce_per_index_on_aggregate=state.get(
+                    "reduce_per_index_on_aggregate", False
                 ),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
@@ -769,12 +764,12 @@ class Stats:
             init_values=init_values,
             reduce=other._reduce_method,
             percentiles=other._percentiles,
-            reduce_per_index_on_parallel_merge=other._reduce_per_index_on_parallel_merge,
+            reduce_per_index_on_aggregate=other._reduce_per_index_on_aggregate,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
             throughput=other._throughput_stats.peek()
-            if other._throughput_stats is not None
+            if other.has_throughput
             else False,
             throughput_ema_coeff=other._throughput_ema_coeff,
         )
@@ -793,7 +788,7 @@ class Stats:
         self._has_new_values = True
 
     def _reduced_values(self, values=None) -> Tuple[Any, Any]:
-        """Runs a non-commited reduction procedure on given values (or `self.values`).
+        """Runs a non-committed reduction procedure on given values (or `self.values`).
 
         Note that this method does NOT alter any state of `self` or the possibly
         provided list of `values`. It only returns new values as they should be
@@ -923,25 +918,30 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
             and base_stats._clear_on_reduce is False
         ):
             for stat in incoming_stats:
-                base_stats.push(-stat.get_reduce_history()[-2][0])
+                reduce_by = stat.get_reduce_history()[-2][0]
+                base_stats.values[-1] -= reduce_by
     else:
         # Nothing to be merged
         return base_stats
 
     if new_root_stats:
-        # Note that we may take a mean of means here, which is not the same as a mean of all values
-        # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
+        # Note that we may take a mean of means here, which is not the same as a
+        # mean of all values. In the future, we could implement a weighted mean
+        # of means here by introducing a new Stats object that counts samples
+        # for each mean Stats object.
         if len(incoming_stats) > 1:
             base_stats.merge_in_parallel(*incoming_stats[1:])
     elif len(incoming_stats) > 0:
         if len(incoming_stats) > 1:
-            # There are more than one incoming parallel others -> Merge all of them
-            # in parallel (equal importance)
+            # There are more than one incoming parallel others -> Merge all of
+            # them in parallel (equal importance).
             incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
 
-        # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
+        # Merge incoming Stats object into base Stats object on time axis
+        # (giving incoming ones priority).
         if base_stats._reduce_method == "mean" and not base_stats._clear_on_reduce:
-            # If we don't clear values, values that are not cleared would contribute to the mean multiple times.
+            # If we don't clear values, values that are not cleared would contribute
+            # to the mean multiple times.
             base_stats._set_values(incoming_stats[0].values.copy())
         else:
             base_stats.merge_on_time_axis(incoming_stats[0])

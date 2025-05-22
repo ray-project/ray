@@ -465,6 +465,10 @@ class NodeInfoAccessor {
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
+  virtual bool IsSubscribedToNodeChange() const {
+    return node_change_callback_ != nullptr;
+  }
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
