@@ -220,8 +220,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 //
                 // TODO(hjiang): Able to reduce a few health check based on know resource
                 // usage communication between GCS and raylet.
-                timer_.expires_from_now(
-                    boost::posix_time::milliseconds(mgr->period_ms_));
+                timer_.expires_from_now(boost::posix_time::milliseconds(mgr->period_ms_));
                 timer_.async_wait([this](auto) { StartHealthCheck(); });
               }
             },

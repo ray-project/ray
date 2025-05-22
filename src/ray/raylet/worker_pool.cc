@@ -1326,39 +1326,40 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
 void WorkerPool::StartNewWorker(
     const std::shared_ptr<PopWorkerRequest> &pop_worker_request) {
-  auto start_worker_process_fn = [this](
-                                     std::shared_ptr<PopWorkerRequest> _pop_worker_request,
-                                     const std::string &serialized_runtime_env_context) {
-    auto &state = GetStateForLanguage(_pop_worker_request->language);
-    const std::string &serialized_runtime_env =
-        _pop_worker_request->runtime_env_info.serialized_runtime_env();
+  auto start_worker_process_fn =
+      [this](std::shared_ptr<PopWorkerRequest> _pop_worker_request,
+             const std::string &serialized_runtime_env_context) {
+        auto &state = GetStateForLanguage(_pop_worker_request->language);
+        const std::string &serialized_runtime_env =
+            _pop_worker_request->runtime_env_info.serialized_runtime_env();
 
-    PopWorkerStatus status = PopWorkerStatus::OK;
-    auto [proc, startup_token] =
-        StartWorkerProcess(_pop_worker_request->language,
-                           _pop_worker_request->worker_type,
-                           _pop_worker_request->job_id,
-                           &status,
-                           _pop_worker_request->dynamic_options,
-                           _pop_worker_request->runtime_env_hash,
-                           serialized_runtime_env_context,
-                           _pop_worker_request->runtime_env_info,
-                           _pop_worker_request->worker_startup_keep_alive_duration);
-    if (status == PopWorkerStatus::OK) {
-      RAY_CHECK(proc.IsValid());
-      WarnAboutSize();
-      state.pending_registration_requests.emplace_back(_pop_worker_request);
-      MonitorPopWorkerRequestForRegistration(_pop_worker_request);
-    } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
-      // TODO(jjyao) As an optimization, we don't need to delete the runtime env
-      // but reuse it the next time we retry the request.
-      DeleteRuntimeEnvIfPossible(serialized_runtime_env);
-      state.pending_start_requests.emplace_back(std::move(_pop_worker_request));
-    } else {
-      DeleteRuntimeEnvIfPossible(serialized_runtime_env);
-      PopWorkerCallbackAsync(std::move(_pop_worker_request->callback), nullptr, status);
-    }
-  };
+        PopWorkerStatus status = PopWorkerStatus::OK;
+        auto [proc, startup_token] =
+            StartWorkerProcess(_pop_worker_request->language,
+                               _pop_worker_request->worker_type,
+                               _pop_worker_request->job_id,
+                               &status,
+                               _pop_worker_request->dynamic_options,
+                               _pop_worker_request->runtime_env_hash,
+                               serialized_runtime_env_context,
+                               _pop_worker_request->runtime_env_info,
+                               _pop_worker_request->worker_startup_keep_alive_duration);
+        if (status == PopWorkerStatus::OK) {
+          RAY_CHECK(proc.IsValid());
+          WarnAboutSize();
+          state.pending_registration_requests.emplace_back(_pop_worker_request);
+          MonitorPopWorkerRequestForRegistration(_pop_worker_request);
+        } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
+          // TODO(jjyao) As an optimization, we don't need to delete the runtime env
+          // but reuse it the next time we retry the request.
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env);
+          state.pending_start_requests.emplace_back(std::move(_pop_worker_request));
+        } else {
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env);
+          PopWorkerCallbackAsync(
+              std::move(_pop_worker_request->callback), nullptr, status);
+        }
+      };
 
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info.serialized_runtime_env();

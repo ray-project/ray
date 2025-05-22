@@ -180,7 +180,7 @@ class LocalObjectManager {
                     size_t _object_size)
         : owner_address(_owner_address),
           generator_id(_generator_id.IsNil() ? std::nullopt
-                                            : std::optional<ObjectID>(_generator_id)),
+                                             : std::optional<ObjectID>(_generator_id)),
           object_size(_object_size) {}
     rpc::Address owner_address;
     bool is_freed = false;
