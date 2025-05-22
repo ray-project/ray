@@ -785,7 +785,7 @@ class ReplicaScheduler(ABC):
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending request in out of order.
+        """Assign the replica to the next pending request, potentially not in order of when the request arrived.
 
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
