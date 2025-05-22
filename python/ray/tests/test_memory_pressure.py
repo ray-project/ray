@@ -171,9 +171,7 @@ def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
     reason="memory monitor only on linux currently",
 )
 @pytest.mark.parametrize("restartable", [False, True])
-def test_restartable_actor_throws_oom_error(
-    ray_with_memory_monitor, restartable: bool
-):
+def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable: bool):
     addr = ray_with_memory_monitor
     if restartable:
         leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
