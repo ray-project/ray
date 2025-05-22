@@ -1601,8 +1601,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
-  void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
-
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
   /// and a new one takes its place with the same place. In this situation, we want
