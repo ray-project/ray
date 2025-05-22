@@ -112,9 +112,10 @@ def method(*args, **kwargs):
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
             method.__ray_tensor_transport__ = kwargs["tensor_transport"].upper()
-            assert (
-                method.__ray_tensor_transport__ in TENSOR_TRANSPORT
-            ), f"tensor_transport must be a case-insensitive string that is one of {TENSOR_TRANSPORT}."
+            if method.__ray_tensor_transport__ not in TENSOR_TRANSPORT:
+                raise ValueError(
+                    f"Invalid tensor transport {method.__ray_tensor_transport__}, must be one of {TENSOR_TRANSPORT}."
+                )
         return method
 
     return annotate_method
@@ -501,7 +502,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
-        self.tensor_transport: Dict[str, TypeTensorTransport] = {}
+        self.method_name_to_tensor_transport: Dict[str, TypeTensorTransport] = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -558,7 +559,9 @@ class _ActorClassMethodMetadata(object):
                 ] = method.__ray_generator_backpressure_num_objects__
 
             if hasattr(method, "__ray_tensor_transport__"):
-                self.tensor_transport[method_name] = method.__ray_tensor_transport__
+                self.method_name_to_tensor_transport[
+                    method_name
+                ] = method.__ray_tensor_transport__
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -1309,7 +1312,7 @@ class ActorClass:
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             meta.method_meta.enable_task_events,
-            meta.method_meta.tensor_transport,
+            meta.method_meta.method_name_to_tensor_transport,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_cluster_and_job,
@@ -1397,7 +1400,7 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
-        method_tensor_transport: Dict[str, TypeTensorTransport],
+        method_name_to_tensor_transport: Dict[str, TypeTensorTransport],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1421,7 +1424,7 @@ class ActorHandle:
             method_generator_backpressure_num_objects
         )
         self._ray_method_enable_task_events = method_enable_task_events
-        self._ray_method_tensor_transport = method_tensor_transport
+        self._ray_method_name_to_tensor_transport = method_name_to_tensor_transport
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_cluster_and_job = cluster_and_job
         self._ray_is_cross_language = language != Language.PYTHON
@@ -1465,7 +1468,9 @@ class ActorHandle:
                     ),
                     decorator=self._ray_method_decorators.get(method_name),
                     signature=self._ray_method_signatures[method_name],
-                    tensor_transport=self._ray_method_tensor_transport.get(method_name),
+                    tensor_transport=self._ray_method_name_to_tensor_transport.get(
+                        method_name
+                    ),
                 )
                 setattr(self, method_name, method)
 
