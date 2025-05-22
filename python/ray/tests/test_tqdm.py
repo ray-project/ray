@@ -109,5 +109,4 @@ def test_flush_interval():
 
 
 if __name__ == "__main__":
-    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-sv", __file__]))
