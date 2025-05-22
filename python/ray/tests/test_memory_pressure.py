@@ -132,44 +132,6 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
-    addr = ray_with_memory_monitor
-    leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold - 0.3
-    )
-    ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
-
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold + 0.1
-    )
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
-
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=100,
-        addr=addr,
-        tag="MemoryManager.ActorEviction.Total",
-        value=1.0,
-    )
-
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=100,
-        addr=addr,
-        tag="Leaker.__init__",
-        value=1.0,
-    )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
 @pytest.mark.parametrize("restartable", [False, True])
 def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable: bool):
     addr = ray_with_memory_monitor
