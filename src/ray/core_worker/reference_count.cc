@@ -1601,6 +1601,10 @@ void ReferenceCounter::FillObjectInformation(
 void ReferenceCounter::FillObjectInformationInternal(
     ReferenceTable::iterator it, rpc::WorkerObjectLocationsPubMessage *object_info) {
   for (const auto &node_id : it->second.locations) {
+    // Skip spilled node ID.
+    if (node_id == it->second.spilled_node_id) {
+      continue;
+    }
     object_info->add_node_ids(node_id.Binary());
   }
   int64_t object_size = it->second.object_size;
