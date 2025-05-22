@@ -4,6 +4,7 @@ requires a shared Serve instance.
 """
 import logging
 import os
+import random
 import socket
 import sys
 import time
@@ -13,7 +14,6 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.services import new_port
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -40,6 +40,10 @@ from ray.tests.conftest import (
     ray_start_with_dashboard,  # noqa: F401
 )
 from ray.util.state import list_actors
+
+
+def _get_random_port() -> int:
+    return random.randint(10000, 65535)
 
 
 @pytest.fixture
@@ -384,7 +388,7 @@ def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    port = new_port()
+    port = _get_random_port()
     serve.start(
         http_options=dict(
             port=port,
@@ -422,7 +426,7 @@ def test_http_root_path(ray_shutdown):
     def hello():
         return "hello"
 
-    port = new_port()
+    port = _get_random_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
@@ -485,7 +489,7 @@ def test_http_head_only(ray_cluster):
     ray.init(head_node.address)
     assert len(ray.nodes()) == 2
 
-    serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
+    serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
     # Only the controller and head node proxy should be started, both on the head node.
     actors = list_actors()
@@ -565,7 +569,7 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
     serve.start()
 
     # create a different config
-    test_http = dict(host="127.1.1.8", port=new_port())
+    test_http = dict(host="127.1.1.8", port=_get_random_port())
 
     serve.start(http_options=test_http)
 

@@ -265,24 +265,6 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
-    if not denylist:
-        denylist = set()
-    port = random.randint(lower_bound, upper_bound)
-    retry = 0
-    while port in denylist:
-        if retry > 100:
-            break
-        port = random.randint(lower_bound, upper_bound)
-        retry += 1
-    if retry > 100:
-        raise ValueError(
-            "Failed to find a new port from the range "
-            f"{lower_bound}-{upper_bound}. Denylist: {denylist}"
-        )
-    return port
-
-
 def _find_address_from_flag(flag: str):
     """
     Attempts to find all valid Ray addresses on this node, specified by the
