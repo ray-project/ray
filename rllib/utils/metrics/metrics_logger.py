@@ -33,20 +33,6 @@ class MetricsLogger:
     new data.
     - Tracking throughputs of logged values.
 
-    We mostly use this to aggregate stats from across components in a tree structure.
-    For example, we aggregate stats from across parallel EnvRunners like so:
-
-        Root        (Root/Algorithm object)
-        ┌─┴─┐
-      A1    A2      (AggregatorActor)
-    ┌─┴─┐  ┌─┴─┐
-    E1 E2  E3  E4   (EnvRunner)
-
-
-    Here, the Driver will call MetricsLogger.compile() to get the aggregated stats once per
-    Algorithm iteration and reports them. If you want to log custom metrics, you can do so by
-    calling `log_value` or `log_dict` with the appropriate arguments on an existing MetricsLogger.
-
     .. testcode::
 
         import time
