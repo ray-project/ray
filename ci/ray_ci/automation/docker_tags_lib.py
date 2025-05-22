@@ -522,6 +522,29 @@ def _call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
         return e.returncode, e.output
 
 
+def _call_crane_manifest(tag: str) -> Tuple[int, str]:
+    try:
+        with subprocess.Popen(
+            [
+                _crane_binary(),
+                "manifest",
+                tag,
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            output = ""
+            for line in proc.stdout:
+                logger.info(line + "\n")
+                output += line
+            return_code = proc.wait()
+            if return_code:
+                raise subprocess.CalledProcessError(return_code, proc.args)
+            return return_code, output
+    except subprocess.CalledProcessError as e:
+        return e.returncode, e.output
+
+
 def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     """
     Copy tag from Docker Hub to AWS ECR.
@@ -579,8 +602,18 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
         f.write("\n".join(content))
 
 
-def generate_index(index_name: str, tags: List[str]) -> None:
-    # Generate Docker index manifest based on tags
+def generate_index(index_name: str, tags: List[str]) -> bool:
+    # Make sure tag is an image and not an index
+    for tag in tags:
+        return_code, output = _call_crane_manifest(tag)
+        if return_code:
+            logger.info(f"Failed to get manifest for {tag}")
+            logger.info(f"Error: {output}")
+            return False
+        if "application/vnd.docker.distribution.manifest.list.v2+json" in output:
+            logger.info(f"Tag {tag} is an index, not an image")
+            return False
+
     return_code, output = _call_crane_index(index_name=index_name, tags=tags)
     if return_code:
         logger.info(f"Failed to generate index {index_name}......")
