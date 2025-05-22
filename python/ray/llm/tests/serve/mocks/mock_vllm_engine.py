@@ -124,8 +124,8 @@ class MockVLLMEngine(LLMEngine):
             yield llm_response
             await asyncio.sleep(generation_time)
 
-    async def check_health(self) -> bool:
-        return True
+    async def check_health(self) -> None:
+        return
 
     def stats(self) -> VLLMEngineStats:
         return self._stats.to_stats()
