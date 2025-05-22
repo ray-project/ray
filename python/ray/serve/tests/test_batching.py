@@ -1,7 +1,7 @@
 import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pytest
 import requests
@@ -174,8 +174,8 @@ def test_observability_helpers():
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-        async def _get_curr_iteration_start_time(self) -> Optional[float]:
-            return self.handle_batch._get_curr_iteration_start_time()
+        async def _get_curr_iteration_start_times(self) -> Dict[asyncio.Task, float]:
+            return self.handle_batch._get_curr_iteration_start_times()
 
         async def _is_batching_task_alive(self) -> bool:
             return await self.handle_batch._is_batching_task_alive()
@@ -193,14 +193,19 @@ def test_observability_helpers():
     assert len(handle._get_handling_task_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
 
-    curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
+    curr_iteration_start_times = (
+        handle._get_curr_iteration_start_times.remote().result()
+    )
 
     for _ in range(5):
         requests.get("http://localhost:8000/")
 
-    new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
-
-    assert new_iteration_start_time > curr_iteration_start_time
+    new_iteration_start_times = handle._get_curr_iteration_start_times.remote().result()
+    max_prev_iteration_start_time = max(curr_iteration_start_times.values())
+    assert all(
+        new_iteration_start_time > max_prev_iteration_start_time
+        for new_iteration_start_time in new_iteration_start_times.values()
+    )
     assert len(handle._get_handling_task_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
 
