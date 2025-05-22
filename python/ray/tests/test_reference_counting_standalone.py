@@ -322,5 +322,32 @@ def test_return_nested_ids(shutdown_only, inline_args):
     ray.get(test.remote())
 
 
+def _check_refcounts(expected):
+    actual = ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+    assert len(expected) == len(actual)
+    for object_ref, (local, submitted) in expected.items():
+        hex_id = object_ref.hex().encode("ascii")
+        assert hex_id in actual
+        assert local == actual[hex_id]["local"]
+        assert submitted == actual[hex_id]["submitted"]
+
+
+def test_out_of_band_serialized_object_ref(ray_start_regular):
+    assert (
+        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
+        == 0
+    )
+    obj_ref = ray.put("hello")
+    _check_refcounts({obj_ref: (1, 0)})
+    obj_ref_str = ray.cloudpickle.dumps(obj_ref)
+    _check_refcounts({obj_ref: (2, 0)})
+    del obj_ref
+    assert (
+        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
+        == 1
+    )
+    assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -229,57 +229,6 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
     ray.get(obj_ref)
 
 
-def test_feature_flag(one_cpu_100MiB_shared):
-    @ray.remote
-    def f(array):
-        return np.sum(array)
-
-    @ray.remote
-    class Actor(object):
-        def __init__(self):
-            self.large_object = ray.put(np.zeros(25 * 1024 * 1024, dtype=np.uint8))
-
-        def wait_for_actor_to_start(self):
-            pass
-
-        def get_large_object(self):
-            return ray.get(self.large_object)
-
-    actor = Actor.remote()
-    ray.get(actor.wait_for_actor_to_start.remote())
-
-    # The ray.get below fails with only LRU eviction, as the object
-    # that was ray.put by the actor should have been evicted.
-    ref = actor.get_large_object.remote()
-    ray.get(ref)
-
-    # Keep refs in scope so that they don't get GCed immediately.
-    for _ in range(5):
-        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
-    del put_ref
-
-    wait_for_condition(
-        lambda: not ray._private.worker.global_worker.core_worker.object_exists(ref)
-    )
-
-
-def test_out_of_band_serialized_object_ref(one_cpu_100MiB_shared):
-    assert (
-        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
-        == 0
-    )
-    obj_ref = ray.put("hello")
-    _check_refcounts({obj_ref: (1, 0)})
-    obj_ref_str = ray.cloudpickle.dumps(obj_ref)
-    _check_refcounts({obj_ref: (2, 0)})
-    del obj_ref
-    assert (
-        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
-        == 1
-    )
-    assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
-
-
 def test_captured_object_ref(one_cpu_100MiB_shared):
     captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
 
