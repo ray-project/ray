@@ -18,6 +18,7 @@ import ray
 import ray.cluster_utils
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import (
+    SignalActor,
     wait_for_condition,
 )
 
@@ -347,6 +348,48 @@ def test_out_of_band_serialized_object_ref(ray_start_regular):
         == 1
     )
     assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
+
+
+def test_captured_object_ref(one_cpu_100MiB_shared):
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.wait.remote())
+        ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    obj_ref = f.remote(signal)
+
+    # Delete local references.
+    del f
+    del captured_id
+
+    # Test that the captured object ref is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(obj_ref)
+
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    class Actor:
+        def get(self, signal):
+            ray.get(signal.wait.remote())
+            ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    actor = Actor.remote()
+    obj_ref = actor.get.remote(signal)
+
+    # Delete local references.
+    del Actor
+    del captured_id
+
+    # Test that the captured object ref is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(obj_ref)
 
 
 if __name__ == "__main__":

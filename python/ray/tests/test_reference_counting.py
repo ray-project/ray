@@ -229,48 +229,6 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
     ray.get(obj_ref)
 
 
-def test_captured_object_ref(one_cpu_100MiB_shared):
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    def f(signal):
-        ray.get(signal.wait.remote())
-        ray.get(captured_id)  # noqa: F821
-
-    signal = SignalActor.remote()
-    obj_ref = f.remote(signal)
-
-    # Delete local references.
-    del f
-    del captured_id
-
-    # Test that the captured object ref is pinned despite having no local
-    # references.
-    ray.get(signal.send.remote())
-    _fill_object_store_and_get(obj_ref)
-
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    class Actor:
-        def get(self, signal):
-            ray.get(signal.wait.remote())
-            ray.get(captured_id)  # noqa: F821
-
-    signal = SignalActor.remote()
-    actor = Actor.remote()
-    obj_ref = actor.get.remote(signal)
-
-    # Delete local references.
-    del Actor
-    del captured_id
-
-    # Test that the captured object ref is pinned despite having no local
-    # references.
-    ray.get(signal.send.remote())
-    _fill_object_store_and_get(obj_ref)
-
-
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.

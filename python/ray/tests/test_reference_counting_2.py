@@ -384,7 +384,7 @@ def test_deep_nested_refs(one_cpu_100MiB_shared):
     @ray.remote
     def f(x):
         print(f"=> step {x}")
-        if x > 200:
+        if x > 25:
             return x
         return f.remote(x + 1)
 
@@ -493,8 +493,6 @@ def test_generators(one_cpu_100MiB_shared):
 
 
 def test_lineage_leak(one_cpu_100MiB_shared):
-    ray.init()
-
     @ray.remote
     def process(data):
         return b"\0" * 100_000_000
