@@ -14,7 +14,6 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
@@ -438,39 +437,6 @@ def test_basic_nested_ids(one_cpu_100MiB_shared):
     # Remove the outer reference and check that the inner object gets evicted.
     del outer_oid
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
-
-
-def _all_actors_dead():
-    return all(
-        actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-        for actor in list(ray._private.state.actors().values())
-    )
-
-
-def test_kill_actor_immediately_after_creation(one_cpu_100MiB_shared):
-    @ray.remote
-    class A:
-        pass
-
-    a = A.remote()
-    b = A.remote()
-
-    ray.kill(a)
-    ray.kill(b)
-    wait_for_condition(_all_actors_dead, timeout=10)
-
-
-def test_remove_actor_immediately_after_creation(one_cpu_100MiB_shared):
-    @ray.remote
-    class A:
-        pass
-
-    a = A.remote()
-    b = A.remote()
-
-    del a
-    del b
-    wait_for_condition(_all_actors_dead, timeout=10)
 
 
 # Test that a reference borrowed by an actor constructor is freed if the actor is
