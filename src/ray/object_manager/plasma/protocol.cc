@@ -581,36 +581,6 @@ Status ReadConnectReply(uint8_t *data, size_t size, int64_t *memory_capacity) {
   return Status::OK();
 }
 
-// Evict messages.
-
-Status SendEvictRequest(const std::shared_ptr<StoreConn> &store_conn, int64_t num_bytes) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaEvictRequest(fbb, num_bytes);
-  return PlasmaSend(store_conn, MessageType::PlasmaEvictRequest, &fbb, message);
-}
-
-Status ReadEvictRequest(const uint8_t *data, size_t size, int64_t *num_bytes) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaEvictRequest>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  *num_bytes = message->num_bytes();
-  return Status::OK();
-}
-
-Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaEvictReply(fbb, num_bytes);
-  return PlasmaSend(client, MessageType::PlasmaEvictReply, &fbb, message);
-}
-
-Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaEvictReply>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  num_bytes = message->num_bytes();
-  return Status::OK();
-}
-
 // Get messages.
 
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
