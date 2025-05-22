@@ -17,6 +17,9 @@
 
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/util/logging.h"
@@ -39,7 +42,7 @@ int dlmallopt(int param_number, int value);
 
 namespace {
 /* Copied from dlmalloc.c; make sure to keep in sync */
-size_t MAX_SIZE_T = (size_t)-1;
+size_t MAX_SIZE_T = static_cast<size_t>(-1);
 const int M_MMAP_THRESHOLD = -3;
 
 // We align the allocated region to a 64-byte boundary. This is not
@@ -81,7 +84,7 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
   Free(std::move(allocation.value()));
 }
 
-absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
+std::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(kAlignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
@@ -92,7 +95,7 @@ absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
   return BuildAllocation(mem, bytes, /* is_fallback_allocated */ false);
 }
 
-absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
+std::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
   bool is_fallback_allocated = false;
 
   // Forces allocation as a separate file.
@@ -132,9 +135,9 @@ int64_t PlasmaAllocator::Allocated() const { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() const { return fallback_allocated_; }
 
-absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
-                                                            size_t size,
-                                                            bool is_fallback_allocated) {
+std::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
+                                                           size_t size,
+                                                           bool is_fallback_allocated) {
   if (addr == nullptr) {
     return absl::nullopt;
   }

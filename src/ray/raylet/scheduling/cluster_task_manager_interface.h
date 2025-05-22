@@ -51,8 +51,16 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  virtual bool CancelAllTaskOwnedBy(
+  /// Cancel all tasks owned by a specific worker.
+  virtual bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") = 0;
+
+  /// Cancel all tasks owned by a worker on the specific node.
+  virtual bool CancelAllTasksOwnedBy(
+      const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
@@ -81,7 +89,7 @@ class ClusterTaskManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
-  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  /// Queue task and schedule. This happens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request

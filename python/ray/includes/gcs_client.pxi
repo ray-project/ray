@@ -421,14 +421,12 @@ cdef class InnerGcsClient:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Actors().AsyncKillActor(
-                    c_actor_id,
-                    force_kill,
-                    no_restart,
-                    StatusPyCallback(convert_status, assign_and_decrement_fut,  fut),
-                    timeout_ms
-                )
+            self.inner.get().Actors().AsyncKillActor(
+                c_actor_id,
+                force_kill,
+                no_restart,
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
+                timeout_ms
             )
         return asyncio.wrap_future(fut)
     #############################################################
@@ -608,6 +606,68 @@ cdef class InnerGcsClient:
 
         return (is_accepted, rejection_reason_message.decode())
 
+    #############################################################
+    # Publisher methods
+    #############################################################
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id: Optional[JobID] = None, timeout = None):
+        cdef:
+            CErrorTableData error_info
+            c_string c_key_id = key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Publisher().PublishError(
+                    move(c_key_id), move(error_info), timeout_ms))
+
+    def publish_logs(self, log_json: dict, timeout = None):
+        cdef:
+            CLogBatch log_batch
+            c_string c_key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
+
+        c_key_id = job_id.encode() if job_id else b""
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Publisher().PublishLogs(
+                    move(c_key_id), move(log_batch), timeout_ms))
+
+    def async_publish_node_resource_usage(
+            self, key_id: str, node_resource_usage_json: str) -> Future[None]:
+        cdef:
+            c_string c_key_id = key_id
+            c_string c_node_resource_usage_json = node_resource_usage_json.encode()
+            fut = incremented_fut()
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Publisher().AsyncPublishNodeResourceUsage(
+                    move(c_key_id), move(c_node_resource_usage_json),
+                    StatusPyCallback(convert_status, assign_and_decrement_fut, fut)))
+        return asyncio.wrap_future(fut)
+
     def report_cluster_config(
                 self,
                 serialized_cluster_config: c_string):
@@ -739,12 +799,24 @@ cdef convert_get_cluster_status_reply(
         return None, e
 
 cdef convert_status(CRayStatus status) with gil:
-    # -> None
+    # This function is currently only used by `async_kill_actor` to
+    # convert RayStatus to an HTTP status code.
+    #
+    # Returns:
+    #   Tuple[int, Optional[Exception]]:
+    #     - int: HTTP status code.
+    #       (1) 200: Success
+    #       (2) 404: Actor not found
+    #       (3) 500: Other errors
+    #     - Optional[Exception]: Exception raised by RayStatus
     try:
+        if status.IsNotFound():
+            return 404, None
         check_status_timeout_as_rpc_error(status)
-        return None, None
+        return 200, None
     except Exception as e:
-        return None, e
+        return 500, e
+
 cdef convert_optional_str_none_for_not_found(
         CRayStatus status, optional[c_string] c_str) with gil:
     # If status is NotFound, return None.

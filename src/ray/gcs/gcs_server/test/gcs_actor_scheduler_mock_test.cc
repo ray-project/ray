@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <utility>
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -25,7 +28,7 @@
 #include "ray/common/test_util.h"
 // clang-format on
 
-using namespace ::testing;
+using namespace ::testing;  // NOLINT
 
 namespace ray {
 using raylet::NoopLocalTaskManager;
@@ -59,8 +62,8 @@ class GcsActorSchedulerMockTest : public Test {
         local_node_id,
         *cluster_resource_scheduler,
         /*get_node_info=*/
-        [this](const NodeID &node_id) {
-          auto node = gcs_node_manager->GetAliveNode(node_id);
+        [this](const NodeID &nid) {
+          auto node = gcs_node_manager->GetAliveNode(nid);
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_task=*/nullptr,

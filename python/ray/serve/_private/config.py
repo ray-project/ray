@@ -28,12 +28,14 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
-from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
-from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
-from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
+from ray.serve.generated.serve_pb2 import (
+    AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+    EncodingType as EncodingTypeProto,
+    LoggingConfig as LoggingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
+)
 from ray.util.placement_group import validate_placement_group
 
 
@@ -60,8 +62,19 @@ def _proto_to_dict(proto: Message) -> Dict:
     data = {}
     # Fill data with non-empty fields.
     for field, value in proto.ListFields():
+        # Handle repeated fields
+        if field.label == FieldDescriptor.LABEL_REPEATED:
+            # if we dont do this block the repeated field will be a list of
+            # `google.protobuf.internal.containers.RepeatedScalarFieldContainer
+            # Explicitly convert to list
+            if field.type == FieldDescriptor.TYPE_MESSAGE:
+                data[field.name] = [
+                    _proto_to_dict(v) for v in value
+                ]  # Convert each item
+            else:
+                data[field.name] = list(value)  # Convert to list directly
         # Recursively call if the field is another protobuf.
-        if field.type == FieldDescriptor.TYPE_MESSAGE:
+        elif field.type == FieldDescriptor.TYPE_MESSAGE:
             data[field.name] = _proto_to_dict(value)
         else:
             data[field.name] = value
@@ -74,7 +87,6 @@ def _proto_to_dict(proto: Message) -> Dict:
             and not field.containing_oneof  # skip optional fields
         ):
             data[field.name] = field.default_value
-
     return data
 
 
@@ -198,7 +210,6 @@ class DeploymentConfig(BaseModel):
         from ray.serve.schema import LoggingConfig
 
         v = LoggingConfig(**v).dict()
-
         return v
 
     @validator("max_queued_requests", always=True)

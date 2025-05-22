@@ -5,13 +5,11 @@ import logging
 import re
 import string
 import sys
-
 import weakref
-import warnings
 from dataclasses import make_dataclass
 
-import pytest
 import numpy as np
+import pytest
 from numpy import log
 
 import ray
@@ -20,19 +18,6 @@ import ray.exceptions
 from ray import cloudpickle
 
 logger = logging.getLogger(__name__)
-
-
-def test_warn_copying_non_contiguous_numpy_arrays_warns_once(ray_start_regular):
-    warning_regex = re.compile(".*cannot be zero-copy.*")
-    warnings.simplefilter("always")
-    with pytest.warns(UserWarning, match=warning_regex) as record:
-        non_contiguous_arr = np.zeros(1024 * 1204)[::2]
-        ray.put(non_contiguous_arr)
-        ray.put(non_contiguous_arr)
-    numpy_arr_warnings = [
-        warning for warning in record if warning_regex.match(str(warning.message))
-    ]
-    assert len(numpy_arr_warnings) == 1
 
 
 def is_named_tuple(cls):
@@ -805,10 +790,4 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

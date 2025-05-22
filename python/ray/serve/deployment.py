@@ -1,8 +1,8 @@
 import inspect
 import logging
+import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-import warnings
 
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -83,9 +83,9 @@ class Deployment:
             def __call__(self, request):
                 return "Hello world!"
 
-            app = MyDeployment.bind()
-            # Run via `serve.run` or the `serve run` CLI command.
-            serve.run(app)
+        app = MyDeployment.bind()
+        # Run via `serve.run` or the `serve run` CLI command.
+        serve.run(app)
 
     """
 

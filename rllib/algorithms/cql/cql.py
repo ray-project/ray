@@ -212,8 +212,12 @@ class CQLConfig(SACConfig):
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
 
-        # If training on GPU, do not convert batches to tensors.
-        if self.num_gpus_per_learner > 0:
+        # In case we run multiple updates per RLlib training step in the `Learner` or
+        # when training on GPU conversion to tensors is managed in batch prefetching.
+        if self.num_gpus_per_learner > 0 or (
+            self.dataset_num_iters_per_learner
+            and self.dataset_num_iters_per_learner > 1
+        ):
             pipeline.remove("NumpyToTensor")
 
         return pipeline
@@ -270,7 +274,7 @@ class CQLConfig(SACConfig):
             return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @property
@@ -319,10 +323,8 @@ class CQL(SAC):
 
         # Updating the policy.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            # TODO (simon, sven): Check, if we should execute directly s.th. like
-            #  `LearnerGroup.update_from_iterator()`.
-            learner_results = self.learner_group._update(
-                batch=batch_or_iterator,
+            learner_results = self.learner_group.update(
+                data_iterators=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

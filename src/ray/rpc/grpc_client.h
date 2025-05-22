@@ -133,7 +133,7 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    testing::RpcFailure failure = testing::get_rpc_failure(call_name);
+    testing::RpcFailure failure = testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
@@ -188,12 +188,12 @@ class GrpcClient {
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
-  /// Whether to use TLS.
-  bool use_tls_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
+  /// Whether to use TLS.
+  bool use_tls_;
 };
 
 }  // namespace rpc

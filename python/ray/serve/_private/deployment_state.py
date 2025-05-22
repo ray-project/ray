@@ -37,7 +37,6 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
-    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
@@ -243,7 +242,7 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
-
+        self._docs_path: Optional[str] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -323,6 +322,10 @@ class ActorReplicaWrapper:
         current target config for the deployment.
         """
         return self._version.deployment_config
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -692,6 +695,7 @@ class ActorReplicaWrapper:
                         self._version,
                         self._initialization_latency_s,
                         self._port,
+                        self._docs_path,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -956,6 +960,10 @@ class DeploymentReplica:
     @property
     def version(self):
         return self._actor.version
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._actor.docs_path
 
     @property
     def actor_id(self) -> str:
@@ -1270,8 +1278,14 @@ class DeploymentState:
         self._target_state: DeploymentTargetState = DeploymentTargetState.default()
 
         self._prev_startup_warning: float = time.time()
-        self._replica_constructor_retry_counter: int = 0
         self._replica_constructor_error_msg: Optional[str] = None
+        # Counter for how many times replicas failed to start. This is reset to 0 when:
+        # (1) The deployment is deployed / re-deployed.
+        # (2) The deployment reaches the HEALTHY state.
+        self._replica_constructor_retry_counter: int = 0
+        # Flag for whether any replicas of the target version has successfully started.
+        # This is reset to False when the deployment is re-deployed.
+        self._replica_has_started: bool = False
 
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
@@ -1298,6 +1312,8 @@ class DeploymentState:
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
+
+        self._docs_path: Optional[str] = None
 
     def should_autoscale(self) -> bool:
         """
@@ -1387,16 +1403,34 @@ class DeploymentState:
         return self._id.app_name
 
     @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
+
+    @property
     def _failed_to_start_threshold(self) -> int:
         return min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
-    @property
-    def is_failed(self) -> bool:
-        """Whether the deployment failed to deploy."""
-        return self._curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    def _replica_startup_failing(self) -> bool:
+        """Check whether replicas are currently failing and the number of
+        failures has exceeded a threshold.
+        """
+        return (
+            self._target_state.target_num_replicas > 0
+            and self._replica_constructor_retry_counter
+            >= self._failed_to_start_threshold
+        )
+
+    def _terminally_failed(self) -> bool:
+        """Check whether the current version is terminally errored.
+
+        The version is considered terminally errored if the number of
+        replica failures has exceeded a threshold, and there hasn't been
+        any replicas of the target version that has successfully started.
+        """
+        return not self._replica_has_started and self._replica_startup_failing()
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
@@ -1454,7 +1488,7 @@ class DeploymentState:
         multiplexed model IDs.
         """
         running_replica_infos = self.get_running_replica_infos()
-        is_available = not self.is_failed
+        is_available = not self._terminally_failed()
 
         running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
@@ -1637,6 +1671,7 @@ class DeploymentState:
             f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
+        self._replica_has_started = False
         return True
 
     def autoscale(self) -> int:
@@ -1710,7 +1745,7 @@ class DeploymentState:
 
         Args:
             max_to_stop: max number of replicas to stop, by default,
-            it will stop all replicas with outdated version.
+                         it stops all replicas with an outdated version.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -1855,16 +1890,7 @@ class DeploymentState:
 
         elif delta_replicas > 0:
             to_add = delta_replicas
-            if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-                # Don't ever exceed target_num_replicas.
-                stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
-                to_add = max(delta_replicas - stopping_replicas, 0)
-
-            if (
-                to_add > 0
-                and self._replica_constructor_retry_counter
-                < self._failed_to_start_threshold
-            ):
+            if to_add > 0 and not self._terminally_failed():
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
@@ -1913,34 +1939,29 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        failed_to_start_count = self._replica_constructor_retry_counter
-
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
-        if (
-            failed_to_start_count >= self._failed_to_start_threshold
-            and self._failed_to_start_threshold != 0
-        ):
-            if running_at_target_version_replica_cnt > 0:
-                # At least one RUNNING replica at target state, partial
-                # success; We can stop tracking constructor failures and
-                # leave it to the controller to fully scale to target
-                # number of replicas and only return as completed once
-                # reached target replica count
-                self._replica_constructor_retry_counter = -1
-            else:
-                self._curr_status_info = self._curr_status_info.handle_transition(
-                    trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
-                    message=(
-                        f"The deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with its "
-                        "constructor or initial health check failing. See "
-                        "controller logs for details. Error:\n"
-                        f"{self._replica_constructor_error_msg}"
-                    ),
-                )
-                return False, any_replicas_recovering
+        if running_at_target_version_replica_cnt > 0:
+            # At least one RUNNING replica at target state, partial
+            # success; We can stop tracking constructor failures and
+            # leave it to the controller to fully scale to target
+            # number of replicas and only return as completed once
+            # reached target replica count
+            self._replica_has_started = True
+        elif self._replica_startup_failing():
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
+                message=(
+                    "The deployment failed to start "
+                    f"{self._replica_constructor_retry_counter} times "
+                    "in a row. This may be due to a problem with its "
+                    "constructor or initial health check failing. See "
+                    "controller logs for details. Error:\n"
+                    f"{self._replica_constructor_error_msg}"
+                ),
+            )
+            return False, any_replicas_recovering
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1966,6 +1987,7 @@ class DeploymentState:
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
+                self._replica_constructor_retry_counter = 0
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
@@ -1991,6 +2013,11 @@ class DeploymentState:
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
+
+                # if replica version is the same as the target version,
+                # we update the docs path
+                if replica.version == self._target_state.version:
+                    self._docs_path = replica.docs_path
 
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
@@ -2033,25 +2060,31 @@ class DeploymentState:
     def record_replica_startup_failure(self, error_msg: str):
         """Record that a replica failed to start."""
 
-        if self._replica_constructor_retry_counter >= 0:
-            # Increase startup failure counter if we're tracking it
-            self._replica_constructor_retry_counter += 1
-            self._replica_constructor_error_msg = error_msg
+        # There is no need to record replica failures if the target is 0.
+        if self._target_state.target_num_replicas == 0:
+            return
 
-            retrying_msg = "Retrying"
-            if self._failed_to_start_threshold != 0:
-                remaining_retries = max(
-                    self._failed_to_start_threshold
-                    - self._replica_constructor_retry_counter,
-                    0,
-                )
-                retrying_msg += f" {remaining_retries} more time(s)"
+        # Increase startup failure counter
+        self._replica_constructor_retry_counter += 1
+        self._replica_constructor_error_msg = error_msg
 
-            message = (
-                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
-                f"{error_msg}"
+        # Update the deployment message only if replicas are failing during
+        # the very first time the controller is trying to start replicas of
+        # this version.
+        retrying_msg = ""
+        if not self._replica_has_started:
+            remaining_retries = max(
+                self._failed_to_start_threshold
+                - self._replica_constructor_retry_counter,
+                0,
             )
-            self._curr_status_info = self._curr_status_info.update_message(message)
+            retrying_msg = f" {remaining_retries} more time(s)"
+
+        message = (
+            f"A replica failed to start with exception. Retrying{retrying_msg}. "
+            f"Error:\n{error_msg}"
+        )
+        self._curr_status_info = self._curr_status_info.update_message(message)
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
@@ -2555,6 +2588,10 @@ class DeploymentStateManager:
             return self._deployment_states[deployment_id].target_info
         else:
             return None
+
+    def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].docs_path
 
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.

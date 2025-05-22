@@ -17,7 +17,11 @@
 #include <algorithm>
 #include <boost/range/adaptor/reversed.hpp>
 #include <cstddef>
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "ray/common/asio/periodical_runner.h"
@@ -30,7 +34,6 @@ namespace gcs {
 
 GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
     : io_service_(io_service),
-      stats_counter_(),
       task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
@@ -282,7 +285,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
     rpc::TaskEvents &&events_by_task) {
   const TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
   int32_t attempt_number = events_by_task.attempt_number();
-  TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
+  TaskAttempt task_attempt = std::make_pair(task_id, attempt_number);
 
   auto loc_itr = primary_index_.find(task_attempt);
   if (loc_itr != primary_index_.end()) {
@@ -377,6 +380,8 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 }
 
+namespace {
+
 template <typename T>
 bool apply_predicate(const T &lhs, rpc::FilterPredicate predicate, const T &rhs) {
   switch (predicate) {
@@ -407,6 +412,8 @@ bool apply_predicate_ignore_case(std::string_view lhs,
                                 rpc::FilterPredicate_Name(predicate));
   }
 }
+
+}  // namespace
 
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
@@ -596,7 +603,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     reply->set_num_total_stored(task_events->size());
     reply->set_num_truncated(num_limit_truncated);
     reply->set_num_filtered_on_gcs(num_filtered);
-
   } catch (std::invalid_argument &e) {
     // When encounter invalid filter predicate
     status = Status::InvalidArgument(e.what());
@@ -604,7 +610,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  return;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
@@ -614,12 +619,12 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     auto attempt_number = dropped_attempt.attempt_number();
     auto job_id = task_id.JobId();
     job_task_summary_[job_id].RecordTaskAttemptDropped(
-        std::make_pair<>(task_id, attempt_number));
+        std::make_pair(task_id, attempt_number));
     stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
 
     // We will also remove any existing task events for this task attempt from the storage
     // since we want to make data loss at task attempt granularity.
-    const auto &loc_iter = primary_index_.find(std::make_pair<>(task_id, attempt_number));
+    const auto &loc_iter = primary_index_.find(std::make_pair(task_id, attempt_number));
     if (loc_iter != primary_index_.end()) {
       RemoveTaskAttempt(loc_iter->second);
     }
@@ -636,7 +641,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  auto data = std::move(request.data());
+  auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
@@ -680,7 +685,7 @@ void GcsTaskManager::RecordMetrics() {
 
   {
     absl::MutexLock lock(&mutex_);
-    if (usage_stats_client_) {
+    if (usage_stats_client_ != nullptr) {
       usage_stats_client_->RecordExtraUsageCounter(
           usage::TagKey::NUM_ACTOR_CREATION_TASKS, counters[kTotalNumActorCreationTask]);
       usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_ACTOR_TASKS,

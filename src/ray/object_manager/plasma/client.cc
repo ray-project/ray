@@ -19,20 +19,17 @@
 
 #include "ray/object_manager/plasma/client.h"
 
-#include <algorithm>
-#include <boost/asio.hpp>
 #include <cstring>
-#include <deque>
+#include <memory>
 #include <mutex>
-#include <tuple>
-#include <unordered_map>
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -297,7 +294,7 @@ void PlasmaClient::Impl::InsertObjectInUse(const ObjectID &object_id,
 
   // Add this object ID to the hash table of object IDs in use. The
   // corresponding call to free happens in PlasmaClient::Release.
-  it->second->object = *object.release();
+  it->second->object = std::move(*object);
   // Count starts at 1 to pin the object.
   it->second->count = 1;
   it->second->is_sealed = is_sealed;
@@ -721,7 +718,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     // Otherwise, skip the reply to boost performance.
     // Q: since both server and client knows this fd is fallback allocated, why do we
     //    need to pass it in PlasmaReleaseRequest?
-    // A: becuase we wanna be idempotent, and in the 2nd call, the server does not know
+    // A: because we wanna be idempotent, and in the 2nd call, the server does not know
     //    about the object.
     const MEMFD_TYPE fd = object_entry->second->object.store_fd;
     bool may_unmap = object_entry->second->object.fallback_allocated;

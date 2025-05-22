@@ -265,9 +265,9 @@ class SSHCommandRunner(CommandRunnerInterface):
             silent: If true, the command output will be silenced.
 
         Raises:
-            ProcessRunnerError if using new log style and disabled
+            ProcessRunnerError: If using new log style and disabled
                 login shells.
-            click.ClickException if using login shells.
+            click.ClickException: If using login shells.
         """
         try:
             # For now, if the output is needed we just skip the new logic.

@@ -166,13 +166,13 @@ class DependencyWaiterInterface {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  virtual ray::Status WaitForDirectActorCallArgs(
+  virtual ray::Status WaitForActorCallArgs(
       const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
 };
 
-/// Inteface for getting resource reports.
+/// Interface for getting resource reports.
 class ResourceTrackingInterface {
  public:
   virtual void GetResourceLoad(
@@ -211,7 +211,8 @@ class MutableObjectReaderInterface {
   /// node.
   /// \param metadata_size The size of the metadata to write to the mutable object on this
   /// local node.
-  /// \param data The data and metadata to write. This is formatted as (data | metadata).
+  /// \param data The data to write to the mutable object on this local node.
+  /// \param metadata The metadata to write to the mutable object on this local node.
   /// \param callback This callback is executed to send a reply to the remote node once
   /// the mutable object is transferred.
   virtual void PushMutableObject(
@@ -219,6 +220,7 @@ class MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
 };
 
@@ -385,8 +387,8 @@ class RayletClient : public RayletClientInterface {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  ray::Status WaitForDirectActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) override;
+  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                                   int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///
@@ -448,6 +450,7 @@ class RayletClient : public RayletClientInterface {
                          uint64_t data_size,
                          uint64_t metadata_size,
                          void *data,
+                         void *metadata,
                          const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
                              &callback) override;
 

@@ -37,8 +37,10 @@ from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
-from ray.tests.conftest import maybe_external_redis  # noqa: F401
-from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.tests.conftest import (
+    maybe_setup_external_redis,  # noqa: F401
+    ray_start_with_dashboard,  # noqa: F401
+)
 from ray.util.state import list_actors
 
 

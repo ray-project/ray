@@ -17,14 +17,14 @@ class GPURequiringEnv(SimpleCorridor):
     To make this env work, use `num_gpus_per_env_runner > 0` (RolloutWorkers
     requesting this many GPUs each) and - maybe - `num_gpus > 0` in case
     your local worker/driver must have an env as well. However, this is
-    only the case if `create_env_on_driver`=True (default is False).
+    only the case if `create_local_env_runner`=True (default is False).
     """
 
     def __init__(self, config=None):
         super().__init__(config)
 
         # Fake-require some GPUs (at least one).
-        # If your local worker's env (`create_env_on_driver`=True) does not
+        # If your local worker's env (`create_local_env_runner`=True) does not
         # necessarily require a GPU, you can perform the below assertion only
         # if `config.worker_index != 0`.
         gpus_available = ray.get_gpu_ids()

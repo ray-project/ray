@@ -15,6 +15,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/time/time.h"
 #include "ray/common/constants.h"
@@ -275,6 +277,8 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
+  task_info->mutable_labels()->insert(task_spec.GetLabels().begin(),
+                                      task_spec.GetLabels().end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(
@@ -340,8 +344,8 @@ inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
 }
 
 inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
-  return std::make_pair<>(TaskID::FromBinary(task_event.task_id()),
-                          task_event.attempt_number());
+  return std::make_pair(TaskID::FromBinary(task_event.task_id()),
+                        task_event.attempt_number());
 }
 
 inline bool IsActorTask(const rpc::TaskEvents &task_event) {
@@ -429,7 +433,7 @@ inline std::string FormatPlacementGroupDetails(
 /// \param strategy The placement strategy of placement group.
 /// \return The placement constraint for placement group if it's not a strict
 ///   strategy, else absl::nullopt.
-inline absl::optional<rpc::autoscaler::PlacementConstraint>
+inline std::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
   rpc::autoscaler::PlacementConstraint pg_constraint;

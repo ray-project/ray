@@ -6,6 +6,7 @@ import pytest
 
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
@@ -659,6 +660,33 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
         assert proxy_state == prev_proxy_state
         assert prev_proxy_state.status == ProxyStatus.HEALTHY
         assert proxy_state.status == ProxyStatus.HEALTHY
+
+
+def test_proxy_state_manager_get_targets(all_nodes):
+    """Test the get_targets method on ProxyStateManager."""
+    manager, cluster_node_info_cache = _create_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.EveryNode)
+    )
+    cluster_node_info_cache.alive_nodes = all_nodes
+
+    for node_id, node_ip_address in all_nodes:
+        manager._proxy_states[node_id] = _create_proxy_state(
+            status=ProxyStatus.HEALTHY,
+            node_id=node_id,
+        )
+
+    manager._proxy_states[all_nodes[-1][0]].try_update_status(ProxyStatus.DRAINED)
+
+    targets = manager.get_targets(RequestProtocol.HTTP)
+    assert len(targets) == len(all_nodes) - 1
+    assert targets[0].ip == "mock_node_ip"
+    assert targets[0].port == 8000
+
+    targets = manager.get_targets(RequestProtocol.GRPC)
+    assert len(targets) == 0
+
+    with pytest.raises(ValueError):
+        manager.get_targets("invalid_protocol")
 
 
 if __name__ == "__main__":

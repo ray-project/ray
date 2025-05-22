@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <memory>
+#include <thread>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -38,7 +42,7 @@ namespace core {
 class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
  public:
   OutOfOrderActorSchedulingQueue(
-      instrumented_io_context &main_io_service,
+      instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -82,9 +86,9 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
 
-  instrumented_io_context &io_service_;
+  instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
-  boost::thread::id main_thread_id_;
+  std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
@@ -101,7 +105,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This stores all the tasks that have previous attempts that are pending.
   /// They are queued and will be executed after the previous attempt finishes.
   /// This can happen if transient network error happens after an actor
-  /// task is submitted and recieved by the actor and the caller retries
+  /// task is submitted and received by the actor and the caller retries
   /// the same task.
   absl::flat_hash_map<TaskID, InboundRequest> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.

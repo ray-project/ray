@@ -28,7 +28,7 @@ python/ray/train/train.py: lint ml train linux_wheels
 rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
 python/ray/serve/serve.py: lint serve linux_wheels java
-python/ray/dashboard/dashboard.py: lint dashboard linux_wheels
+python/ray/dashboard/dashboard.py: lint dashboard linux_wheels python
 python/core.py:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
@@ -42,10 +42,9 @@ python/_raylet.pyx:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint python accelerated_dag
+    - lint python compiled_graphs
 
 .buildkite/core.rayci.yml: lint python core_cpp
-.buildkite/serverless.rayci.yml: lint python
 java/ray.java: lint java
 .buildkite/others.rayci.yml: lint java
 cpp/ray.cc: lint cpp
@@ -55,6 +54,8 @@ docker/Dockerfile.ray: lint docker linux_wheels
 doc/code.py: lint doc
 doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
+doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
+ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements_buildkite.txt: lint release_tests
 ci/lint/lint.sh: lint tools
@@ -65,10 +66,11 @@ ci/ray_ci/tester.py: lint tools
 ci/ci.sh: lint tools
 
 src/ray.cpp:
-    - lint ml tune train core_cpp cpp java python
-    - linux_wheels macos_wheels dashboard release_tests accelerated_dag
+    - lint core_cpp cpp java python
+    - linux_wheels macos_wheels dashboard release_tests
 
 .github/CODEOWNERS: lint
+README.rst: lint
 BUILD.bazel:
     - lint ml tune train data serve core_cpp cpp java
     - python doc linux_wheels macos_wheels dashboard tools
@@ -153,7 +155,7 @@ def test_conditional_testing_pull_request():
             )
             tags = output.split()
 
-            want = test_case.tags
+            want = set(list(test_case.tags) + ["always"])
             assert want == set(tags), f"file {test_case.file}, want {want}, got {tags}"
 
 

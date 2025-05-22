@@ -24,8 +24,10 @@ Predibase('s)?
 [Pp]reprocess
 [Pp]reprocessor(s)?
 [Pp]ushdown
+runai
 [Ss]calers
 Spotify('s)?
 TFRecord(s)?
 UDF(s)?
+VLM(s)?
 XGBoost

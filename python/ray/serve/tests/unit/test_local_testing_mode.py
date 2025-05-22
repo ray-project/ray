@@ -1,10 +1,11 @@
+import logging
 import os
 import sys
 
 import pytest
-import logging
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+
 from ray import serve
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import DeploymentHandle
 
 
@@ -183,6 +184,27 @@ def test_redeploy_multiple_apps_batched() -> None:
 
     assert a1 == a2
     assert pida1 == pida2
+
+
+def test_reconfigure():
+    @serve.deployment
+    class Hello:
+        def __init__(self):
+            self.user_config = {"name": "Bob"}
+
+        async def reconfigure(self, user_config) -> None:
+            print("Reconfiguring...")
+            self.user_config = user_config
+
+        def __call__(self):
+            name = self.user_config["name"]
+            return f"Hi {name}!"
+
+    h = serve.run(
+        Hello.options(user_config={"name": "Charles"}).bind(), _local_testing_mode=True
+    )
+    assert isinstance(h, DeploymentHandle)
+    assert h.remote().result() == "Hi Charles!"
 
 
 if __name__ == "__main__":

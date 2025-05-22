@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/functional/bind_front.h"
 #include "absl/random/random.h"
@@ -22,8 +25,6 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
-
-using namespace testing;
 
 namespace ray {
 namespace core {
@@ -120,6 +121,7 @@ class TestInterface : public MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {
     absl::MutexLock guard(&lock_);
     pushed_objects_.push_back(object_id);

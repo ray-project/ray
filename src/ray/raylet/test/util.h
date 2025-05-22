@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -124,7 +130,7 @@ class MockWorker : public WorkerInterface {
     return address_;
   }
 
-  void DirectActorCallArgWaitComplete(int64_t tag) override {
+  void ActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
   }
 

@@ -1,18 +1,16 @@
-import os
-import time
 import sys
-
-import pytest
-
-import ray._private.prometheus_exporter as prometheus_exporter
-
+import time
 from typing import List
 
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
 from prometheus_client.core import REGISTRY
-from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
+import pytest
+
+import ray._private.prometheus_exporter as prometheus_exporter
+
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
 from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
@@ -24,7 +22,6 @@ from ray.core.generated.metrics_pb2 import (
     LabelValue,
 )
 from ray._raylet import WorkerID
-
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
@@ -192,6 +189,41 @@ def test_metrics_agent_record_and_export(get_agent):
     assert samples[0].labels == {"tag": "a"}
     assert samples[1].value == 6
     assert samples[1].labels == {"tag": "aa"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_agent_record_and_export_failed_records_dont_block_other_records(
+    get_agent,
+    capsys,
+):
+    namespace = "test"
+    agent, agent_port = get_agent
+
+    metric_name = "test"
+    test_gauge = Gauge(metric_name, "desc", "unit", ["tag"])
+    record_a = Record(
+        gauge=test_gauge,
+        value=1,
+        tags={"tag": "a"},
+    )
+    record_b = Record(
+        gauge=test_gauge,
+        value=1,
+        # this tag is much too long (>255 characters), so recording this metric will fail
+        tags={"tag": "b" * 1000},
+    )
+    record_c = Record(
+        gauge=test_gauge,
+        value=1,
+        tags={"tag": "c"},
+    )
+    agent.record_and_export([record_a, record_b, record_c])
+
+    name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
+    assert name == get_prom_metric_name(namespace, metric_name)
+
+    # a and c should be recorded, b's failure should be ignored
+    assert {sample.labels["tag"] for sample in samples} == {"a", "c"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -457,10 +489,4 @@ def test_metrics_agent_export_format_correct(get_agent):
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
