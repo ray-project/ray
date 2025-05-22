@@ -29,9 +29,9 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
-from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
-from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
+from ray.serve._private.request_router import PowerOfTwoChoicesReplicaRouter
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
@@ -147,7 +147,7 @@ def create_request_router(
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
     is_inside_ray_client_context: bool,
-    request_router_class: ReplicaScheduler = PowerOfTwoChoicesReplicaScheduler,
+    request_router_class: RequestRouter = PowerOfTwoChoicesReplicaRouter,
 ):
     node_id, availability_zone = _get_node_id_and_az()
 
@@ -173,7 +173,7 @@ def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
-    request_router_class: Optional[ReplicaScheduler] = None,
+    request_router_class: Optional[RequestRouter] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -202,7 +202,7 @@ def create_router(
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        replica_scheduler=request_router,
+        request_router=request_router,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,

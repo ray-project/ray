@@ -328,7 +328,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
-# Length of time to respect entries in the queue length cache when scheduling requests.
+# Length of time to respect entries in the queue length cache when routing requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
 )
@@ -415,5 +415,5 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
 
 # The default request router class to use if none is specified.
 DEFAULT_REQUEST_ROUTER_PATH = (
-    "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler"
+    "ray.serve._private.request_router:PowerOfTwoChoicesReplicaRouter"
 )

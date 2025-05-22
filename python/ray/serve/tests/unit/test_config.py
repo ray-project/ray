@@ -5,7 +5,7 @@ from ray._common.utils import import_attr
 from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
-from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.request_router import PowerOfTwoChoicesReplicaRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
@@ -149,15 +149,15 @@ class TestDeploymentConfig:
         assert deployment_config.get_request_router_class() == FakeRequestRouter
 
         # Not passing request_router_class should
-        # default to `PowerOfTwoChoicesReplicaScheduler`.
+        # default to `PowerOfTwoChoicesReplicaRouter`.
         deployment_config = DeploymentConfig.from_default()
         assert (
             deployment_config.request_router_class
-            == "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler"
+            == "ray.serve._private.request_router:PowerOfTwoChoicesReplicaRouter"
         )
         assert (
             deployment_config.get_request_router_class()
-            == PowerOfTwoChoicesReplicaScheduler
+            == PowerOfTwoChoicesReplicaRouter
         )
 
 
