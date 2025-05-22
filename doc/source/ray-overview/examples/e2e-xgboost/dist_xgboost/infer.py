@@ -1,6 +1,9 @@
 # Note: requires train.py to be run first for the model and preprocessor to be saved to MLFlow
 
+import sys
 import os
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
@@ -8,7 +11,7 @@ import pandas as pd
 import xgboost
 from sklearn.metrics import confusion_matrix
 
-from dist_xgboost.data import load_model_and_preprocessor, prepare_data
+from data import load_model_and_preprocessor, prepare_data
 
 
 def transform_with_preprocessor(batch_df, preprocessor):
