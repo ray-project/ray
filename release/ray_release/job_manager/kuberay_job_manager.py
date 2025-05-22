@@ -55,6 +55,7 @@ class KuberayJobManager:
         logger.info(f"Submitting KubeRay job request: {request}")
         try:
             response = requests.post(url, json=request, headers=headers)
+            response.raise_for_status()
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
