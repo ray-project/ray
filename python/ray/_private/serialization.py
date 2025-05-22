@@ -559,7 +559,7 @@ class SerializationContext:
     def serialize(
         self,
         value,
-        obj_id: Optional[str] = None,
+        obj_id: Optional[bytes] = None,
         tensor_transport: TypeTensorTransport = "OBJECT_STORE",
     ):
         """Serialize an object.
@@ -584,24 +584,32 @@ class SerializationContext:
         if tensor_transport == "OBJECT_STORE":
             return self._serialize_to_msgpack(value)
 
-        # Handle tensor transport.
+        # Retrieve tensors from `value` and store them in the `in_actor_object_store`.
+        assert (
+            obj_id is not None
+        ), "obj_id is the key to retrieve corresponding tensors from the in-actor object store, and it should not be None."
+        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+        if tensors:
+            obj_id = obj_id.decode("ascii")
+            worker = ray._private.worker.global_worker
+            worker.in_actor_object_store[obj_id] = tensors
+
+        return serialized_val
+
+    def _serialize_and_retrieve_tensors(self, value):
+        """
+        Serialize `value` and return the serialized value and any tensors retrieved from `value`.
+        This is only used for GPU objects.
+        """
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
         prev_use_external_transport = ctx.use_external_transport
         ctx.set_use_external_transport(True)
         try:
-            val = self._serialize_to_msgpack(value)
+            serialized_val = self._serialize_to_msgpack(value)
         finally:
             ctx.set_use_external_transport(prev_use_external_transport)
 
         tensors, _ = ctx.reset_out_of_band_tensors([])
-        if tensors:
-            assert (
-                obj_id is not None
-            ), "obj_id is the key to retrieve corresponding tensors from the in-actor object store, and it should not be None."
-            obj_id = obj_id.decode("ascii")
-            worker = ray._private.worker.global_worker
-            worker.in_actor_object_store[obj_id] = tensors
-
-        return val
+        return serialized_val, tensors
