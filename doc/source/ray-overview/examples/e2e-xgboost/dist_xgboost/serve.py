@@ -1,9 +1,6 @@
 # Note: requires train.py to be run first for the model and preprocessor to be saved to MLFlow
 
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(__file__))
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
@@ -17,7 +14,7 @@ from ray import serve
 from ray.serve.handle import DeploymentHandle
 from starlette.requests import Request
 
-from data import load_model_and_preprocessor
+from dist_xgboost.data import load_model_and_preprocessor
 
 
 @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 2})

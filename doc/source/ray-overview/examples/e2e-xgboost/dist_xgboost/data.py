@@ -11,7 +11,7 @@ from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train.xgboost import RayTrainReportCallback
 
-from constants import (
+from dist_xgboost.constants import (
     experiment_name,
     model_fname,
     model_registry,
