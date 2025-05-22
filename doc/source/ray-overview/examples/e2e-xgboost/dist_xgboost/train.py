@@ -13,7 +13,6 @@ from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
 from dist_xgboost.constants import local_storage_path, preprocessor_path
 from dist_xgboost.data import log_run_to_mlflow, prepare_data
-import dist_xgboost
 
 NUM_WORKERS = 5
 USE_GPU = True
@@ -68,7 +67,6 @@ def train_fn_per_worker(config: dict):
 
 
 def main():
-    ray.init(runtime_env={"py_modules": [dist_xgboost]})
     # Load and split the dataset
     train_dataset, valid_dataset, _test_dataset = prepare_data()
 
