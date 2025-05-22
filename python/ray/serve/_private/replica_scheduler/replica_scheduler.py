@@ -327,16 +327,12 @@ class FIFOMixin:
         """Matching pending request based on the request metadata.
 
         If multiplex mixin is used, this will be using the multiplexed model
-        id for the matching. Else, it will just take the next unscheduled pending.
+        id for the matching. Else, it will return none as no matching pending request.
         """
         if hasattr(self, "_get_pending_request_matching_multiplexed_model_id"):
             return self._get_pending_request_matching_multiplexed_model_id(
                 request_metadata
             )
-
-        for pr in self._pending_requests_to_fulfill:
-            if not pr.future.done():
-                return pr
 
         return None
 
