@@ -4277,7 +4277,6 @@
 
   run:
     timeout: 3600
-    prepare: pip install -e .
     script: pytest  # <working_dir>/
 
   variations:
