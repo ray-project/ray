@@ -54,6 +54,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self,
         *args,
         imbalanced_threshold=10,
+        match_rate_threshold=0.1,
         do_eviction=True,
         eviction_threshold_chars=400_000,
         eviction_target_chars=360_000,
@@ -67,6 +68,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
 
         # === Prefix-aware scheduling logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
+        self._match_rate_threshold = match_rate_threshold
 
         # === Eviction policy ===
         self._do_eviction = do_eviction
@@ -92,6 +94,11 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._benchmark_start_time = 0.0
         self._num_requests_seen = 0
         self._zero_load_count = 0
+
+    # Override the FIFO scheduling property inherited from the PowerOfTwoChoicesReplicaScheduler
+    @property
+    def fifo_scheduling(self) -> bool:
+        return False
 
     async def _track_metrics(self):
         # Remove this function for PR, currently only used for benchmarking
@@ -302,7 +309,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                         input_text, candidate_replica_ids_strings
                     )
                     match_rate = len(matched_text) / len(input_text)
-                    if match_rate < 0.1:
+                    if match_rate < self._match_rate_threshold:
                         smallest_tenants = (
                             await self._tree_actor.get_smallest_tenants.remote()
                         )
