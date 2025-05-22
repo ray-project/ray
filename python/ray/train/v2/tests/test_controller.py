@@ -25,7 +25,6 @@ from ray.train.v2._internal.execution.failure_handling import FailureDecision
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
-    ScalingDecision,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.tests.util import (
@@ -74,6 +73,12 @@ def test_resize():
         ResizeDecision(num_workers=5, resources_per_worker={}),
     ]
 
+    assert isinstance(controller.get_state(), InitializingState)
+    assert controller.get_worker_group() is None
+
+    # Noop decision should be ignored
+    scaling_policy.queue_recovery_decision(NoopDecision())
+    controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), InitializingState)
     assert controller.get_worker_group() is None
 
@@ -239,7 +244,7 @@ def test_controller_callback():
             self.start_called = False
             self.latest_state_update = None
             self.failure_decision_called = False
-            self.scaling_decision_called = False
+            self.resize_decision_called = False
             self.shutdown_called = False
 
         def after_controller_start(self):
@@ -258,11 +263,11 @@ def test_controller_callback():
         ):
             self.failure_decision_called = True
 
-        def before_controller_execute_scaling_decision(
+        def before_controller_execute_resize_decision(
             self,
-            scaling_decision: ScalingDecision,
+            resize_decision: ResizeDecision,
         ):
-            self.scaling_decision_called = True
+            self.resize_decision_called = True
 
         def before_controller_shutdown(self):
             self.shutdown_called = True
@@ -289,12 +294,12 @@ def test_controller_callback():
     )
 
     controller._run_control_loop_iteration()
-    assert not callback.scaling_decision_called
+    assert not callback.resize_decision_called
     assert isinstance(callback.latest_state_update[0], InitializingState)
     assert isinstance(callback.latest_state_update[1], SchedulingState)
 
     controller._run_control_loop_iteration()
-    assert callback.scaling_decision_called
+    assert callback.resize_decision_called
     assert isinstance(callback.latest_state_update[0], SchedulingState)
     assert isinstance(callback.latest_state_update[1], RunningState)
 

@@ -43,7 +43,7 @@ az aks nodepool add \
    --max-count 3 \
    --enable-cluster-autoscaler
 ```
-To use Nvidia GPU operator alternatively, follow instructions [here](https://learn.microsoft.com/en-us/azure/aks/gpu-cluster?tabs=add-ubuntu-gpu-node-pool#skip-gpu-driver-installation-preview)
+To use NVIDIA GPU operator alternatively, follow instructions [here](https://learn.microsoft.com/en-us/azure/aks/gpu-cluster?tabs=add-ubuntu-gpu-node-pool#skip-gpu-driver-installation-preview)
 
 ## Step 4: Get kubeconfig
 

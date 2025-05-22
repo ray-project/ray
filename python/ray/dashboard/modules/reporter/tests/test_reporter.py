@@ -63,6 +63,21 @@ STATS_TEMPLATE = {
             ),
         }
     ],
+    "gcs": {
+        "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
+        "memory_full_info": Bunch(uss=51428384),
+        "cpu_percent": 5.0,
+        "num_fds": 14,
+        "cmdline": ["fake gcs cmdline"],
+        "create_time": 1614826395.274854,
+        "pid": 7154,
+        "cpu_times": Bunch(
+            user=0.01683138,
+            system=0.045913716,
+            children_user=0.0,
+            children_system=0.0,
+        ),
+    },
     "raylet": {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 0.0,
@@ -231,8 +246,11 @@ def test_prometheus_physical_stats_record(
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
 
-    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
-    wait_for_condition(test_case_ip_correct, timeout=30, retry_interval_ms=1000)
+    wait_for_condition(
+        lambda: test_case_stats_exist() and test_case_ip_correct(),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
 
 
 @pytest.mark.skipif(
@@ -263,9 +281,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
         ]
         for metric in expected_metrics:
             if metric not in metric_names:
-                raise RuntimeError(
-                    f"Metric {metric} not found in exported metric names"
-                )
+                return False
         return True
 
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
@@ -294,7 +310,7 @@ def test_report_stats():
             assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 36
+    assert len(records) == 41
     # Verify IsHeadNode tag
     for record in records:
         if record.gauge.name.startswith("node_"):
@@ -303,17 +319,17 @@ def test_report_stats():
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 32
+    assert len(records) == 37
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 36
+    assert len(records) == 41
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 34
+    assert len(records) == 39
 
 
 def test_report_stats_gpu():
@@ -470,7 +486,22 @@ def test_report_per_component_stats():
             children_system=0.0,
         ),
     }
-    raylet_stast = {
+    gcs_stats = {
+        "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
+        "memory_full_info": Bunch(uss=51428384),
+        "cpu_percent": 5.0,
+        "num_fds": 14,
+        "cmdline": ["fake gcs cmdline"],
+        "create_time": 1614826395.274854,
+        "pid": 7154,
+        "cpu_times": Bunch(
+            user=0.01683138,
+            system=0.045913716,
+            children_user=0.0,
+            children_system=0.0,
+        ),
+    }
+    raylet_stats = {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 4.0,
@@ -502,7 +533,8 @@ def test_report_per_component_stats():
     }
 
     test_stats["workers"] = [idle_stats, func_stats]
-    test_stats["raylet"] = raylet_stast
+    test_stats["gcs"] = gcs_stats
+    test_stats["raylet"] = raylet_stats
     test_stats["agent"] = agent_stats
 
     cluster_stats = {
@@ -558,7 +590,8 @@ def test_report_per_component_stats():
         assert num_fds_metrics == num_fds
 
     stats_map = {
-        "raylet": raylet_stast,
+        "gcs": gcs_stats,
+        "raylet": raylet_stats,
         "agent": agent_stats,
         "ray::IDLE": idle_stats,
         "ray::func": func_stats,

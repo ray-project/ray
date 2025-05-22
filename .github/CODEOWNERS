@@ -88,12 +88,12 @@
 /doc/source/cluster/ @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune
-/python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
-/doc/source/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
+/python/ray/tune/ @ray-project/ray-tune
+/doc/source/tune/ @ray-project/ray-tune @ray-project/ray-docs
 
 # Train
-/python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
-/doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
+/python/ray/train/ @ray-project/ray-train
+/doc/source/train/ @ray-project/ray-train @ray-project/ray-docs
 
 # LLM
 /python/ray/llm/ @ray-project/ray-llm

@@ -35,7 +35,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
-#include "src/ray/protobuf/export_api/export_event.pb.h"
+#include "src/ray/protobuf/export_event.pb.h"
 
 namespace ray {
 

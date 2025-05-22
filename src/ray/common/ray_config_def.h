@@ -416,9 +416,6 @@ RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
-/// DEPRECATED. No longer used anywhere.
-RAY_CONFIG(bool, start_python_importer_thread, true)
-
 /// Determines if forking in Ray actors / tasks are supported.
 /// Note that this only enables forking in workers, but not drivers.
 RAY_CONFIG(bool, support_fork, false)
@@ -942,7 +939,7 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 // types to write export API events for. This configuration is only used if
 // RAY_enable_export_api_write is not enabled. Full list of valid
 // resource types in ExportEvent.SourceType enum in
-// src/ray/protobuf/export_api/export_event.proto
+// src/ray/protobuf/export_event.proto
 // Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
 RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 
@@ -959,3 +956,8 @@ RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
 // Frequency at which to check all local worker & driver sockets for unexpected
 // disconnects.
 RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
+
+/// The maximum time in seconds that an actor task can wait in the scheduling queue
+/// for tasks with smaller sequence numbers to show up. If timed out, the task will
+/// be cancelled.
+RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)

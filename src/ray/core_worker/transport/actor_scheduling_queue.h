@@ -38,9 +38,6 @@
 namespace ray {
 namespace core {
 
-/// The max time to wait for out-of-order tasks.
-const int kMaxReorderWaitSeconds = 30;
-
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
@@ -53,8 +50,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio,
       int fiber_max_concurrency,
-      const std::vector<ConcurrencyGroup> &concurrency_groups,
-      int64_t reorder_wait_seconds = kMaxReorderWaitSeconds);
+      const std::vector<ConcurrencyGroup> &concurrency_groups);
 
   void Stop() override;
 
@@ -90,7 +86,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout();
   /// Max time in seconds to wait for dependencies to show up.
-  const int64_t reorder_wait_seconds_ = 0;
+  const int64_t reorder_wait_seconds_ =
+      ::RayConfig::instance().actor_scheduling_queue_max_reorder_wait_seconds();
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
   std::map<int64_t, InboundRequest> pending_actor_tasks_;
   /// The next sequence number we are waiting for to arrive.

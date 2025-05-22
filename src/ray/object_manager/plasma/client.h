@@ -177,12 +177,10 @@ class PlasmaClient : public PlasmaClientInterface {
   ///        function will not connect to a manager.
   ///        Note that plasma manager is no longer supported, this function
   ///        will return failure if this is not "".
-  /// \param release_delay Deprecated (not used).
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name = "",
-                 int release_delay = 0,
                  int num_retries = -1);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be

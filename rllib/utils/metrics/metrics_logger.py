@@ -736,15 +736,14 @@ class MetricsLogger:
                 if self._key_in_stats(key, stats=s)
             ]
 
-            # Find a base Stats object first - we will use this to merge with incoming Stats objects
-            base_stats = None
-            own_stats = self._get_key(key, stats=self.stats, key_error=False)
-
+            # Find a base Stats object first - we will use this to merge with incoming
+            # Stats objects.
             if not self._key_in_stats(key):
-                # We need to deepcopy here first because stats from incoming_stats may be altered in the future
+                # We need to deepcopy here first because stats from incoming_stats may
+                # be altered in the future.
                 base_stats = copy.deepcopy(incoming_stats[0])
             elif len(incoming_stats) > 0:
-                base_stats = own_stats
+                base_stats = self._get_key(key, stats=self.stats, key_error=False)
 
                 # Special case: `base_stats` is a lifetime sum (reduce=sum,
                 # clear_on_reduce=False) -> We subtract the previous value (from 2
@@ -756,21 +755,25 @@ class MetricsLogger:
                     and base_stats._clear_on_reduce is False
                 ):
                     for stat in incoming_stats:
-                        base_stats.push(-stat.get_reduce_history()[-2][0])
+                        reduce_by = stat.get_reduce_history()[-2][0]
+                        base_stats.values[-1] -= reduce_by
             else:
                 continue
 
             if not self._key_in_stats(key):
-                # Note that we may take a mean of means here, which is not the same as a mean of all values
-                # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
+                # Note that we may take a mean of means here, which is not the same as a
+                # mean of all values. In the future, we could implement a weighted mean
+                # of means here by introducing a new Stats object that counts samples
+                # for each mean Stats object.
                 if len(incoming_stats) > 1:
                     base_stats.merge_in_parallel(*incoming_stats[1:])
             elif len(incoming_stats) > 0:
                 if len(incoming_stats) > 1:
-                    # There are more than one incoming parallel others -> Merge all of them
-                    # in parallel (equal importance)
+                    # There are more than one incoming parallel others -> Merge all of
+                    # them in parallel (equal importance).
                     incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
-                # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
+                # Merge incoming Stats object into base Stats object on time axis
+                # (giving incoming ones priority).
                 base_stats.merge_on_time_axis(incoming_stats[0])
 
             self._set_key(key, base_stats)

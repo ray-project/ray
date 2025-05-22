@@ -135,7 +135,7 @@ workloads a minimum amount of CPU but [allow them to take advantage of unused CP
 throttled][1] if they use more than their requested CPU.
 
 For GPU workloads, you may also wish to specify GPU
-limits. For example, set `nvidia.com/gpu: 2` if using an Nvidia GPU device plugin
+limits. For example, set `nvidia.com/gpu: 2` if using an NVIDIA GPU device plugin
 and you wish to specify a pod with access to 2 GPUs.
 See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 

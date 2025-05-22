@@ -2112,10 +2112,6 @@ python/ray/train/tensorflow/train_loop_utils.py
     DOC111: Function `prepare_dataset_shard`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
 --------------------
 python/ray/train/tests/test_iter_torch_batches_gpu.py
-    DOC101: Method `BaseArrowBatchCollateFn.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `BaseArrowBatchCollateFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [device: Optional[Union[str, torch.device]]].
-    DOC101: Method `BaseNumpyBatchCollateFn.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `BaseNumpyBatchCollateFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [device: Optional[Union[str, torch.device]]].
     DOC101: Method `BasePandasBatchCollateFn.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `BasePandasBatchCollateFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [device: Optional[Union[str, torch.device]]].
 --------------------

@@ -36,9 +36,9 @@ build_x86_64() {
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build
+  ./ci/ci.sh build_wheels_and_jars
   # Test wheels
-  ./ci/ci.sh test_wheels
+  ./ci/ci.sh test_macos_wheels
   # Build jars
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
@@ -77,9 +77,9 @@ build_aarch64() {
   export MINIMAL_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build
+  ./ci/ci.sh build_wheels_and_jars
   # Test wheels
-  ./ci/ci.sh test_wheels
+  ./ci/ci.sh test_macos_wheels
   # Build jars
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
