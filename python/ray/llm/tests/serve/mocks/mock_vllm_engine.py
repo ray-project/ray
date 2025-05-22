@@ -467,7 +467,7 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
             and KV_TRANSFER_PARAMS_KEY in sampling_params.extra_args
         ):
             # For now we don't test the items in request/response, so just pass empty dict.
-            kv_transfer_params = {}
+            kv_transfer_params = {}  # noqa: F841
 
         async def generate_response():
             # vLLM EngineClient spits accumulated output in the response.
@@ -490,7 +490,10 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
                             logprobs=None,
                         )
                     ],
-                    kv_transfer_params=kv_transfer_params,
+                    # In vllm==0.8.5, RequestOutput does not accept kv_transfer_params
+                    # which will raise exception. see https://github.com/vllm-project/vllm/pull/18513
+                    # TODO(lk-chen): uncomment this once we bump vllm version in test env.
+                    # kv_transfer_params=kv_transfer_params,
                 )
 
         return generate_response()
@@ -586,11 +589,11 @@ class MockPDDisaggVLLMEngine(VLLMEngine):
                 model_config=ModelConfig(
                     model=self.llm_config.model_loading_config.model_id,
                     task="auto",
-                    tokenizer=None,
+                    tokenizer=self.llm_config.model_loading_config.model_id,
                     tokenizer_mode="auto",
                     trust_remote_code=False,
                     dtype="auto",
-                    seed=None,
+                    seed=0,
                 )
             )
         )

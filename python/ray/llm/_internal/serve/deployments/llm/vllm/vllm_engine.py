@@ -202,7 +202,9 @@ class VLLMEngine(LLMEngine):
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
             if "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables:
                 logger.warning(
-                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT environment variable. It's likely that you are using an older version of vLLM."
+                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
+                    "environment variable. It's likely that you are using an older"
+                    "version of vLLM."
                 )
             elif not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
                 port: int = vllm.utils.get_open_port()
