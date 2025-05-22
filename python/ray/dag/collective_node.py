@@ -25,7 +25,9 @@ class _CollectiveOperation:
     Represent metadata for a NCCL collective operation.
 
     Args:
-        input_nodes: A list of input nodes to the collective operation.
+        inputs: A list of inputs. Each input is a input node or a list of
+            input nodes. If a list of input nodes is provided, all lists must be
+            of the same length.
         op: The collective operation to perform.
         transport: The transport to use for the collective operation.
 
@@ -37,27 +39,51 @@ class _CollectiveOperation:
 
     def __init__(
         self,
-        input_nodes: List[DAGNode],
+        inputs: Union[List[DAGNode], List[List[DAGNode]]],
         op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
-        if len(input_nodes) == 0:
+        if len(inputs) == 0:
             raise ValueError("Expected input nodes for a collective operation")
-        if len(set(input_nodes)) != len(input_nodes):
-            raise ValueError("Expected unique input nodes for a collective operation")
+        
+        if isinstance(inputs[0], list):
+            assert all(isinstance(input_node_list, list) for input_node_list in inputs)
+            if len(set(len(input_node_list) for input_node_list in inputs)) != 1:
+                raise ValueError(
+                    "Expected same number of nodes bound from all actors"
+                )
+            if not all(len(set(input_node_list)) == len(input_node_list) for input_node_list in inputs):
+                raise ValueError(
+                    "Expected unique input nodes for a collective operation"
+                )
+            self.nodes_per_actor = len(inputs[0])
 
         self._actor_handles: List["ray.actor.ActorHandle"] = []
-        for input_node in input_nodes:
-            actor_handle = input_node._get_actor_handle()
+        for inp in inputs:
+            if isinstance(inp, list):
+                if not len(set(node._get_actor_handle() for node in inp)) == 1:
+                    raise ValueError("Expected list of input nodes from the same actor")
+                actor_handle = inp[0]._get_actor_handle()
+            elif isinstance(inp, DAGNode):
+                actor_handle = inp._get_actor_handle()
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             self._actor_handles.append(actor_handle)
         if len(set(self._actor_handles)) != len(self._actor_handles):
-            invalid_input_nodes = [
-                input_node
-                for input_node in input_nodes
-                if self._actor_handles.count(input_node._get_actor_handle()) > 1
-            ]
+            if isinstance(inputs[0], list):
+                invalid_input_nodes = [
+                    inp
+                    for inp in inputs
+                    if self._actor_handles.count(set([
+                        node._get_actor_handle() for node in inp
+                    ]).pop()) > 1
+                ]
+            else:
+                invalid_input_nodes = [
+                    inp
+                    for inp in inputs
+                    if self._actor_handles.count(inp._get_actor_handle()) > 1
+                ]
             raise ValueError(
                 "Expected unique actor handles for a collective operation, "
                 "but found duplicate actor handles from input nodes: "
@@ -100,18 +126,30 @@ class _CollectiveOperation:
             raise ValueError("Expected a NCCL group")
         return communicator
 
-    def execute(self, send_buf: Union["torch.Tensor", Tuple["torch.Tensor", ...]]) -> Union["torch.Tensor", Tuple["torch.Tensor", ...]]:
+    def execute(
+        self, *send_buf: Union["torch.Tensor", Tuple["torch.Tensor", ...]]
+    ) -> Union["torch.Tensor", Tuple["torch.Tensor", ...]]:
         """
-        Call the collective operation on the input tensor. An output tensor is
+        Call the collective operation on the input tensor(s). Output tensor(s) are
         allocated and returned.
         """
-        # (TODO): better naming for input argument
         import torch
 
         if not (isinstance(send_buf, torch.Tensor) or (isinstance(send_buf, tuple) and all(isinstance(t, torch.Tensor) for t in send_buf))):
-            raise ValueError("Expected a torch tensor")
-        communicator = self.get_communicator()
+            raise ValueError("Expected a torch tensor for each input node")
 
+        if isinstance(send_buf, torch.Tensor):
+            recv_buf = self._execute_tensor(send_buf)
+        elif isinstance(send_buf, tuple):
+            if not isinstance(self._op, AllReduceOp):
+                raise ValueError("Currently binding a list of dag nodes is only supported for allreduce")
+            recv_buf = self._execute_tuple(send_buf)
+
+        return recv_buf
+        
+
+    def _execute_tensor(self, send_buf: "torch.Tensor") -> "torch.Tensor":
+        communicator = self.get_communicator()
         if isinstance(self._op, AllGatherOp):
             world_size = len(self._actor_handles)
             recv_buf = torch.empty(
@@ -135,10 +173,17 @@ class _CollectiveOperation:
                 dtype=send_buf.dtype,
                 device=send_buf.device,
             )
-            communicator.reducescatter(send_buf, recv_buf, self._op.reduceOp)
-        else:
-            raise ValueError("Expected a collective operation")
         return recv_buf
+
+    def _execute_tuple(self, send_bufs: Tuple["torch.Tensor"]) -> Tuple["torch.Tensor"]:
+        import torch
+
+        communicator = self.get_communicator()
+        recv_bufs = tuple(torch.empty_like(t) for t in send_bufs)
+        flat_buf = torch.nn.utils.parameters_to_vector(send_bufs)
+        communicator.allreduce(flat_buf, flat_buf, self._op.reduceOp)
+        torch.nn.utils.vector_to_parameters(flat_buf, recv_bufs)
+        return recv_bufs
 
 
 @DeveloperAPI
@@ -155,14 +200,8 @@ class CollectiveOutputNode(ClassMethodNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-        # Parse the input node.
-        if not (
-            isinstance(method_args, tuple)
-            and len(method_args) == 1
-            and isinstance(method_args[0], DAGNode)
-        ):
-            raise ValueError("Expected a single input node")
-        self._input_node = method_args[0]
+        # Parse the input node(s).
+        self._inputs = method_args
         # Parse the collective operation.
         self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
             COLLECTIVE_OPERATION_KEY, None

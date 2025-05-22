@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional, Union
 
 import ray
+from ray.dag.class_node import IS_CLASS_METHOD_OUTPUT_KEY, ClassMethodNode
 from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
@@ -22,15 +23,17 @@ logger = logging.getLogger(__name__)
 
 
 def _bind(
-    input_nodes: List["ray.dag.DAGNode"],
+    inputs: Union[List["ray.dag.DAGNode"], List[List["ray.dag.DAGNode"]]],
     op: _CollectiveOp,
     transport: Optional[Union[str, Communicator]] = None,
 ):
     """
-    Bind input nodes with a collective operation. The collective operation is
-    directly applied to the torch tensors from the input nodes. The output nodes
-    are the results of the collective operation in the same torch tensors.
+    Bind inputs (input nodes or lists of input nodes) with a collective operation.
+    The collective operation is directly applied to the torch tensors from the input
+    nodes. The output nodesare the results of the collective operation in the same
+    torch tensors.
 
+    TODO[puyuan]: update requirements
     Requirements:
     1. Each input node returns a torch tensor.
     2. Each input node is from a different actor.
@@ -42,7 +45,7 @@ def _bind(
     Requirement 4 is not checked yet.
 
     Args:
-        input_nodes: A list of DAG nodes.
+        inputs: A list of DAG nodes or a list of lists of DAG nodes.
         op: The collective operation.
         transport: GPU communicator for the collective operation. If not
             specified, the default NCCL is used.
@@ -50,28 +53,41 @@ def _bind(
     Returns:
         A list of collective output nodes.
     """
+    if not isinstance(op, AllReduceOp) and isinstance(inputs[0], list):
+        raise ValueError(
+            "Currently binding a list of dag nodes is only supported for allreduce"
+        )
+
     if transport is None:
         transport = TorchTensorType.NCCL
-    collective_op = _CollectiveOperation(input_nodes, op, transport)
+    collective_op = _CollectiveOperation(inputs, op, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
-    actor_handle: Optional["ray.actor.ActorHandle"] = input_nodes[0]._get_actor_handle()
-    if actor_handle is None:
-        raise ValueError("Expected an actor handle from the input node")
-    if isinstance(op, AllReduceOp):
+    if isinstance(op, AllGatherOp):
+        method_name = "allgather"
+    elif isinstance(op, AllReduceOp):
         method_name = f"allreduce.{op.reduceOp}"
     elif isinstance(op, ReduceScatterOp):
         method_name = f"reducescatter.{op.reduceOp}"
-    elif isinstance(op, AllGatherOp):
-        method_name = "allgather"
     else:
-        raise ValueError(f"Expected a collective operation, but found {op}")
+        raise ValueError(f"Expected a collective operation, but got {op}")
 
-    for input_node in input_nodes:
-        actor_handle: Optional["ray.actor.ActorHandle"] = input_node._get_actor_handle()
+    for inp in inputs:
+        if isinstance(inp, list):
+            if not len(set(node._get_actor_handle() for node in inp)) == 1:
+                raise ValueError("Expected list of input nodes from the same actor")
+            actor_handle: Optional[
+                "ray.actor.ActorHandle"
+            ] = inp[0]._get_actor_handle()
+        else:
+            actor_handle: Optional[
+                "ray.actor.ActorHandle"
+            ] = inp._get_actor_handle()
+        if actor_handle is None:
+            raise ValueError("Expected an actor handle from the input node")
         collective_output_node = CollectiveOutputNode(
             method_name=method_name,
-            method_args=(input_node,),
+            method_args=tuple(inp) if isinstance(inp, list) else (inp,),
             method_kwargs=dict(),
             method_options=dict(),
             other_args_to_resolve={
@@ -81,7 +97,25 @@ def _bind(
             },
         )
         actor_handle._ray_dag_bind_index += 1
-        collective_output_nodes.append(collective_output_node)
+
+        if isinstance(inp, list):
+            output_nodes: List[ClassMethodNode] = []
+            for i in range(len(inp)):
+                output_node = ClassMethodNode(
+                    f"return_idx_{i}",
+                    (collective_output_node, i),
+                    dict(),
+                    dict(),
+                    {
+                        BIND_INDEX_KEY: collective_output_node._get_bind_index(),
+                        IS_CLASS_METHOD_OUTPUT_KEY: True,
+                        PARENT_CLASS_NODE_KEY: actor_handle,
+                    },
+                )
+                output_nodes.append(output_node)
+            collective_output_nodes.append(output_nodes)
+        else:
+            collective_output_nodes.append(collective_output_node)
     return collective_output_nodes
 
 
