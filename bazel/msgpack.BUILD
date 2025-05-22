@@ -7,13 +7,6 @@ cc_library(
         "include/**/*.hpp",
     ]),
     strip_include_prefix = "include",
-    copts = select({
-        "@platforms//os:windows": [],
-        # Ray doesn't control third-party libraries' implementation, simply ignores certain warning errors.
-        "//conditions:default": [
-            "-Wno-shadow",
-        ],
-    }),
 )
 
 cc_library(

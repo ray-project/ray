@@ -176,7 +176,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             _env->CallObjectMethod(java_task_executor,
                                    java_task_executor_parse_function_arguments,
                                    ray_function_array_list));
-        RAY_CHECK_JAVA_EXCEPTION(env);
+        RAY_CHECK_JAVA_EXCEPTION(_env);
         jobject args_array_list = ToJavaArgs(_env, java_check_results, args);
 
         // invoke Java method
