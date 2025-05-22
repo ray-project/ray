@@ -7,7 +7,6 @@ import logging
 import mmap
 import multiprocessing
 import os
-import random
 import shutil
 import signal
 import socket
