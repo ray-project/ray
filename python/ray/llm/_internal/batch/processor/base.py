@@ -135,9 +135,11 @@ class Processor:
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
 
         # FIXES: https://github.com/ray-project/ray/issues/53124
-        # TODO (Kourosh): Remove this once the issue is fixed, see #53246
+        # TODO (Kourosh): Remove this once the issue is fixed
         data_context = ray.data.DataContext.get_current()
         data_context.wait_for_min_actors_s = 600
+        # TODO: Remove this when https://github.com/ray-project/ray/issues/53169
+        # is fixed.
         data_context._enable_actor_pool_on_exit_hook = True
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
