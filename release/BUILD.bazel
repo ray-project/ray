@@ -449,6 +449,7 @@ py_test(
         "ray_release/tests/test_collection_data.yaml",
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
+        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [

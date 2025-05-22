@@ -606,11 +606,6 @@ doctest(
 
 filegroup(
     name = "example_configs",
-    srcs = glob(
-        [
-            "source/ray-overview/examples/**/*.yaml",
-            "source/train/examples/pytorch/distributing-pytorch/**/*.yaml",
-        ]
-    ),
+    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
