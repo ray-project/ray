@@ -138,14 +138,20 @@ class TestDeploymentConfig:
         deployment_config = DeploymentConfig.from_default(
             request_router_class=FakeRequestRouter
         )
-        assert deployment_config.request_router_class == "test_config.FakeRequestRouter"
+        assert (
+            deployment_config.request_router_class
+            == "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+        )
         assert deployment_config.get_request_router_class() == FakeRequestRouter
 
         # Passing request_router_class as an import path.
         deployment_config = DeploymentConfig.from_default(
-            request_router_class="test_config.FakeRequestRouter"
+            request_router_class="python.ray.serve.tests.unit.test_config.FakeRequestRouter"
         )
-        assert deployment_config.request_router_class == "test_config.FakeRequestRouter"
+        assert (
+            deployment_config.request_router_class
+            == "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+        )
         assert deployment_config.get_request_router_class() == FakeRequestRouter
 
         # Not passing request_router_class should
