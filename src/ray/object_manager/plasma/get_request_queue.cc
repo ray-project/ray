@@ -20,16 +20,16 @@
 namespace plasma {
 
 GetRequest::GetRequest(instrumented_io_context &io_context,
-                       const std::shared_ptr<ClientInterface> &client,
-                       const std::vector<ObjectID> &object_ids,
-                       bool is_from_worker,
-                       int64_t num_unique_objects_to_wait_for)
-    : client(client),
-      object_ids(object_ids.begin(), object_ids.end()),
-      objects(object_ids.size()),
-      num_unique_objects_to_wait_for(num_unique_objects_to_wait_for),
+                       const std::shared_ptr<ClientInterface> &_client,
+                       const std::vector<ObjectID> &_object_ids,
+                       bool _is_from_worker,
+                       int64_t _num_unique_objects_to_wait_for)
+    : client(_client),
+      object_ids(_object_ids.begin(), _object_ids.end()),
+      objects(_object_ids.size()),
+      num_unique_objects_to_wait_for(_num_unique_objects_to_wait_for),
       num_unique_objects_satisfied(0),
-      is_from_worker(is_from_worker),
+      is_from_worker(_is_from_worker),
       timer_(io_context) {}
 
 void GetRequest::AsyncWait(

@@ -89,9 +89,9 @@ class PushManager {
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
-    PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
-        : num_chunks(num_chunks),
-          chunk_send_fn(chunk_send_fn),
+    PushState(int64_t _num_chunks, std::function<void(int64_t)> _chunk_send_fn)
+        : num_chunks(_num_chunks),
+          chunk_send_fn(_chunk_send_fn),
           next_chunk_id(0),
           num_chunks_inflight(0),
           num_chunks_to_send(num_chunks) {}

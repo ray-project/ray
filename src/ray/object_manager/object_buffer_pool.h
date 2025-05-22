@@ -35,14 +35,14 @@ class ObjectBufferPool {
   /// This is the structure returned whenever an object chunk is
   /// accessed via Get and Create.
   struct ChunkInfo {
-    ChunkInfo(uint64_t chunk_index,
-              uint8_t *data,
-              uint64_t buffer_length,
-              std::shared_ptr<Buffer> buffer_ref)
-        : chunk_index(chunk_index),
-          data(data),
-          buffer_length(buffer_length),
-          buffer_ref(buffer_ref){};
+    ChunkInfo(uint64_t _chunk_index,
+              uint8_t *_data,
+              uint64_t _buffer_length,
+              std::shared_ptr<Buffer> _buffer_ref)
+        : chunk_index(_chunk_index),
+          data(_data),
+          buffer_length(_buffer_length),
+          buffer_ref(_buffer_ref){};
     /// The index of this object chunk within the object, starting with 0.
     uint64_t chunk_index;
     /// A pointer to the start position of this object chunk.
@@ -172,14 +172,14 @@ class ObjectBufferPool {
 
   /// Holds the state of creating chunks. Members are protected by pool_mutex_.
   struct CreateBufferState {
-    CreateBufferState(uint64_t metadata_size,
-                      uint64_t data_size,
-                      std::vector<ChunkInfo> chunk_info)
-        : metadata_size(metadata_size),
-          data_size(data_size),
-          chunk_info(chunk_info),
-          chunk_state(chunk_info.size(), CreateChunkState::AVAILABLE),
-          num_seals_remaining(chunk_info.size()) {}
+    CreateBufferState(uint64_t _metadata_size,
+                      uint64_t _data_size,
+                      std::vector<ChunkInfo> _chunk_info)
+        : metadata_size(_metadata_size),
+          data_size(_data_size),
+          chunk_info(_chunk_info),
+          chunk_state(_chunk_info.size(), CreateChunkState::AVAILABLE),
+          num_seals_remaining(_chunk_info.size()) {}
     /// Total size of the object metadata.
     uint64_t metadata_size;
     /// Total size of the object data.

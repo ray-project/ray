@@ -56,8 +56,8 @@ class error_code;
 // logged message. The message can be appended with <<.
 #define RAY_CHECK_OK(s)                                         \
   if (const ::ray::Status &RAY_UNIQUE_VARIABLE(_s) = (s); true) \
-    RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)    \
-      << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
+  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)      \
+    << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
 
 namespace ray {
 

@@ -549,15 +549,15 @@ bool LocalTaskManager::PoppedWorkerHandler(
   // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
   // a view of the Work ptrs, but I got dependency issues
   // (can't include boost/range/any_range.hpp).
-  auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
-                                             const SchedulingClass &scheduling_class) {
-    auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
+  auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &_work,
+                                             const SchedulingClass &_scheduling_class) {
+    auto shapes_it = tasks_to_dispatch_.find(_scheduling_class);
     RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
     auto &dispatch_queue = shapes_it->second;
     bool erased = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();
          work_it++) {
-      if (*work_it == work) {
+      if (*work_it == _work) {
         dispatch_queue.erase(work_it);
         erased = true;
         break;
@@ -568,10 +568,10 @@ bool LocalTaskManager::PoppedWorkerHandler(
     }
     RAY_CHECK(erased);
 
-    const auto &task = work->task;
-    if (!task.GetDependencies().empty()) {
+    const auto &_task = _work->task;
+    if (!_task.GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
-          task.GetTaskSpecification().TaskId());
+          _task.GetTaskSpecification().TaskId());
     }
   };
 

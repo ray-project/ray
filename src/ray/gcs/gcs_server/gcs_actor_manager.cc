@@ -404,10 +404,10 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   Status status = RegisterActor(
       request,
       [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
-                                             const Status &status) {
+                                             const Status &_status) {
         RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, _status);
       });
   if (!status.ok()) {
     RAY_LOG(WARNING).WithField(actor_id.JobId()).WithField(actor_id)
@@ -469,10 +469,10 @@ void GcsActorManager::HandleRestartActor(rpc::RestartActorRequest request,
           // should overwrite the actor state to DEAD to avoid race condition.
           return;
         }
-        auto iter = actor_to_restart_callbacks_.find(actor->GetActorID());
-        RAY_CHECK(iter != actor_to_restart_callbacks_.end() && !iter->second.empty());
-        auto callbacks = std::move(iter->second);
-        actor_to_restart_callbacks_.erase(iter);
+        auto _iter = actor_to_restart_callbacks_.find(actor->GetActorID());
+        RAY_CHECK(_iter != actor_to_restart_callbacks_.end() && !_iter->second.empty());
+        auto callbacks = std::move(_iter->second);
+        actor_to_restart_callbacks_.erase(_iter);
         for (auto &callback : callbacks) {
           callback(actor);
         }
@@ -813,11 +813,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
              actor->GetActorID(),
              *actor->GetMutableActorTableData(),
-             {[this, actor, register_callback](Status status) {
+             {[this, actor, register_callback](Status _status) {
                 RAY_CHECK(thread_checker_.IsOnSameThread());
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
-                RAY_CHECK_OK(status);
+                RAY_CHECK_OK(_status);
                 actor->WriteActorExportEvent();
                 auto registered_actor_it = registered_actors_.find(actor->GetActorID());
                 auto reply_status = Status::OK();
@@ -841,11 +841,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                 // (duplicated requests are included) and remove all of them from
                 // actor_to_register_callbacks_.
                 // Reply to the owner to indicate that the actor has been registered.
-                auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-                RAY_CHECK(iter != actor_to_register_callbacks_.end() &&
-                          !iter->second.empty());
-                auto callbacks = std::move(iter->second);
-                actor_to_register_callbacks_.erase(iter);
+                auto _iter = actor_to_register_callbacks_.find(actor->GetActorID());
+                RAY_CHECK(_iter != actor_to_register_callbacks_.end() &&
+                          !_iter->second.empty());
+                auto callbacks = std::move(_iter->second);
+                actor_to_register_callbacks_.erase(_iter);
                 for (auto &callback : callbacks) {
                   callback(actor, Status::OK());
                 }
@@ -1861,8 +1861,8 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
   const auto &actor_id = actor->GetActorID();
   auto pending_it = std::find_if(pending_actors_.begin(),
                                  pending_actors_.end(),
-                                 [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                                   return actor->GetActorID() == actor_id;
+                                 [actor_id](const std::shared_ptr<GcsActor> &_actor) {
+                                   return _actor->GetActorID() == actor_id;
                                  });
 
   // The actor was pending scheduling. Remove it from the queue.

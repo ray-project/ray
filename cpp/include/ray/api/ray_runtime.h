@@ -29,14 +29,14 @@ namespace internal {
 
 struct RemoteFunctionHolder {
   RemoteFunctionHolder() = default;
-  RemoteFunctionHolder(const std::string &module_name,
-                       const std::string &function_name,
-                       const std::string &class_name = "",
-                       LangType lang_type = LangType::CPP) {
-    this->module_name = module_name;
-    this->function_name = function_name;
-    this->class_name = class_name;
-    this->lang_type = lang_type;
+  RemoteFunctionHolder(const std::string &_module_name,
+                       const std::string &_function_name,
+                       const std::string &_class_name = "",
+                       LangType _lang_type = LangType::CPP) {
+    this->module_name = _module_name;
+    this->function_name = _function_name;
+    this->class_name = _class_name;
+    this->lang_type = _lang_type;
   }
   RemoteFunctionHolder(std::string func_name) {
     if (func_name.empty()) {

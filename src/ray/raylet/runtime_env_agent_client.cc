@@ -230,8 +230,8 @@ class SessionPool {
   void enqueue(std::shared_ptr<Session> session) {
     if (running_sessions_.size() < max_concurrency_) {
       running_sessions_.insert(session);
-      session->run(/*finished_callback=*/[this](std::shared_ptr<Session> session) {
-        this->remove_session_from_running(session);
+      session->run(/*finished_callback=*/[this](std::shared_ptr<Session> _session) {
+        this->remove_session_from_running(_session);
       });
     } else {
       pending_sessions_.emplace(std::move(session));

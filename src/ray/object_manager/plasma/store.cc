@@ -316,8 +316,8 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
           return ProcessClientMessage(std::move(client), message_type, message);
         },
         /*connection_error_handler=*/
-        [this](std::shared_ptr<Client> client, const boost::system::error_code &error)
-            -> void { return HandleClientConnectionError(std::move(client), error); },
+        [this](std::shared_ptr<Client> client, const boost::system::error_code &_error)
+            -> void { return HandleClientConnectionError(std::move(client), _error); },
         std::move(socket_));
 
     // Start receiving messages.

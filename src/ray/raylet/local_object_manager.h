@@ -175,13 +175,13 @@ class LocalObjectManager {
 
  private:
   struct LocalObjectInfo {
-    LocalObjectInfo(const rpc::Address &owner_address,
-                    const ObjectID &generator_id,
-                    size_t object_size)
-        : owner_address(owner_address),
-          generator_id(generator_id.IsNil() ? std::nullopt
-                                            : std::optional<ObjectID>(generator_id)),
-          object_size(object_size) {}
+    LocalObjectInfo(const rpc::Address &_owner_address,
+                    const ObjectID &_generator_id,
+                    size_t _object_size)
+        : owner_address(_owner_address),
+          generator_id(_generator_id.IsNil() ? std::nullopt
+                                            : std::optional<ObjectID>(_generator_id)),
+          object_size(_object_size) {}
     rpc::Address owner_address;
     bool is_freed = false;
     std::optional<ObjectID> generator_id;

@@ -189,11 +189,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
 
   Status status = gcs_table_storage_.JobTable().Get(
       job_id,
-      {[this, job_id, send_reply](Status status,
+      {[this, job_id, send_reply](Status _status,
                                   std::optional<rpc::JobTableData> result) {
          RAY_CHECK(thread_checker_.IsOnSameThread());
 
-         if (status.ok() && result) {
+         if (_status.ok() && result) {
            MarkJobAsFinished(*result, send_reply);
            return;
          }
@@ -201,11 +201,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          if (!result.has_value()) {
            RAY_LOG(ERROR) << "Tried to mark job " << job_id
                           << " as finished, but there was no record of it starting!";
-         } else if (!status.ok()) {
+         } else if (!_status.ok()) {
            RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
-                          << status;
+                          << _status;
          }
-         send_reply(status);
+         send_reply(_status);
        },
        io_context_});
   if (!status.ok()) {
@@ -414,8 +414,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](auto result) {
-            for (const auto &data : result) {
+           try_send_reply](auto _result) {
+            for (const auto &data : _result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
               const std::string &job_info_json = data.second;
@@ -430,8 +430,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                       << job_info_json << " Error: " << status.message();
                 }
                 // Add the JobInfo to the correct indices in the reply.
-                for (int i : job_data_key_to_indices.at(job_data_key)) {
-                  reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                for (int j : job_data_key_to_indices.at(job_data_key)) {
+                  reply->mutable_job_info_list(j)->mutable_job_info()->CopyFrom(
                       jobs_api_info);
                 }
               }

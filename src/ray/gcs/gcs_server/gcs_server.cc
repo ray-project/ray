@@ -156,7 +156,7 @@ void GcsServer::GetOrGenerateClusterId(
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
          if (!provided_cluster_id.has_value()) {
-           instrumented_io_context &io_context = continuation.io_context();
+           instrumented_io_context &_io_context = continuation.io_context();
            ClusterID cluster_id = ClusterID::FromRandom();
            RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
                          << cluster_id.Hex();
@@ -172,7 +172,7 @@ void GcsServer::GetOrGenerateClusterId(
                       .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
                                 cluster_id);
                 },
-                io_context});
+                _io_context});
          } else {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
            RAY_LOG(INFO) << "Found existing server token: " << cluster_id;

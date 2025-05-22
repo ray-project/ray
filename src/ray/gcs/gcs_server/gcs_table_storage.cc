@@ -51,8 +51,8 @@ Status GcsTable<Key, Data>::Get(const Key &key,
                                 Postable<void(Status, std::optional<Data>)> callback) {
   // We can't use TransformArg here because we need to return 2 arguments.
   return store_client_->AsyncGet(
-      table_name_, key.Binary(), std::move(callback).Rebind([](auto callback) {
-        return [callback = std::move(callback)](Status status,
+      table_name_, key.Binary(), std::move(callback).Rebind([](auto _callback) {
+        return [cb = std::move(_callback)](Status status,
                                                 std::optional<std::string> result) {
           std::optional<Data> value;
           if (result) {
@@ -60,7 +60,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
             data.ParseFromString(*result);
             value = std::move(data);
           }
-          callback(status, std::move(value));
+          cb(status, std::move(value));
         };
       }));
 }
