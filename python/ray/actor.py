@@ -365,9 +365,10 @@ class ActorMethod:
                 self._generator_backpressure_num_objects
             )
         tensor_transport = tensor_transport or self._tensor_transport
-        assert (
-            tensor_transport in TENSOR_TRANSPORT
-        ), f"tensor_transport must be a string that is one of {TENSOR_TRANSPORT}"
+        if tensor_transport not in TENSOR_TRANSPORT:
+            raise ValueError(
+                f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
+            )
         args = args or []
         kwargs = kwargs or {}
 
