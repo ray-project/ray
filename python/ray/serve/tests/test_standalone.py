@@ -12,11 +12,9 @@ import pytest
 import requests
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray import serve
 from ray._private.services import new_port
 from ray._private.test_utils import (
-    convert_actor_state,
     run_string_as_driver,
     wait_for_condition,
 )
@@ -294,8 +292,7 @@ def test_multiple_routers(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 2
+    assert len(ray.nodes()) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
 
     @serve.deployment(
@@ -462,11 +459,7 @@ def test_no_http(ray_shutdown):
         serve.start(**option)
 
         # Only controller actor should exist
-        live_actors = [
-            actor
-            for actor in ray._private.state.actors().values()
-            if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-        ]
+        live_actors = list_actors(filters=[("state", "=", "ALIVE")],)
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_proxies.remote())) == 0
@@ -488,19 +481,17 @@ def test_http_head_only(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 2
+    assert len(ray.nodes()) == 2
 
     serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
 
-    # Only the controller and head node actor should be started
-    assert len(ray._private.state.actors()) == 2
-
-    # They should all be placed on the head node
-    cpu_per_nodes = {
-        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
-    }
-    assert cpu_per_nodes == {4}
+    # Only the controller and head node proxy should be started, both on the head node.
+    actors = list_actors()
+    assert len(actors) == 2
+    assert all([
+        actor.node_id == head_node.node_id
+        for actor in actors
+    ])
 
 
 def test_serve_shutdown(ray_shutdown):
