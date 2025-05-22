@@ -81,7 +81,7 @@ def check_refcounts(expected, timeout=10):
                 time.sleep(0.1)
 
 
-def test_local_refcounts(ray_start_regular):
+def test_local_refcounts(one_cpu_100MiB_shared):
     obj_ref1 = ray.put(None)
     check_refcounts({obj_ref1: (1, 0)})
     obj_ref1_copy = copy.copy(obj_ref1)
@@ -92,7 +92,7 @@ def test_local_refcounts(ray_start_regular):
     check_refcounts({})
 
 
-def test_dependency_refcounts(ray_start_regular):
+def test_dependency_refcounts(one_cpu_100MiB_shared):
     @ray.remote
     def one_dep(dep, signal=None, fail=False):
         if signal is not None:
@@ -542,7 +542,7 @@ def _all_actors_dead():
     )
 
 
-def test_kill_actor_immediately_after_creation(ray_start_regular):
+def test_kill_actor_immediately_after_creation(one_cpu_100MiB_shared):
     @ray.remote
     class A:
         pass
@@ -555,7 +555,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
     wait_for_condition(_all_actors_dead, timeout=10)
 
 
-def test_remove_actor_immediately_after_creation(ray_start_regular):
+def test_remove_actor_immediately_after_creation(one_cpu_100MiB_shared):
     @ray.remote
     class A:
         pass
@@ -570,7 +570,7 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
 # Test that a reference borrowed by an actor constructor is freed if the actor is
 # cancelled before being scheduled.
-def test_actor_constructor_borrow_cancellation(ray_start_regular):
+def test_actor_constructor_borrow_cancellation(one_cpu_100MiB_shared):
     # Schedule the actor with a non-existent resource so it's guaranteed to never be
     # scheduled.
     @ray.remote(resources={"nonexistent_resource": 1})
