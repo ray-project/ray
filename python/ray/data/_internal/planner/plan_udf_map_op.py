@@ -249,6 +249,20 @@ def _parse_op_fn(op: AbstractUDFMap):
     fn_args = op._fn_args or ()
     fn_kwargs = op._fn_kwargs or {}
 
+    def dereference_variable(var):
+        if isinstance(var, ray.ObjectRef):
+            return ray.get(var)
+        else:
+            return var
+
+    # make these lazy so they are not executed on the driver
+    if fn_args:
+        fn_args = map(dereference_variable, fn_args)
+    if fn_kwargs:
+        fn_kwargs = map(
+            lambda kv: (kv[0], dereference_variable(kv[1])), fn_kwargs.items()
+        )
+
     if isinstance(op._fn, CallableClass):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
