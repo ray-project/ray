@@ -12,6 +12,9 @@ from typing import List, Optional, Tuple, TypedDict, Union
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from grpc.aio import ServicerContext
+
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
@@ -501,7 +504,11 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
-    async def Export(self, request, context):
+    async def Export(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+        context: ServicerContext,
+    ) -> metrics_service_pb2.ExportMetricsServiceResponse:
         """
         GRPC method that receives the open telemetry metrics exported from other Ray
         components running in the same node (e.g., raylet, worker, etc.). This method
