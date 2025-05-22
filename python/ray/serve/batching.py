@@ -106,9 +106,10 @@ class _BatchQueue:
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.semaphore = asyncio.Semaphore(max_concurrent_batches)
         self.requests_available_event = asyncio.Event()
+        self.tasks: Set[asyncio.Task] = set()
 
         # Used for observability.
-        self.curr_iteration_start_time = time.time()
+        self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
 
         self._handle_batch_task = None
         self._loop = get_or_create_event_loop()
@@ -261,15 +262,14 @@ class _BatchQueue:
 
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
-        tasks: Set[asyncio.Task] = set()
         while not self._loop.is_closed():
-            self.curr_iteration_start_time = time.time()  # TODO: what do we do when there are many ongoing at once?
             batch = await self.wait_for_batch()
             promise = self._process_batch(func, batch)
             task = asyncio.create_task(promise)
-            tasks.add(task)
-            task.add_done_callback(lambda task: tasks.remove(task))
-            await self._poll_tasks(tasks)
+            self.tasks.add(task)
+            self.curr_iteration_start_times[task] = time.time()
+            task.add_done_callback(self._handle_completed_task)
+            await self._poll_tasks()
 
     async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
         """Processes queued request batch."""
@@ -311,13 +311,17 @@ class _BatchQueue:
                 for future in futures:
                     _set_exception_if_not_done(future, e)
 
-    async def _poll_tasks(self, tasks: Collection[asyncio.Task]) -> None:
-        for task in tasks:
+    async def _poll_tasks(self) -> None:
+        for task in self.tasks:
             if task.done():
                 try:
                     await task
                 except Exception:
                     logger.exception("_process_batches asyncio task ran into an unexpected exception.")
+
+    def _handle_completed_task(self, task: asyncio.Task) -> None:
+        self.tasks.remove(task)
+        del self.curr_iteration_start_times[task]
 
     def __del__(self):
         if self._handle_batch_task is None or not get_or_create_event_loop().is_running():
@@ -385,16 +389,13 @@ class _LazyBatchQueueWrapper:
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
 
-    def _get_curr_iteration_start_time(self) -> Optional[float]:
+    def _get_curr_iteration_start_times(self) -> Dict[asyncio.Task, float]:
         """Gets current iteration's start time on default _BatchQueue implementation.
 
         Returns None if the batch handler doesn't use a default _BatchQueue.
         """
 
-        if hasattr(self.queue, "curr_iteration_start_time"):
-            return self.queue.curr_iteration_start_time
-        else:
-            return None
+        return self.queue.curr_iteration_start_times
 
     async def _is_batching_task_alive(self) -> bool:
         """Gets whether default _BatchQueue's background task is alive.
@@ -635,7 +636,7 @@ def batch(
         wrapper.set_batch_wait_timeout_s = lazy_batch_queue_wrapper.set_batch_wait_timeout_s
 
         # Store debugging methods in the lazy_batch_queue wrapper
-        wrapper._get_curr_iteration_start_time = lazy_batch_queue_wrapper._get_curr_iteration_start_time
+        wrapper._get_curr_iteration_start_time = lazy_batch_queue_wrapper._get_curr_iteration_start_times
         wrapper._is_batching_task_alive = lazy_batch_queue_wrapper._is_batching_task_alive
         wrapper._get_handling_task_stack = lazy_batch_queue_wrapper._get_handling_task_stack
 
