@@ -537,8 +537,8 @@ def test_actor_constructor_borrow_cancellation(one_cpu_100MiB_shared):
         print(Actor.remote({"foo": ref}))
 
     test_implicit_cancel()
-    # Confirm that the ref object is not leaked.
 
+    # Confirm that the ref object is not leaked.
     check_refcounts({})
 
     # Test with explicit cancellation via ray.kill().
