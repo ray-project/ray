@@ -105,7 +105,7 @@ if __name__ == "__main__":
             # One for `agent_0` (converting the global observations into
             # position-indices for that agent), the other for `agent_1` (converting
             # the global observations into single x/y coordinates).
-            env_to_module_connector=lambda env: [
+            env_to_module_connector=lambda env, spaces, device: [
                 DoubleXYPosToDiscreteIndex(agent_id="agent_0"),
                 DoubleXYPosToSingleXYPos(agent_id="agent_1"),
                 # Only flatten agent_0's observations (b/c these are ints that need to

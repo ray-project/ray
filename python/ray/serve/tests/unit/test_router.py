@@ -217,8 +217,9 @@ class FakeReplicaScheduler(ReplicaScheduler):
 
     async def choose_replicas(
         self,
+        replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
-    ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+    ) -> List[List[RunningReplica]]:
         pass
 
 

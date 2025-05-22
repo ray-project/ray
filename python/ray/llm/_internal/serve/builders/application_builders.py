@@ -19,13 +19,15 @@ logger = get_logger(__name__)
 
 def build_llm_deployment(
     llm_config: LLMConfig,
+    *,
+    name_prefix: Optional[str] = None,
     deployment_kwargs: Optional[dict] = None,
 ) -> Application:
-    if deployment_kwargs is None:
-        deployment_kwargs = {}
+    name_prefix = name_prefix or "LLMDeployment"
+    deployment_kwargs = deployment_kwargs or {}
 
     deployment_options = llm_config.get_serve_options(
-        name_prefix="LLMDeployment:",
+        name_prefix=name_prefix,
     )
 
     return LLMDeployment.options(**deployment_options).bind(
@@ -34,13 +36,15 @@ def build_llm_deployment(
 
 
 def _get_llm_deployments(
-    llm_base_models: Optional[Sequence[LLMConfig]] = None,
+    llm_base_models: Sequence[LLMConfig],
     deployment_kwargs: Optional[dict] = None,
 ) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_base_models:
         if llm_config.llm_engine == LLMEngine.vLLM:
-            llm_deployments.append(build_llm_deployment(llm_config, deployment_kwargs))
+            llm_deployments.append(
+                build_llm_deployment(llm_config, deployment_kwargs=deployment_kwargs)
+            )
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.

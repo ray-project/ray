@@ -159,7 +159,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Check timeout tasks that are waiting for Death info.
   void CheckTimeoutTasks();
 
-  /// If the the number of tasks in requests is greater than or equal to
+  /// If the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
   ///
   /// \param[in] actor_id Actor id.

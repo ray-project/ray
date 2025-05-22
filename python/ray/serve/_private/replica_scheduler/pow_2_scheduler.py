@@ -25,7 +25,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class PowerOfTwoChoicesReplicaScheduler(
-    FIFOMixin, MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
+    FIFOMixin, LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
 

@@ -495,7 +495,7 @@ class TestClickHouseDatasink:
             datasink.on_write_start()
             rb = pa.record_batch([pa.array([1, 2, 3])], names=["col1"])
             block_data = pa.Table.from_batches([rb])
-            ctx = TaskContext(1)
+            ctx = TaskContext(1, "")
             results = datasink.write([block_data], ctx=ctx)
             assert results == [3]
             mock_clickhouse_sink_client.insert_arrow.assert_called()
@@ -648,7 +648,7 @@ class TestClickHouseDatasink:
                 else:
                     arrays.append(pa.array(["a", "b", "c"], type=field.type))
             block_data = pa.Table.from_arrays(arrays, names=[f.name for f in schema])
-            datasink.write([block_data], ctx=TaskContext(1))
+            datasink.write([block_data], ctx=TaskContext(1, ""))
             create_sql = None
             for call_arg in mock_clickhouse_sink_client.command.call_args_list:
                 sql_arg = call_arg[0][0]
@@ -723,7 +723,7 @@ class TestClickHouseDatasink:
             block_data = pa.Table.from_arrays(
                 arrays, names=[n for (n, _) in block_fields]
             )
-            datasink.write([block_data], ctx=TaskContext(1))
+            datasink.write([block_data], ctx=TaskContext(1, ""))
             create_sql = None
             for call_arg in mock_clickhouse_sink_client.command.call_args_list:
                 sql_arg = call_arg[0][0]
@@ -763,7 +763,7 @@ class TestClickHouseDatasink:
                 arr = pa.array(range(size), type=pa.int32())
                 block_table = pa.Table.from_arrays([arr], names=["col1"])
                 blocks.append(block_table)
-            datasink.write(blocks, ctx=TaskContext(1))
+            datasink.write(blocks, ctx=TaskContext(1, ""))
             insert_calls = [
                 call_args[0][1]
                 for call_args in mock_clickhouse_sink_client.insert_arrow.call_args_list
@@ -832,7 +832,7 @@ class TestClickHouseDatasink:
                 (ValueError, pa.lib.ArrowInvalid, pa.lib.ArrowNotImplementedError),
                 match=expected_error_regex,
             ):
-                datasink.write([block_data], ctx=TaskContext(1))
+                datasink.write([block_data], ctx=TaskContext(1, ""))
 
 
 if __name__ == "__main__":

@@ -34,7 +34,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
@@ -51,6 +50,14 @@ class LocalityScope(str, enum.Enum):
 
 
 class LocalityScheduleMixin:
+    """Mixin for locality scheduling.
+
+    This mixin is used to schedule requests to replicas that are colocated
+    with the handle. It adds necessary attributes and methods to keep track of
+    locality scopes and offer the helpers to apply locality scheduling and
+    rank replicas based on locality.
+    """
+
     def __init__(
         self,
         self_node_id: Optional[str] = None,
@@ -75,15 +82,18 @@ class LocalityScheduleMixin:
     def discard_colocated_replica_ids_on_replica_actor_died(
         self, replica_id: ReplicaID
     ):
+        """Remove the replica ID from the colocated replica IDs.
+        This is called when a replica actor dies.
+        """
         for id_set in self._colocated_replica_ids.values():
             id_set.discard(replica_id)
 
     def update_colocated_replica_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
-        # print(
-        #     f"in update_colocated_replica_ids_with_replicas {self._colocated_replica_ids=} {[(r.node_id, r.availability_zone) for r in replicas]=} {self._self_node_id=} {self._self_availability_zone=}"
-        # )
+        """Update the colocated replica IDs based on the replicas.
+        This is called when the replicas are updated.
+        """
         new_colocated_replica_ids = defaultdict(set)
 
         for r in replicas:
@@ -103,9 +113,20 @@ class LocalityScheduleMixin:
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        # print(
-        #     f"in apply_locality_scheduling {self._colocated_replica_ids=} {self._replica_id_set=}"
-        # )
+        """Apply locality scheduling to the pending request.
+
+        When the reqeust is None, return all replicas. Each call will try to
+        schedule the request to replicas in the priority of first on the
+        same node, then in the same availability zone, and finally all
+        replicas.
+
+        Args:
+            pending_request: The pending request to be scheduled.
+        Returns:
+            A set of replica IDs that are candidates based on
+            the locality policy.
+        """
+
         if not pending_request:
             return self._replica_id_set
 
@@ -117,7 +138,6 @@ class LocalityScheduleMixin:
             # Attempt to schedule requests to replicas on the
             # same node at most once
             candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            # print(f"_prefer_local_node_routing {candidate_replica_ids=}")
             pending_request.scheduling_context.tried_same_node = True
             pending_request.scheduling_context.should_backoff = False
         elif (
@@ -137,34 +157,18 @@ class LocalityScheduleMixin:
             # node or AZ, consider all available replicas.
             candidate_replica_ids = self._replica_id_set
             pending_request.scheduling_context.should_backoff = True
-        # print(f"locality decision {candidate_replica_ids=}")
         return candidate_replica_ids
-
-    def rank_replicas_via_locality(
-        self,
-        replicas: List[RunningReplica],
-    ) -> List[List[RunningReplica]]:
-        """Rank the replicas based on the locality preference.
-
-        Rank 0 is the list of replicas that are on the same node.
-        Rank 1 is the list of replicas that are on the same availability zone.
-        Rank 2 is the list of all other replicas.
-        """
-        ranked_replicas = [[] for _ in range(3)]
-        for replica in replicas:
-            if replica.replica_id in self._colocated_replica_ids[LocalityScope.NODE]:
-                ranked_replicas[0].append(replica)
-            elif (
-                replica.replica_id
-                in self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
-            ):
-                ranked_replicas[1].append(replica)
-            else:
-                ranked_replicas[2].append(replica)
-        return ranked_replicas
 
 
 class MultiplexScheduleMixin:
+    """Mixin for multiplex scheduling.
+
+    This mixin is used to schedule requests to replicas that are multiplexed.
+    It adds necessary attributes and methods to keep track of multiplexed
+    model IDs and offer the helpers to apply multiplex scheduling and rank
+    replicas based on multiplexed model IDs.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._multiplexed_model_id_to_replica_ids: DefaultDict[
@@ -179,9 +183,29 @@ class MultiplexScheduleMixin:
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
 
+    def _get_pending_request_matching_multiplexed_model_id(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        """Matching pending request based on the request metadata."""
+        if request_metadata is None or not request_metadata.multiplexed_model_id:
+            return None
+
+        for pr in self._pending_requests_to_fulfill:
+            if (
+                not pr.future.done()
+                and pr.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            ):
+                return pr
+
     def update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
+        """Update the multiplexed model IDs based on the replicas.
+
+        This should be called when the replicas are updated.
+        """
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
         for r in replicas:
@@ -191,7 +215,6 @@ class MultiplexScheduleMixin:
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
-        # print(f"in update_multiplexed_model_ids_with_replicas {self._multiplexed_model_id_to_replica_ids=} {replicas=}")
 
     def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
         """Get the set of replicas that have the fewest multiplexed models loaded."""
@@ -207,7 +230,6 @@ class MultiplexScheduleMixin:
             else:
                 break
 
-        # print(f"in _get_replica_ids_with_fewest_multiplexed_models {candidates=}")
         return candidates
 
     @property
@@ -219,9 +241,27 @@ class MultiplexScheduleMixin:
 
     def apply_multiplex_scheduling(
         self,
-        pending_request: PendingRequest,
+        pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        # TODO (genesu): add doc string and data structure for the return type
+        """Apply multiplex scheduling to the pending request.
+
+        When the request is None, return all replicas. Each call will try to
+        schedule the request to the replicas that have the multiplexed model ID
+        to the hierarchy of first the replicas with the multiplexed model ID,
+        then the replicas with the fewest multiplexed models, and finally all
+        replicas.
+
+        Args:
+            pending_request: The pending request to be scheduled based on
+                multiplexed model policy.
+
+        Returns:
+            A set of replica IDs that are candidates for the existing
+            scheduling call.
+        """
+        if not pending_request:
+            return self._replica_id_set
+
         if not pending_request.scheduling_context.multiplexed_start_matching_time:
             pending_request.scheduling_context.multiplexed_start_matching_time = (
                 time.time()
@@ -235,7 +275,6 @@ class MultiplexScheduleMixin:
             time.time() - multiplexed_start_matching_time
             < self.multiplexed_matching_timeout
         ):
-            # print(f"in A {time.time() - multiplexed_start_matching_time=} {self.multiplexed_matching_timeout=}")
             candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
                 multiplexed_model_id, None
             )
@@ -244,7 +283,6 @@ class MultiplexScheduleMixin:
                 and multiplexed_model_id
                 not in self._multiplexed_model_id_fallback_match
             ) or pending_request.scheduling_context.tried_first_multiplexed_models:
-                # print(f"in B")
                 # When there is no match for a multiplexed model id
                 # or when the replica(s) with the matching model id is busy,
                 # first try to fall back to replicas with the fewest models.
@@ -253,7 +291,6 @@ class MultiplexScheduleMixin:
                 )
                 self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
             elif candidate_replica_ids:
-                # print(f"in C")
                 self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
             pending_request.scheduling_context.tried_first_multiplexed_models = True
         elif not pending_request.scheduling_context.tried_fewest_multiplexed_models:
@@ -261,13 +298,11 @@ class MultiplexScheduleMixin:
             # routing to replicas that have the fewest models loaded.
             # We only try this once to avoid deterministically retrying on
             # the same replicas repeatedly.
-            # print(f"in D")
             candidate_replica_ids = (
                 self._get_replica_ids_with_fewest_multiplexed_models()
             )
             pending_request.scheduling_context.tried_fewest_multiplexed_models = True
         else:
-            # print(f"in F")
             # If the timeout is up, and we've already tried the candidates
             # with the fewest models loaded, fall back to all replicas.
             candidate_replica_ids = self._replica_id_set
@@ -275,47 +310,58 @@ class MultiplexScheduleMixin:
         pending_request.scheduling_context.should_backoff = True
         return candidate_replica_ids
 
-    def rank_replicas_via_multiplex(
-        self,
-        replicas: List[RunningReplica],
-        multiplexed_model_id: str,
-    ) -> List[List[RunningReplica]]:
-        """Rank the replicas based on the multiplexed model ID.
-
-        Rank 0 is the list of replicas that have the multiplexed model ID.
-        Rank 1 is the list of replicas that have the fewest multiplexed models.
-        Rank 2 is the list of all other replicas.
-        """
-        replica_ids_with_multiplexed_model = (
-            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
-        )
-        replica_ids_with_fewest_multiplexed_models = (
-            self._get_replica_ids_with_fewest_multiplexed_models()
-        )
-
-        ranked_replicas = [[] for _ in range(3)]
-        for replica in replicas:
-            if replica.replica_id in replica_ids_with_multiplexed_model:
-                ranked_replicas[0].append(replica)
-            elif replica.replica_id in replica_ids_with_fewest_multiplexed_models:
-                ranked_replicas[1].append(replica)
-            else:
-                ranked_replicas[2].append(replica)
-        return ranked_replicas
-
 
 class FIFOMixin:
     """Mixin for FIFO scheduling.
 
-    This mixin is used to schedule requests in FIFO order and only respecting
-    the multiplexed model id. ReplicaScheduler's default behavior is
-    out-of-order scheduling and match expectly the internal request id of
+    This mixin is used to schedule requests in FIFO order, optionally prioritizing
+    requests with matching metadata. ReplicaScheduler's default behavior is
+    out-of-order scheduling and match exactly the internal request id of
     the request.
     """
 
-    @property
-    def fifo_scheduling(self) -> bool:
-        return True
+    def _get_pending_request_matching_metadata(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        """Matching pending request based on the request metadata.
+
+        If multiplex mixin is used, this will be using the multiplexed model
+        id for the matching. Else, it will return none as no matching pending request.
+        """
+        if hasattr(self, "_get_pending_request_matching_multiplexed_model_id"):
+            return self._get_pending_request_matching_multiplexed_model_id(
+                request_metadata
+            )
+
+        return None
+
+    def fulfill_next_pending_request(
+        self,
+        replica: RunningReplica,
+        request_metadata: Optional[RequestMetadata] = None,
+    ):
+        """Assign the replica to the next pending request in FIFO order.
+
+        If a pending request has been cancelled, it will be popped from the queue
+        and not assigned.
+        """
+        # First try to match a pending request based on the request metadata.
+        matched_pending_request = self._get_pending_request_matching_metadata(
+            request_metadata
+        )
+        if matched_pending_request is not None:
+            matched_pending_request.future.set_result(replica)
+            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            return
+
+        # If no pending request matches the request metadata, fulfill the next in the
+        # queue in FIFO order, passing over futures that have been cancelled.
+        while len(self._pending_requests_to_fulfill) > 0:
+            pr = self._pending_requests_to_fulfill.popleft()
+            if not pr.future.done():
+                pr.future.set_result(replica)
+                break
 
 
 class ReplicaScheduler(ABC):
@@ -351,11 +397,9 @@ class ReplicaScheduler(ABC):
         *args,
         **kwargs,
     ):
-        # print(f"in ReplicaScheduler#__init__ {args=}, {kwargs=}")
         self._deployment_id = deployment_id
         self._handle_source = handle_source
         self._self_actor_handle = self_actor_handle
-
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
 
@@ -382,9 +426,7 @@ class ReplicaScheduler(ABC):
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
-        # requests in FIFO order by scheduling tasks once they've acquired a replica.
-        # To avoid long tail latencies due to backoff, the scheduling task started by
-        # a given request may not be the one to fulfill it.
+        # requests (potentially out of order) by scheduling tasks once they've acquired a replica.
         # - self._pending_requests_to_schedule is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for scheduling tasks to know which multiplexed model IDs they
@@ -424,10 +466,6 @@ class ReplicaScheduler(ABC):
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
-
-    @property
-    def fifo_scheduling(self) -> bool:
-        return False
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -515,10 +553,10 @@ class ReplicaScheduler(ABC):
         """
         new_replicas = {}
         new_replica_id_set = set()
-        if hasattr(self, "update_multiplexed_model_ids_with_replicas"):
-            self.update_multiplexed_model_ids_with_replicas(replicas)
         if hasattr(self, "update_colocated_replica_ids_with_replicas"):
             self.update_colocated_replica_ids_with_replicas(replicas)
+        if hasattr(self, "update_multiplexed_model_ids_with_replicas"):
+            self.update_multiplexed_model_ids_with_replicas(replicas)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
@@ -681,8 +719,8 @@ class ReplicaScheduler(ABC):
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
                 # Include replicas whose queues are full as not in the cache so we will
-                # actively probe them. Otherwise, we may end up in "deadlock" until
-                # their cache entries expire.
+                # actively probe them. Otherwise we may end up in "deadlock" until their
+                # cache entries expire.
                 if queue_len is None or queue_len >= r.max_ongoing_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:
@@ -716,54 +754,24 @@ class ReplicaScheduler(ABC):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
-    def select_available_replicas(
-        self, candidates: Optional[List[RunningReplica]] = None
-    ) -> List[RunningReplica]:
-        """Select available replicas from the list of candidates.
-
-        This method is used to select replicas that are available to take more
-        requests based on the queue length cache. If the queue length is not
-        available in the cache, the replica is considered available. It does
-        not actively probe the replicas for their queue length.
-
-        If candidate is `None`, all replicas are considered.
-        """
-        if candidates is None:
-            candidates = list(self._replicas.values())
-
-        available_replicas = []
-        for r in candidates:
-            queue_len = self._replica_queue_len_cache.get(r.replica_id)
-            if queue_len is None or queue_len < r.max_ongoing_requests:
-                available_replicas.append(r)
-
-        return available_replicas
-
-    def pending_request_matched(
-        self, pending_request: PendingRequest, request_metadata: RequestMetadata
-    ) -> bool:
-        if self.fifo_scheduling:
-            return (
-                not pending_request.future.done()
-                and pending_request.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            )
-
-        return (
-            not pending_request.future.done()
-            and pending_request.metadata.internal_request_id
-            == request_metadata.internal_request_id
-        )
-
-    def _get_pending_request_matching_metadata(
+    def _get_pending_request_matching_internal_request_id(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
+        """Get the pending request that matches on the internal request id.
+
+        If no request metadata is provided or no request is found that matches the internal request ID,
+        return None.
+        """
         if request_metadata is None:
             return None
 
         for pr in self._pending_requests_to_fulfill:
-            if self.pending_request_matched(pr, request_metadata):
+            if (
+                not pr.future.done()
+                and pr.metadata.internal_request_id
+                == request_metadata.internal_request_id
+            ):
                 return pr
 
         return None
@@ -773,30 +781,19 @@ class ReplicaScheduler(ABC):
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending request in FIFO order.
+        """Assign the replica to the next pending request, potentially not in order of when the request arrived.
 
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # First try to match a pending request based on the request metadata (currently
-        # this only looks at the multiplexed model ID).
-        matched_pending_request = self._get_pending_request_matching_metadata(
-            request_metadata
+        # Find the pending request that matches exactly.
+        matched_pending_request = (
+            self._get_pending_request_matching_internal_request_id(request_metadata)
         )
-        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self.pending_request_matched=}")
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
-
-        # If no pending request matches the request metadata, fulfill the next in the
-        # queue in FIFO order, passing over futures that have been cancelled.
-        while len(self._pending_requests_to_fulfill) > 0:
-            pr = self._pending_requests_to_fulfill.popleft()
-            # print(f"{pr=} {pr.future.done()=}")
-            if not pr.future.done():
-                pr.future.set_result(replica)
-                break
 
     def _get_next_pending_request_to_schedule(
         self,
@@ -813,16 +810,9 @@ class ReplicaScheduler(ABC):
         pending_request: Optional[PendingRequest] = None,
     ) -> AsyncGenerator[List[RunningReplica], None]:
         """Generator that repeatedly chooses available replicas.
-
         In the first iteration, only replicas colocated on the same node as this router
         will be considered. If those are occupied, the full set of replicas will be
         considered on subsequent iterations.
-
-        For multiplexing, this will first attempt to choose replicas that have the
-        requested model ID for a configured timeout. If no replicas with the matching
-        model ID are available after that timeout, it will fall back to the regular
-        procedure.
-
         After each iteration, there will be an increasing backoff sleep time (dictated
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
@@ -916,7 +906,6 @@ class ReplicaScheduler(ABC):
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )
-                    # print(f"in fulfill_pending_requests {candidates=} {backoff_index=} {replica=} ")
                     if replica is not None:
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
@@ -943,7 +932,6 @@ class ReplicaScheduler(ABC):
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
-            # print("finally called")
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
@@ -971,9 +959,6 @@ class ReplicaScheduler(ABC):
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
         """Chooses a replica to send the provided request to.
-
-        By default, requests are scheduled in FIFO order, so this places a future on the
-        back of an internal queue that will be popped when a replica is available.
 
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
@@ -1023,17 +1008,22 @@ class ReplicaScheduler(ABC):
         replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        pass
+        """Chooses a subset of candidate replicas from available replicas.
 
-    async def on_request_scheduled(
-        self,
-        pending_request: PendingRequest,
-        replica_id: ReplicaID,
-        result: ReplicaResult,
-    ):
-        """Called when a request is scheduled to a replica.
+        This is the main function each replica scheduler should implement to
+        decide which replica to send the request to. This is one iteration of
+        replica selection.
 
-        This is used as a callback to update the state of the scheduler after
-        a response is generated.
+        Args:
+            replicas_ranks: A list of lists of replicas, where each inner list
+                represents a rank of replicas. The first rank is the most
+                preferred and the last rank is the least preferred.
+            pending_request: The request to be scheduled. This is used to
+                determine which replicas are eligible for scheduling.
+
+        Returns:
+            A list of lists of replicas, where each inner list represents a
+            rank of replicas. The first rank is the most preferred and the last
+            rank is the least preferred.
         """
         pass

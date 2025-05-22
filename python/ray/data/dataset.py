@@ -163,13 +163,15 @@ class Dataset:
     Datasets are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
     where each block holds data in Arrow format, representing a shard of the overall
     data collection. The block also determines the unit of parallelism. For more
-    details, see :ref:`Ray Data Internals <dataset_concept>`.
+    details, see :ref:`Ray Data Key Concepts <data_key_concepts>`.
 
-    Datasets can be created in multiple ways: from synthetic data via ``range_*()``
-    APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
-    of Dataset called ``MaterializedDataset``), or from external storage
-    systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs. The
-    (potentially processed) Dataset can be saved back to external storage systems
+    Datasets can be created in multiple ways:
+
+    * from external storage systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs.
+    * from existing memory data via ``from_*()`` APIs
+    * from synthetic data via ``range_*()`` APIs
+
+    The (potentially processed) Dataset can be saved back to external storage systems
     via the ``write_*()`` APIs.
 
     Examples:
@@ -196,11 +198,13 @@ class Dataset:
     Dataset transformations are lazy, with execution of the transformations being
     triggered by downstream consumption.
 
-    Dataset supports parallel processing at scale: transformations such as
-    :py:meth:`.map_batches()`, aggregations such as
-    :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
-    :py:meth:`.groupby()`, shuffling operations such as :py:meth:`.sort()`,
-    :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`.
+    Dataset supports parallel processing at scale:
+
+    * transformations such as :py:meth:`.map_batches()`
+    * aggregations such as :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`,
+    * grouping via :py:meth:`.groupby()`,
+    * shuffling operations such as :py:meth:`.sort()`, :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`
+    * joining via :py:meth:`.join()`
 
     Examples:
         >>> import ray
@@ -1520,6 +1524,20 @@ class Dataset:
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
+
+        if target_num_rows_per_block is not None:
+            if keys is not None:
+                warnings.warn(
+                    "`keys` is ignored when `target_num_rows_per_block` is set."
+                )
+            if sort is not False:
+                warnings.warn(
+                    "`sort` is ignored when `target_num_rows_per_block` is set."
+                )
+            if shuffle:
+                warnings.warn(
+                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
+                )
 
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
@@ -3595,7 +3613,7 @@ class Dataset:
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
             snapshot_properties: custom properties write to snapshot when committing
-            to an iceberg table.
+                to an iceberg table.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4690,7 +4708,7 @@ class Dataset:
             An iterable over batches of data.
         """
         batch_format = _apply_batch_format(batch_format)
-        return self.iterator().iter_batches(
+        return self.iterator()._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -5507,7 +5525,7 @@ class Dataset:
         Args:
             column: The name of the column to convert to numpy. If ``None``, all columns
                 are used. If multiple columns are specified, each returned
-            future represents a dict of ndarrays. Defaults to None.
+                future represents a dict of ndarrays. Defaults to None.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
