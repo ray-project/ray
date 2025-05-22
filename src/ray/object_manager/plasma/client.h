@@ -77,7 +77,6 @@ class PlasmaClientInterface {
   /// \return The return status.
   virtual Status Connect(const std::string &store_socket_name,
                          const std::string &manager_socket_name = "",
-                         int release_delay = 0,
                          int num_retries = -1) = 0;
 
   /// Tell Plasma that the client no longer needs the object. This should be
@@ -245,7 +244,6 @@ class PlasmaClient : public PlasmaClientInterface {
 
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name = "",
-                 int release_delay = 0,
                  int num_retries = -1) override;
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,

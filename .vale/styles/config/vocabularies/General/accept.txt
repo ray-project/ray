@@ -58,7 +58,7 @@ namespace
 NER
 Nsight
 NumPy
-Nvidia
+NVIDIA
 pretraining
 Pythonic
 QPS
@@ -75,3 +75,4 @@ VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs
+VS Code
