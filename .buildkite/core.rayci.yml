@@ -463,6 +463,8 @@ steps:
         --parallelism-per-worker 3
         --only-tags spark_on_ray
         --except-tags kubernetes
+    depends_on:
+      - corebuild
 
   # block on premerge and microcheck
   - block: "run multi gpu tests"
