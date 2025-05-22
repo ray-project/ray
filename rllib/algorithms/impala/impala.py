@@ -614,7 +614,7 @@ class IMPALA(Algorithm):
                 env_runner_indices_to_update,
             ) = self._sample_and_get_connector_states()
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 env_runner_metrics,
                 key=ENV_RUNNER_RESULTS,
             )
@@ -757,7 +757,7 @@ class IMPALA(Algorithm):
                     rl_module_state = result_from_1_learner.pop(
                         "_rl_module_state_after_update", rl_module_state
                     )
-                self.metrics.merge_and_log_n_dicts(
+                self.metrics.aggregate(
                     stats_dicts=learner_results,
                     key=LEARNER_RESULTS,
                 )

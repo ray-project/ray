@@ -63,9 +63,9 @@ namespace
 NER
 Nsight
 NumPy
-Nvidia
 OOM
 pipelining
+NVIDIA
 pretraining
 productionize
 Pythonic
