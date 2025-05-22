@@ -694,6 +694,9 @@ def test_generate_index():
         test_image1 = f"localhost:{port}/test-image:1.0"
         test_image2 = f"localhost:{port}/test-image:2.0"
 
+        subprocess.run(["docker", "pull", "alpine:3.16"], check=True)
+        subprocess.run(["docker", "pull", "alpine:3.17"], check=True)
+
         subprocess.run(["docker", "tag", "alpine:3.16", test_image1], check=True)
         subprocess.run(["docker", "tag", "alpine:3.17", test_image2], check=True)
 
