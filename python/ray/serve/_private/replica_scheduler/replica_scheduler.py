@@ -327,16 +327,12 @@ class FIFOMixin:
         """Matching pending request based on the request metadata.
 
         If multiplex mixin is used, this will be using the multiplexed model
-        id for the matching. Else, it will just take the next unscheduled pending.
+        id for the matching. Else, it will return none as no matching pending request.
         """
         if hasattr(self, "_get_pending_request_matching_multiplexed_model_id"):
             return self._get_pending_request_matching_multiplexed_model_id(
                 request_metadata
             )
-
-        for pr in self._pending_requests_to_fulfill:
-            if not pr.future.done():
-                return pr
 
         return None
 
@@ -430,7 +426,7 @@ class ReplicaScheduler(ABC):
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
-        # requests in out of order by scheduling tasks once they've acquired a replica.
+        # requests (potentially out of order) by scheduling tasks once they've acquired a replica.
         # - self._pending_requests_to_schedule is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for scheduling tasks to know which multiplexed model IDs they
@@ -764,7 +760,7 @@ class ReplicaScheduler(ABC):
     ) -> Optional[PendingRequest]:
         """Get the pending request that matches on the internal request id.
 
-        If no request metadata is provided or no matching internal request id,
+        If no request metadata is provided or no request is found that matches the internal request ID,
         return None.
         """
         if request_metadata is None:
@@ -785,12 +781,12 @@ class ReplicaScheduler(ABC):
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending request in out of order.
+        """Assign the replica to the next pending request, potentially not in order of when the request arrived.
 
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # Try to match a pending request based on the request metadata.
+        # Find the pending request that matches exactly.
         matched_pending_request = (
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
