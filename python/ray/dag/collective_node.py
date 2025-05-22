@@ -48,8 +48,6 @@ class _CollectiveOperation:
 
         if isinstance(inputs[0], list):
             assert all(isinstance(input_node_list, list) for input_node_list in inputs)
-            if len(set(len(input_node_list) for input_node_list in inputs)) != 1:
-                raise ValueError("Expected same number of nodes bound from all actors")
             if not all(
                 len(set(input_node_list)) == len(input_node_list)
                 for input_node_list in inputs
@@ -57,7 +55,6 @@ class _CollectiveOperation:
                 raise ValueError(
                     "Expected unique input nodes for a collective operation"
                 )
-            self.nodes_per_actor = len(inputs[0])
 
         self._actor_handles: List["ray.actor.ActorHandle"] = []
         for inp in inputs:

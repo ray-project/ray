@@ -52,6 +52,12 @@ def _bind(
     Returns:
         A list of collective output nodes.
     """
+    if isinstance(inputs[0], list):
+        if len(set(len(input_node_list) for input_node_list in inputs)) != 1:
+            raise ValueError("Expected equal number of nodes bound from all actors")
+        if len(inputs[0]) == 1:
+            inputs = [inp[0] for inp in inputs]
+
     if transport is None:
         transport = TorchTensorType.NCCL
     collective_op = _CollectiveOperation(inputs, op, transport)
