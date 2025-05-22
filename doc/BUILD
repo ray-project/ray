@@ -469,7 +469,6 @@ doctest(
             "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
-    size = "large",
     tags = ["team:core"],
 )
 
