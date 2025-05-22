@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Mark and Close Stale Pull Requests
-        uses: actions/stale@v9 
+        uses: actions/stale@v9
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -32,7 +32,7 @@ jobs:
           days-before-pr-close: 14
 
           # Label to use when marking a PR as stale
-          stale-pr-label: 'stale' 
+          stale-pr-label: 'stale'
 
           # Comment to post when marking a PR as stale
           stale-pr-message: |
@@ -68,6 +68,6 @@ jobs:
           operations-per-run: 30
 
           # Remove stale label from PRs on update (default is true)
-          remove-pr-stale-when-updated: true 
+          remove-pr-stale-when-updated: true
 
           ascending: true
