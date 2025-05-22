@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from typing import AsyncGenerator, Union
+import uuid
 
 from pydantic import BaseModel
 from vllm.config import KVTransferConfig
@@ -174,7 +175,9 @@ def build_app(pd_serving_args: dict) -> Application:
             config.engine_kwargs.update(
                 {
                     "kv_transfer_config": KVTransferConfig(
-                        kv_connector="NixlConnector", kv_role="kv_both"
+                        kv_connector="NixlConnector",
+                        kv_role="kv_both",
+                        engine_id=str(uuid.uuid4()),
                     )
                 }
             )

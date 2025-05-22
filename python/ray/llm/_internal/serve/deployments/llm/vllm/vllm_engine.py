@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from typing import AsyncGenerator, List, Optional, Tuple, TYPE_CHECKING
+import uuid
 
 import ray
 import re
@@ -209,6 +210,12 @@ class VLLMEngine(LLMEngine):
             elif not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
                 port: int = vllm.utils.get_open_port()
                 os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+
+            # We need to overwrite the engine_id to make it unique across replicas.
+            engine_id = getattr(kv_transfer_config, "engine_id", uuid.uuid4())
+            host = getattr(kv_transfer_config, "kv_ip", "localhost")
+            port = getattr(kv_transfer_config, "kv_port", 0)
+            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
         assert isinstance(
             llm_config, LLMConfig
