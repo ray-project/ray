@@ -237,6 +237,11 @@ class LLMConfig(BaseModelExtended):
         "router replicas per model replica.\n",
     )
 
+    log_engine_metrics: Optional[bool] = Field(
+        False,
+        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine.",
+    )
+
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(

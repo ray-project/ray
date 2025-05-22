@@ -910,7 +910,7 @@ class MultiAgentEpisode:
         the returned successor will have `len_lookback_buffer` observations (and
         actions, rewards, etc..) taken from the right side (end) of `self`. For example
         if `len_lookback_buffer=2`, the returned successor's lookback buffer actions
-        will be identical to teh results of `self.get_actions([-2, -1])`.
+        will be identical to the results of `self.get_actions([-2, -1])`.
 
         This method is useful if you would like to discontinue building an episode
         chunk (b/c you have to return it from somewhere), but would like to have a new

@@ -7,7 +7,6 @@ import re
 import requests
 import warnings
 from collections import defaultdict
-
 from pprint import pformat
 from unittest.mock import MagicMock
 
@@ -408,7 +407,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "ray::IDLE"}
+        assert components == {"gcs", "raylet", "agent", "ray::IDLE"}
 
         avail_metrics = set(avail_metrics)
 
@@ -1072,10 +1071,4 @@ def test_invalid_system_metric_names(caplog):
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
