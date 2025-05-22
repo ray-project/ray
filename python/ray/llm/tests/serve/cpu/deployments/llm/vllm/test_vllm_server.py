@@ -1,12 +1,26 @@
 import pytest
 import sys
+from unittest.mock import patch
+
 from vllm.config import KVTransferConfig
+from vllm.platforms.interface import UnspecifiedPlatform
 
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.serve.llm.openai_api_models import ChatCompletionRequest
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import LLMRawResponse
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockPDDisaggVLLMEngine
+
+
+class FakePlatform(UnspecifiedPlatform):
+    """
+    vllm UnspecifiedPlatform has some interfaces that's left unimplemented, which
+    could trigger exception in following tests. So we implement needed interfaces
+    and patch.
+    """
+
+    def is_async_output_supported(self, enforce_eager: bool) -> bool:
+        return True
 
 
 class TestPDDisaggLLMServer:
@@ -18,6 +32,7 @@ class TestPDDisaggLLMServer:
     """
 
     @pytest.mark.asyncio
+    @patch("vllm.platforms.current_platform", FakePlatform())
     async def test_chat_non_streaming(
         self,
         create_server,
@@ -68,6 +83,7 @@ class TestPDDisaggLLMServer:
         )
 
     @pytest.mark.asyncio
+    @patch("vllm.platforms.current_platform", FakePlatform())
     async def test_predict_non_streaming(
         self,
         create_server,

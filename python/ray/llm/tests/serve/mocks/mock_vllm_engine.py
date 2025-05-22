@@ -505,7 +505,7 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
         **kwargs,
     ) -> AsyncGenerator:
         """Generate outputs for a request from a pooling model."""
-        raise NotImplementedError("Not expected to be reached line 486")
+        raise NotImplementedError("Not expected to be reached")
 
     async def abort(self, request_id: str) -> None:
         """Abort a request.
@@ -525,11 +525,11 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
 
     async def get_decoding_config(self):
         """Get the decoding configuration of the vLLM engine."""
-        raise NotImplementedError("Not expected to be reached line 494")
+        raise NotImplementedError("Not expected to be reached")
 
     async def get_input_preprocessor(self):
         """Get the input processor of the vLLM engine."""
-        raise NotImplementedError("Not expected to be reached line 498")
+        raise NotImplementedError("Not expected to be reached")
 
     async def get_tokenizer(
         self,
@@ -540,14 +540,14 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
 
     async def is_tracing_enabled(self) -> bool:
         """Check if tracing is enabled"""
-        raise NotImplementedError("Not expected to be reached line 502")
+        raise NotImplementedError("Not expected to be reached")
 
     async def do_log_stats(
         self,
         scheduler_outputs=None,
         model_output=None,
     ) -> None:
-        raise NotImplementedError("Not expected to be reached line 506")
+        raise NotImplementedError("Not expected to be reached")
 
     async def check_health(self) -> None:
         """Raise if unhealthy"""
@@ -555,31 +555,31 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
 
     async def start_profile(self) -> None:
         """Start profiling the engine"""
-        raise NotImplementedError("Not expected to be reached line 510")
+        raise NotImplementedError("Not expected to be reached")
 
     async def stop_profile(self) -> None:
         """Start profiling the engine"""
-        raise NotImplementedError("Not expected to be reached line 514")
+        raise NotImplementedError("Not expected to be reached")
 
     async def reset_prefix_cache(self, device=None) -> None:
         """Reset the prefix cache"""
-        raise NotImplementedError("Not expected to be reached line 518")
+        raise NotImplementedError("Not expected to be reached")
 
     async def sleep(self, level: int = 1) -> None:
         """Sleep the engine"""
-        raise NotImplementedError("Not expected to be reached line 522")
+        raise NotImplementedError("Not expected to be reached")
 
     async def wake_up(self, tags: Optional[list[str]] = None) -> None:
         """Wake up the engine"""
-        raise NotImplementedError("Not expected to be reached line 526")
+        raise NotImplementedError("Not expected to be reached")
 
     async def is_sleeping(self) -> bool:
         """Check whether the engine is sleeping"""
-        raise NotImplementedError("Not expected to be reached line 530")
+        raise NotImplementedError("Not expected to be reached")
 
     async def add_lora(self, lora_request) -> None:
         """Load a new LoRA adapter into the engine for future requests."""
-        raise NotImplementedError("Not expected to be reached line 534")
+        raise NotImplementedError("Not expected to be reached")
 
 
 class MockPDDisaggVLLMEngine(VLLMEngine):

@@ -196,7 +196,7 @@ class VLLMEngine(LLMEngine):
         kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
         if kv_transfer_config is not None:
             if not vllm.envs.VLLM_USE_V1:
-                raise ValueError("Ray Serve LLM only supports P/D with v1 vLLM engine.")
+                logger.warning("Ray Serve LLM only supports P/D with v1 vLLM engine.")
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
             if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
