@@ -6,7 +6,7 @@
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
-Follow [aws-eks-gpu-cluster.md](kuberay-eks-gpu-cluster-setup) or [gcp-gke-gpu-cluster.md](kuberay-gke-gpu-cluster-setup) to create a Kubernetes cluster with 1 CPU node and 1 GPU node.
+See [aws-eks-gpu-cluster.md](kuberay-eks-gpu-cluster-setup) or [gcp-gke-gpu-cluster.md](kuberay-gke-gpu-cluster-setup) or [ack-gpu-cluster.md](kuberay-ack-gpu-cluster-setup) to create a Kubernetes cluster with 1 CPU node and 1 GPU node.
 
 ## Step 2: Install KubeRay operator
 
