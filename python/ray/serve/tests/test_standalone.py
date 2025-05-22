@@ -492,7 +492,7 @@ def test_http_head_only(ray_cluster):
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
     # Only the controller and head node proxy should be started, both on the head node.
-    actors = list_actors()
+    actors = list_actors(address=head_node.address)
     assert len(actors) == 2
     assert all([actor.node_id == head_node.node_id for actor in actors])
 
