@@ -77,12 +77,6 @@ class TorchTensorWorker:
         assert tensor.device.type == "cuda"
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
-    def recv_tuple(self, tup):
-        assert tup[0].device == self.device
-        assert tup[1].device == self.device
-        return ((tup[0][0].item(), tup[0].shape, tup[0].dtype),
-                (tup[1][0].item(), tup[1].shape, tup[1].dtype))
-
     def recv_and_matmul(self, two_d_tensor):
         """
         Receive the tensor and do some expensive computation (matmul).
@@ -120,6 +114,9 @@ class TorchTensorWorker:
     def recv_tensor(self, tensor):
         return tensor
 
+    def recv_tensors(self, *tensors):
+        return tuple(tensors)
+
     def ping(self):
         return
 
@@ -128,11 +125,6 @@ class TorchTensorWorker:
         self, t1: torch.Tensor, t2: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return t1, t2
-    
-    def return_two_tensor_tuple(self, args, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        tup = (torch.ones(args[2*i][0], dtype=args[2*i][1], device=self.device) * args[2*i][2],
-                torch.ones(args[2*i+1][0], dtype=args[2*i+1][1], device=self.device) * args[2*i+1][2])
-        return tup
 
 
 @ray.remote(num_cpus=1)
@@ -1448,9 +1440,9 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_two_tensors(ray_start_regular):
+def test_torch_tensor_nccl_all_reduce_bind_list_of_nodes(ray_start_regular):
     """
-    Test basic all-reduce with tuple of tensors.
+    Test basic all-reduce with list of nodes.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1466,12 +1458,13 @@ def test_torch_tensor_nccl_all_reduce_two_tensors(ray_start_regular):
 
     with InputNode() as inp:
         computes = [
-            worker.return_two_tensor_tuple.bind(inp, i)
-            for i, worker in enumerate(workers)
+            worker.return_two_tensors.bind(inp[0], inp[1]) for worker in workers
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        collectives = collective.allreduce.bind(
+            [list(computes[0]), list(computes[1])], ReduceOp.SUM
+        )
         recvs = [
-            worker.recv_tuple.bind(collective)
+            worker.recv_tensors.bind(*collective)
             for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
@@ -1482,20 +1475,20 @@ def test_torch_tensor_nccl_all_reduce_two_tensors(ray_start_regular):
         i += 1
         shape = (i * 10,)
         dtype = torch.float16
-        ref = compiled_dag.execute(
-            [(shape, dtype, i + idx) for idx in range(2*num_workers)]
-        )
+        t1 = torch.ones(shape, dtype=dtype, device="cuda") * i
+        t2 = torch.ones(shape, dtype=dtype, device="cuda") * i * 2
+        ref = compiled_dag.execute(t1, t2)
         result = ray.get(ref)
-        reduced_val_1 = sum(i + idx for idx in range(0, 2*num_workers, 2))
-        reduced_val_2 = sum(i + idx for idx in range(1, 2*num_workers, 2))
-        assert result == [((reduced_val_1, shape, dtype), (reduced_val_2, shape, dtype)) for _ in workers]
+        assert len(result[0]) == len(result[1]) == 2
 
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_two_tensors_wrong_shape(ray_start_regular):
-    """
-    Test an error is thrown when an all-reduce takes tensors of wrong shapes.
-    """
+        result_tensors_0 = [t.to("cpu") for t in result[0]]
+        result_tensors_1 = [t.to("cpu") for t in result[1]]
+        assert all(
+            torch.equal(result_tensors_0[i], result_tensors_1[i])
+            for i in range(len(result_tensors_0))
+        )
+        assert result_tensors_0[0][0].item() == result_tensors_1[0][0].item() == i * 2
+        assert result_tensors_0[1][0].item() == result_tensors_1[1][0].item() == i * 4
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

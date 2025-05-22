@@ -33,10 +33,9 @@ def _bind(
     nodes. The output nodesare the results of the collective operation in the same
     torch tensors.
 
-    TODO[puyuan]: update requirements
     Requirements:
     1. Each input node returns a torch tensor.
-    2. Each input node is from a different actor.
+    2. Each input node or list of input nodes is from a different actor.
     3. If a custom transport is specified, its actor set matches the actor set
         of the input nodes.
     4. All tensors have the same shape.
@@ -53,11 +52,6 @@ def _bind(
     Returns:
         A list of collective output nodes.
     """
-    if not isinstance(op, AllReduceOp) and isinstance(inputs[0], list):
-        raise ValueError(
-            "Currently binding a list of dag nodes is only supported for allreduce"
-        )
-
     if transport is None:
         transport = TorchTensorType.NCCL
     collective_op = _CollectiveOperation(inputs, op, transport)
@@ -74,15 +68,9 @@ def _bind(
 
     for inp in inputs:
         if isinstance(inp, list):
-            if not len(set(node._get_actor_handle() for node in inp)) == 1:
-                raise ValueError("Expected list of input nodes from the same actor")
-            actor_handle: Optional[
-                "ray.actor.ActorHandle"
-            ] = inp[0]._get_actor_handle()
+            actor_handle: Optional["ray.actor.ActorHandle"] = inp[0]._get_actor_handle()
         else:
-            actor_handle: Optional[
-                "ray.actor.ActorHandle"
-            ] = inp._get_actor_handle()
+            actor_handle: Optional["ray.actor.ActorHandle"] = inp._get_actor_handle()
         if actor_handle is None:
             raise ValueError("Expected an actor handle from the input node")
         collective_output_node = CollectiveOutputNode(

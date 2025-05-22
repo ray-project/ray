@@ -45,14 +45,15 @@ class _CollectiveOperation:
     ):
         if len(inputs) == 0:
             raise ValueError("Expected input nodes for a collective operation")
-        
+
         if isinstance(inputs[0], list):
             assert all(isinstance(input_node_list, list) for input_node_list in inputs)
             if len(set(len(input_node_list) for input_node_list in inputs)) != 1:
-                raise ValueError(
-                    "Expected same number of nodes bound from all actors"
-                )
-            if not all(len(set(input_node_list)) == len(input_node_list) for input_node_list in inputs):
+                raise ValueError("Expected same number of nodes bound from all actors")
+            if not all(
+                len(set(input_node_list)) == len(input_node_list)
+                for input_node_list in inputs
+            ):
                 raise ValueError(
                     "Expected unique input nodes for a collective operation"
                 )
@@ -66,6 +67,10 @@ class _CollectiveOperation:
                 actor_handle = inp[0]._get_actor_handle()
             elif isinstance(inp, DAGNode):
                 actor_handle = inp._get_actor_handle()
+            else:
+                raise ValueError(
+                    f"Expected a list of input nodes or a single input node, but got {type(inp)}"
+                )
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             self._actor_handles.append(actor_handle)
@@ -74,9 +79,10 @@ class _CollectiveOperation:
                 invalid_input_nodes = [
                     inp
                     for inp in inputs
-                    if self._actor_handles.count(set([
-                        node._get_actor_handle() for node in inp
-                    ]).pop()) > 1
+                    if self._actor_handles.count(
+                        set([node._get_actor_handle() for node in inp]).pop()
+                    )
+                    > 1
                 ]
             else:
                 invalid_input_nodes = [
@@ -135,18 +141,25 @@ class _CollectiveOperation:
         """
         import torch
 
-        if not (isinstance(send_buf, torch.Tensor) or (isinstance(send_buf, tuple) and all(isinstance(t, torch.Tensor) for t in send_buf))):
+        if not (
+            isinstance(send_buf, torch.Tensor)
+            or (
+                isinstance(send_buf, tuple)
+                and all(isinstance(t, torch.Tensor) for t in send_buf)
+            )
+        ):
             raise ValueError("Expected a torch tensor for each input node")
 
         if isinstance(send_buf, torch.Tensor):
             recv_buf = self._execute_tensor(send_buf)
         elif isinstance(send_buf, tuple):
             if not isinstance(self._op, AllReduceOp):
-                raise ValueError("Currently binding a list of dag nodes is only supported for allreduce")
+                raise ValueError(
+                    "Currently binding a list of dag nodes is only supported for allreduce"
+                )
             recv_buf = self._execute_tuple(send_buf)
 
         return recv_buf
-        
 
     def _execute_tensor(self, send_buf: "torch.Tensor") -> "torch.Tensor":
         communicator = self.get_communicator()
