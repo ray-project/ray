@@ -10,6 +10,7 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
+from ray._private.custom_types import TypeTensorTransport, TENSOR_TRANSPORT
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
@@ -555,11 +556,21 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value, obj_id=None, tensor_transport=None):
+    def serialize(
+        self,
+        value,
+        obj_id: Optional[str] = None,
+        tensor_transport: TypeTensorTransport = "OBJECT_STORE",
+    ):
         """Serialize an object.
 
         Args:
             value: The value to serialize.
+            obj_id: The object ID of the value. If `tensor_transport` is not `OBJECT_STORE`,
+                `obj_id` is required and the tensors in `value` will be stored in the in-actor object store
+                with the key `obj_id`.
+            tensor_transport: The tensor transport to use. The valid values are `OBJECT_STORE` (default),
+                `NCCL`, and `GLOO`.
         """
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
@@ -567,22 +578,13 @@ class SerializationContext:
             # that this object can also be read by Java.
             return RawSerializedObject(value)
 
-        # TODO(kevin85421): We should have a clear definition to express whether
-        # the tensor transport is enabled.
-        if (
-            tensor_transport is None
-            or tensor_transport == ""
-            or tensor_transport == "OBJECT_STORE"
-        ):
+        assert (
+            tensor_transport in TENSOR_TRANSPORT
+        ), f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
+        if tensor_transport == "OBJECT_STORE":
             return self._serialize_to_msgpack(value)
 
         # Handle tensor transport.
-        # TODO(kevin85421): Use the custom type to verify the value.
-        assert tensor_transport.lower() in [
-            "nccl",
-            "gloo",
-        ], f"Invalid tensor transport {tensor_transport}"
-
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context

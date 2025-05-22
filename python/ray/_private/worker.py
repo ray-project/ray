@@ -444,7 +444,8 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
-        self.in_actor_object_store: Dict[ObjectRef, List[torch.Tensor]] = {}
+        # A dictionary that maps from an object ID to a list of tensors.
+        self.in_actor_object_store: Dict[str, List[torch.Tensor]] = {}
         # A dictionary that maps from an object ref to a tuple of (actor handle, object ref).
         # The key of the dictionary is an object ref that points to data consisting of tensors.
         # These tensors are stored in the in-actor object store of the actor referenced by the ActorHandle.

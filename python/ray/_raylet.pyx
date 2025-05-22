@@ -2081,7 +2081,7 @@ cdef void execute_task(
                     caller_address,
                     returns,
                     None, # ref_generator_id
-                    c_tensor_transport # c_tensor_transport
+                    c_tensor_transport
                 )
 
         except Exception as e:
@@ -4319,7 +4319,7 @@ cdef class CoreWorker:
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
                             ref_generator_id=None,
-                            c_string c_tensor_transport=b""):
+                            c_string c_tensor_transport=b"OBJECT_STORE"):
         cdef:
             CObjectID return_id
             size_t data_size

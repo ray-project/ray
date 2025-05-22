@@ -1806,7 +1806,9 @@ def _modify_class(cls):
             import torch.distributed as dist
 
             worker = ray._private.worker.global_worker
-            assert obj_id in worker.in_actor_object_store, worker.in_actor_object_store
+            assert (
+                obj_id in worker.in_actor_object_store
+            ), f"obj_id={obj_id} not found in in_actor_object_store"
             tensors = worker.in_actor_object_store[obj_id]
             # print(f"send: obj_id={obj_id}, dst_rank={dst_rank}, tensors={tensors}")
             for tensor in tensors:
