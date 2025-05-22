@@ -790,7 +790,7 @@ class ReplicaScheduler(ABC):
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # Try to match a pending request based on the request metadata.
+        # Find the pending request that matches exactly.
         matched_pending_request = (
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
