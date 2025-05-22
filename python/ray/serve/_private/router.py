@@ -457,7 +457,7 @@ class AsyncioRouter:
         )
         shared.register(self)
 
-    def request_router(self):
+    def request_router(self) -> ReplicaScheduler:
         """Get and lazy loading request router.
 
         If the request_router_class not provided, call `get_deployment_config`
