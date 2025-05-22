@@ -117,7 +117,8 @@ steps:
     tags:
       - python
       - oss
-      - skip-on-premerge
+      # XXX: fix!
+      # - skip-on-premerge
     instance_type: medium
     commands:
       - cleanup() { ./ci/build/upload_build_info.sh; }; trap cleanup EXIT
