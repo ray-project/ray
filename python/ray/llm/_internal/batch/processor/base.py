@@ -136,7 +136,9 @@ class Processor:
 
         # FIXES: https://github.com/ray-project/ray/issues/53124
         # TODO (Kourosh): Remove this once the issue is fixed.
-        ray.data.DataContext.get_current().wait_for_min_actors_s = 600
+        data_context = ray.data.DataContext.get_current()
+        data_context.wait_for_min_actors_s = 600
+        data_context._enable_actor_pool_on_exit_hook = True
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column
