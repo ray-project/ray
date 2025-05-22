@@ -291,6 +291,7 @@ def test_schema_validation():
     invalid_test["python"] = "3.11"
     assert validate_test(invalid_test, schema)
 
+
 def test_compute_config_invalid_ebs():
     compute_config = {
         "aws": {
