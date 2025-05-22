@@ -1,3 +1,8 @@
+"""All tests in this file use a module-scoped fixture to reduce runtime.
+
+If you need a customized Ray instance (e.g., to change system config or env vars),
+put the test in `test_reference_counting_standalone.py`.
+"""
 # coding: utf-8
 import copy
 import logging
@@ -23,8 +28,8 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def one_worker_100MiB(request):
+@pytest.fixture(scope="module")
+def one_cpu_100MiB_shared():
     # It has lots of tests that don't require object spilling.
     config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
     yield ray.init(
@@ -174,7 +179,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
-def test_basic_pinning(one_worker_100MiB):
+def test_basic_pinning(one_cpu_100MiB_shared):
     @ray.remote
     def f(array):
         return np.sum(array)
@@ -204,7 +209,7 @@ def test_basic_pinning(one_worker_100MiB):
     ray.get(actor.get_large_object.remote())
 
 
-def test_pending_task_dependency_pinning(one_worker_100MiB):
+def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
     @ray.remote
     def pending(input1, input2):
         return
@@ -260,7 +265,7 @@ def test_feature_flag(shutdown_only):
     )
 
 
-def test_out_of_band_serialized_object_ref(one_worker_100MiB):
+def test_out_of_band_serialized_object_ref(one_cpu_100MiB_shared):
     assert (
         len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
         == 0
@@ -277,7 +282,7 @@ def test_out_of_band_serialized_object_ref(one_worker_100MiB):
     assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
 
 
-def test_captured_object_ref(one_worker_100MiB):
+def test_captured_object_ref(one_cpu_100MiB_shared):
     captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
 
     @ray.remote
@@ -325,7 +330,7 @@ def test_captured_object_ref(one_worker_100MiB):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def pending(ref, dep):
         ray.get(ref[0])
@@ -361,7 +366,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
@@ -413,7 +418,9 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put, failure)
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
 @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
-def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_actor_holding_serialized_reference(
+    one_cpu_100MiB_shared, use_ray_put, failure
+):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
@@ -469,7 +476,9 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_worker_holding_serialized_reference(
+    one_cpu_100MiB_shared, use_ray_put, failure
+):
     @ray.remote(max_retries=1)
     def child(dep1, dep2):
         if failure:
@@ -510,7 +519,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put, fai
 
 
 # Test that an object containing object refs within it pins the inner IDs.
-def test_basic_nested_ids(one_worker_100MiB):
+def test_basic_nested_ids(one_cpu_100MiB_shared):
     inner_oid = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
 
