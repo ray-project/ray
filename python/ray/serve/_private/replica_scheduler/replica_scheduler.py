@@ -183,6 +183,22 @@ class MultiplexScheduleMixin:
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
 
+    def _get_pending_request_matching_multiplexed_model_id(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        """Matching pending request based on the request metadata."""
+        if request_metadata is None or not request_metadata.multiplexed_model_id:
+            return None
+
+        for pr in self._pending_requests_to_fulfill:
+            if (
+                not pr.future.done()
+                and pr.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            ):
+                return pr
+
     def update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
@@ -310,17 +326,16 @@ class FIFOMixin:
     ) -> Optional[PendingRequest]:
         """Matching pending request based on the request metadata.
 
-        Currently this only looks at the multiplexed model ID.
+        If multiplex mixin is used, this will be using the multiplexed model
+        id for the matching. Else, it will just take the next unscheduled pending.
         """
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
-            return None
+        if hasattr(self, "_get_pending_request_matching_multiplexed_model_id"):
+            return self._get_pending_request_matching_multiplexed_model_id(
+                request_metadata
+            )
 
         for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
+            if not pr.future.done():
                 return pr
 
         return None
