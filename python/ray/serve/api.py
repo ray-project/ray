@@ -386,7 +386,7 @@ def deployment(
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
             requests). Defaults to -1 (no limit).
         autoscaling_config: Parameters to configure autoscaling behavior. If this
-            is set, `num_replicas` cannot be set.
+            is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
             no more work to be done before shutting down. Defaults to 2s.
         graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
