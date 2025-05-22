@@ -121,7 +121,9 @@ attrs>=22.2.0
 openapi-schema-validator>=0.6.3
 wheel>=0.45.1
 aiohttp>=3.11.16
-cryptography>=44.0.1
+cryptography>=44.0.3 ; sys_platform != "darwin"
+cryptography>=43.0.3 ; sys_platform == "darwin" and platform_machine != "arm64"
+cryptography>=44.0.3 ; sys_platform == "darwin" and platform_machine == "arm64"
 pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3

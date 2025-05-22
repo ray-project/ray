@@ -14,6 +14,7 @@ import pytest
 from pydantic import BaseModel as BaseModelV2
 from pydantic.v1 import BaseModel as BaseModelV1
 
+import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import (
@@ -63,8 +64,6 @@ def call_ray_start_shared(request):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_client_context_manager(call_ray_start_shared, connect_to_client):
-    import ray
-
     if connect_to_client:
         with ray_start_client_server_for_address(
             call_ray_start_shared
@@ -965,7 +964,4 @@ def test_internal_kv_in_proxy_mode(call_ray_start_shared):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

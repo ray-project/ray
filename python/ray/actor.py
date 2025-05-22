@@ -375,9 +375,11 @@ class ActorMethod:
 
         def invocation(args, kwargs):
             dst_actor = self._actor_hard_ref or self._actor_ref()
-
             if dst_actor is None:
-                raise RuntimeError("Lost reference to actor")
+                # See https://github.com/ray-project/ray/issues/6265 for more details.
+                raise RuntimeError(
+                    "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
+                )
 
             _handle_tensor_transport(dst_actor, args)
 
