@@ -350,8 +350,8 @@ def test_out_of_band_serialized_object_ref(ray_start_regular):
     assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
 
 
-def test_captured_object_ref(one_cpu_100MiB_shared):
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+def test_captured_object_ref(ray_start_regular):
+    captured_id = ray.put(np.zeros(1024, dtype=np.uint8))
 
     @ray.remote
     def f(signal):
@@ -370,7 +370,7 @@ def test_captured_object_ref(one_cpu_100MiB_shared):
     ray.get(signal.send.remote())
     _fill_object_store_and_get(obj_ref)
 
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    captured_id = ray.put(np.zeros(1024, dtype=np.uint8))
 
     @ray.remote
     class Actor:
