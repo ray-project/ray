@@ -314,9 +314,9 @@ class MultiplexScheduleMixin:
 class FIFOMixin:
     """Mixin for FIFO scheduling.
 
-    This mixin is used to schedule requests in FIFO order and only respecting
-    the multiplexed model id. ReplicaScheduler's default behavior is
-    out-of-order scheduling and match expectly the internal request id of
+    This mixin is used to schedule requests in FIFO order, optionally prioritizing
+    requests with matching metadata. ReplicaScheduler's default behavior is
+    out-of-order scheduling and match exactly the internal request id of
     the request.
     """
 
