@@ -4,7 +4,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats import Stats, merge_stats
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
 from ray.util import log_once
@@ -397,9 +397,7 @@ class MetricsLogger:
                 self._set_key(
                     key,
                     (
-                        Stats.similar_to(value, init_values=value.values)
-                        if isinstance(value, Stats)
-                        else Stats(
+                        Stats(
                             value,
                             reduce=reduce,
                             window=window,
@@ -581,9 +579,16 @@ class MetricsLogger:
         def _map(path, stat_or_value):
             extended_key = prefix_key + force_tuple(tree.flatten(path))
 
+            if isinstance(stat_or_value, Stats):
+                deprecation_warning(
+                    old="MetricsLogger.log_dict() for Stats objects",
+                    new="MetricsLogger.aggregate()",
+                    error=True,
+                )
+
             self.log_value(
                 extended_key,
-                stat_or_value,
+                value=stat_or_value,
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
