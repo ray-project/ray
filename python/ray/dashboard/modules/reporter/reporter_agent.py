@@ -36,6 +36,7 @@ from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
 )
+from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
 
 import psutil
 
@@ -418,6 +419,9 @@ class ReporterAgent(
             thread_name_prefix="reporter_agent_executor",
         )
 
+        self._gpu_profiling_manager = GpuProfilingManager(self._log_dir)
+        self._gpu_profiling_manager.start_monitoring_daemon()
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
@@ -435,6 +439,14 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def GpuProfiling(self, request, context):
+        pid = request.pid
+        num_iterations = request.num_iterations
+        success, output = await self._gpu_profiling_manager.gpu_profile(
+            pid=pid, num_iterations=num_iterations
+        )
+        return reporter_pb2.GpuProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
@@ -535,9 +547,11 @@ class ReporterAgent(
                 processes_pids = [
                     ProcessGPUInfo(
                         pid=int(nv_process.pid),
-                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
-                        if nv_process.usedGpuMemory
-                        else 0,
+                        gpu_memory_usage=(
+                            int(nv_process.usedGpuMemory) // MB
+                            if nv_process.usedGpuMemory
+                            else 0
+                        ),
                     )
                     for nv_process in (nv_comp_processes + nv_graphics_processes)
                 ]
