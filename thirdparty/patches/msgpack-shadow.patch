@@ -1,6 +1,6 @@
-diff --git a/include/msgpack/v1/adaptor/fixint.hpp b/include/msgpack/v1/adaptor/fixint.hpp
---- a/include/msgpack/v1/adaptor/fixint.hpp
-+++ b/include/msgpack/v1/adaptor/fixint.hpp
+diff --git include/msgpack/v1/adaptor/fixint.hpp include/msgpack/v1/adaptor/fixint.hpp
+--- include/msgpack/v1/adaptor/fixint.hpp
++++ include/msgpack/v1/adaptor/fixint.hpp
 @@ -24,7 +24,7 @@ template <typename T>
  struct fix_int {
      typedef T value_type;

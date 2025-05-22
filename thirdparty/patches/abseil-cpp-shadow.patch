@@ -1,6 +1,6 @@
-diff --git a/absl/container/internal/btree.h b/absl/container/internal/btree.h
---- a/absl/container/internal/btree.h
-+++ b/absl/container/internal/btree.h
+diff --git absl/container/internal/btree.h absl/container/internal/btree.h
+--- absl/container/internal/btree.h
++++ absl/container/internal/btree.h
 @@ -223,7 +223,7 @@ struct key_compare_adapter {
  
     public:
