@@ -764,7 +764,7 @@ class ReplicaScheduler(ABC):
     ) -> Optional[PendingRequest]:
         """Get the pending request that matches on the internal request id.
 
-        If no request metadata is provided or no matching internal request id,
+        If no request metadata is provided or no request is found that matches the internal request ID,
         return None.
         """
         if request_metadata is None:
