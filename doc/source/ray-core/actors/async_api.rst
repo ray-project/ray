@@ -56,7 +56,9 @@ async frameworks like aiohttp, aioredis, etc.
     ray.get(refs)
 
     # Fetch results using `asyncio` APIs.
-    asyncio.run(asyncio.gather(*refs))
+    async def get_async():
+        return await asyncio.gather(*refs)
+    asyncio.run(get_async())
 
 .. testoutput::
     :options: +MOCK
@@ -169,14 +171,16 @@ By using `async` method definitions, Ray will automatically detect whether an ac
 
 .. testcode::
 
+    import ray
     import asyncio
+
 
     @ray.remote
     class AsyncActor:
-        def __init__(self, batch_size: int):
+        def __init__(self, expected_num_tasks: int):
             self._event = asyncio.Event()
-            self._expected_num_tasks = expected_num_tasks
             self._curr_num_tasks = 0
+            self._expected_num_tasks = expected_num_tasks
 
         async def run_task(self):
             print("Started task")
@@ -223,6 +227,7 @@ You can set the number of "concurrent" task running at once using the
 .. testcode::
 
     import asyncio
+    import ray
 
     @ray.remote
     class AsyncActor:
