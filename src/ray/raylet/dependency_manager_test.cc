@@ -22,6 +22,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 
@@ -33,7 +34,7 @@ using ::testing::_;
 using ::testing::InSequence;
 using ::testing::Return;
 
-class MockObjectManager : public ObjectManagerInterface {
+class CustomMockObjectManager : public MockObjectManager {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority prio,
@@ -59,29 +60,6 @@ class MockObjectManager : public ObjectManagerInterface {
            active_wait_requests.count(request_id) ||
            active_task_requests.count(request_id);
   }
-
-  int64_t PullManagerNumInactivePullsByTaskName(
-      const TaskMetricsKey &task_key) const override {
-    return 0;
-  }
-
-  MOCK_METHOD(int, GetServerPort, (), (const, override));
-  MOCK_METHOD(void,
-              FreeObjects,
-              (const std::vector<ObjectID> &object_ids, bool local_only),
-              (override));
-  MOCK_METHOD(bool, IsPlasmaObjectSpillable, (const ObjectID &object_id), (override));
-  MOCK_METHOD(int64_t, GetUsedMemory, (), (const, override));
-  MOCK_METHOD(bool, PullManagerHasPullsQueued, (), (const, override));
-  MOCK_METHOD(int64_t, GetMemoryCapacity, (), (const, override));
-  MOCK_METHOD(std::string, DebugString, (), (const, override));
-  MOCK_METHOD(void,
-              FillObjectStoreStats,
-              (rpc::GetNodeStatsReply * reply),
-              (const, override));
-  MOCK_METHOD(double, GetUsedMemoryPercentage, (), (const, override));
-  MOCK_METHOD(void, Stop, (), (override));
-  MOCK_METHOD(void, RecordMetrics, (), (override));
 
   uint64_t req_id = 1;
   std::unordered_set<uint64_t> active_get_requests;
@@ -112,7 +90,7 @@ class DependencyManagerTest : public ::testing::Test {
     ASSERT_TRUE(object_manager_mock_.active_wait_requests.empty());
   }
 
-  MockObjectManager object_manager_mock_;
+  CustomMockObjectManager object_manager_mock_;
   DependencyManager dependency_manager_;
 };
 

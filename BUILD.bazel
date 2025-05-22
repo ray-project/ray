@@ -738,6 +738,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "//:ray_mock",
         "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1032,8 +1033,8 @@ filegroup(
         "//src/ray/protobuf:autoscaler_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
         "//src/ray/protobuf:event_py_proto",
+        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
         "//src/ray/protobuf:export_event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
