@@ -42,7 +42,7 @@ class Stats:
         self,
         init_values: Optional[Any] = None,
         reduce: Optional[str] = "mean",
-        reduce_per_index_on_aggregate: Optional[bool] = None,
+        reduce_per_index_on_aggregate: bool = False,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
@@ -73,7 +73,6 @@ class Stats:
                 If False, when reducing `n` Stats, the first `n` merged values will be
                 the reduced value of all incoming values at index `0`, the next `n` merged
                 values will be the reduced values of all incoming values at index `1`, etc.
-                If None, the default behavior is False.
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
@@ -139,7 +138,7 @@ class Stats:
                 "reduce_per_index_on_aggregate is only supported for mean, sum, min, and max reduction!"
             )
 
-        self._reduce_per_index_on_aggregate = reduce_per_index_on_aggregate or False
+        self._reduce_per_index_on_aggregate = reduce_per_index_on_aggregate
 
         # Timing functionality (keep start times per thread).
         self._start_times = defaultdict(lambda: None)
