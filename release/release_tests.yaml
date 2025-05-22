@@ -1,7 +1,7 @@
 # Global release test configuration file.
 # All your release test configuration should go here. Adding release tests here
 # will automatically enable them in the Buildkite release testing schedules
-# (except they have frequency: manual).
+# (unless they have frequency: manual).
 # Here is an example configuration for reference:
 #- name: example_test
 #  # Tests with the same group will be grouped in the Buildkite UI
@@ -4277,6 +4277,7 @@
 
   run:
     timeout: 3600
+    prepare: pip install -e .
     script: pytest  # <working_dir>/
 
   variations:
