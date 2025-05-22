@@ -1883,7 +1883,6 @@ python/ray/serve/autoscaling_policy.py
 --------------------
 python/ray/serve/batching.py
     DOC111: Method `_BatchQueue.__init__`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Method `_BatchQueue.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [batch_wait_timeout_s: float]. Arguments in the docstring but not in the function signature: [timeout_s: ].
     DOC101: Function `batch`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `batch`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_func: Optional[Callable]].
     DOC201: Function `batch` does not have a return section in docstring

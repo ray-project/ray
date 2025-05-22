@@ -1,5 +1,4 @@
 import asyncio
-from collections.abc import Collection
 import io
 import logging
 import time
@@ -89,7 +88,7 @@ class _BatchQueue:
     ) -> None:
         """Async queue that accepts individual items and returns batches.
 
-        Respects max_batch_size and timeout_s; a batch will be returned when
+        Respects max_batch_size and batch_wait_timeout_s; a batch will be returned when
         max_batch_size elements are available or the timeout has passed since
         the previous get.
 
@@ -100,8 +99,9 @@ class _BatchQueue:
 
         Arguments:
             max_batch_size: max number of elements to return in a batch.
-            timeout_s: time to wait before returning an incomplete
+            batch_wait_timeout_s: time to wait before returning an incomplete
                 batch.
+            max_concurrent_batches: max number of batches to run concurrently.
             handle_batch_func(Optional[Callable]): callback to run in the
                 background to handle batches if provided.
         """
