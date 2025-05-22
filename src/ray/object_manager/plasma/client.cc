@@ -19,15 +19,10 @@
 
 #include "ray/object_manager/plasma/client.h"
 
-#include <algorithm>
-#include <boost/asio.hpp>
 #include <cstring>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <tuple>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -35,7 +30,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -109,7 +103,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name,
-                 int release_delay = 0,
                  int num_retries = -1);
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
@@ -882,7 +875,6 @@ Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) 
 
 Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
                                    const std::string &manager_socket_name,
-                                   int release_delay,
                                    int num_retries) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
@@ -937,10 +929,8 @@ PlasmaClient::~PlasmaClient() {}
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
-                             int release_delay,
                              int num_retries) {
-  return impl_->Connect(
-      store_socket_name, manager_socket_name, release_delay, num_retries);
+  return impl_->Connect(store_socket_name, manager_socket_name, num_retries);
 }
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,

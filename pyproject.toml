@@ -42,3 +42,6 @@ ignore = [
 
 [tool.ruff.lint.flake8-quotes]
 avoid-escape = false
+
+[tool.ruff.lint.isort]
+combine-as-imports = true

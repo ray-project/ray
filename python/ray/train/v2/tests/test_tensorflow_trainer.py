@@ -9,7 +9,7 @@ from ray.train.constants import TRAIN_DATASET_KEY
 
 if sys.version_info >= (3, 12):
     # Tensorflow is not installed for Python 3.12 because of keras compatibility.
-    sys.exit(0)
+    pass
 else:
     from ray.train.examples.tf.tensorflow_regression_example import (
         train_func as tensorflow_linear_train_func,
@@ -71,8 +71,8 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    sys.exit(pytest.main(["-v", "-x", __file__]))
+    if sys.version_info >= (3, 12):
+        # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+        sys.exit(0)
+    else:
+        sys.exit(pytest.main(["-v", "-x", __file__]))

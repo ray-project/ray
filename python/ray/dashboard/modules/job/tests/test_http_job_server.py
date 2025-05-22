@@ -17,7 +17,6 @@ import yaml
 
 import ray
 from ray import NodeID
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -763,41 +762,41 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             def ensure_bytes(key: Union[bytes, str]) -> bytes:
                 return key.encode() if isinstance(key, str) else key
 
-            async def internal_kv_put(
+            async def async_internal_kv_put(
                 self, key: Union[bytes, str], value: bytes, **kwargs
             ):
                 key = self.ensure_bytes(key)
                 self._kv[key] = value
 
-            async def internal_kv_get(self, key: Union[bytes, str], **kwargs):
+            async def async_internal_kv_get(self, key: Union[bytes, str], **kwargs):
                 key = self.ensure_bytes(key)
                 return self._kv.get(key, None)
 
-            async def internal_kv_multi_get(
+            async def async_internal_kv_multi_get(
                 self, keys: List[Union[bytes, str]], **kwargs
             ):
                 return {key: self.internal_kv_get(key) for key in keys}
 
-            async def internal_kv_del(self, key: Union[bytes, str], **kwargs):
+            async def async_internal_kv_del(self, key: Union[bytes, str], **kwargs):
                 key = self.ensure_bytes(key)
                 self._kv.pop(key)
 
-            async def internal_kv_keys(self, prefix: Union[bytes, str], **kwargs):
+            async def async_internal_kv_keys(self, prefix: Union[bytes, str], **kwargs):
                 prefix = self.ensure_bytes(prefix)
                 return [key for key in self._kv.keys() if key.startswith(prefix)]
 
         class MockJobHead(JobHead):
             def __init__(self):
                 self._agents = dict()
-                self._gcs_aio_client = _FakeGcsClient()
+                self._gcs_client = _FakeGcsClient()
 
             @property
-            def gcs_aio_client(self):
-                # Overrides JobHead.gcs_aio_client
-                return self._gcs_aio_client
+            def gcs_client(self):
+                # Overrides JobHead.gcs_client
+                return self._gcs_client
 
         job_head = MockJobHead()
-        job_head._gcs_aio_client = _FakeGcsClient()
+        job_head._gcs_client = _FakeGcsClient()
 
         async def add_agent(agent):
             node_id = agent[0]
@@ -805,12 +804,12 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
 
-            await job_head._gcs_aio_client.internal_kv_put(
+            await job_head._gcs_client.async_internal_kv_put(
                 f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
                 json.dumps([node_ip, http_port, grpc_port]).encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
-            await job_head._gcs_aio_client.internal_kv_put(
+            await job_head._gcs_client.async_internal_kv_put(
                 f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
                 json.dumps([node_id.hex(), http_port, grpc_port]).encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -819,17 +818,17 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         async def del_agent(agent):
             node_id = agent[0]
             node_ip = agent[1]["ipAddress"]
-            await job_head._gcs_aio_client.internal_kv_del(
+            await job_head._gcs_client.async_internal_kv_del(
                 f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
-            await job_head._gcs_aio_client.internal_kv_del(
+            await job_head._gcs_client.async_internal_kv_del(
                 f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
 
         head_node_id = NodeID.from_random()
-        await job_head._gcs_aio_client.internal_kv_put(
+        await job_head._gcs_client.async_internal_kv_put(
             ray_constants.KV_HEAD_NODE_ID_KEY,
             head_node_id.hex().encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
@@ -947,7 +946,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
 async def test_get_upload_package(ray_start_context, tmp_path):
     assert wait_until_server_available(ray_start_context["webui_url"])
     webui_url = format_web_url(ray_start_context["webui_url"])
-    gcs_aio_client = GcsAioClient(address=ray_start_context["gcs_address"])
+    gcs_client = ray._private.worker.global_worker.gcs_client
     url = webui_url + "/api/packages/{protocol}/{package_name}"
 
     pkg_dir = tmp_path / "pkg"
@@ -975,7 +974,7 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     resp = requests.get(url.format(protocol=protocol, package_name=package_name))
     assert resp.status_code == 200
 
-    await download_and_unpack_package(package_uri, str(tmp_path), gcs_aio_client)
+    await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
     assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
 

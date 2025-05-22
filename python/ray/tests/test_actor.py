@@ -93,7 +93,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     # Create some values to close over.
     val1 = 1
@@ -140,7 +140,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     @ray.remote
     class Actor1:
@@ -217,7 +217,7 @@ def test_use_actor_twice(ray_start_10_cpus):
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+    # Make sure we can define and actors within remote functions.
 
     @ray.remote
     def f(x, n):
@@ -239,7 +239,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+    # Make sure we can create and use actors within remote functions.
 
     @ray.remote
     class Actor1:
@@ -690,6 +690,74 @@ def test_decorator_args(ray_start_regular_shared):
     class Actor:  # noqa: F811
         def __init__(self):
             pass
+
+
+@pytest.mark.parametrize(
+    "label_selector, expected_error",
+    [
+        (  # Valid: multiple labels with implicit 'equals' condition
+            {"ray.io/market-type": "spot", "ray.io/accelerator-type": "H100"},
+            None,
+        ),
+        (  # Valid: not equals condition
+            {"ray.io/market-type": "!spot"},
+            None,
+        ),
+        (  # Valid: in condition
+            {"ray.io/accelerator-type": "in(H100, B200, TPU)"},
+            None,
+        ),
+        (  # Valid: not in condition
+            {"ray.io/accelerator-type": "!in(H100, B200)"},
+            None,
+        ),
+        (  # Invalid: label_selector expects a dict
+            "",
+            TypeError,
+        ),
+        (  # Invalid: Invalid label prefix
+            {"r!a!y.io/market_type": "spot"},
+            ValueError,
+        ),
+        (  # Invalid: Invalid label name
+            {"??==ags!": "true"},
+            ValueError,
+        ),
+        (  # Invalid: Invalid label value
+            {"ray.io/accelerator_type": "??==ags!"},
+            ValueError,
+        ),
+        (  # Invalid: non-supported label selector condition
+            {"ray.io/accelerator_type": "matches(TPU)"},
+            ValueError,
+        ),
+        (  # Invalid: in condition with incorrectly formatted string
+            {"ray.io/accelerator_type": "in(H100,, B200)"},
+            ValueError,
+        ),
+        (  # Invalid: unclosed parentheses in condition
+            {"ray.io/accelerator_type": "in(TPU, H100, B200"},
+            ValueError,
+        ),
+    ],
+)
+def test_decorator_label_selector_args(
+    ray_start_regular_shared, label_selector, expected_error
+):
+    if expected_error:
+        with pytest.raises(expected_error):
+
+            @ray.remote(label_selector=label_selector)  # noqa: F811
+            class Actor:  # noqa: F811
+                def __init__(self):
+                    pass
+
+    else:
+
+        @ray.remote(label_selector=label_selector)  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
 
 
 def test_random_id_generation(ray_start_regular_shared):
@@ -1583,7 +1651,4 @@ def test_get_local_actor_state(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

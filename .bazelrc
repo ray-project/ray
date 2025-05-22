@@ -58,7 +58,7 @@ build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
-build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
+build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function,-Wno-missing-template-arg-list-after-template-kw"
 # Ignore warnings for host tools, which we generally can't control.
 # Ideally we only want to ignore warnings for external project
 # but the current bazel version doesn't support host_per_file_copt yet.
@@ -73,7 +73,8 @@ build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR
 build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
 build --verbose_failures
-build:iwyu --experimental_action_listener=//:iwyu_cpp
+build:iwyu --aspects @com_github_storypku_bazel_iwyu//bazel/iwyu:iwyu.bzl%iwyu_aspect
+build:iwyu --output_groups=report
 
 # Print relative paths when possible
 build:windows --attempt_to_print_relative_paths
@@ -199,6 +200,8 @@ test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Micros
 build:debug -c dbg
 build:debug --copt="-g"
 build:debug --copt -fno-omit-frame-pointer
+build:debug --copt -fstack-protector-strong
+build:debug --copt -fcf-protection=full
 build:debug --strip="never"
 
 # Undefined Behavior Sanitizer

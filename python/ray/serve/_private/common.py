@@ -8,11 +8,9 @@ from starlette.types import Scope
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
+    DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
@@ -220,14 +218,15 @@ class DeploymentStatusInfo:
         trigger: DeploymentStatusInternalTrigger,
         message: str = "",
     ) -> "DeploymentStatusInfo":
-        """Handles a transition from one state to next state.
+        """Handles a transition from the current state to the next state.
 
         Args:
-            trigger: A (internal) trigger that determines the state
+            trigger: An internal trigger that determines the state
                 transition.
             message: The message to set in status info.
 
-        Returns: New instance of DeploymentStatusInfo representing the
+        Returns:
+            New instance of DeploymentStatusInfo representing the
             next state to transition to.
         """
 

@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
@@ -169,7 +168,7 @@ def test_replica_health_metric(ray_instance):
     serve.shutdown()
 
 
-def test_shutdown_remote(start_and_shutdown_ray_cli_function):
+def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
     deploy_serve_script = (
@@ -194,28 +193,20 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "serve.shutdown()\n"
     )
 
-    # Cannot use context manager due to tmp file's delete flag issue in Windows
-    # https://stackoverflow.com/a/15590253
-    deploy_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
-    shutdown_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+    deploy_file = tmp_path / "deploy.py"
+    shutdown_file = tmp_path / "shutdown.py"
 
-    try:
-        deploy_file.write(deploy_serve_script)
-        deploy_file.close()
+    deploy_file.write_text(deploy_serve_script)
 
-        shutdown_file.write(shutdown_serve_script)
-        shutdown_file.close()
+    shutdown_file.write_text(shutdown_serve_script)
 
-        # Ensure Serve can be restarted and shutdown with for loop
-        for _ in range(2):
-            subprocess.check_output(["python", deploy_file.name])
-            assert requests.get("http://localhost:8000/f").text == "got f"
-            subprocess.check_output(["python", shutdown_file.name])
-            with pytest.raises(requests.exceptions.ConnectionError):
-                requests.get("http://localhost:8000/f")
-    finally:
-        os.unlink(deploy_file.name)
-        os.unlink(shutdown_file.name)
+    # Ensure Serve can be restarted and shutdown with for loop
+    for _ in range(2):
+        subprocess.check_output([sys.executable, str(deploy_file)])
+        assert requests.get("http://localhost:8000/f").text == "got f"
+        subprocess.check_output([sys.executable, str(shutdown_file)])
+        with pytest.raises(requests.exceptions.ConnectionError):
+            requests.get("http://localhost:8000/f")
 
 
 def test_handle_early_detect_failure(shutdown_ray):

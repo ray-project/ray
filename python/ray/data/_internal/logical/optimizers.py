@@ -13,7 +13,7 @@ from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFo
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
     InheritTargetMaxBlockSizeRule,
 )
-from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
 from ray.data._internal.logical.rules.zero_copy_map_fusion import (
@@ -35,7 +35,7 @@ _PHYSICAL_RULESET = Ruleset(
     [
         InheritTargetMaxBlockSizeRule,
         SetReadParallelismRule,
-        OperatorFusionRule,
+        FuseOperators,
         EliminateBuildOutputBlocks,
         ConfigureMapTaskMemoryUsingOutputSize,
     ]

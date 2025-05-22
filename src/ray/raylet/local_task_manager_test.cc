@@ -204,8 +204,7 @@ class LocalTaskManagerTest : public ::testing::Test {
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
             *scheduler_,
-            dependency_manager_, /* is_owner_alive= */
-            [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
+            dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {

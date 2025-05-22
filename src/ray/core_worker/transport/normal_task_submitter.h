@@ -24,9 +24,7 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/lease_policy.h"
@@ -95,7 +93,7 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       std::function<void()> subscribe_to_node_changes,
-      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
+      std::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(std::move(rpc_address)),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
@@ -307,18 +305,18 @@ class NormalTaskSubmitter {
     TaskID task_id;
 
     LeaseEntry(
-        std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
-        int64_t lease_expiration_time = 0,
-        google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
+        std::shared_ptr<WorkerLeaseInterface> lease_client_p = nullptr,
+        int64_t lease_expiration_time_p = 0,
+        google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources_p =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
-        SchedulingKey scheduling_key =
+        SchedulingKey scheduling_key_p =
             std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0),
-        TaskID task_id = TaskID::Nil())
-        : lease_client(lease_client),
-          lease_expiration_time(lease_expiration_time),
-          assigned_resources(assigned_resources),
-          scheduling_key(scheduling_key),
-          task_id(task_id) {}
+        TaskID task_id_p = TaskID::Nil())
+        : lease_client(std::move(lease_client_p)),
+          lease_expiration_time(lease_expiration_time_p),
+          assigned_resources(std::move(assigned_resources_p)),
+          scheduling_key(std::move(scheduling_key_p)),
+          task_id(std::move(task_id_p)) {}
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
@@ -385,7 +383,7 @@ class NormalTaskSubmitter {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
-  absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
+  std::optional<boost::asio::steady_timer> cancel_retry_timer_;
 
   int64_t num_tasks_submitted_ = 0;
   int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;

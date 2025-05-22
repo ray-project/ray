@@ -747,7 +747,6 @@ def test_run_config_request_timeout():
     )
     subprocess.check_output(
         ["ray", "start", "--head"],
-        env=dict(os.environ, RAY_SERVE_HTTP_REQUEST_MAX_RETRIES="1"),
     )
     wait_for_condition(
         lambda: requests.get("http://localhost:52365/api/ray/version").status_code
