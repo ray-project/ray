@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <ios>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -1560,18 +1561,43 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
-  const auto &locations = it->second.locations;
+  const absl::flat_hash_set<NodeID> &locations = it->second.locations;
   auto object_size = it->second.object_size;
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
   const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
   const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-  RAY_LOG(DEBUG).WithField(object_id)
-      << "Published message for object, " << locations.size()
-      << " locations, spilled url: [" << spilled_url
-      << "], spilled node ID: " << spilled_node_id << ", and object size: " << object_size
-      << ", and primary node ID: " << primary_node_id << ", pending creation? "
-      << it->second.pending_creation;
+  const auto &pending_creation = it->second.pending_creation;
+
+  std::ostringstream log_stream;
+  log_stream << std::boolalpha
+             << "Publishing Object Update: num_locations=" << locations.size()
+             << ", pending_creation=" << pending_creation
+             << ", object_size=" << object_size << ", primary_node_id=" << primary_node_id
+             << ", is_spilled=" << it->second.spilled;
+
+  if (it->second.spilled) {
+    log_stream << ", spilled_node_id=" << spilled_node_id
+               << ", spilled_url=" << spilled_url;
+  }
+
+  if (locations.size() > 0) {
+    log_stream << ", locations=[";
+    for (const auto &location : locations) {
+      log_stream << location << ", ";
+    }
+    log_stream << "]";
+  }
+
+  RAY_LOG(INFO).WithField(object_id) << log_stream.str();
+
+  // RAY_LOG(DEBUG).WithField(object_id)
+  //     << "Published message for object, " << locations.size()
+  //     << " locations, spilled url: [" << spilled_url
+  //     << "], spilled node ID: " << spilled_node_id << ", and object size: " <<
+  //     object_size
+  //     << ", and primary node ID: " << primary_node_id << ", pending creation? "
+  //     << it->second.pending_creation;
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
