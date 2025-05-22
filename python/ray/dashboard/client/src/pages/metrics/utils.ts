@@ -16,6 +16,7 @@ type GrafanaHealthcheckRsp = {
   msg: string;
   data: {
     grafanaHost: string;
+    grafanaOrgId: string;
     sessionName: string;
     dashboardUids: DashboardUids;
     dashboardDatasource: string;
@@ -42,6 +43,7 @@ const fetchPrometheusHealthcheck = async () => {
 
 type MetricsInfo = {
   grafanaHost?: string;
+  grafanaOrgId?: string;
   sessionName?: string;
   prometheusHealth?: boolean;
   dashboardUids?: DashboardUids;
@@ -51,6 +53,7 @@ type MetricsInfo = {
 export const getMetricsInfo = async () => {
   const info: MetricsInfo = {
     grafanaHost: undefined,
+    grafanaOrgId: undefined,
     sessionName: undefined,
     prometheusHealth: undefined,
     dashboardUids: undefined,
@@ -60,17 +63,18 @@ export const getMetricsInfo = async () => {
     const resp = await fetchGrafanaHealthcheck();
     if (resp.data.result) {
       info.grafanaHost = resp.data.data.grafanaHost;
+      info.grafanaOrgId = resp.data.data.grafanaOrgId;
       info.sessionName = resp.data.data.sessionName;
       info.dashboardUids = resp.data.data.dashboardUids;
       info.dashboardDatasource = resp.data.data.dashboardDatasource;
     }
-  } catch (e) {}
+  } catch (e) { }
   try {
     const resp = await fetchPrometheusHealthcheck();
     if (resp.data.result) {
       info.prometheusHealth = resp.data.result;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return info;
 };
@@ -89,6 +93,6 @@ export const getTimeZoneInfo = async () => {
         value: resp.data.value,
       };
     }
-  } catch (e) {}
+  } catch (e) { }
   return null;
 };

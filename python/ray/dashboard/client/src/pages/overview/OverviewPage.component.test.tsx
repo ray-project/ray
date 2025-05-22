@@ -72,35 +72,36 @@ describe("OverviewPage", () => {
 
 const Wrapper =
   (grafanaHostDisabled: boolean) =>
-  ({ children }: PropsWithChildren<{}>) => {
-    return (
-      <STYLE_WRAPPER>
-        <MemoryRouter>
-          <GlobalContext.Provider
-            value={{
-              metricsContextLoaded: true,
-              grafanaHost: grafanaHostDisabled
-                ? "DISABLED"
-                : "http://localhost:3000",
-              dashboardUids: {
-                default: "rayDefaultDashboard",
-                serve: "rayServeDashboard",
-                serveDeployment: "rayServeDeploymentDashboard",
-                data: "rayDataDashboard",
-              },
-              prometheusHealth: true,
-              sessionName: "session-name",
-              nodeMap: {},
-              nodeMapByIp: {},
-              namespaceMap: {},
-              dashboardDatasource: "Prometheus",
-              serverTimeZone: undefined,
-              currentTimeZone: undefined,
-            }}
-          >
-            {children}
-          </GlobalContext.Provider>
-        </MemoryRouter>
-      </STYLE_WRAPPER>
-    );
-  };
+    ({ children }: PropsWithChildren<{}>) => {
+      return (
+        <STYLE_WRAPPER>
+          <MemoryRouter>
+            <GlobalContext.Provider
+              value={{
+                metricsContextLoaded: true,
+                grafanaHost: grafanaHostDisabled
+                  ? "DISABLED"
+                  : "http://localhost:3000",
+                grafanaOrgId: "1",
+                dashboardUids: {
+                  default: "rayDefaultDashboard",
+                  serve: "rayServeDashboard",
+                  serveDeployment: "rayServeDeploymentDashboard",
+                  data: "rayDataDashboard",
+                },
+                prometheusHealth: true,
+                sessionName: "session-name",
+                nodeMap: {},
+                nodeMapByIp: {},
+                namespaceMap: {},
+                dashboardDatasource: "Prometheus",
+                serverTimeZone: undefined,
+                currentTimeZone: undefined,
+              }}
+            >
+              {children}
+            </GlobalContext.Provider>
+          </MemoryRouter>
+        </STYLE_WRAPPER>
+      );
+    };
