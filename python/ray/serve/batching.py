@@ -131,12 +131,13 @@ class _BatchQueue:
         max_ongoing_requests = (
             serve.get_replica_context()._deployment_config.max_ongoing_requests
         )
-        if max_ongoing_requests < self.max_batch_size:
+        if max_ongoing_requests < self.max_batch_size * self.max_concurrent_batches:
             logger.warning(
-                f"`max_batch_size` ({self.max_batch_size}) is larger than "
-                f"`max_ongoing_requests` ({max_ongoing_requests}). This means "
-                "the replica will never receive a full batch. Please update "
-                "`max_ongoing_requests` to be >= `max_batch_size`."
+                f"`max_batch_size` ({self.max_batch_size}) * `max_concurrent_batches` "
+                f"({self.max_concurrent_batches}) is larger than `max_ongoing_requests` "
+                f"({max_ongoing_requests}). This means the replica will never achieve "
+                "the configured `max_batch_size` concurrently. Please update "
+                "`max_ongoing_requests` to be >= `max_batch_size` * `max_concurrent_batches`."
             )
 
     def set_max_batch_size(self, new_max_batch_size: int) -> None:
