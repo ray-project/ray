@@ -1,7 +1,7 @@
 .. _ref-e2e-xgboost:
 
-Distributed training with XGBoost
-=================================
+End-to-dnd distributed XGBoost
+==============================
 
 An end-to-end tutorial to train a distributed XGBoost model and perform offline batch inference and online serving at scale.
 
