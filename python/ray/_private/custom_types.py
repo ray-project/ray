@@ -119,7 +119,7 @@ ERROR_TYPE = [
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
-# The TensorTransport is used to define the tensor transport type.
+# See `common.proto` for more details.
 TENSOR_TRANSPORT = [
     "OBJECT_STORE",
     "NCCL",
