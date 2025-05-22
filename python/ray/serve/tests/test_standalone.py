@@ -459,7 +459,9 @@ def test_no_http(ray_shutdown):
         serve.start(**option)
 
         # Only controller actor should exist
-        live_actors = list_actors(filters=[("state", "=", "ALIVE")],)
+        live_actors = list_actors(
+            filters=[("state", "=", "ALIVE")],
+        )
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_proxies.remote())) == 0
@@ -488,10 +490,7 @@ def test_http_head_only(ray_cluster):
     # Only the controller and head node proxy should be started, both on the head node.
     actors = list_actors()
     assert len(actors) == 2
-    assert all([
-        actor.node_id == head_node.node_id
-        for actor in actors
-    ])
+    assert all([actor.node_id == head_node.node_id for actor in actors])
 
 
 def test_serve_shutdown(ray_shutdown):
