@@ -416,8 +416,8 @@ def test_async_actor_task_id(shutdown_only):
     wait_for_condition(verify)
 
 
-def test_get_node_labels(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_get_node_labels(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
     cluster.add_node(
         resources={"worker1": 1},
         num_cpus=1,
@@ -427,7 +427,7 @@ def test_get_node_labels(ray_start_cluster):
             "market-type": "spot",
         },
     )
-    ray.init(address=cluster.address)
+    # ray.init(address=cluster.address)
 
     @ray.remote
     class Actor:
@@ -449,9 +449,9 @@ def test_get_node_labels(ray_start_cluster):
     expected_node_labels["ray.io/node_id"] = ray.get(a.get_node_id.remote())
     assert expected_node_labels == node_labels
 
-    # Check node labels from driver runtime context (none are set)
+    # Check node labels from driver runtime context (none are set except default)
     driver_labels = ray.get_runtime_context().get_node_labels()
-    assert {} == driver_labels
+    assert {"ray.io/node_id": ray.get_runtime_context().get_node_id()} == driver_labels
 
 
 if __name__ == "__main__":
