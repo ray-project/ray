@@ -1,5 +1,4 @@
 ruff
-pytest
 mypy
 nbformat>=5.10.4
 pre-commit==4.1.0
