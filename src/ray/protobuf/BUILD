@@ -404,7 +404,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_dataset_metadata_py_proto",
-    deps = [":export_dataset_metadata_proto"],
+    protos = [":export_dataset_metadata_proto"],
 )
 
 # Ray Client gRPC lib
@@ -515,7 +515,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "events_actor_task_definition_event_py_proto",
-    deps = [":events_actor_task_definition_event_proto"],
+    protos = [":events_actor_task_definition_event_proto"],
 )
 
 proto_library(
@@ -534,7 +534,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "events_actor_task_execution_event_py_proto",
-    deps = [":events_actor_task_execution_event_proto"],
+    protos = [":events_actor_task_execution_event_proto"],
 )
 
 proto_library(
@@ -553,7 +553,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "events_task_definition_event_py_proto",
-    deps = [":events_task_definition_event_proto"],
+    protos = [":events_task_definition_event_proto"],
 )
 
 proto_library(
@@ -572,7 +572,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "events_task_execution_event_py_proto",
-    deps = [":events_task_execution_event_proto"],
+    protos = [":events_task_execution_event_proto"],
 )
 
 proto_library(
@@ -594,7 +594,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "events_base_event_py_proto",
-    deps = [":events_base_event_proto"],
+    protos = [":events_base_event_proto"],
 )
 
 proto_library(
@@ -613,5 +613,5 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "events_event_aggregator_service_py_proto",
-    deps = [":events_event_aggregator_service_proto"],
+    protos = [":events_event_aggregator_service_proto"],
 )
