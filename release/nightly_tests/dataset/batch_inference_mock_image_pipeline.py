@@ -25,9 +25,7 @@ def process_image(row: Dict[str, Any]) -> Dict[str, np.ndarray]:
     transform = A.Compose(
         [
             A.ToFloat(),
-            A.LongestMaxSize(
-                max_size=int(row["image"].shape[0] * float(1.0 / row["applied_scale"]))
-            ),
+            A.LongestMaxSize(max_size=int(row["image"].shape[0])),
             A.FromFloat(dtype="uint8"),
         ]
     )
