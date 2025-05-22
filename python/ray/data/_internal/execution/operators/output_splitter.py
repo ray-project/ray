@@ -265,6 +265,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def implements_accurate_memory_accounting(self) -> bool:
         return True
 
+    def min_buffer_size_reached(self) -> bool:
+        return len(self._buffer) >= self._min_buffer_size
+
 
 def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
     left_blocks, left_meta = [], []

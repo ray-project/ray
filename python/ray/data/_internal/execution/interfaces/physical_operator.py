@@ -654,3 +654,6 @@ class PhysicalOperator(Operator):
                     # failed with a different error, or cancellation failed.
                     # In all cases, we swallow the exception.
                     pass
+
+    def min_buffer_size_reached(self) -> bool:
+        return True

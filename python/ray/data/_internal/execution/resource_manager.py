@@ -522,6 +522,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # backpressure by allowing reading at least 1 block. So the current operator
         # can finish at least one task and yield resources to the downstream operators.
         for next_op in self._get_downstream_eligible_ops(op):
+            if not next_op.min_buffer_size_reached():
+                return True
+            if not self._is_op_eligible(next_op):
+                continue
             if not self._reserved_min_resources[next_op]:
                 # Case 1: the downstream operator hasn't reserved the minimum resources
                 # to run at least one task.
@@ -590,9 +594,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
           - "cur_map->limit1->limit2->downstream_map" will return [downstream_map].
         """
         for next_op in op.output_dependencies:
-            if self._is_op_eligible(next_op):
-                yield next_op
-            else:
+            yield next_op
+            if not self._is_op_eligible(next_op):
                 yield from self._get_downstream_eligible_ops(next_op)
 
     def update_usages(self):
