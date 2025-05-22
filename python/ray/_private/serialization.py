@@ -257,11 +257,23 @@ class SerializationContext:
                     object_ref
                 )
 
-    def _deserialize_pickle5_data(self, data, object_id=None):
-        worker = ray._private.worker.global_worker
+    def _deserialize_pickle5_data(self, data, object_id: Optional[str] = None):
+        """
+        If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
+        out-of-band instead of through the object store. In this case, we need to retrieve
+        the tensors from the in-actor object store. Then, we deserialize `data` with the
+        retrieved tensors in the serialization context.
+
+        Args:
+            data: The data to deserialize.
+            object_id: The object ID to use as the key for the in-actor object store
+                to retrieve tensors.
+        """
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
+        worker = ray._private.worker.global_worker
+
         enable_gpu_objects = object_id in worker.in_actor_object_store
         if enable_gpu_objects:
             tensors = worker.in_actor_object_store[object_id]
@@ -281,7 +293,9 @@ class SerializationContext:
                 ctx.reset_out_of_band_tensors([])
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata_fields, object_id=None):
+    def _deserialize_msgpack_data(
+        self, data, metadata_fields, object_id: Optional[str] = None
+    ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
