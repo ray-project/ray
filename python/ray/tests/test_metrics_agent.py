@@ -407,7 +407,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "ray::IDLE"}
+        assert components == {"gcs", "raylet", "agent", "ray::IDLE"}
 
         avail_metrics = set(avail_metrics)
 

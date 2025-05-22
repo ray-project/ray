@@ -213,8 +213,6 @@ class vLLMEngineWrapper:
 
         lora_request = None
         if "model" in row and row["model"] != self.model:
-            if self.vllm_use_v1:
-                raise ValueError("LoRA is only supported with vLLM v0")
 
             lora_name = row["model"]
             if lora_name not in self.lora_name_to_request:

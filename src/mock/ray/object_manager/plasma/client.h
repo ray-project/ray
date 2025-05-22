@@ -25,7 +25,6 @@ class MockPlasmaClient : public PlasmaClientInterface {
               Connect,
               (const std::string &store_socket_name,
                const std::string &manager_socket_name,
-               int release_delay,
                int num_retries),
               (override));
 

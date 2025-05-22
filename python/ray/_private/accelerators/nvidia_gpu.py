@@ -16,7 +16,7 @@ NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
-    """Nvidia GPU accelerators."""
+    """NVIDIA GPU accelerators."""
 
     @staticmethod
     def get_resource_name() -> str:
