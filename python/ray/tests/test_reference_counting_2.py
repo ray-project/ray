@@ -8,8 +8,6 @@ import logging
 import os
 import copy
 import pickle
-import platform
-import random
 import signal
 import sys
 import time

@@ -229,9 +229,7 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
     ray.get(obj_ref)
 
 
-def test_feature_flag(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
+def test_feature_flag(one_cpu_100MiB_shared):
     @ray.remote
     def f(array):
         return np.sum(array)
