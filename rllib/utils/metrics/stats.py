@@ -201,7 +201,7 @@ class Stats:
         """
         self.check_value(value)
         # If throughput tracking is enabled, calculate it based on time between pushes
-        if self._throughput_stats is not None:
+        if self.has_throughput:
             current_time = time.perf_counter()
             if self._last_push_time >= 0:
                 time_diff = current_time - self._last_push_time
@@ -304,7 +304,7 @@ class Stats:
         Returns:
             The current throughput estimate per second.
         """
-        if self._throughput_stats is None:
+        if not self.has_throughput:
             raise ValueError("Throughput tracking is not enabled for this Stats object")
         # We can always return the first value here because throughput is a single value
         return self._throughput_stats.peek()
@@ -391,7 +391,7 @@ class Stats:
         self.values.extend(other.values)
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput_stats is not None:
+        if self.has_throughput:
             self._throughput_stats.merge_on_time_axis(other._throughput_stats)
 
         # Mark that we have new values since we modified the values list
@@ -458,11 +458,9 @@ class Stats:
         self._set_values(list(reversed(new_values)))
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput_stats is not None:
+        if self.has_throughput:
             other_throughput_stats = [
-                other._throughput_stats
-                for other in others
-                if other._throughput_stats is not None
+                other._throughput_stats for other in others if other.has_throughput
             ]
             self._throughput_stats.merge_in_parallel(*other_throughput_stats)
 
@@ -668,7 +666,7 @@ class Stats:
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
             throughput=other._throughput_stats.peek()
-            if other._throughput_stats is not None
+            if other.has_throughput
             else False,
             throughput_ema_coeff=other._throughput_ema_coeff,
         )
@@ -685,7 +683,7 @@ class Stats:
             self.values = new_values
 
     def _reduced_values(self, values=None) -> Tuple[Any, Any]:
-        """Runs a non-commited reduction procedure on given values (or `self.values`).
+        """Runs a non-committed reduction procedure on given values (or `self.values`).
 
         Note that this method does NOT alter any state of `self` or the possibly
         provided list of `values`. It only returns new values as they should be

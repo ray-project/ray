@@ -1,11 +1,12 @@
-import ray
 import os
 import signal
 import time
 import sys
-import pytest
 import warnings
 
+import pytest
+
+import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
 from ray._private.test_utils import wait_for_condition
@@ -454,9 +455,4 @@ def test_get_node_labels(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
