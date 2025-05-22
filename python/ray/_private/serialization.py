@@ -2,7 +2,10 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
 
 
 import google.protobuf.message
@@ -596,7 +599,9 @@ class SerializationContext:
 
         return serialized_val
 
-    def _serialize_and_retrieve_tensors(self, value):
+    def _serialize_and_retrieve_tensors(
+        self, value: Any
+    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
         """
         Serialize `value` and return the serialized value and any tensors retrieved from `value`.
         This is only used for GPU objects.
