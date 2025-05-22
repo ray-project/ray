@@ -442,10 +442,15 @@ def test_get_node_labels(ray_start_cluster):
         "market-type": "spot",
     }
 
+    # Check node labels from Actor runtime context
     a = Actor.options(label_selector={"accelerator-type": "A100"}).remote()
     node_labels = ray.get(a.get_node_labels.remote())
     expected_node_labels["ray.io/node_id"] = ray.get(a.get_node_id.remote())
     assert expected_node_labels == node_labels
+
+    # Check node labels from driver runtime context (none are set)
+    driver_labels = ray.get_runtime_context().get_node_labels()
+    assert {} == driver_labels
 
 
 if __name__ == "__main__":
