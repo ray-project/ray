@@ -1,11 +1,9 @@
 import inspect
 import logging
-import weakref
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
-import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
@@ -202,6 +200,21 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
     ):
+        """
+        Initialize an ActorMethod.
+
+        Args:
+            actor: A handle to the actor.
+            method_name: The name of the actor method.
+            num_returns: The default number of return values that the method invocation should return.
+            max_task_retries: Number of retries on method failure.
+            retry_exceptions: Boolean or list/tuple of exceptions to retry.
+            is_generator: True if the method is a generator.
+            generator_backpressure_num_objects: Generator-only config for backpressure.
+            enable_task_events: True if task events are enabled for this method.
+            decorator: Optional decorator for the method invocation.
+            signature: The signature of the actor method.
+        """
         self._actor = actor
         self._method_name = method_name
         self._num_returns = num_returns
@@ -301,7 +314,7 @@ class ActorMethod:
             "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
         }
 
-        actor = self._actor_ref()
+        actor = self._actor
         if actor is None:
             # Ref is GC'ed. It happens when the actor handle is GC'ed
             # when bind is called.
@@ -415,7 +428,7 @@ class ActorMethod:
 
     def __getstate__(self):
         return {
-            "actor": self._actor_ref(),
+            "actor": self._actor,
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "max_task_retries": self._max_task_retries,
@@ -1460,7 +1473,7 @@ class ActorHandle:
 
         # Build one ActorMethodShell per method, avoid cycles
         self._method_shells = {}
-        for method_name, signature in self._ray_method_signatures.items():
+        for method_name, method_signature in self._ray_method_signatures.items():
             # grab the other per-method configs from existing attrs:
             self._method_shells[method_name] = ActorMethodShell(
                 method_name=method_name,
@@ -1478,7 +1491,7 @@ class ActorHandle:
                     method_name, self._ray_enable_task_events
                 ),
                 decorator=self._ray_method_decorators.get(method_name),
-                signature=signature,
+                signature=method_signature,
             )
 
     def __del__(self):
