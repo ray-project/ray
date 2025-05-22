@@ -9,8 +9,8 @@ import pandas.api.types
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
-from ray.util.annotations import PublicAPI
 from ray.data.preprocessors.utils import ValueCounter
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")

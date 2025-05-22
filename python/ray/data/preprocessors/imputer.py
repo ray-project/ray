@@ -8,8 +8,8 @@ from pandas.api.types import is_categorical_dtype
 from ray.data import Dataset
 from ray.data.aggregate import Mean
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
 from ray.data.preprocessors.utils import ValueCounter
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
