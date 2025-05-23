@@ -159,7 +159,7 @@ void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
   registered_instruments_[name] = std::move(instrument);
 }
 
-void OpenTelemetryMetricRecorder::SetMetricValue(
+bool OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
     double value) {
