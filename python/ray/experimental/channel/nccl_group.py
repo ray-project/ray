@@ -6,9 +6,10 @@ import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
-from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.utils import get_devices
 
 if TYPE_CHECKING:
+    import cupy as cp
     import torch
 
 
@@ -32,7 +33,7 @@ class _NcclGroup(Communicator):
         comm_id: tuple,
         rank: Optional[int],
         actor_handles: List["ray.actor.ActorHandle"],
-        cuda_stream: Optional["torch.cuda.Stream"],
+        cuda_stream: Optional[int],
         use_communication_streams: bool = False,
     ):
         """
@@ -92,21 +93,29 @@ class _NcclGroup(Communicator):
             # Driver does not have a rank.
             self._comm = None
 
-        self._cuda_stream: Optional["torch.cuda.Stream"] = None
-        self._send_stream: Optional["torch.cuda.Stream"] = None
-        self._recv_stream: Optional["torch.cuda.Stream"] = None
+        self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._send_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
-            self._cuda_stream = cuda_stream
+
+            import cupy as cp
+
+            # TODO(swang): Allow default device to be overridden.
+            device = get_devices()[0]
+            self._cuda_stream = cp.cuda.ExternalStream(
+                cuda_stream, device_id=device.index
+            )
 
             if use_communication_streams:
                 import torch
 
-                # TODO(swang): Allow default device to be overridden.
-                device = AcceleratorContext.get().get_default_device()
-
-                self._send_stream = torch.cuda.Stream(device=device)
-                self._recv_stream = torch.cuda.Stream(device=device)
+                self._send_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
+                self._recv_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
             else:
                 self._send_stream = self._cuda_stream
                 self._recv_stream = self._cuda_stream
@@ -180,7 +189,7 @@ class _NcclGroup(Communicator):
             buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(buf),
             peer_rank,
-            self._send_stream.cuda_stream,
+            self._send_stream.ptr,
         )
 
     def recv(
@@ -219,7 +228,7 @@ class _NcclGroup(Communicator):
                 buf.numel(),
                 self.nccl_util.get_nccl_tensor_dtype(buf),
                 peer_rank,
-                self._recv_stream.cuda_stream,
+                self._recv_stream.ptr,
             )
         else:
             self._comm.recv(
@@ -227,7 +236,7 @@ class _NcclGroup(Communicator):
                 buf.numel(),
                 self.nccl_util.get_nccl_tensor_dtype(buf),
                 peer_rank,
-                self._recv_stream.cuda_stream,
+                self._recv_stream.ptr,
             )
 
             # Buffer values are undefined if NCCL ops are aborted. Therefore, we
@@ -281,7 +290,7 @@ class _NcclGroup(Communicator):
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
-            self._cuda_stream.cuda_stream,
+            self._cuda_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -302,7 +311,7 @@ class _NcclGroup(Communicator):
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.cuda_stream,
+            self._cuda_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -323,7 +332,7 @@ class _NcclGroup(Communicator):
             recv_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.cuda_stream,
+            self._cuda_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -333,16 +342,12 @@ class _NcclGroup(Communicator):
         )
 
     @property
-    def recv_stream(self):
-        import torch
-
-        return torch.cuda.StreamContext(self._recv_stream)
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        return self._recv_stream
 
     @property
-    def send_stream(self):
-        import torch
-
-        return torch.cuda.StreamContext(self._send_stream)
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        return self._send_stream
 
     def destroy(self) -> None:
         """
@@ -366,9 +371,3 @@ class _NcclGroup(Communicator):
 
     def get_transport_name(self) -> str:
         return "nccl"
-
-    @classmethod
-    def generate_communicator_id(cls) -> str:
-        from cupy.cuda import nccl
-
-        return nccl.get_unique_id()

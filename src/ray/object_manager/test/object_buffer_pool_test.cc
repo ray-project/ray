@@ -13,46 +13,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
 #include "ray/object_manager/object_buffer_pool.h"
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/object_manager/plasma/client.h"
 #include "ray/common/id.h"
-#include "ray/object_manager/plasma/client.h"
-// clang-format on
 
 namespace ray {
 
 using ::testing::_;
 
-class MockPlasmaClient : public plasma::PlasmaClientInterface {
+class CustomMockPlasmaClient : public plasma::MockPlasmaClient {
  public:
-  MOCK_METHOD1(Release, ray::Status(const ObjectID &object_id));
-
-  MOCK_METHOD0(Disconnect, ray::Status());
-
-  MOCK_METHOD4(Get,
-               ray::Status(const std::vector<ObjectID> &object_ids,
-                           int64_t timeout_ms,
-                           std::vector<plasma::ObjectBuffer> *object_buffers,
-                           bool is_from_worker));
-
-  MOCK_METHOD1(Seal, ray::Status(const ObjectID &object_id));
-
-  MOCK_METHOD1(Abort, ray::Status(const ObjectID &object_id));
-
-  MOCK_METHOD1(ExperimentalMutableObjectRegisterWriter,
-               ray::Status(const ObjectID &object_id));
-
-  MOCK_METHOD2(GetExperimentalMutableObject,
-               ray::Status(const ObjectID &object_id,
-                           std::unique_ptr<plasma::MutableObject> *mutable_object));
-
   ray::Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                      const ray::rpc::Address &owner_address,
                                      bool is_experimental_mutable_object,
@@ -61,19 +37,17 @@ class MockPlasmaClient : public plasma::PlasmaClientInterface {
                                      int64_t metadata_size,
                                      std::shared_ptr<Buffer> *data,
                                      plasma::flatbuf::ObjectSource source,
-                                     int device_num) {
+                                     int device_num) override {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
     return ray::Status::OK();
   }
-
-  MOCK_METHOD1(Delete, ray::Status(const std::vector<ObjectID> &object_ids));
 };
 
 class ObjectBufferPoolTest : public ::testing::Test {
  public:
   ObjectBufferPoolTest()
       : chunk_size_(1000),
-        mock_plasma_client_(std::make_shared<MockPlasmaClient>()),
+        mock_plasma_client_(std::make_shared<CustomMockPlasmaClient>()),
         object_buffer_pool_(mock_plasma_client_, chunk_size_),
         mock_data_(chunk_size_, 'x') {}
 
@@ -84,7 +58,7 @@ class ObjectBufferPoolTest : public ::testing::Test {
   }
 
   uint64_t chunk_size_;
-  std::shared_ptr<MockPlasmaClient> mock_plasma_client_;
+  std::shared_ptr<CustomMockPlasmaClient> mock_plasma_client_;
   ObjectBufferPool object_buffer_pool_;
   std::string mock_data_;
 };
