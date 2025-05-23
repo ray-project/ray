@@ -1,6 +1,5 @@
 from ray.air.config import (
     CheckpointConfig,
-    DatasetConfig,
     FailureConfig,
     RunConfig,
     ScalingConfig,
@@ -14,7 +13,6 @@ __all__ = [
     "RunConfig",
     "Result",
     "ScalingConfig",
-    "DatasetConfig",
     "FailureConfig",
     "CheckpointConfig",
     "AcquiredResources",
