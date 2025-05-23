@@ -149,14 +149,14 @@ def test_single_app_shutdown_actors(ray_shutdown):
     def check_alive():
         actors = list_actors(
             address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return {actor["class_name"] for actor in actors} == actor_names
 
     def check_dead():
         actors = list_actors(
             address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return len(actors) == 0
 
@@ -191,14 +191,14 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     def check_alive():
         actors = list_actors(
             address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return {actor["class_name"] for actor in actors} == actor_names
 
     def check_dead():
         actors = list_actors(
             address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return len(actors) == 0
 
