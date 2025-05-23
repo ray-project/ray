@@ -24,10 +24,11 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY_ON_DRIVER,
+    RAY_ENABLE_OPEN_TELEMETRY_ON_WORKER,
     env_integer,
 )
 from ray._raylet import WorkerID, GCS_PID_KEY
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc, metrics_service_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -342,7 +343,9 @@ class GpuUtilizationInfo(TypedDict):
 
 
 class ReporterAgent(
-    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
+    dashboard_utils.DashboardAgentModule,
+    reporter_pb2_grpc.ReporterServiceServicer,
+    metrics_service_pb2_grpc.MetricsServiceServicer,
 ):
     """A monitor process for monitoring Ray nodes.
 
@@ -497,6 +500,19 @@ class ReporterAgent(
         except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
+
+    async def Export(self, request, context):
+        """
+        GRPC method that receives the open telemetry metrics exported from other Ray
+        components running in the same node (e.g., raylet, worker, etc.). This method
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer`,
+        which is the default open-telemetry metrics service interface.
+        """
+        # This method suppposes to forward data to self._open_telemetry_metric_recorder
+        # to record them to Prometheus. Currently, that logic is not yet implemented.
+        # Unless RAY_ENABLE_OPEN_TELEMETRY_ON_WORKER is set to True, this will not
+        # cause any issues.
+        pass
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
@@ -1358,6 +1374,10 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+            if RAY_ENABLE_OPEN_TELEMETRY_ON_WORKER:
+                metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
+                    self, server
+                )
 
         await self._run_loop()
 
