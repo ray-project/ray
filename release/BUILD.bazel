@@ -297,6 +297,7 @@ py_library(
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
         "//doc:example_configs",
+        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -449,7 +450,6 @@ py_test(
         "ray_release/tests/test_collection_data.yaml",
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
-        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
