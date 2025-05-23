@@ -317,16 +317,6 @@ class VLLMEngine(LLMEngine):
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
 
-        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
-        # decide which engine to use based on the passed configs.
-        # Here we set it explicitly to make sure Ray Serve LLM and vLLM
-        # configs are consistent.
-        runtime_env = dict(
-            env_vars=dict(
-                VLLM_USE_V1=str(int(use_v1)),
-            ),
-        )
-
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
@@ -338,7 +328,7 @@ class VLLMEngine(LLMEngine):
                         accelerator_type=self.llm_config.accelerator_type,
                     )(_get_vllm_engine_config)
                     .options(
-                        runtime_env=runtime_env,
+                        runtime_env=node_initialization.runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
                         ),
@@ -349,7 +339,7 @@ class VLLMEngine(LLMEngine):
                 ref = (
                     ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
                     .options(
-                        runtime_env=runtime_env,
+                        runtime_env=node_initialization.runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
                         ),
@@ -483,10 +473,8 @@ class VLLMEngine(LLMEngine):
         use_v1: bool = False,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        if use_v1:
-            from vllm.v1.executor.ray_distributed_executor import RayDistributedExecutor
-        else:
-            from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+        from vllm.v1.executor.abstract import Executor
+
 
         vllm_config.parallel_config.placement_group = placement_group
 
@@ -502,9 +490,11 @@ class VLLMEngine(LLMEngine):
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
+        executor_class = Executor.get_class(vllm_config)
+        logger.info(f"Using executor class: {executor_class}")
         engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
-            executor_class=RayDistributedExecutor,
+            executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
