@@ -599,6 +599,14 @@ def build(build_python, build_java, build_cpp):
             + runtime_env_agent_pip_packages
         )
 
+    username = os.environ.get("USER", "")
+    home_path = os.environ.get("HOME", "")
+    if "@" in username or "@" in home_path:
+        warnings.warn(
+            "WARNING: Your username or HOME path contains '@' which can cause issues "
+            "during bazel build. Use a different user account without '@' characters is recommend\n",
+        )
+
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
         bazel_flags.extend(shlex.split(BAZEL_ARGS))
