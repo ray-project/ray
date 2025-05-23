@@ -1309,6 +1309,22 @@ class TestOverrideDeploymentInfo:
             == "s3://B"
         )
 
+    def test_non_existent_deployment(self, info):
+        """Test error is raised when attempting to override a non-existent deployment."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=3,
+                )
+            ],
+        )
+
+        with pytest.raises(ValueError, match="Deployment 'NonExistentDeployment' does not exist. Available:"):
+            override_deployment_info({"NonExistentDeployment": info}, config)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
