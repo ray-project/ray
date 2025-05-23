@@ -1038,11 +1038,6 @@ And of course, you can observe the running service, the deployments, and metrics
 
 </div>
 
-```python
-# Shutdown the service
-serve.shutdown()
-```
-
 ## Production
 
 Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to run [reliable batch jobs](https://docs.anyscale.com/platform/jobs) and deploy [highly available services](https://docs.anyscale.com/platform/services). Given you've been developing in an environment that's almost identical to production with a multi-node cluster, this integration should drastically speed up your dev to prod velocity.

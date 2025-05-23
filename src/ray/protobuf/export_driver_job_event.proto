@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-import "src/ray/protobuf/export_api/export_runtime_env.proto";
+import "src/ray/protobuf/export_runtime_env.proto";
 
 // ExportDriverJobEventData defines the event_data stored by the export API
 // for EXPORT_DRIVER_JOB type events. This schema is public and any changes must
