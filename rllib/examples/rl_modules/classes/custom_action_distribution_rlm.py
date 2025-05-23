@@ -25,7 +25,7 @@ def _make_categorical_with_temperature(temp):
     class TorchCategoricalWithTemp(TorchCategorical):
         def __init__(self, logits=None, probs=None, temperature: float = temp):
             """Initializes a TorchCategoricalWithTemp instance.
-    
+
             Args:
                 logits: Event log probabilities (unnormalized)
                 probs: The probabilities of each event.
@@ -36,9 +36,9 @@ def _make_categorical_with_temperature(temp):
                     sampling while a larger value will result in uniform sampling.
             """
             # Either divide logits or probs by the temperature.
-            assert temperature > 0.0, (
-                f"Temperature ({temperature}) must be strictly positive!"
-            )
+            assert (
+                temperature > 0.0
+            ), f"Temperature ({temperature}) must be strictly positive!"
             if logits is not None:
                 logits /= temperature
             else:

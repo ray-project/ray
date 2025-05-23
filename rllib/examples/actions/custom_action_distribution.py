@@ -110,7 +110,7 @@ if __name__ == "__main__":
                 model_config={
                     "hidden_dim": 128,
                     "action_dist_temperature": args.temperature,
-                }
+                },
             ),
         )
     )
