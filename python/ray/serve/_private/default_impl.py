@@ -18,7 +18,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
-    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
@@ -29,9 +28,6 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.request_router import PowerOfTwoChoicesReplicaRouter
-from ray.serve._private.request_router.replica_wrapper import RunningReplica
-from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
@@ -142,59 +138,19 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
-def create_request_router(
-    actor_id: str,
-    deployment_id: DeploymentID,
-    handle_options: InitHandleOptions,
-    is_inside_ray_client_context: bool,
-    request_router_class: RequestRouter = PowerOfTwoChoicesReplicaRouter,
-):
-    node_id, availability_zone = _get_node_id_and_az()
-
-    request_router = request_router_class(
-        deployment_id=deployment_id,
-        handle_source=handle_options._source,
-        self_node_id=node_id,
-        self_actor_id=actor_id,
-        self_actor_handle=ray.get_runtime_context().current_actor
-        if ray.get_runtime_context().get_actor_id()
-        else None,
-        # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=not is_inside_ray_client_context,
-        create_replica_wrapper_func=lambda r: RunningReplica(r),
-        prefer_local_node_routing=handle_options._prefer_local_routing,
-        prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-        self_availability_zone=availability_zone,
-    )
-    return request_router
-
-
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
-    request_router_class: Optional[RequestRouter] = None,
+    request_router_class: Optional[Callable] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
 
     actor_id = get_current_actor_id()
+    node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
-    if not request_router_class:
-        deployment_config = ray.get(
-            controller_handle.get_deployment_config.remote(deployment_id)
-        )
-        request_router_class = deployment_config.get_request_router_class()
-
     is_inside_ray_client_context = inside_ray_client_context()
-
-    request_router = create_request_router(
-        actor_id=actor_id,
-        deployment_id=deployment_id,
-        handle_options=handle_options,
-        is_inside_ray_client_context=is_inside_ray_client_context,
-        request_router_class=request_router_class,
-    )
 
     return SingletonThreadRouter(
         controller_handle=controller_handle,
@@ -202,10 +158,13 @@ def create_router(
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        request_router=request_router,
+        request_router_class=request_router_class,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,
+        node_id=node_id,
+        availability_zone=availability_zone,
+        prefer_local_node_routing=handle_options._prefer_local_routing,
     )
 
 

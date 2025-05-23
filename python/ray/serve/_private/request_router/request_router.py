@@ -314,9 +314,9 @@ class MultiplexMixin:
 class FIFOMixin:
     """Mixin for FIFO routing.
 
-    This mixin is used to route requests in FIFO order and only respecting
-    the multiplexed model id. RequestRouter's default behavior is
-    out-of-order routing and match expectly the internal request id of
+    This mixin is used to route requests in FIFO order, optionally prioritizing
+    requests with matching metadata. RequestRouter's default behavior is
+    out-of-order routing and match exactly the internal request id of
     the request.
     """
 
@@ -427,7 +427,7 @@ class RequestRouter(ABC):
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
         # requests (potentially out of order) by routing tasks once they've acquired a replica.
-        # - self._pending_requests_to_route is a queue that is used for tasks to
+        # - self.routing is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for routing tasks to know which multiplexed model IDs they
         # should be trying to get replicas for.

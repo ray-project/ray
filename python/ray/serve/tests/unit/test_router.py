@@ -244,6 +244,9 @@ def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
             "enable_strict_max_ongoing_requests", False
         ),
         request_router=fake_request_router,
+        node_id="test-node-id",
+        availability_zone="test-az",
+        prefer_local_node_routing=False,
     )
     return router, fake_request_router
 
@@ -1050,6 +1053,9 @@ class TestSingletonThreadRouter:
             request_router=fake_request_router,
             enable_strict_max_ongoing_requests=False,
             resolve_request_arg_func=Mock(),
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
         )
         router._asyncio_router = asyncio_router
         return router

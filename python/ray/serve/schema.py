@@ -407,7 +407,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     )
     request_router_class: str = Field(
         default=DEFAULT.VALUE,
-        description="The class of request router to use for this deployment.",
+        description="The path pointing to the custom request router class to use for this deployment.",
     )
 
     @root_validator
