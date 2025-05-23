@@ -1322,7 +1322,10 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        with pytest.raises(ValueError, match="Deployment 'NonExistentDeployment' does not exist. Available:"):
+        with pytest.raises(
+            ValueError,
+            match="Deployment 'NonExistentDeployment' does not exist. Available:",
+        ):
             override_deployment_info({"NonExistentDeployment": info}, config)
 
 
