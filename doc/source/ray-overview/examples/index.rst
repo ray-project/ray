@@ -1,8 +1,8 @@
 .. _ref-reference-architectures:
 
 
-Reference Architectures
-=======================
+Examples
+========
 
 .. toctree::
    :maxdepth: 1
