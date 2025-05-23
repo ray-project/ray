@@ -24,7 +24,7 @@ namespace ray {
 namespace raylet {
 
 bool DependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
-  return local_objects_.count(object_id) == 1;
+  return local_objects_.find(object_id) != local_objects_.end();
 }
 
 bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
@@ -198,7 +198,7 @@ bool DependencyManager::RequestTaskDependencies(
   }
 
   for (const auto &obj_id : task_entry->dependencies) {
-    if (local_objects_.count(obj_id)) {
+    if (local_objects_.find(obj_id) != local_objects_.end()) {
       task_entry->DecrementMissingDependencies();
     }
   }
