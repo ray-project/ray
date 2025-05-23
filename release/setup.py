@@ -23,7 +23,7 @@ setup(
         "freezegun",
         "google-cloud-storage",
         "jinja2",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf >= 4.25.7,<6.0.0",
         "pytest",
         "pyyaml",
         "pybuildkite",
