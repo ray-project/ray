@@ -78,6 +78,33 @@ py_test_module_list(
     ],
 )
 
+# Note: test_metrics_agent.py is run in the rule above with the default mode
+# (using opencensus). This rule is for running the same test with the
+# open telemetry mode enabled end to end.
+#
+# TODO (can-anyscale): Remove this rule once the opencensus mode is deprecated.
+py_test_module_list(
+    size = "medium",
+    env = {
+        "RAY_experimental_enable_open_telemetry_on_agent": "1",
+        "RAY_experimental_enable_open_telemetry_on_core": "1",
+    },
+    files = [
+        "test_metrics_agent.py",
+    ],
+    name_suffix = "_with_open_telemetry_enabled",
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_a_to_j",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test_module_list(
     size = "medium",
     files = [
