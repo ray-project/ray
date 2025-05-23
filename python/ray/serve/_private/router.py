@@ -602,6 +602,7 @@ class AsyncioRouter:
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self.request_router().on_new_queue_len_info(r.replica_id, queue_info)
+                self.request_router().on_request_routed(pr, r.replica_id, result)
                 if queue_info.accepted:
                     return result, r.replica_id
             except asyncio.CancelledError:
