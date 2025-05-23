@@ -1,19 +1,18 @@
+from typing import Literal
+
 from ray.core.generated.common_pb2 import (
+    ErrorType,
+    Language,
     TaskStatus,
     TaskType,
     WorkerExitType,
     WorkerType,
-    ErrorType,
-    Language,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-
-from typing import Literal
-
 
 ACTOR_STATUS = [
     "DEPENDENCIES_UNREADY",
