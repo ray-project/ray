@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.utils import (
+from python.ray._common.utils import (
     try_to_create_directory,
 )
 from ray.exceptions import RuntimeEnvSetupError

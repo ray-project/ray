@@ -33,7 +33,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-from ray._private.utils import binary_to_hex
+from python.ray._common.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,

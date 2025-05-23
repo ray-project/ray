@@ -12,6 +12,7 @@ import numpy as np
 import psutil
 import pytest
 
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
@@ -208,7 +209,9 @@ def test_ray_labels_environment_variables(shutdown_only):
     [ray.util.accelerators.NVIDIA_TESLA_V100, ray.util.accelerators.AWS_NEURON_CORE],
 )
 def test_accelerator_type_api(accelerator_type, shutdown_only):
-    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+    resource_name = (
+        f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+    )
     ray.init(num_cpus=4, resources={resource_name: 1})
 
     quantity = 1

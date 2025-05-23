@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 from filelock import FileLock
 
+from python.ray._common.utils import try_to_create_directory
 import ray
 from ray._common.utils import (
     get_or_create_event_loop,
@@ -33,7 +34,6 @@ from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
     get_wheel_filename,
-    try_to_create_directory,
 )
 
 default_logger = logging.getLogger(__name__)

@@ -3,6 +3,7 @@ import sys
 from collections import namedtuple
 from typing import Optional
 
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.ray_constants as ray_constants
 
@@ -207,7 +208,7 @@ class ResourceSpec(
                 )
                 if accelerator_type:
                     resources[
-                        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+                        f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
                     ] = 1
 
                     from ray._private.usage import usage_lib
