@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import AsyncGenerator, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
 import re
@@ -839,50 +839,27 @@ class VLLMEngine(LLMEngine):
         if sampling_params.logprobs is not None:
             usage_counters[ArgUsage.LOGPROBS].inc()
 
-    @staticmethod
-    def _map_response_format_to_extra_fields(
-        sampling_params: VLLMSamplingParams,
-    ) -> Dict[str, Any]:
-        """Map the response format to the extra fields for vLLM."""
-        response_format = sampling_params.response_format
-        extra_fields = {
-            "guided_decoding": response_format.to_guided_decoding_params(
-                backend=RAYLLM_GUIDED_DECODING_BACKEND
-            )
-        }
-
-        return extra_fields
-
     def _parse_sampling_params(
-        self, sampling_params: VLLMSamplingParams, **extra_fields
+        self, sampling_params: VLLMSamplingParams
     ) -> "VLLMInternalSamplingParams":
-        # Add vLLM-Anyscale specific fields
-
-        if sampling_params.response_format is not None:
-            extra_fields.update(
-                self._map_response_format_to_extra_fields(sampling_params)
-            )
-
-        # If we set it to None, vLLM will throw an exception
-        # as that is not the default value. Omitting it
-        # will allow vLLM to generate a new seed internally,
-        # as expected.
-        if sampling_params.seed is not None:
-            extra_fields["seed"] = sampling_params.seed
-
+        """Parse the vllm sampling parameters from the prompt.
+        This function is used to parse the sampling parameters from the prompt.
+        It also collects the usage metrics for the sampling parameters.
+        Args:
+            sampling_params: The sampling parameters defined in ray.serve.llm.
+        Returns:
+            vllm.SamplingParams, The parsed sampling parameters.
+        """
+        self._collect_usage_metrics(sampling_params)
         try:
-            if sampling_params.n != 1:
-                raise ValueError("n>1 is not supported yet in rayllm.")
-            self._collect_usage_metrics(sampling_params)
+            if self.model_config is None:
+                raise RuntimeError(
+                    "VLLMEngine.model_config not set. Maybe VLLMEngine.start() was not called?"
+                )
+
             log_probs = None
             if sampling_params.logprobs:
-                # max_log_probs -> anyscale/vllm
-                # max_logprobs -> OSS vllm
-                max_logprobs = getattr(
-                    self.model_config,
-                    "max_log_probs",
-                    getattr(self.model_config, "max_logprobs", 0),
-                )
+                max_logprobs = getattr(self.model_config, "max_logprobs", 0)
                 max_logprobs = min(MAX_NUM_TOPLOGPROBS_ALLOWED, max_logprobs)
                 if max_logprobs == 0:
                     raise ValueError("This model doesn't support outputting logprobs.")
@@ -905,43 +882,52 @@ class VLLMEngine(LLMEngine):
                         "if top_logprobs is specified, logprobs must be set to `True`"
                     )
 
-            if self.model_config is None:
-                raise RuntimeError(
-                    "VLLMEngine.model_config not set. Maybe VLLMEngine.start() was not called?"
-                )
-
-            return vllm.sampling_params.SamplingParams(
+            kwargs = dict(
                 n=1,
                 best_of=sampling_params.best_of,
-                presence_penalty=sampling_params.presence_penalty
-                if sampling_params.presence_penalty is not None
-                else 0.0,
-                frequency_penalty=sampling_params.frequency_penalty
-                if sampling_params.frequency_penalty is not None
-                else 0.0,
-                repetition_penalty=sampling_params.repetition_penalty
-                if sampling_params.repetition_penalty is not None
-                else 1.0,
-                temperature=sampling_params.temperature
-                if sampling_params.temperature is not None
-                else 1.0,
-                top_p=sampling_params.top_p
-                if sampling_params.top_p is not None
-                else 1.0,
-                top_k=sampling_params.top_k
-                if sampling_params.top_k is not None
-                else -1,
+                presence_penalty=0.0,
+                frequency_penalty=0.0,
+                repetition_penalty=1.0,
+                temperature=1.0,
+                top_p=1.0,
+                top_k=-1,
                 stop=sampling_params.stop,
                 stop_token_ids=sampling_params.stop_tokens,
-                ignore_eos=False
-                if sampling_params.ignore_eos is None
-                else sampling_params.ignore_eos,
+                ignore_eos=False,
                 # vLLM will cancel internally if input+output>max_tokens
-                max_tokens=sampling_params.max_tokens
-                or self.model_config.max_model_len,
+                max_tokens=self.model_config.max_model_len,
                 logprobs=log_probs,
-                **extra_fields,
             )
+            if sampling_params.presence_penalty is not None:
+                kwargs["presence_penalty"] = sampling_params.presence_penalty
+            if sampling_params.frequency_penalty is not None:
+                kwargs["frequency_penalty"] = sampling_params.frequency_penalty
+            if sampling_params.repetition_penalty is not None:
+                kwargs["repetition_penalty"] = sampling_params.repetition_penalty
+            if sampling_params.temperature is not None:
+                kwargs["temperature"] = sampling_params.temperature
+            if sampling_params.top_p is not None:
+                kwargs["top_p"] = sampling_params.top_p
+            if sampling_params.top_k is not None:
+                kwargs["top_k"] = sampling_params.top_k
+            if sampling_params.ignore_eos is not None:
+                kwargs["ignore_eos"] = sampling_params.ignore_eos
+            if sampling_params.max_tokens is not None:
+                kwargs["max_tokens"] = sampling_params.max_tokens
+            # If we set it to None, vLLM will throw an exception
+            # as that is not the default value. Omitting it
+            # will allow vLLM to generate a new seed internally,
+            # as expected.
+            if sampling_params.seed is not None:
+                kwargs["seed"] = sampling_params.seed
+            if sampling_params.response_format is not None:
+                kwargs[
+                    "guided_decoding"
+                ] = sampling_params.response_format.to_guided_decoding_params(
+                    backend=RAYLLM_GUIDED_DECODING_BACKEND
+                )
+
+            return vllm.SamplingParams(**kwargs)
         except Exception as e:
             # Wrap the error in ValidationError so the status code
             # returned to the user is correct.
