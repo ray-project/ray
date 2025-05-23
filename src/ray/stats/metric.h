@@ -351,6 +351,15 @@ class Stats {
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
+    if (RayConfig::instance().enable_open_telemetry_on_worker()) {
+      auto &open_telemetry_metric_recorder =
+          ray::telemetry::OpenTelemetryMetricRecorder::GetInstance();
+      std::map<std::string, std::string> tags;
+      for (auto &[tag_key, tag_val] : combined_tags) {
+        tags[tag_key.name()] = tag_val;
+      }
+      open_telemetry_metric_recorder.SetMetricValue(name_, tags, val);
+    }
     opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
   }
 
@@ -366,7 +375,6 @@ class Stats {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
     }
-
     if (RayConfig::instance().enable_open_telemetry_on_worker()) {
       auto &open_telemetry_metric_recorder =
           ray::telemetry::OpenTelemetryMetricRecorder::GetInstance();
@@ -392,7 +400,6 @@ class Stats {
       CheckPrintableChar(tag_val);
     }
     combined_tags.insert(combined_tags.end(), tags.begin(), tags.end());
-
     if (RayConfig::instance().enable_open_telemetry_on_worker()) {
       auto &open_telemetry_metric_recorder =
           ray::telemetry::OpenTelemetryMetricRecorder::GetInstance();
@@ -416,7 +423,7 @@ class Stats {
 #endif  // NDEBUG
   }
 
-  const std::string &name_;
+  const std::string name_;
   const std::vector<opencensus::tags::TagKey> tag_keys_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 };
