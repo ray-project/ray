@@ -457,13 +457,14 @@ def test_no_http(ray_shutdown):
         {"http_options": {"location": "NoServer"}},
     ]
 
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=16)["address"]
     for i, option in enumerate(options):
         print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
         live_actors = list_actors(
+            address=address,
             filters=[("state", "=", "ALIVE")],
         )
         assert len(live_actors) == 1
@@ -553,7 +554,9 @@ serve.run(A.bind())"""
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
+def test_serve_start_different_http_checkpoint_options_warning(
+    ray_shutdown, propagate_logs, caplog
+):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
@@ -578,9 +581,6 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
             if "Autoscaling metrics pusher thread" in msg:
                 continue
             assert test_msg in msg
-
-    serve.shutdown()
-    ray.shutdown()
 
 
 def test_recovering_controller_no_redeploy():

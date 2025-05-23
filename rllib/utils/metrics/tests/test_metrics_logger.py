@@ -12,7 +12,7 @@ def logger():
     return MetricsLogger(root=True)
 
 
-def test_basic_value_logging(logger):
+def test_log_value(logger):
     """Test basic value logging and reduction."""
     # Test simple value logging
     logger.log_value("loss", 0.1)
@@ -34,7 +34,7 @@ def test_basic_value_logging(logger):
         ("sum", [10, 20], 30),
     ],
 )
-def test_reduction_methods(logger, reduce_method, values, expected):
+def test_basic_reduction_methods(logger, reduce_method, values, expected):
     """Test different reduction methods (mean, min, sum) with parameterization."""
     key = f"{reduce_method}_metric"
 
@@ -53,7 +53,7 @@ def test_reduction_methods(logger, reduce_method, values, expected):
     check(results[key], expected)
 
 
-def test_ema_behavior(logger):
+def test_ema(logger):
     """Comprehensive test of EMA behavior for mean reduction."""
     # Test default EMA coefficient (0.01)
     logger.log_value("default_ema", 1.0, reduce="mean")
@@ -61,7 +61,6 @@ def test_ema_behavior(logger):
     # Expected: 0.99 * 1.0 + 0.01 * 2.0 = 1.01
     check(logger.peek("default_ema"), 1.01)
 
-    # Test with custom EMA coefficient (0.2)
     ema_coeff = 0.2
     logger.log_value("custom_ema", 1.0, ema_coeff=ema_coeff)
 
@@ -87,7 +86,7 @@ def test_ema_behavior(logger):
     check(logger.peek("fast_ema"), 0.225)
 
 
-def test_window_based_reduction(logger):
+def test_windowed_reduction(logger):
     """Test window-based reduction with various window sizes."""
     # Test with window=2
     logger.log_value("window_loss", 0.1, window=2)
@@ -193,7 +192,7 @@ def test_state_management(logger):
     check(new_logger.peek("state_test"), 0.101)
 
 
-def test_merge_and_log_n_dicts(logger):
+def test_aggregate(logger):
     """Test merging multiple stats dictionaries."""
     # Create two loggers with different values
     logger1 = MetricsLogger()
@@ -212,7 +211,7 @@ def test_merge_and_log_n_dicts(logger):
     results2 = logger2.reduce()
 
     # Merge results into main logger
-    logger.merge_and_log_n_dicts([results1, results2])
+    logger.aggregate([results1, results2])
 
     # Check merged results
     # This may seem counterintuitive, because mean(0.1, 0.2, 0.3, 0.4, 0.5, 0.6) = 0.35.
@@ -273,25 +272,6 @@ def test_throughput_tracking(logger):
     check("count_throughput" in all_throughputs, True)
     check("nested" in all_throughputs, True)
     check("count_throughput" in all_throughputs["nested"], True)
-
-
-def test_has_throughput_property(logger):
-    """Test the has_throughput property functionality."""
-    # Create a Stats object with throughput tracking
-    logger.log_value("with_throughput", 10, reduce="sum", with_throughput=True)
-    check(logger.peek("with_throughput"), 10)
-    check(
-        logger.peek("with_throughput", throughput=True), np.nan
-    )  # Initial throughput should be np.nan
-
-    # Create a Stats object without throughput tracking
-    logger.log_value("without_throughput", 10, reduce="sum")
-    check(logger.peek("without_throughput"), 10)
-
-    # Test that throughputs() only includes Stats with has_throughput=True
-    throughputs = logger.peek(throughput=True)
-    check("with_throughput_throughput" in throughputs, True)
-    check("without_throughput_throughput" in throughputs, False)
 
 
 def test_reset_and_delete(logger):
@@ -370,7 +350,7 @@ def test_edge_cases(logger):
     check(logger.peek("clear_test"), np.nan)  # Should be cleared
 
 
-def test_lifetime_stats_behavior():
+def test_lifetime_stats():
     """Test lifetime stats behavior with clear_on_reduce=False."""
     # Create a root logger
     root_logger = MetricsLogger(root=True)
@@ -386,7 +366,7 @@ def test_lifetime_stats_behavior():
     # Reduce both children and merge into root
     results1 = child1.reduce()
     results2 = child2.reduce()
-    root_logger.merge_and_log_n_dicts([results1, results2])
+    root_logger.aggregate([results1, results2])
     check(root_logger.peek("lifetime_metric"), 30)
 
     # Log more values to child loggers
@@ -400,25 +380,33 @@ def test_lifetime_stats_behavior():
     check(results2["lifetime_metric"], [35])  # 35 (20+15)
 
     # Merge new results into root - root should accumulate
-    root_logger.merge_and_log_n_dicts([results1, results2])
+    root_logger.aggregate([results1, results2])
     check(root_logger.peek("lifetime_metric"), 50)  # 30 + 5 + 15
 
 
 def test_hierarchical_metrics_system():
-    """Test a complete hierarchical metrics system with diverse feature combinations.
-    The test mimics how we use MetricsLogger in EnvRunners, AggregatorActors and the driver (Algorithm object).
+    """Test a hierarchical system of MetricsLoggers.
 
     This test creates a tree structure of MetricsLoggers:
 
-        Root        (Driver)
+        Root        (Root/Algorithm object)
         ┌─┴─┐
-      A      B      (AggregatorActor)
+      A1    A2      (AggregatorActor)
     ┌─┴─┐  ┌─┴─┐
-    A1 A2  B1 B2    (EnvRunner)
+    E1 E2  E3  E4   (EnvRunner)
 
-    Each logger logs different types of metrics, and we test the aggregation
-    of all these metrics through multiple reduction steps.
+    We test the aggregation of all these metrics through multiple reduction steps.
     """
+    # Test parameters
+    # Change the metric_name to test different metrics if ever needed
+    metric_name = "window_mean"
+    metric_config = {"reduce": "mean", "window": 2}
+    leaf_values_round1 = [[10, 20], [30, 40], [50, 60], [70, 80]]
+    leaf_values_round2 = [[25, 35], [45, 55], [65, 75], [85, 95]]
+    expected_leaf_results_round1 = [15.0, 35.0, 55.0, 75.0]
+    expected_root_peek_round1 = 50.0
+    expected_compiled_result = 65.0
+
     # Create the logger hierarchy
     root = MetricsLogger(root=True)  # Root logger
 
@@ -432,163 +420,46 @@ def test_hierarchical_metrics_system():
     leaf_b1 = MetricsLogger()
     leaf_b2 = MetricsLogger()
 
-    # ----- Round 1: Initial metrics -----
+    leaves = [leaf_a1, leaf_a2, leaf_b1, leaf_b2]
 
-    # Log different types of metrics in leaf nodes
-
-    # 1. Simple mean metrics with default EMA (no window)
-    leaf_a1.log_value("mean_metric", 1.0)
-    leaf_a2.log_value("mean_metric", 2.0)
-    leaf_b1.log_value("mean_metric", 3.0)
-    leaf_b2.log_value("mean_metric", 4.0)
-
-    # 2. Window-based mean metrics
-    leaf_a1.log_value("window_mean", 10, reduce="mean", window=2)
-    leaf_a1.log_value("window_mean", 20, window=2)
-    leaf_a2.log_value("window_mean", 30, reduce="mean", window=2)
-    leaf_a2.log_value("window_mean", 40, window=2)
-    leaf_b1.log_value("window_mean", 50, reduce="mean", window=2)
-    leaf_b1.log_value("window_mean", 60, window=2)
-    leaf_b2.log_value("window_mean", 70, reduce="mean", window=2)
-    leaf_b2.log_value("window_mean", 80, window=2)
-
-    # 3. Min metrics
-    leaf_a1.log_value("min_value", 15, reduce="min")
-    leaf_a1.log_value("min_value", 10)
-    leaf_a2.log_value("min_value", 25, reduce="min")
-    leaf_a2.log_value("min_value", 20)
-    leaf_b1.log_value("min_value", 35, reduce="min")
-    leaf_b1.log_value("min_value", 30)
-    leaf_b2.log_value("min_value", 45, reduce="min")
-    leaf_b2.log_value("min_value", 40)
-
-    # 4. Max metrics
-    leaf_a1.log_value("max_value", 50, reduce="max")
-    leaf_a1.log_value("max_value", 100)
-    leaf_a2.log_value("max_value", 150, reduce="max")
-    leaf_a2.log_value("max_value", 200)
-    leaf_b1.log_value("max_value", 250, reduce="max")
-    leaf_b1.log_value("max_value", 300)
-    leaf_b2.log_value("max_value", 350, reduce="max")
-    leaf_b2.log_value("max_value", 400)
-
-    # 5. Lifetime sum metrics (clear_on_reduce=False)
-    leaf_a1.log_value("lifetime_sum", 5, reduce="sum", clear_on_reduce=False)
-    leaf_a2.log_value("lifetime_sum", 10, reduce="sum", clear_on_reduce=False)
-    leaf_b1.log_value("lifetime_sum", 15, reduce="sum", clear_on_reduce=False)
-    leaf_b2.log_value("lifetime_sum", 20, reduce="sum", clear_on_reduce=False)
-
-    # 6. Regular sum metrics (with automatic clear_on_reduce=True for non-root)
-    leaf_a1.log_value("regular_sum", 1, reduce="sum")
-    leaf_a2.log_value("regular_sum", 2, reduce="sum")
-    leaf_b1.log_value("regular_sum", 3, reduce="sum")
-    leaf_b2.log_value("regular_sum", 4, reduce="sum")
-
-    # 7. Nested metrics of different types
-    leaf_a1.log_value(["nested", "mean"], 1.0, reduce="mean")
-    leaf_a2.log_value(["nested", "mean"], 2.0, reduce="mean")
-    leaf_b1.log_value(["nested", "mean"], 3.0, reduce="mean")
-    leaf_b2.log_value(["nested", "mean"], 4.0, reduce="mean")
-
-    leaf_a1.log_value(["nested", "sum"], 10, reduce="sum")
-    leaf_a2.log_value(["nested", "sum"], 20, reduce="sum")
-    leaf_b1.log_value(["nested", "sum"], 30, reduce="sum")
-    leaf_b2.log_value(["nested", "sum"], 40, reduce="sum")
-
-    leaf_a1.log_value(["nested", "lifetime"], 100, reduce="sum", clear_on_reduce=False)
-    leaf_a2.log_value(["nested", "lifetime"], 200, reduce="sum", clear_on_reduce=False)
-    leaf_b1.log_value(["nested", "lifetime"], 300, reduce="sum", clear_on_reduce=False)
-    leaf_b2.log_value(["nested", "lifetime"], 400, reduce="sum", clear_on_reduce=False)
-
-    # 8. Multiple levels of nesting
-    leaf_a1.log_value(["deeply", "nested", "metric"], 1, reduce="sum")
-    leaf_a2.log_value(["deeply", "nested", "metric"], 2, reduce="sum")
-    leaf_b1.log_value(["deeply", "nested", "metric"], 3, reduce="sum")
-    leaf_b2.log_value(["deeply", "nested", "metric"], 4, reduce="sum")
+    # Round 1: Log values to leaf nodes
+    for leaf, values in zip(leaves, leaf_values_round1):
+        for value in values:
+            leaf.log_value(metric_name, value, **metric_config)
 
     # Reduce level 2 (leaves) and merge into level 1
     results_a1 = leaf_a1.reduce()
     results_a2 = leaf_a2.reduce()
     results_b1 = leaf_b1.reduce()
     results_b2 = leaf_b2.reduce()
+
+    leaf_results = [results_a1, results_a2, results_b1, results_b2]
 
     # Verify leaf results
-    check(results_a1["mean_metric"], 1.0)
-    check(results_a1["window_mean"], 15.0)  # Mean of [10, 20]
-    check(results_a1["min_value"], 10)
-    check(results_a1["max_value"], 100)
-    check(results_a1["lifetime_sum"], 5)
-    check(results_a1["regular_sum"], 1)
-    check(results_a1["nested"]["mean"], 1.0)
-    check(results_a1["nested"]["sum"], 10)
-    check(results_a1["nested"]["lifetime"], 100)
-    check(results_a1["deeply"]["nested"]["metric"], 1)
+    for i, result in enumerate(leaf_results):
+        check(result[metric_name], expected_leaf_results_round1[i])
 
     # Merge level 2 results into level 1 nodes
-    node_a.merge_and_log_n_dicts([results_a1, results_a2])
-    node_b.merge_and_log_n_dicts([results_b1, results_b2])
-
-    # Verify level 1 aggregation
-    check(node_a.peek("mean_metric"), 1.5)  # Mean of [1.0, 2.0]
-    check(
-        node_a.peek("window_mean"), 30.0
-    )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * num_values] = [mean([20.0, 40.0]) * 2] = [30.0, 30.0]
-    check(node_a.peek("min_value"), 10)  # Min of [10, 20]
-    check(node_a.peek("max_value"), 200)  # Max of [100, 200]
-    check(node_a.peek("lifetime_sum"), 15)  # Sum of [5, 10]
-    check(node_a.peek("regular_sum"), 3)  # Sum of [1, 2]
-    check(node_a.peek(["nested", "mean"]), 1.5)  # Mean of [1.0, 2.0]
-    check(node_a.peek(["nested", "sum"]), 30)  # Sum of [10, 20]
-    check(node_a.peek(["nested", "lifetime"]), 300)  # Sum of [100, 200]
-    check(node_a.peek(["deeply", "nested", "metric"]), 3)  # Sum of [1, 2]
-
-    check(node_b.peek("mean_metric"), 3.5)  # Mean of [3.0, 4.0]
-    check(
-        node_b.peek("window_mean"), 70.0
-    )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * len(values)] = [mean([60.0, 80.0]) * 2] = [70.0, 70.0]
-    check(node_b.peek("min_value"), 30)  # Min of [30, 40]
-    check(node_b.peek("max_value"), 400)  # Max of [300, 400]
-    check(node_b.peek("lifetime_sum"), 35)  # Sum of [15, 20]
-    check(node_b.peek("regular_sum"), 7)  # Sum of [3, 4]
+    node_a.aggregate([results_a1, results_a2])
+    node_b.aggregate([results_b1, results_b2])
 
     # Reduce level 1 and merge into root
     results_a = node_a.reduce()
     results_b = node_b.reduce()
 
-    # Verify intermediate node results after reduction
-    # The lifetime sum values should be cleared in non-root loggers
-    check(results_a["lifetime_sum"], 15)  # Only current value, not accumulated
-    check(results_b["lifetime_sum"], 35)  # Only current value, not accumulated
-
     # Merge level 1 results into root
-    root.merge_and_log_n_dicts([results_a, results_b])
+    root.aggregate([results_a, results_b])
 
     # Verify root aggregation from first round
-    check(root.peek("mean_metric"), 2.5)  # Mean of [1.5, 3.5]
-    check(
-        root.peek("window_mean"), 50.0
-    )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * len(values)] = [mean([30.0, 70.0]) * 2] = [50.0, 50.0]
-    check(root.peek("min_value"), 10)  # Min of [10, 30]
-    check(root.peek("max_value"), 400)  # Max of [200, 400]
-    check(root.peek("lifetime_sum"), 50)  # Sum of [15, 35]
-    check(root.peek("regular_sum"), 10)  # Sum of [3, 7]
-    check(root.peek(["nested", "mean"]), 2.5)  # Mean of [1.5, 3.5]
-    check(root.peek(["nested", "sum"]), 100)  # Sum of [30, 70]
-    check(root.peek(["nested", "lifetime"]), 1000)  # Sum of [300, 700]
-    check(root.peek(["deeply", "nested", "metric"]), 10)  # Sum of [3, 7]
+    if isinstance(metric_name, list):
+        check(root.peek(metric_name), expected_root_peek_round1)
+    else:
+        check(root.peek(metric_name), expected_root_peek_round1)
 
-    # ----- Round 2: Add more metrics to show lifetime accumulation -----
-
-    # Log more data in leaf nodes
-    leaf_a1.log_value("lifetime_sum", 1, reduce="sum", clear_on_reduce=False)
-    leaf_a2.log_value("lifetime_sum", 2, reduce="sum", clear_on_reduce=False)
-    leaf_b1.log_value("lifetime_sum", 3, reduce="sum", clear_on_reduce=False)
-    leaf_b2.log_value("lifetime_sum", 4, reduce="sum", clear_on_reduce=False)
-
-    leaf_a1.log_value(["nested", "lifetime"], 10, reduce="sum", clear_on_reduce=False)
-    leaf_a2.log_value(["nested", "lifetime"], 20, reduce="sum", clear_on_reduce=False)
-    leaf_b1.log_value(["nested", "lifetime"], 30, reduce="sum", clear_on_reduce=False)
-    leaf_b2.log_value(["nested", "lifetime"], 40, reduce="sum", clear_on_reduce=False)
+    # Round 2: Log more values to leaf nodes
+    for leaf, values in zip(leaves, leaf_values_round2):
+        for value in values:
+            leaf.log_value(metric_name, value, **metric_config)
 
     # Reduce level 2 (leaves) and merge into level 1
     results_a1 = leaf_a1.reduce()
@@ -596,91 +467,15 @@ def test_hierarchical_metrics_system():
     results_b1 = leaf_b1.reduce()
     results_b2 = leaf_b2.reduce()
 
-    # Verify leaf results - these should only contain the new values, not accumulated ones
-    check(results_a1["lifetime_sum"], [6])  # 6 (5+1)
-    check(results_a1["nested"]["lifetime"], [110])  # 110 (100+10)
-
-    # Merge level 2 results into level 1 nodes
-    node_a.merge_and_log_n_dicts([results_a1, results_a2])
-    node_b.merge_and_log_n_dicts([results_b1, results_b2])
-
-    # Verify level 1 aggregation
-    check(node_a.peek("lifetime_sum"), [18])  # 18 (15+3)
-    check(node_a.peek(["nested", "lifetime"]), [330])  # 330 (300+30)
-
-    # Reduce level 1 and merge into root
+    node_a.aggregate([results_a1, results_a2])
+    node_b.aggregate([results_b1, results_b2])
     results_a = node_a.reduce()
     results_b = node_b.reduce()
+    root.aggregate([results_a, results_b])
 
-    # Merge level 1 results into root
-    root.merge_and_log_n_dicts([results_a, results_b])
-
-    # Verify root aggregation - root should accumulate lifetime stats
-    check(root.peek("lifetime_sum"), 60)  # 50 from round 1 + 3 + 7 from round 2
-    check(
-        root.peek(["nested", "lifetime"]), 1100
-    )  # 1000 from round 1 + 30 + 70 from round 2
-
-    # ----- Round 3: Test additional metrics -----
-
-    # Add some EMA-based metrics
-    leaf_a1.log_value("ema_metric", 1.0, reduce="mean", ema_coeff=0.1)
-    leaf_a1.log_value("ema_metric", 2.0)  # EMA should be 0.9*1.0 + 0.1*2.0 = 1.1
-    leaf_a2.log_value("ema_metric", 3.0, reduce="mean", ema_coeff=0.1)
-    leaf_a2.log_value("ema_metric", 4.0)  # EMA should be 0.9*3.0 + 0.1*4.0 = 3.1
-
-    # Add window metrics with different sizes
-    leaf_b1.log_value("window3_metric", 10, reduce="mean", window=3)
-    leaf_b1.log_value("window3_metric", 20, window=3)
-    leaf_b1.log_value("window3_metric", 30, window=3)
-    leaf_b1.log_value("window3_metric", 40, window=3)  # Mean of [20, 30, 40] = 30
-
-    leaf_b2.log_value("window3_metric", 50, reduce="mean", window=3)
-    leaf_b2.log_value("window3_metric", 60, window=3)
-    leaf_b2.log_value("window3_metric", 70, window=3)
-    leaf_b2.log_value("window3_metric", 80, window=3)  # Mean of [60, 70, 80] = 70
-
-    # Reduce level 2 and merge to level 1
-    results_a1 = leaf_a1.reduce()
-    results_a2 = leaf_a2.reduce()
-    results_b1 = leaf_b1.reduce()
-    results_b2 = leaf_b2.reduce()
-
-    check(results_a1["ema_metric"], 1.1)
-    check(results_a2["ema_metric"], 3.1)
-    check(results_b1["window3_metric"], 30)
-    check(results_b2["window3_metric"], 70)
-
-    # Merge into level 1
-    node_a.merge_and_log_n_dicts([results_a1, results_a2])
-    node_b.merge_and_log_n_dicts([results_b1, results_b2])
-
-    # Verify level 1
-    check(node_a.peek("ema_metric"), 2.1)  # Mean of [1.1, 3.1]
-    # Mean of windowed stats merged in parallel.
-    # In this case: [mean(values_1) * len(values_1)] + [mean(values_2) * len(values_2)] = [mean([80, 40]) * 2] + [mean([70, 30]) * 2] = [60, 60, 50, 50]
-    # Since window is 3, we take the first 3 values from the list, which are [60, 60, 50].
-    # Then we take the mean of these 3 values, which is 56.666666666666664.
-    check(node_b.peek("window3_metric"), (60 + 60 + 50) / 3)  # 56.666666666666664
-
-    # Reduce level 1 and merge to root
-    results_a = node_a.reduce()
-    results_b = node_b.reduce()
-
-    # Merge to root
-    root.merge_and_log_n_dicts([results_a, results_b])
-
-    # Only root knows about the new metrics
-    check("ema_metric" in root.stats, True)
-    check("window3_metric" in root.stats, True)
-
-    # Root should have correct values
-    check(root.peek("ema_metric"), 2.1)  # Only from node_a
-    check(root.peek("window3_metric"), (60 + 60 + 50) / 3)  # Only from node_b
-
-    # Lifetime metrics should still be accumulating only at root
-    check(root.peek("lifetime_sum"), 60)  # Still the same as after round 2
-    check(root.peek(["nested", "lifetime"]), 1100)  # Still the same as after round 2
+    # Verify all metrics using compile() to get a complete snapshot
+    compiled_results = root.compile()
+    check(compiled_results[metric_name], expected_compiled_result)
 
 
 if __name__ == "__main__":

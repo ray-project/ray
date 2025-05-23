@@ -543,9 +543,7 @@ class DreamerV3(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-                self.metrics.merge_and_log_n_dicts(
-                    env_runner_results, key=ENV_RUNNER_RESULTS
-                )
+                self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
@@ -577,9 +575,7 @@ class DreamerV3(Algorithm):
                         _uses_new_env_runners=True,
                         _return_metrics=True,
                     )
-                    self.metrics.merge_and_log_n_dicts(
-                        _env_runner_results, key=ENV_RUNNER_RESULTS
-                    )
+                    self.metrics.aggregate(_env_runner_results, key=ENV_RUNNER_RESULTS)
                     self.replay_buffer.add(episodes=_episodes)
                     total_sampled += sum(len(eps) for eps in _episodes)
 
@@ -589,9 +585,7 @@ class DreamerV3(Algorithm):
         )
         # Get the replay buffer metrics.
         replay_buffer_results = self.local_replay_buffer.get_metrics()
-        self.metrics.merge_and_log_n_dicts(
-            [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
-        )
+        self.metrics.aggregate([replay_buffer_results], key=REPLAY_BUFFER_RESULTS)
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
         # and using these to update our models (`LearnerGroup.update()`)
@@ -641,7 +635,7 @@ class DreamerV3(Algorithm):
                         )
                     },
                 )
-                self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
                 sub_iter += 1
                 self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
