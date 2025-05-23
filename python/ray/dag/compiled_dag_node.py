@@ -1933,7 +1933,7 @@ class CompiledDAG:
                 ]
             }
         """
-        from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
+        from ray.dag.collective_node import CollectiveOutputNode
 
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
@@ -1941,12 +1941,6 @@ class CompiledDAG:
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
         ] = defaultdict(list)
-        collective_op_to_nodes: Dict[
-            _CollectiveOperation, Set[_DAGOperationGraphNode]
-        ] = defaultdict(set)
-        collective_op_to_idxs: Dict[
-            _CollectiveOperation, Tuple[int, _DAGNodeOperationType]
-        ] = defaultdict(set)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for exec_task_idx, exec_task in enumerate(executable_tasks):
@@ -1956,12 +1950,13 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl = dag_node.type_hint.requires_nccl()
-                upstream_requires_nccl = False
+                requires_nccl_read = False
                 for upstream_node in dag_node._upstream_nodes:
                     if upstream_node.type_hint.requires_nccl():
-                        upstream_requires_nccl = True
+                        requires_nccl_read = True
                         break
+                requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
+                requires_nccl_write = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1969,7 +1964,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    upstream_requires_nccl,
+                    requires_nccl_read,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1977,7 +1972,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    isinstance(dag_node, CollectiveOutputNode),
+                    requires_nccl_compute,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1985,23 +1980,12 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl,
+                    requires_nccl_write,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
                     [read_node, compute_node, write_node]
                 )
-                if isinstance(dag_node, CollectiveOutputNode):
-                    collective_op_to_nodes[dag_node.collective_op].add(compute_node)
-                    collective_op_to_idxs[dag_node.collective_op].add(
-                        (task_idx, _DAGNodeOperationType.COMPUTE)
-                    )
-
-        # Set collective nodes for all the NCCL collective operation nodes.
-        for collective_op, nodes in collective_op_to_nodes.items():
-            idxs = collective_op_to_idxs[collective_op]
-            for node in nodes:
-                node.collective_idxs = idxs
 
         return actor_to_operation_nodes
 
