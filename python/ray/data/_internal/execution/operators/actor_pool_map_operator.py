@@ -429,7 +429,9 @@ class ActorPoolMapOperator(MapOperator):
             elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
                 # be restarted indefinitely until execution finishes.
-                assert actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
+                assert (
+                    actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
+                ), actor_state
                 self._actor_pool.update_running_actor_state(actor, True)
             else:
                 self._actor_pool.update_running_actor_state(actor, False)
