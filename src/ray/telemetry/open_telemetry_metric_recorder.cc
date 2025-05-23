@@ -79,7 +79,16 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
           meter_provider_));
 }
 
-void OpenTelemetryMetricRecorder::Shutdown() { meter_provider_->ForceFlush(); }
+void OpenTelemetryMetricRecorder::Shutdown() {
+  meter_provider_->ForceFlush();
+  meter_provider_->Shutdown();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    observations_by_name_.clear();    // Clear all observations
+    registered_instruments_.clear();  // Clear all registered instruments
+    gauge_callback_names_.clear();    // Clear all gauge callback names
+  }
+}
 
 void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
     const std::string &name,
@@ -107,6 +116,10 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
                           static_cast<void *>(&gauge_callback_names_.back()));
   observations_by_name_[name] = {};
   registered_instruments_[name] = instrument;
+}
+
+bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) const {
+  return registered_instruments_.contains(name);
 }
 
 void OpenTelemetryMetricRecorder::SetMetricValue(

@@ -113,6 +113,18 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
 
+  - label: ":ray: core: open telemetry tests"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_metrics_agent core
+        --install-mask all-ray-libraries
+        --network=host
+        --test-env=RAY_experimental_enable_open_telemetry_on_agent=1
+        --test-env=RAY_experimental_enable_open_telemetry_on_core=1
+
   - label: ":ray: core: memory pressure tests"
     tags:
       - python
