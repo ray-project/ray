@@ -1311,12 +1311,13 @@ class TestOverrideDeploymentInfo:
 
     def test_non_existent_deployment(self, info):
         """Test error is raised when attempting to override a non-existent deployment."""
+        non_existent_name = "NonExistentDeployment"
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
             deployments=[
                 DeploymentSchema(
-                    name="A",
+                    name=non_existent_name,
                     num_replicas=3,
                 )
             ],
@@ -1324,9 +1325,9 @@ class TestOverrideDeploymentInfo:
 
         with pytest.raises(
             ValueError,
-            match="Deployment 'NonExistentDeployment' does not exist. Available:",
+            match=f"Deployment '{non_existent_name}' does not exist. Available:",
         ):
-            override_deployment_info({"NonExistentDeployment": info}, config)
+            override_deployment_info({"A": info}, config)
 
 
 if __name__ == "__main__":
