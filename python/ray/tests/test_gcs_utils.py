@@ -1,13 +1,14 @@
+import asyncio
 import contextlib
 import os
-import time
 import signal
 import sys
-import asyncio
+import time
 
 import pytest
-import ray
 import redis
+
+import ray
 from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
@@ -319,9 +320,4 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

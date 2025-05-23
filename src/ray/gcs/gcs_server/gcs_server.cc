@@ -597,6 +597,20 @@ void GcsServer::InitKVManager() {
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(
       std::move(instance), config_.raylet_config_list, io_context);
+
+  kv_manager_->GetInstance().Put(
+      "",
+      kGcsPidKey,
+      std::to_string(getpid()),
+      /*overwrite=*/true,
+      {[](bool added) {
+         if (!added) {
+           RAY_LOG(WARNING)
+               << "Failed to put the GCS pid in the kv store. GCS process metrics "
+                  "will not be emitted.";
+         }
+       },
+       io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::InitKVService() {
