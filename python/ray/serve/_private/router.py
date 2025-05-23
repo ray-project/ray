@@ -464,8 +464,11 @@ class AsyncioRouter:
     def get_request_router(self) -> Optional[ReplicaScheduler]:
         """Get and lazy loading request router.
 
-        If the request_router_class not provided, call `get_deployment_config`
-        api to get the request router class set from the deployment config.
+        If the request_router_class not provided, and the request router is not
+        yet initialized, then it will return None. Otherwise, if request router
+        is not yet initialized, it will be initialized and returned. Also,
+        setting `self._request_router_initialized` to signal that the request
+        router is initialized.
         """
         if not self._request_router:
             if self._request_router_class:

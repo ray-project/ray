@@ -268,11 +268,13 @@ class TestAssignRequest:
         is_streaming: bool,
     ):
         router, fake_replica_scheduler = setup_router
+
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
+
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
