@@ -529,6 +529,8 @@ class _ActorPool(AutoscalingActorPool):
                 create an actor with those labels. The function should return the actor
                 handle and a reference to the actor's node ID.
             per_actor_resource_usage: The resource usage per actor.
+            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool on exit
+                hook.
         """
 
         self._min_size: int = compute_strategy.min_size
