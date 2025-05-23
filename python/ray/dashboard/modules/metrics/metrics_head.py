@@ -402,6 +402,27 @@ class MetricsHead(SubprocessModule):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+        def on_new_lag(lag_s):
+            # Record the lag. It's exported in `record_dashboard_metrics`
+            self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
+
+        enable_monitor_loop_lag(on_new_lag)
+
+=======
+>>>>>>> 6e4eade511 (remove)
+        logger.info(
+            f"Generated prometheus and grafana configurations in: {self._metrics_root}"
+        )
+
+<<<<<<< HEAD
+        await asyncio.gather(self.record_dashboard_metrics())
+
+>>>>>>> 0088e4d884 (undo)
+=======
+>>>>>>> 6e4eade511 (remove)
     async def _query_prometheus(self, query):
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}",

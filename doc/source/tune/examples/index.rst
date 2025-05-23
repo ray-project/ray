@@ -94,7 +94,40 @@ and their respective search algorithms. See the following detailed examples
 for each integration:
 
 .. list-table::
+   :widths: 50 30 20
+   :header-rows: 1
 
+   * - Description
+     - Library
+     - Colab link
+   * - Basics of using Tune
+     - Pytorch
+     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
+          :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb
+          :alt: Open in Colab
+   * - Using search algorithms and trial schedulers to optimize your model
+     - Pytorch
+     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
+          :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_2_optimize.ipynb
+          :alt: Open in Colab
+   * - Using Population-Based Training (PBT)
+     - Pytorch
+     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
+          :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_3_pbt.ipynb" target="_parent
+          :alt: Open in Colab
+   * - Fine-tuning Hugging Face Transformers with PBT
+     - Hugging Face Transformers and Pytorch
+     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
+          :target: https://colab.research.google.com/drive/1tQgAKgcKQzheoh503OzhS4N9NtfFgmjF?usp=sharing
+          :alt: Open in Colab
+   * - Logging Tune runs to Comet ML
+     - Comet
+     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
+          :target: https://colab.research.google.com/drive/1dp3VwVoAH1acn_kG7RuT62mICnOqxU1z?usp=sharing
+          :alt: Open in Colab
+
+Tutorial source files are on `GitHub <https://github.com/ray-project/tutorial>`_.
+=======
   * - :doc:`ax_example`
   * - :doc:`hyperopt_example`
   * - :doc:`bayesopt_example`

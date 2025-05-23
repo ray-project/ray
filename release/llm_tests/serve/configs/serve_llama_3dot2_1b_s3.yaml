@@ -8,7 +8,10 @@ applications:
           accelerator_type: A10G
           engine_kwargs:
             max_model_len: 8192
+<<<<<<< HEAD
             tensor_parallel_size: 1
+=======
+>>>>>>> e25ce5bc06 ([Serve.llm] fix loading model from remote storage and add docs (#51617))
     import_path: ray.serve.llm:build_openai_app
     name: llm-endpoint
     route_prefix: /
