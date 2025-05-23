@@ -108,6 +108,7 @@ class _BatchQueue:
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
+        self.max_concurrent_batches = max_concurrent_batches
         self.semaphore = asyncio.Semaphore(max_concurrent_batches)
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
