@@ -58,7 +58,7 @@ def _bind(
         )
 
     if isinstance(inputs[0], list):
-        if len(set(len(input_node_list) for input_node_list in inputs)) != 1:
+        if len({len(inp) for inp in inputs}) != 1:
             raise ValueError("Expected equal number of nodes bound from all actors")
         if len(inputs[0]) == 1:
             inputs = [inp[0] for inp in inputs]

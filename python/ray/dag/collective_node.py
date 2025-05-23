@@ -64,7 +64,7 @@ class _CollectiveOperation:
         self._actor_handles: List["ray.actor.ActorHandle"] = []
         for inp in inputs:
             if isinstance(inp, list):
-                if not len(set(node._get_actor_handle() for node in inp)) == 1:
+                if not len({node._get_actor_handle() for node in inp}) == 1:
                     raise ValueError("Expected list of input nodes from the same actor")
                 actor_handle = inp[0]._get_actor_handle()
             elif isinstance(inp, DAGNode):
@@ -77,21 +77,16 @@ class _CollectiveOperation:
                 raise ValueError("Expected an actor handle from the input node")
             self._actor_handles.append(actor_handle)
         if len(set(self._actor_handles)) != len(self._actor_handles):
-            if isinstance(inputs[0], list):
-                invalid_input_nodes = [
-                    inp
-                    for inp in inputs
-                    if self._actor_handles.count(
-                        set([node._get_actor_handle() for node in inp]).pop()
-                    )
-                    > 1
-                ]
-            else:
-                invalid_input_nodes = [
-                    inp
-                    for inp in inputs
-                    if self._actor_handles.count(inp._get_actor_handle()) > 1
-                ]
+            invalid_input_nodes = [
+                inp
+                for inp in inputs
+                if self._actor_handles.count(
+                    inp[0]._get_actor_handle()
+                    if isinstance(inp, list)
+                    else inp._get_actor_handle()
+                )
+                > 1
+            ]
             raise ValueError(
                 "Expected unique actor handles for a collective operation, "
                 "but found duplicate actor handles from input nodes: "
