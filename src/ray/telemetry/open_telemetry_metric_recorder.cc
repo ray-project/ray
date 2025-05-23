@@ -139,6 +139,10 @@ bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
   return registered_instruments_.contains(name);
 }
 
+bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) const {
+  return registered_instruments_.contains(name);
+}
+
 void OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
