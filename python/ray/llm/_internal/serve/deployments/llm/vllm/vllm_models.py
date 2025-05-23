@@ -211,11 +211,16 @@ class VLLMSamplingParams(SamplingParams):
     Args:
         top_k: The number of highest probability vocabulary tokens to keep for top-k-filtering.
         seed: Seed for deterministic sampling with temperature>0.
+        repetition_penalty: Float that penalizes new tokens based on whether they
+            appear in the prompt and the generated text so far. Values > 1 encourage
+            the model to use new tokens, while values < 1 encourage the model to repeat
+            tokens.
     """
 
     _ignored_fields = {"best_of", "n", "logit_bias"}
 
     top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
     seed: Optional[int] = None
 
 

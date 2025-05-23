@@ -919,6 +919,9 @@ class VLLMEngine(LLMEngine):
                 frequency_penalty=sampling_params.frequency_penalty
                 if sampling_params.frequency_penalty is not None
                 else 0.0,
+                repetition_penalty=sampling_params.repetition_penalty
+                if sampling_params.repetition_penalty is not None
+                else 1.0,
                 temperature=sampling_params.temperature
                 if sampling_params.temperature is not None
                 else 1.0,
