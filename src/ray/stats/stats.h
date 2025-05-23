@@ -70,7 +70,6 @@ static inline void Init(
 
   RAY_CHECK(metrics_io_service_pool == nullptr);
   bool disable_stats = !RayConfig::instance().enable_metrics_collection();
-  bool enable_open_telemetry = RayConfig::instance().enable_open_telemetry_on_worker();
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
