@@ -62,7 +62,9 @@ py_test_module_list(
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
+        "test_reference_counting.py",
         "test_reference_counting_2.py",
+        "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
     ],
     tags = [
@@ -844,7 +846,6 @@ py_test_module_list(
         "test_object_spilling.py",
         "test_object_spilling_3.py",
         "test_placement_group_mini_integration.py",
-        "test_reference_counting.py",
         "test_scheduling_2.py",
     ],
     tags = [
