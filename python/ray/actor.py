@@ -1558,6 +1558,15 @@ class ActorHandle:
         return object_refs
 
     def __getattr__(self, item):
+        try:
+            self.__getattribute__("_ray_is_cross_language")
+        except AttributeError:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has neither attribute '{item}' "
+                f"nor '_ray_is_cross_language'. It seems that unpickling "
+                f"has failed."
+            )
+
         if not self._ray_is_cross_language:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
