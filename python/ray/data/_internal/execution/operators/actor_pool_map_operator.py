@@ -443,8 +443,6 @@ class _MapWorker:
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
-        # Initialize state for this actor.
-        self._map_transformer.init()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -474,10 +472,8 @@ class _MapWorker:
         Note, this only ensures cleanup is performed when the job exists gracefully.
         If the driver or the actor is forcefully killed, `__del__` will not be called.
         """
-        # `_map_actor_context` is a global variable that references the UDF object.
-        # Delete it to trigger `UDF.__del__`.
-        del ray.data._map_actor_context
-        ray.data._map_actor_context = None
+        # Clean up the map transformer
+        self._map_transformer.on_exit()
 
 
 @dataclass
