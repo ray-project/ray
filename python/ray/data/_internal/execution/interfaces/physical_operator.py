@@ -1,3 +1,4 @@
+import abc
 import logging
 import uuid
 from abc import ABC, abstractmethod
@@ -654,3 +655,10 @@ class PhysicalOperator(Operator):
                     # failed with a different error, or cancellation failed.
                     # In all cases, we swallow the exception.
                     pass
+
+
+class ReportsExtraResourceUsage(abc.ABC):
+    @abc.abstractmethod
+    def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
+        """Returns resources used by this operator beyond standard accounting."""
+        ...

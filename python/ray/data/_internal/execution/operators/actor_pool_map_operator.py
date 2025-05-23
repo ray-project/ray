@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -185,14 +186,21 @@ class ActorPoolMapOperator(MapOperator):
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
 
-    def _start_actor(self):
-        """Start a new actor and add it to the actor pool as a pending actor."""
+    def _start_actor(self, labels: Dict[str, str]) -> Tuple[ActorHandle, ObjectRef]:
+        """Start a new actor and add it to the actor pool as a pending actor.
+
+        Args:
+            labels: The key-value labels to launch the actor with.
+
+        Returns:
+            A tuple of the actor handle and the object ref to the actor's location.
+        """
         assert self._cls is not None
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.options(
-            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
             ctx,
             src_fn_name=self.name,
@@ -501,13 +509,24 @@ class _ActorPool(AutoscalingActorPool):
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 30
     _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
+    _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
     def __init__(
         self,
         compute_strategy: ActorPoolStrategy,
-        create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef[Any]]],
+        create_actor_fn: Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]],
         per_actor_resource_usage: ExecutionResources,
     ):
+        """Initialize the actor pool.
+
+        Args:
+            compute_strategy: The autoscaling configuration to use.
+            create_actor_fn: This function should take key-value labels as input, and
+                create an actor with those labels. The function should return the actor
+                handle and a reference to the actor's node ID.
+            per_actor_resource_usage: The resource usage per actor.
+        """
+
         self._min_size: int = compute_strategy.min_size
         self._max_size: int = compute_strategy.max_size
         self._max_tasks_in_flight: int = (
@@ -527,6 +546,8 @@ class _ActorPool(AutoscalingActorPool):
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
+        # Map from actor handle to its logical ID.
+        self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
@@ -603,13 +624,20 @@ class _ActorPool(AutoscalingActorPool):
         )
 
         for _ in range(num_actors):
-            actor, ready_ref = self._create_actor_fn()
+            actor, ready_ref = self._create_actor()
             self.add_pending_actor(actor, ready_ref)
 
         # Capture last scale up timestamp
         self._last_scaling_up_ts = time.time()
 
         return num_actors
+
+    def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
+        logical_actor_id = str(uuid.uuid4())
+        labels = {self.get_logical_id_label_key(): logical_actor_id}
+        actor, ready_ref = self._create_actor_fn(labels)
+        self._actor_to_logical_id[actor] = logical_actor_id
+        return actor, ready_ref
 
     def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         num_released = 0
@@ -782,6 +810,22 @@ class _ActorPool(AutoscalingActorPool):
     def get_running_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._running_actors.keys())
 
+    def get_logical_ids(self) -> List[str]:
+        """Get the logical IDs for pending and running actors in the actor pool.
+
+        We can’t use Ray Core actor IDs because we need to identify actors by labels,
+        but labels must be set before creation, and actor IDs aren’t available until
+        after.
+        """
+        return list(self._actor_to_logical_id.values())
+
+    def get_logical_id_label_key(self) -> str:
+        """Get the label key for the logical actor ID.
+
+        Actors launched by this pool should have this label.
+        """
+        return self._LOGICAL_ACTOR_ID_LABEL_KEY
+
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
         return sum(
@@ -815,7 +859,8 @@ class _ActorPool(AutoscalingActorPool):
         if self._pending_actors:
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
-            del self._pending_actors[ready_ref]
+            actor = self._pending_actors.pop(ready_ref)
+            del self._actor_to_logical_id[actor]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
@@ -886,6 +931,7 @@ class _ActorPool(AutoscalingActorPool):
         # cleanup operations.
         ref = actor.on_exit.remote()
         del self._running_actors[actor]
+        del self._actor_to_logical_id[actor]
 
         return ref
 
