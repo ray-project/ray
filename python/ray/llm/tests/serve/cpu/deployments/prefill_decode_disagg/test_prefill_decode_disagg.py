@@ -1,5 +1,6 @@
 import pytest
 import sys
+from unittest.mock import patch
 
 from vllm.config import KVTransferConfig
 from vllm.platforms.interface import UnspecifiedPlatform

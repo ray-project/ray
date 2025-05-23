@@ -218,6 +218,12 @@ class VLLMEngine(LLMEngine):
                 host = vllm.envs.NIXL_SIDE_CHANNEL_HOST
                 port = vllm.envs.NIXL_SIDE_CHANNEL_PORT
                 kv_transfer_config.engine_id = "-".join([engine_id, host, port])
+            else:
+                # TODO(lk-chen): Raise error once vllm 0.9.0 is pinned to rayllm
+                logger.warning(
+                    "engine_id is not supported in vllm < 0.9.0, NIXL-backed kv transfer "
+                    "is not supported."
+                )
 
         assert isinstance(
             llm_config, LLMConfig
