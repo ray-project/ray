@@ -100,7 +100,9 @@ class MockVLLMEngine(LLMEngine):
         )
 
     async def generate(self, vllm_engine_request: VLLMGenerationRequest):
-        sampling_params = vllm_engine_request.sampling_params
+        sampling_params = self._parse_sampling_params(
+            vllm_engine_request.sampling_params
+        )
         max_tokens = sampling_params.max_tokens
         if not max_tokens:
             max_tokens = randint(1, 10)

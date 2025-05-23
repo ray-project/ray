@@ -44,6 +44,7 @@ class PDServingArgs(BaseModel):
             # ray.serve.llm.__init__ imports internal LLMConfig, and extends it to external-facing LLMConfig.
             # parse_llm_configs returns internal LLMConfig, while {prefill, decode}_configs expect external-facing LLMConfig.
             # So the model_dump() here is to convert the type, to satisfy pydantic.
+            # TODO(lk-chen): refactor llm_config parsing to avoid this model_dump, and make llm_config more reusable.
             config = parse_llm_configs([config])[0]
             return LLMConfig(**config.model_dump())
 
