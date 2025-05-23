@@ -608,7 +608,9 @@ class AsyncioRouter:
         request, so it's up to the caller to time out or cancel the request.
         """
         # Wait for the router to be initialized before sending the request.
-        await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
+        while not self._request_router_initialized.is_set():
+            await asyncio.sleep(0.1)
+        # await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
 
         r = await self.request_router.choose_replica_for_request(pr)
 
@@ -681,7 +683,9 @@ class AsyncioRouter:
         )
 
         # Wait for the router to be initialized before sending the request.
-        await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
+        while not self._request_router_initialized.is_set():
+            await asyncio.sleep(0.1)
+        # await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
