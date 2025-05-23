@@ -14,7 +14,6 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py311_24.4.0-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -40,7 +39,7 @@ install_miniconda() {
         ;;
     esac
 
-    local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
+    local miniconda_url="https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
     curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
     chmod +x "${miniconda_target}"
@@ -85,8 +84,11 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda remove --force -y anaconda-anon-usage
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      if [[ "${PYTHON-}" == "3.13" ]]; then
+        # Use free threading Python build
+        "${WORKSPACE_DIR}"/ci/suppress_output conda install --override-channels -c conda-forge python-freethreading
+      fi
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
