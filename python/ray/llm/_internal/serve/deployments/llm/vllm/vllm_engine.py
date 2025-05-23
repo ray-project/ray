@@ -475,7 +475,6 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm.v1.executor.abstract import Executor
 
-
         vllm_config.parallel_config.placement_group = placement_group
 
         _clear_current_platform_cache()
@@ -903,26 +902,34 @@ class VLLMEngine(LLMEngine):
             return vllm.sampling_params.SamplingParams(
                 n=1,
                 best_of=sampling_params.best_of,
-                presence_penalty=sampling_params.presence_penalty
-                if sampling_params.presence_penalty is not None
-                else 0.0,
-                frequency_penalty=sampling_params.frequency_penalty
-                if sampling_params.frequency_penalty is not None
-                else 0.0,
-                temperature=sampling_params.temperature
-                if sampling_params.temperature is not None
-                else 1.0,
-                top_p=sampling_params.top_p
-                if sampling_params.top_p is not None
-                else 1.0,
-                top_k=sampling_params.top_k
-                if sampling_params.top_k is not None
-                else -1,
+                presence_penalty=(
+                    sampling_params.presence_penalty
+                    if sampling_params.presence_penalty is not None
+                    else 0.0
+                ),
+                frequency_penalty=(
+                    sampling_params.frequency_penalty
+                    if sampling_params.frequency_penalty is not None
+                    else 0.0
+                ),
+                temperature=(
+                    sampling_params.temperature
+                    if sampling_params.temperature is not None
+                    else 1.0
+                ),
+                top_p=(
+                    sampling_params.top_p if sampling_params.top_p is not None else 1.0
+                ),
+                top_k=(
+                    sampling_params.top_k if sampling_params.top_k is not None else -1
+                ),
                 stop=sampling_params.stop,
                 stop_token_ids=sampling_params.stop_tokens,
-                ignore_eos=False
-                if sampling_params.ignore_eos is None
-                else sampling_params.ignore_eos,
+                ignore_eos=(
+                    False
+                    if sampling_params.ignore_eos is None
+                    else sampling_params.ignore_eos
+                ),
                 # vLLM will cancel internally if input+output>max_tokens
                 max_tokens=sampling_params.max_tokens
                 or self.model_config.max_model_len,
