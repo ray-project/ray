@@ -58,7 +58,7 @@ namespace
 NER
 Nsight
 NumPy
-Nvidia
+NVIDIA
 pretraining
 Pythonic
 QPS

@@ -22,7 +22,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
-from ray._raylet import WorkerID
+from ray._raylet import WorkerID, GCS_PID_KEY
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -418,6 +418,7 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        self._gcs_pid = None
 
         self._gpu_profiling_manager = GpuProfilingManager(self._log_dir)
         self._gpu_profiling_manager.start_monitoring_daemon()
@@ -714,6 +715,13 @@ class ReporterAgent(
             pass
         return None
 
+    def _get_gcs(self):
+        if self._gcs_pid:
+            gcs_proc = psutil.Process(self._gcs_pid)
+            if gcs_proc:
+                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        return {}
+
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
@@ -768,7 +776,7 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        return {
+        stats = {
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
@@ -791,6 +799,9 @@ class ReporterAgent(
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
+        if self._is_head_node:
+            stats["gcs"] = self._get_gcs()
+        return stats
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
@@ -1197,6 +1208,15 @@ class ReporterAgent(
         Record system stats.
         """
 
+        if self._is_head_node:
+            gcs_stats = stats["gcs"]
+            if gcs_stats:
+                records_reported.extend(
+                    self._generate_system_stats_record(
+                        [gcs_stats], "gcs", pid=str(gcs_stats["pid"])
+                    )
+                )
+
         # Record component metrics.
         raylet_stats = stats["raylet"]
         if raylet_stats:
@@ -1217,7 +1237,6 @@ class ReporterAgent(
                 )
             )
 
-        # TODO(sang): Record GCS metrics.
         # NOTE: Dashboard metrics is recorded within the dashboard because
         # it can be deployed as a standalone instance. It shouldn't
         # depend on the agent.
@@ -1264,6 +1283,14 @@ class ReporterAgent(
                             None,
                             timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
+                    )
+                    self._gcs_pid = await self._gcs_client.async_internal_kv_get(
+                        GCS_PID_KEY.encode(),
+                        None,
+                        timeout=GCS_RPC_TIMEOUT_SECONDS,
+                    )
+                    self._gcs_pid = (
+                        int(self._gcs_pid.decode()) if self._gcs_pid else None
                     )
 
                 # NOTE: Stats collection is executed inside the thread-pool
