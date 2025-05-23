@@ -106,14 +106,15 @@ struct NodeManagerConfig {
   int ray_debugger_external;
   /// The raylet config list of this node.
   std::string raylet_config;
-  // The time between record metrics in milliseconds, or 0 to disable.
+  /// The time between record metrics in milliseconds, or 0 to disable.
   uint64_t record_metrics_period_ms;
-  // The number if max io workers.
-  int max_io_workers;
-  // The key-value labels of this node.
+  /// The maximum number of I/O workers that the raylet can start for each I/O type.
+  /// Currently supported I/O types are spill and restore.
+  int max_io_workers_per_io_type;
+  /// The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
-  // If true, core worker enables resource isolation by adding itself into appropriate
-  // cgroup.
+  /// If true, core worker enables resource isolation by adding itself into appropriate
+  /// cgroup.
   bool enable_resource_isolation = false;
 
   void AddDefaultLabels(const std::string &self_node_id);
