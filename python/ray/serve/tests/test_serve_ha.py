@@ -113,7 +113,7 @@ from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
 head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(
-    **requests.get("http://localhost:52365/api/serve/applications/").json())
+    **requests.get("http://localhost:8265/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")

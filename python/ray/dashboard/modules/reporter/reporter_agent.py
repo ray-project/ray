@@ -21,8 +21,8 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer, KV_GCS_PID
-from ray._raylet import WorkerID
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
+from ray._raylet import WorkerID, GCS_PID_KEY
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -1285,7 +1285,7 @@ class ReporterAgent(
                         )
                     )
                     self._gcs_pid = await self._gcs_client.async_internal_kv_get(
-                        KV_GCS_PID,
+                        GCS_PID_KEY.encode(),
                         None,
                         timeout=GCS_RPC_TIMEOUT_SECONDS,
                     )
