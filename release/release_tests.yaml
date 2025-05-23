@@ -3471,6 +3471,29 @@
       cluster:
         cluster_compute: object_store_gce.yaml
 
+- name: small_objects
+  group: core-scalability-test
+  working_dir: benchmarks
+
+  frequency: nightly
+  team: core
+  env: aws_perf
+  cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+    cluster_compute: object_store/small_objects.yaml
+
+  run:
+    timeout: 3600
+    script: python object_store/test_small_objects.py
+    wait_for_nodes:
+      num_nodes: 5
+
+  variations:
+    - __suffix__: aws
+
 - name: many_actors
   group: core-scalability-test
   working_dir: benchmarks
