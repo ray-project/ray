@@ -509,6 +509,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return True
         budget = self._op_budgets[op]
         res = op.incremental_resource_usage().satisfies_limit(budget)
+        if not res:
+            return self._should_unblock_streaming_output_backpressure(op)
         return res
 
     def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
@@ -522,9 +524,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # backpressure by allowing reading at least 1 block. So the current operator
         # can finish at least one task and yield resources to the downstream operators.
         for next_op in self._get_downstream_eligible_ops(op):
-            if not self._reserved_min_resources[next_op]:
-                # Case 1: the downstream operator hasn't reserved the minimum resources
-                # to run at least one task.
+            if next_op.num_active_tasks() == 0:
                 return True
             # Case 2: the downstream operator has reserved the minimum resources, but
             # the resources are preempted by non-Data tasks or actors.
