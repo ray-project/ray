@@ -257,7 +257,9 @@ class SerializationContext:
                     object_ref
                 )
 
-    def _deserialize_pickle5_data(self, data, object_id: Optional[str] = None):
+    def _deserialize_pickle5_data(
+        self, data: Any, object_id: Optional[str] = None
+    ) -> Any:
         """
         If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
         out-of-band instead of through the object store. In this case, we need to retrieve
@@ -268,6 +270,9 @@ class SerializationContext:
             data: The data to deserialize.
             object_id: The object ID to use as the key for the in-actor object store
                 to retrieve tensors.
+
+        Returns:
+            Any: The deserialized object.
         """
         from ray.experimental.channel import ChannelContext
 
@@ -278,6 +283,9 @@ class SerializationContext:
         if enable_gpu_objects:
             tensors = worker.in_actor_object_store[object_id]
             ctx.reset_out_of_band_tensors(tensors)
+            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
+            # is naive. We garbage collect each object after it is consumed once.
+            del worker.in_actor_object_store[object_id]
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)

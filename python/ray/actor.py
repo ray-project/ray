@@ -129,34 +129,6 @@ class ActorMethod:
 
     Note: This class only keeps a weak ref to the actor, unless it has been
     passed to a remote function. This avoids delays in GC of the actor.
-
-    Attributes:
-        _actor_ref: A weakref handle to the actor.
-        _method_name: The name of the actor method.
-        _num_returns: The default number of return values that the method
-            invocation should return. If None is given, it uses
-            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
-            and "streaming" for a generator task (when `is_generator` is True).
-        _max_task_retries: Number of retries on method failure.
-        _retry_exceptions: Boolean of whether you want to retry all user-raised
-            exceptions, or a list of allowlist exceptions to retry.
-        _is_generator: True if a given method is a Python generator.
-        _generator_backpressure_num_objects: Generator-only config.
-            If a number of unconsumed objects reach this threshold,
-            a actor task stop pausing.
-        enable_task_events: True if task events is enabled, i.e., task events from
-            the actor should be reported. Defaults to True.
-        _signature: The signature of the actor method. It is None only when cross
-            language feature is used.
-        _decorator: An optional decorator that should be applied to the actor
-            method invocation (as opposed to the actor method execution) before
-            invoking the method. The decorator must return a function that
-            takes in two arguments ("args" and "kwargs"). In most cases, it
-            should call the function that was passed into the decorator and
-            return the resulting ObjectRefs. For an example, see
-            "test_decorated_method" in "python/ray/tests/test_actor.py".
-        _tensor_transport: The tensor transport protocol to use for the actor method.
-            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
     """
 
     def __init__(
@@ -174,6 +146,33 @@ class ActorMethod:
         hardref=False,
         tensor_transport: Optional[TypeTensorTransport] = None,
     ):
+        """Initialize an ActorMethod.
+
+        Args:
+            actor: The actor instance this method belongs to.
+            method_name: The name of the actor method.
+            num_returns: The default number of return values that the method
+                invocation should return. If None is given, it uses
+                DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
+                and "streaming" for a generator task (when `is_generator` is True).
+            max_task_retries: Number of retries on method failure.
+            retry_exceptions: Boolean of whether you want to retry all user-raised
+                exceptions, or a list of allowlist exceptions to retry.
+            is_generator: True if a given method is a Python generator.
+            generator_backpressure_num_objects: Generator-only config.
+                If a number of unconsumed objects reach this threshold,
+                a actor task stop pausing.
+            enable_task_events: True if task events is enabled, i.e., task events from
+                the actor should be reported. Defaults to True.
+            decorator: An optional decorator that should be applied to the actor
+                method invocation.
+            signature: The signature of the actor method. It is None only when cross
+                language feature is used.
+            hardref: Whether to keep a hard reference to the actor.
+            tensor_transport: The tensor transport protocol to use for the actor method.
+                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
+        """
+        # A weakref handle to the actor.
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
@@ -1372,6 +1371,8 @@ class ActorHandle:
         _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
             actor's default value (`_ray_enable_task_events`).
+        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their tensor transport protocol settings.
+            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -1409,6 +1410,28 @@ class ActorHandle:
         original_handle=False,
         weak_ref: bool = False,
     ):
+        """Initialize an ActorHandle.
+
+        Args:
+            language: The actor language.
+            actor_id: The ID of the actor.
+            max_task_retries: The maximum number of times to retry a task when it fails.
+            enable_task_events: Whether task events should be enabled for this actor.
+            method_is_generator: Dictionary mapping method names to whether they are generator methods.
+            method_decorators: Dictionary mapping method names to their decorators.
+            method_signatures: Dictionary mapping method names to their signatures.
+            method_num_returns: Dictionary mapping method names to their number of return values.
+            method_max_task_retries: Dictionary mapping method names to their maximum task retries.
+            method_retry_exceptions: Dictionary mapping method names to their retry exception settings.
+            method_generator_backpressure_num_objects: Dictionary mapping method names to their generator backpressure settings.
+            method_enable_task_events: Dictionary mapping method names to whether task events are enabled.
+            method_name_to_tensor_transport: Dictionary mapping method names to their tensor transport settings.
+            actor_method_cpus: The number of CPUs required by actor methods.
+            actor_creation_function_descriptor: The function descriptor for actor creation.
+            cluster_and_job: The cluster and job information.
+            original_handle: Whether this is the original actor handle.
+            weak_ref: Whether this is a weak reference to the actor.
+        """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_max_task_retries = max_task_retries
@@ -1525,8 +1548,13 @@ class ActorHandle:
             max_task_retries: Number of retries when method fails.
             retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
+            concurrency_group_name: The name of the concurrency group to use.
+            generator_backpressure_num_objects: The number of objects to generate
+                before applying backpressure.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
+            tensor_transport: The tensor transport protocol to use for the actor method.
+                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -1817,6 +1845,10 @@ def _modify_class(cls):
             tensors = worker.in_actor_object_store[obj_id]
             for tensor in tensors:
                 dist.send(tensor, dst_rank)
+            # TODO(kevin85421): The current garbage collection implementation for the
+            # in-actor object store is naive. We garbage collect each object after it
+            # is consumed once.
+            del worker.in_actor_object_store[obj_id]
 
         def __ray_recv__(
             self,
