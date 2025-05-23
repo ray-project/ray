@@ -384,7 +384,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                 << spec.AttemptNumber() << ": " << spec.DebugString();
   // We should actually detect if the actor for this task is dead, but let's just assume
   // it's not for now.
-  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+  RetryTask(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
   return true;
 }
@@ -1022,13 +1022,31 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
+    RetryTask(spec, /*object_recovery*/ false, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
                   << ", not going to resubmit.";
     return false;
   }
+}
+
+void TaskManager::RetryTask(TaskSpecification &spec,
+                            bool object_recovery,
+                            uint32_t delay_ms) {
+  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+  if (!object_recovery) {
+    // Retry after a delay to emulate the existing Raylet reconstruction
+    // behaviour. TODO(ekl) backoff exponentially.
+    RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
+                  << "ms delay: " << spec.DebugString();
+    absl::MutexLock lock(&mu_);
+    TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+    to_resubmit_.push(std::move(task_to_retry));
+    return;
+  }
+
+  retry_task_callback_(spec);
 }
 
 void TaskManager::FailPendingTask(const TaskID &task_id,
@@ -1586,6 +1604,18 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
     return ObjectID::Nil();
   }
   return it->second.spec.ReturnId(0);
+}
+
+std::vector<TaskSpecification> TaskManager::PopTasksToRetry() {
+  absl::MutexLock lock(&mu_);
+  std::vector<TaskSpecification> tasks_to_retry;
+  const auto current_time = current_time_ms();
+  while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
+    tasks_to_retry.emplace_back(to_resubmit_.top().task_spec);
+    to_resubmit_.pop();
+  }
+
+  return tasks_to_retry;
 }
 
 }  // namespace core
