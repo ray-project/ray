@@ -355,17 +355,18 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
-* After logging in to Grafana successfully, we can import Ray Dashboard into Grafana via **dashboard_default.json**.
-  * Click "Dashboards" icon in the left panel.
-  * Click "New".
-  * Click "Import".
-  * Click "Upload JSON file".
-  * Choose a JSON file.
-    * Case 1: If you are using Ray 2.9.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
-    * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
-  * Click "Import".
+Currently, we have added auto loading of dashboard JSON if you use `install.sh` to deploy with the latest version of Kuberay. Dashboards (e.g. `KubeRay-Controller-Runtime-Controllers` etc.) should appear in Grafana automatically.
 
-* TODO: Note that importing the dashboard manually is not ideal. We should find a way to import the dashboard automatically.
+However, if the dashboards aren't loaded, you could still manually import them with the following steps.
+
+* Click "Dashboards" icon in the left panel.
+* Click "New".
+* Click "Import".
+* Click "Upload JSON file".
+* Choose a JSON file.
+  * Case 1: If you are using Ray 2.9.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
+  * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
+* Click "Import".
 
 ## Step 11: View metrics from different RayCluster CRs
 
