@@ -16,7 +16,7 @@ from aiohttp.web import Request, Response, StreamResponse
 import ray
 from ray import NodeID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
-from ray._private.utils import load_class
+from python.ray._common.utils import load_class
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,

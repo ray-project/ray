@@ -13,6 +13,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
+from python.ray._common.utils import load_class
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
 import requests
@@ -32,7 +33,6 @@ from ray._private.label_utils import (
 )
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
-    load_class,
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary

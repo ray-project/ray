@@ -11,7 +11,7 @@ from ray._private import (
 from ray._private.test_utils import wait_for_condition, raw_metrics
 
 import numpy as np
-from ray._private.utils import get_system_memory
+from python.ray._common.utils import get_system_memory
 from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
 
