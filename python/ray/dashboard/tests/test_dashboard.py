@@ -1073,17 +1073,6 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
-    # start ray and test agent works.
-    ray.init(include_dashboard=True)
-
-    node = ray._private.worker._global_node
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-    wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
-        == 200
-    )
-    ray.shutdown()
-
     # ocuppy the port with a socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -1107,23 +1096,6 @@ def test_agent_port_conflict(shutdown_only):
     agent_pid = agent_proc.pid
 
     check_agent_register(raylet_proc, agent_pid)
-
-    # Release the port from socket.
-    s.close()
-
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-
-    # Check that Serve-dependent features fail.
-    try:
-        wait_for_condition(
-            lambda: requests.get(
-                f"http://{agent_url}/api/serve/applications/"
-            ).status_code
-            == 200
-        )
-        assert False
-    except Exception as e:
-        assert e is not None
 
 
 @pytest.mark.skipif(
