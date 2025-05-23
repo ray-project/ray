@@ -20,6 +20,7 @@ from image_classification.imagenet import get_transform
 from logger_utils import ContextLoggerAdapter
 from image_classification.image_classification_jpeg.imagenet import (
     get_preprocess_map_fn,
+    get_preprocess_map_batch_fn,
 )
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
@@ -61,7 +62,9 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 if override_num_blocks is not None
                 else {}
             ),
-        ).map(get_preprocess_map_fn(random_transforms=True))
+        ).map_batches(
+            get_preprocess_map_batch_fn(random_transforms=True), batch_size=32
+        )
 
         # Create validation dataset
         val_ds = ray.data.read_images(
@@ -78,7 +81,9 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 if override_num_blocks is not None
                 else {}
             ),
-        ).map(get_preprocess_map_fn(random_transforms=False))
+        ).map_batches(
+            get_preprocess_map_batch_fn(random_transforms=False), batch_size=32
+        )
 
         return {
             DatasetKey.TRAIN: train_ds,
