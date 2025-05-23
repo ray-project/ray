@@ -1,6 +1,5 @@
 import warnings
 from typing import Any, Dict, List, Optional, Union, Sequence
-from collections.abc import Mapping, Sequence as ABCSequence
 
 import numpy as np
 import pandas as pd
@@ -9,7 +8,15 @@ import pyarrow
 
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-from ray.data.collate_fn import TensorBatchType, TensorBatchReturnType
+from ray.data.collate_fn import (
+    TensorBatchType,
+    TensorBatchReturnType,
+    _is_tensor,
+    _is_tensor_sequence,
+    _is_nested_tensor_sequence,
+    _is_tensor_mapping,
+    _is_tensor_sequence_mapping,
+)
 
 
 def get_devices() -> List[torch.device]:
@@ -424,6 +431,31 @@ def concat_tensors_to_device(
     return result
 
 
+def _get_type_str(batch: Any) -> str:
+    """Get a string representation of the possibly nested type of the batch.
+
+    >>> import torch
+    >>> _get_type_str([1, 2, "???"])
+    'list[int | str]'
+    >>> _get_type_str({"a": [1, 2, 3], "b": 4})
+    'dict[str, int | list[int]]'
+    >>> _get_type_str({"a": torch.tensor(1), "b": [torch.tensor(2)]})
+    'dict[str, Tensor | list[Tensor]]'
+    >>> _get_type_str({"a": torch.tensor(1), "b": {"c": torch.tensor(2)}})
+    'dict[str, Tensor | dict[str, Tensor]]'
+    """
+    curr_type = type(batch).__name__
+    if isinstance(batch, (list, tuple)):
+        val_types = " | ".join(sorted({_get_type_str(v) for v in batch}))
+        invalid_type_str = f"{curr_type}[{val_types}]"
+    elif isinstance(batch, dict):
+        val_types = " | ".join(sorted({_get_type_str(v) for v in batch.values()}))
+        invalid_type_str = f"{curr_type}[str, {val_types}]"
+    else:
+        invalid_type_str = curr_type
+    return invalid_type_str
+
+
 @torch.no_grad()
 def move_tensors_to_device(
     batch: TensorBatchType,
@@ -431,6 +463,12 @@ def move_tensors_to_device(
     non_blocking: bool = False,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
+
+    Concatenate nested lists/tuples of tensors along the first (batch) dimension.
+    For example, for the input
+    ((feature_0_chunk_0,), (feature_1_chunk_0, feature_1_chunk_1))
+    the output will be (feature_0_chunk_0, feature_1_chunk_0+1)
+    where each feature is concatenated along the batch dimension.
 
     Args:
         batch: A tensor or collection of tensors to move to device. Can be:
@@ -450,58 +488,27 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
-    if isinstance(batch, torch.Tensor):
-        return batch.to(device=device, non_blocking=non_blocking)
-
-    elif isinstance(batch, Mapping):
-        new_batch = {}
-        for k, v in batch.items():
-            if isinstance(v, torch.Tensor):
-                new_batch[k] = v.to(device=device, non_blocking=non_blocking)
-
-            elif isinstance(v, ABCSequence) and not isinstance(v, (str, bytes)):
-                if all(isinstance(t, torch.Tensor) for t in v):
-                    new_batch[k] = concat_tensors_to_device(
-                        v, device=device, non_blocking=non_blocking
-                    )
-                else:
-                    raise TypeError(
-                        f"Expected a sequence of torch.Tensor for key '{k}', "
-                        f"but got sequence of types: {[type(t) for t in v]}"
-                    )
-
-            else:
-                raise TypeError(
-                    f"Unsupported type for key '{k}': expected torch.Tensor or "
-                    f"sequence of torch.Tensor, but got {type(v)}"
-                )
-        return new_batch
-
-    elif isinstance(batch, ABCSequence) and not isinstance(batch, (str, bytes)):
-        if all(isinstance(t, torch.Tensor) for t in batch):
-            return concat_tensors_to_device(
-                batch, device=device, non_blocking=non_blocking
-            )
-
-        elif all(
-            isinstance(seq, ABCSequence)
-            and not isinstance(seq, (str, bytes))
-            and all(isinstance(t, torch.Tensor) for t in seq)
-            for seq in batch
-        ):
-            return tuple(
-                concat_tensors_to_device(seq, device=device, non_blocking=non_blocking)
-                for seq in batch
-            )
-
-        else:
-            sample_type = type(batch[0]) if batch else "empty"
-            raise TypeError(
-                f"Unsupported sequence structure. Got: {type(batch)} with inner type "
-                f"{sample_type}"
-            )
-
+    if _is_tensor(batch):
+        return batch.to(device, non_blocking=non_blocking)
+    elif _is_tensor_sequence(batch):
+        return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
+    elif _is_nested_tensor_sequence(batch):
+        return type(batch)(
+            [concat_tensors_to_device(t, device, non_blocking) for t in batch]
+        )
+    elif _is_tensor_mapping(batch):
+        return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
+    elif _is_tensor_sequence_mapping(batch):
+        return {
+            k: concat_tensors_to_device(v, device, non_blocking)
+            for k, v in batch.items()
+        }
     else:
-        raise TypeError(
-            f"Batch must be one of {TensorBatchType} types, got {type(batch)}"
+        raise ValueError(
+            f"Invalid input type: {_get_type_str(batch)}.\n"
+            "Expected one of the following: "
+            "torch.Tensor, "
+            "List/Tuple[torch.Tensor], "
+            "Dict[str, torch.Tensor], "
+            "Mapping[str, List/Tuple[torch.Tensor]]"
         )

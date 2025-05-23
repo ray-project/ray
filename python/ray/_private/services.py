@@ -7,7 +7,6 @@ import logging
 import mmap
 import multiprocessing
 import os
-import random
 import shutil
 import signal
 import socket
@@ -263,24 +262,6 @@ class ConsolePopen(subprocess.Popen):
 
 def address(ip_address, port):
     return ip_address + ":" + str(port)
-
-
-def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
-    if not denylist:
-        denylist = set()
-    port = random.randint(lower_bound, upper_bound)
-    retry = 0
-    while port in denylist:
-        if retry > 100:
-            break
-        port = random.randint(lower_bound, upper_bound)
-        retry += 1
-    if retry > 100:
-        raise ValueError(
-            "Failed to find a new port from the range "
-            f"{lower_bound}-{upper_bound}. Denylist: {denylist}"
-        )
-    return port
 
 
 def _find_address_from_flag(flag: str):
@@ -779,6 +760,15 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
             cached_node_ip_address["node_ip_address"] = node_ip_address
             with file_path.open(mode="w") as f:
                 json.dump(cached_node_ip_address, f)
+
+
+def get_node_instance_id():
+    """Get the specified node instance id of the current node.
+
+    Returns:
+        The node instance id of the current node.
+    """
+    return os.getenv("RAY_CLOUD_INSTANCE_ID", "")
 
 
 def create_redis_client(redis_address, password=None, username=None):
