@@ -53,6 +53,23 @@ class _GeneratorResult:
     next_future: asyncio.Future
 
 
+@dataclass
+class RuntimeSummaryStatistics:
+    min_start_time: Optional[float]
+    mean_start_time: Optional[float]
+    max_start_time: Optional[float]
+    num_requests: Optional[int]
+
+    @classmethod
+    def as_none(cls):
+        return cls(
+            min_start_time=None,
+            mean_start_time=None,
+            max_start_time=None,
+            num_requests=0,
+        )
+
+
 def _batch_args_kwargs(
     list_of_flattened_args: List[List[Any]],
 ) -> Tuple[Tuple[Any], Dict[Any, Any]]:
@@ -419,13 +436,18 @@ class _LazyBatchQueueWrapper:
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
 
-    def _get_curr_iteration_start_times(self) -> Dict[asyncio.Task, float]:
-        """Gets current iteration's start time on default _BatchQueue implementation.
-
-        Returns None if the batch handler doesn't use a default _BatchQueue.
-        """
-
-        return self.queue.curr_iteration_start_times
+    def _get_curr_iteration_start_times(self) -> RuntimeSummaryStatistics:
+        """Gets summary statistics of current iteration's start times."""
+        cur_iter_times = list(self.queue.curr_iteration_start_times.values())
+        if cur_iter_times:
+            return RuntimeSummaryStatistics(
+                min_start_time=min(cur_iter_times),
+                max_start_time=max(cur_iter_times),
+                mean_start_time=sum(cur_iter_times) / len(cur_iter_times),
+                num_requests=len(cur_iter_times),
+            )
+        else:
+            return RuntimeSummaryStatistics.as_none()
 
     async def _is_batching_task_alive(self) -> bool:
         """Gets whether default _BatchQueue's background task is alive.

@@ -3,6 +3,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, List, Optional
 
+import httpx
 import pytest
 import requests
 from starlette.responses import StreamingResponse
@@ -54,23 +55,18 @@ def test_concurrent_batching(serve_instance):
         async def handle_batch(self, requests):
             self.n_batches_in_flight += 1
             self.n_requests_in_flight += len(requests)
-            yield await self._process_batch(requests)
-            self.n_requests_in_flight -= len(requests)
-            self.n_batches_in_flight -= 1
-
-        async def _process_batch(self, requests):
             await asyncio.sleep(0.5)
             out = [
                 (req_idx, self.n_batches_in_flight, self.n_requests_in_flight)
                 for req_idx in requests
             ]
             await asyncio.sleep(0.5)
+            self.n_requests_in_flight -= len(requests)
+            self.n_batches_in_flight -= 1
             return out
 
         async def __call__(self, request):
-            result = [item async for item in self.handle_batch(request)]
-            assert len(result) == 1
-            return result[0]
+            return await self.handle_batch(request)
 
     handle = serve.run(BatchingExample.bind())
 
@@ -211,7 +207,8 @@ def test_batching_client_dropped_streaming(serve_instance):
     assert resp.text == "0123456789"
 
 
-def test_observability_helpers():
+@pytest.mark.asyncio
+async def test_observability_helpers():
     """Checks observability helper methods that are used for batching.
 
     Tests three observability helper methods:
@@ -226,6 +223,7 @@ def test_observability_helpers():
     class Batcher:
         @serve.batch(max_batch_size=3)
         async def handle_batch(self, requests):
+            await asyncio.sleep(1)
             return [0] * len(requests)
 
         async def __call__(self, request):
@@ -243,28 +241,27 @@ def test_observability_helpers():
     serve.run(target=Batcher.bind(), name="app_name")
     handle = serve.get_deployment_handle(deployment_name="batcher", app_name="app_name")
 
-    assert handle._is_batching_task_alive.remote().result()
+    assert await handle._is_batching_task_alive.remote()
 
-    requests.get("http://localhost:8000/")
+    async with httpx.AsyncClient() as client:
+        task = asyncio.create_task(client.get("http://localhost:8000/"))
+        await asyncio.sleep(0.01)  # yield control to the above task
+        prev_iter_times = await handle._get_curr_iteration_start_times.remote()
+        await task
 
-    assert len(handle._get_handling_task_stack.remote().result()) is not None
-    assert handle._is_batching_task_alive.remote().result()
+    assert len(await handle._get_handling_task_stack.remote()) is not None
+    assert await handle._is_batching_task_alive.remote()
 
-    curr_iteration_start_times = (
-        handle._get_curr_iteration_start_times.remote().result()
-    )
+    async with httpx.AsyncClient() as client:
+        futures = [client.get("http://localhost:8000/") for _ in range(5)]
+        tasks = [asyncio.create_task(future) for future in futures]
+        await asyncio.sleep(0.01)  # yield control to the above tasks
+        new_iter_times = await handle._get_curr_iteration_start_times.remote()
+        await asyncio.gather(*tasks)
 
-    for _ in range(5):
-        requests.get("http://localhost:8000/")
-
-    new_iteration_start_times = handle._get_curr_iteration_start_times.remote().result()
-    max_prev_iteration_start_time = max(curr_iteration_start_times.values())
-    assert all(
-        new_iteration_start_time > max_prev_iteration_start_time
-        for new_iteration_start_time in new_iteration_start_times.values()
-    )
-    assert len(handle._get_handling_task_stack.remote().result()) is not None
-    assert handle._is_batching_task_alive.remote().result()
+    assert new_iter_times.min_start_time > prev_iter_times.max_start_time
+    assert len(await handle._get_handling_task_stack.remote()) is not None
+    assert await handle._is_batching_task_alive.remote()
 
 
 if __name__ == "__main__":
