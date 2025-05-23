@@ -249,7 +249,7 @@ def test_actor_pool_scales_up(ray_start_10_cpus_shared, restore_data_context):
     ).take_all()
 
 
-def test_actor_pool_respects_max_size(ray_start_10_cpus_shared):
+def test_actor_pool_respects_max_size(ray_start_10_cpus_shared, restore_data_context):
     # The Ray cluster started by the fixture might not have much object store memory.
     # To prevent the actor pool from getting backpressured, we decrease the max block
     # size.
