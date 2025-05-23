@@ -11,6 +11,7 @@ if parse_version(pa.__version__) >= parse_version("14.0.0"):
         "Incompatible pyarrow version; please install pyarrow<14.0.0",
         allow_module_level=True,
     )
+    sys.exit(0)
 
 
 @pytest.fixture(scope="module")
