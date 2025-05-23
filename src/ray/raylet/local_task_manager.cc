@@ -403,8 +403,18 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      // TODO(scv119): fail the request.
-      // Call CancelTask
+      TaskSpecification front_task = dispatch_queue.front()->task.GetTaskSpecification();
+      RAY_LOG(ERROR)
+          << "An task got scheduled to a node even though it was infeasible. "
+             "Please report an issue on GitHub.\nTask placement resource requirements: "
+          << front_task.GetRequiredPlacementResources().GetResourceMap()
+          << "\n Scheduling strategy: "
+          << front_task.GetSchedulingStrategy().scheduling_strategy_case();
+      for (const auto &work : dispatch_queue) {
+        CancelTask(work->task.GetTaskSpecification().TaskId(),
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                   "Scheduling failed due to the task becoming infeasible.");
+      }
       tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
       tasks_to_dispatch_.erase(shapes_it++);
