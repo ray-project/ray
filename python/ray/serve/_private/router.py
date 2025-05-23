@@ -368,7 +368,7 @@ class AsyncioRouter:
         prefer_local_node_routing: bool,
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
-        replica_scheduler: Optional[RequestRouter] = None,
+        request_router: Optional[RequestRouter] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -390,7 +390,7 @@ class AsyncioRouter:
         self._deployment_available = True
 
         # The request router will be lazy loaded to decouple form the initialization.
-        self._request_router: Optional[RequestRouter] = replica_scheduler
+        self._request_router: Optional[RequestRouter] = request_router
         self._resolve_request_arg_func = resolve_request_arg_func
 
         # Flipped to `True` once the router has received a non-empty
