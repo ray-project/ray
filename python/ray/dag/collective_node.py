@@ -46,7 +46,12 @@ class _CollectiveOperation:
         if len(inputs) == 0:
             raise ValueError("Expected input nodes for a collective operation")
 
-        if isinstance(inputs[0], list):
+        if isinstance(inputs[0], DAGNode):
+            if len(set(inputs)) != len(inputs):
+                raise ValueError(
+                    "Expected unique input nodes for a collective operation"
+                )
+        elif isinstance(inputs[0], list):
             assert all(isinstance(input_node_list, list) for input_node_list in inputs)
             if not all(
                 len(set(input_node_list)) == len(input_node_list)
@@ -130,7 +135,7 @@ class _CollectiveOperation:
         return communicator
 
     def execute(
-        self, *send_buf: Union["torch.Tensor", Tuple["torch.Tensor", ...]]
+        self, *send_buf: "torch.Tensor"
     ) -> Union["torch.Tensor", Tuple["torch.Tensor", ...]]:
         """
         Call the collective operation on the input tensor(s). Output tensor(s) are
@@ -138,27 +143,26 @@ class _CollectiveOperation:
         """
         import torch
 
-        if not (
-            isinstance(send_buf, torch.Tensor)
-            or (
-                isinstance(send_buf, tuple)
-                and all(isinstance(t, torch.Tensor) for t in send_buf)
-            )
-        ):
+        if not all(isinstance(t, torch.Tensor) for t in send_buf):
             raise ValueError("Expected a torch tensor for each input node")
 
-        if isinstance(send_buf, torch.Tensor):
-            recv_buf = self._execute_tensor(send_buf)
-        elif isinstance(send_buf, tuple):
-            if not isinstance(self._op, AllReduceOp):
-                raise ValueError(
-                    "Currently binding a list of dag nodes is only supported for allreduce"
-                )
-            recv_buf = self._execute_tuple(send_buf)
+        if len(send_buf) == 1:
+            send_buf = send_buf[0]
 
+        if isinstance(self._op, AllReduceOp):
+            if isinstance(send_buf, torch.Tensor):
+                recv_buf = self._execute_tensor(send_buf)
+            else:
+                recv_buf = self._execute_tuple(send_buf)
+        else:
+            recv_buf = self._execute_tensor(send_buf)
+
+        print(f"recv_buf: {recv_buf}")
         return recv_buf
 
     def _execute_tensor(self, send_buf: "torch.Tensor") -> "torch.Tensor":
+        import torch
+
         communicator = self.get_communicator()
         if isinstance(self._op, AllGatherOp):
             world_size = len(self._actor_handles)
