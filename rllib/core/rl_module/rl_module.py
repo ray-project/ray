@@ -484,12 +484,12 @@ class RLModule(Checkpointable, abc.ABC):
         return None
 
     @OverrideToImplementCustomLogic
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for exploration.
+    def get_inference_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for inference.
 
-        This class is used to create action distributions from outputs of the
-        forward_exploration method. If the case that no action distribution class is
-        needed, this method can return None.
+        This class is used to create action distributions from outputs of the forward
+        inference method. If the case that no action distribution class is needed,
+        this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
@@ -499,12 +499,12 @@ class RLModule(Checkpointable, abc.ABC):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_inference_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for inference.
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
 
-        This class is used to create action distributions from outputs of the forward
-        inference method. If the case that no action distribution class is needed,
-        this method can return None.
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
