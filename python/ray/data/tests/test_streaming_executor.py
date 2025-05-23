@@ -549,6 +549,15 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
+def test_streaming_exec_schedule_s(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    for _ in ds.iter_batches():
+        continue
+
+    ds_stats = ds._plan.stats()
+    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+
+
 def test_execution_callbacks():
     """Test ExecutionCallback."""
 
