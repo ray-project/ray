@@ -1,3 +1,8 @@
+"""All tests in this file use a module-scoped fixture to reduce runtime.
+
+If you need a customized Ray instance (e.g., to change system config or env vars),
+put the test in `test_reference_counting_standalone.py`.
+"""
 # coding: utf-8
 import copy
 import logging
@@ -9,11 +14,9 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
-    convert_actor_state,
     kill_actor_and_wait_for_failure,
     put_object,
     wait_for_condition,
@@ -23,8 +26,8 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def one_worker_100MiB(request):
+@pytest.fixture(scope="module")
+def one_cpu_100MiB_shared():
     # It has lots of tests that don't require object spilling.
     config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
     yield ray.init(
@@ -76,7 +79,7 @@ def check_refcounts(expected, timeout=10):
                 time.sleep(0.1)
 
 
-def test_local_refcounts(ray_start_regular):
+def test_local_refcounts(one_cpu_100MiB_shared):
     obj_ref1 = ray.put(None)
     check_refcounts({obj_ref1: (1, 0)})
     obj_ref1_copy = copy.copy(obj_ref1)
@@ -87,7 +90,7 @@ def test_local_refcounts(ray_start_regular):
     check_refcounts({})
 
 
-def test_dependency_refcounts(ray_start_regular):
+def test_dependency_refcounts(one_cpu_100MiB_shared):
     @ray.remote
     def one_dep(dep, signal=None, fail=False):
         if signal is not None:
@@ -174,7 +177,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
-def test_basic_pinning(one_worker_100MiB):
+def test_basic_pinning(one_cpu_100MiB_shared):
     @ray.remote
     def f(array):
         return np.sum(array)
@@ -204,7 +207,7 @@ def test_basic_pinning(one_worker_100MiB):
     ray.get(actor.get_large_object.remote())
 
 
-def test_pending_task_dependency_pinning(one_worker_100MiB):
+def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
     @ray.remote
     def pending(input1, input2):
         return
@@ -224,108 +227,13 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     ray.get(obj_ref)
 
 
-def test_feature_flag(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
-    @ray.remote
-    def f(array):
-        return np.sum(array)
-
-    @ray.remote
-    class Actor(object):
-        def __init__(self):
-            self.large_object = ray.put(np.zeros(25 * 1024 * 1024, dtype=np.uint8))
-
-        def wait_for_actor_to_start(self):
-            pass
-
-        def get_large_object(self):
-            return ray.get(self.large_object)
-
-    actor = Actor.remote()
-    ray.get(actor.wait_for_actor_to_start.remote())
-
-    # The ray.get below fails with only LRU eviction, as the object
-    # that was ray.put by the actor should have been evicted.
-    ref = actor.get_large_object.remote()
-    ray.get(ref)
-
-    # Keep refs in scope so that they don't get GCed immediately.
-    for _ in range(5):
-        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
-    del put_ref
-
-    wait_for_condition(
-        lambda: not ray._private.worker.global_worker.core_worker.object_exists(ref)
-    )
-
-
-def test_out_of_band_serialized_object_ref(one_worker_100MiB):
-    assert (
-        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
-        == 0
-    )
-    obj_ref = ray.put("hello")
-    _check_refcounts({obj_ref: (1, 0)})
-    obj_ref_str = ray.cloudpickle.dumps(obj_ref)
-    _check_refcounts({obj_ref: (2, 0)})
-    del obj_ref
-    assert (
-        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
-        == 1
-    )
-    assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
-
-
-def test_captured_object_ref(one_worker_100MiB):
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    def f(signal):
-        ray.get(signal.wait.remote())
-        ray.get(captured_id)  # noqa: F821
-
-    signal = SignalActor.remote()
-    obj_ref = f.remote(signal)
-
-    # Delete local references.
-    del f
-    del captured_id
-
-    # Test that the captured object ref is pinned despite having no local
-    # references.
-    ray.get(signal.send.remote())
-    _fill_object_store_and_get(obj_ref)
-
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    class Actor:
-        def get(self, signal):
-            ray.get(signal.wait.remote())
-            ray.get(captured_id)  # noqa: F821
-
-    signal = SignalActor.remote()
-    actor = Actor.remote()
-    obj_ref = actor.get.remote(signal)
-
-    # Delete local references.
-    del Actor
-    del captured_id
-
-    # Test that the captured object ref is pinned despite having no local
-    # references.
-    ray.get(signal.send.remote())
-    _fill_object_store_and_get(obj_ref)
-
-
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def pending(ref, dep):
         ray.get(ref[0])
@@ -361,7 +269,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
@@ -413,7 +321,9 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put, failure)
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
 @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
-def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_actor_holding_serialized_reference(
+    one_cpu_100MiB_shared, use_ray_put, failure
+):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
@@ -469,7 +379,9 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
+def test_worker_holding_serialized_reference(
+    one_cpu_100MiB_shared, use_ray_put, failure
+):
     @ray.remote(max_retries=1)
     def child(dep1, dep2):
         if failure:
@@ -510,7 +422,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put, fai
 
 
 # Test that an object containing object refs within it pins the inner IDs.
-def test_basic_nested_ids(one_worker_100MiB):
+def test_basic_nested_ids(one_cpu_100MiB_shared):
     inner_oid = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
 
@@ -526,42 +438,9 @@ def test_basic_nested_ids(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 
-def _all_actors_dead():
-    return all(
-        actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-        for actor in list(ray._private.state.actors().values())
-    )
-
-
-def test_kill_actor_immediately_after_creation(ray_start_regular):
-    @ray.remote
-    class A:
-        pass
-
-    a = A.remote()
-    b = A.remote()
-
-    ray.kill(a)
-    ray.kill(b)
-    wait_for_condition(_all_actors_dead, timeout=10)
-
-
-def test_remove_actor_immediately_after_creation(ray_start_regular):
-    @ray.remote
-    class A:
-        pass
-
-    a = A.remote()
-    b = A.remote()
-
-    del a
-    del b
-    wait_for_condition(_all_actors_dead, timeout=10)
-
-
 # Test that a reference borrowed by an actor constructor is freed if the actor is
 # cancelled before being scheduled.
-def test_actor_constructor_borrow_cancellation(ray_start_regular):
+def test_actor_constructor_borrow_cancellation(one_cpu_100MiB_shared):
     # Schedule the actor with a non-existent resource so it's guaranteed to never be
     # scheduled.
     @ray.remote(resources={"nonexistent_resource": 1})
@@ -581,8 +460,8 @@ def test_actor_constructor_borrow_cancellation(ray_start_regular):
         print(Actor.remote({"foo": ref}))
 
     test_implicit_cancel()
-    # Confirm that the ref object is not leaked.
 
+    # Confirm that the ref object is not leaked.
     check_refcounts({})
 
     # Test with explicit cancellation via ray.kill().
