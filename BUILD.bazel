@@ -1016,6 +1016,25 @@ filegroup(
     name = "core_py_proto",
     srcs = ["//src/ray/protobuf:core_py_proto"],
     visibility = ["//visibility:private"],
+    srcs = [
+        "//src/ray/protobuf:agent_manager_py_proto",
+        "//src/ray/protobuf:autoscaler_py_proto",
+        "//src/ray/protobuf:common_py_proto",
+        "//src/ray/protobuf:core_worker_py_proto",
+        "//src/ray/protobuf:event_py_proto",
+        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
+        "//src/ray/protobuf:export_event_py_proto",
+        "//src/ray/protobuf:gcs_py_proto",
+        "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:instance_manager_py_proto",
+        "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:pubsub_py_proto",
+        "//src/ray/protobuf:ray_client_py_proto",
+        "//src/ray/protobuf:reporter_py_proto",
+        "//src/ray/protobuf:runtime_env_agent_py_proto",
+        "//src/ray/protobuf:runtime_env_common_py_proto",
+        "//src/ray/protobuf:usage_py_proto",
+    ],
 )
 
 filegroup(
