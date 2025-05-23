@@ -12,9 +12,13 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import DeploymentStatus
+from ray.serve._private.common import DeploymentStatus, DeploymentID
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    check_num_replicas_eq,
+    check_replica_counts,
+)
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
@@ -377,6 +381,64 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
         wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
+
+
+def test_unallocated_replica_shutdown(serve_instance):
+    """Test that unallocated replicas are stopped immediately without waiting for graceful shutdown.
+
+    When a replica is in PENDING_ALLOCATION state (due to requiring resources that don't exist),
+    stopping it should be immediate and not wait for the graceful shutdown timeout.
+    """
+
+    application_name = "CustomApplication"
+    deployment_name = "CustomResourceDeployment"
+
+    @serve.deployment(
+        ray_actor_options={"resources": {"custom": 1}},  # Require non-existent resource
+        graceful_shutdown_timeout_s=100,
+    )
+    class CustomResourceDeployment:
+        def __init__(self):
+            self.ready = False
+
+        def __call__(self):
+            return "ready"
+
+    serve._run(CustomResourceDeployment.bind(), name=application_name, _blocking=False)
+    wait_for_condition(
+        check_deployment_status,
+        app_name=application_name,
+        name=deployment_name,
+        expected_status=DeploymentStatus.UPDATING,
+    )
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=DeploymentID(name=deployment_name, app_name=application_name),
+        total=1,
+    )
+
+    start_time = time.time()
+    serve.delete(application_name, _blocking=False)
+
+    def check_actor_stopped():
+        current_actors = [
+            actor
+            for actor in list_actors(filters=[("state", "=", "DEAD")])
+            if deployment_name in actor["name"]
+        ]
+        return len(current_actors) == 1
+
+    wait_for_condition(check_actor_stopped, timeout=15)
+    deletion_time = time.time() - start_time
+
+    # deletion_time should be under the graceful shutdown timeout
+    assert deletion_time < 15, f"Deletion took {deletion_time}s, expected < 15s"
+
+    def check_application_removed():
+        return application_name not in serve.status().applications
+
+    wait_for_condition(check_application_removed, timeout=15)
 
 
 if __name__ == "__main__":
