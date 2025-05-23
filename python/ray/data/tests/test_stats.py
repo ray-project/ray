@@ -354,6 +354,15 @@ Streaming split coordinator overhead time: T
     )
 
 
+def test_streaming_exec_schedule_s(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    for _ in ds.iter_batches():
+        continue
+
+    ds_stats = ds._plan.stats()
+    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+
+
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
 def test_large_args_scheduling_strategy(
     ray_start_regular_shared, verbose_stats_logs, restore_data_context
