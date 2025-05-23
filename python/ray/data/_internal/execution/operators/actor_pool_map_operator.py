@@ -128,7 +128,10 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0),
         )
         self._actor_pool = _ActorPool(
-            compute_strategy, self._start_actor, per_actor_resource_usage
+            compute_strategy,
+            self._start_actor,
+            per_actor_resource_usage,
+            self.data_context._enable_actor_pool_on_exit_hook,
         )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -516,6 +519,7 @@ class _ActorPool(AutoscalingActorPool):
         compute_strategy: ActorPoolStrategy,
         create_actor_fn: Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]],
         per_actor_resource_usage: ExecutionResources,
+        _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
 
@@ -551,6 +555,7 @@ class _ActorPool(AutoscalingActorPool):
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
+        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
 
     # === Overriding methods of AutoscalingActorPool ===
 
@@ -901,7 +906,9 @@ class _ActorPool(AutoscalingActorPool):
 
         # First release actors and collect their shutdown hook object-refs
         for actor in running:
-            on_exit_refs.append(self._release_running_actor(actor))
+            ref = self._release_running_actor(actor)
+            if ref:
+                on_exit_refs.append(ref)
 
         # Wait for all actors to shutdown gracefully before killing them
         ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
@@ -927,9 +934,12 @@ class _ActorPool(AutoscalingActorPool):
         if actor not in self._running_actors:
             return None
 
-        # Call `on_exit` to trigger `UDF.__del__` which may perform
-        # cleanup operations.
-        ref = actor.on_exit.remote()
+        if self._enable_actor_pool_on_exit_hook:
+            # Call `on_exit` to trigger `UDF.__del__` which may perform
+            # cleanup operations.
+            ref = actor.on_exit.remote()
+        else:
+            ref = None
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
 
