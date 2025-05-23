@@ -1521,15 +1521,8 @@ def test_groupby_multi_agg_with_nans(
         for agg in ["sum", "min", "max", "mean", "std", "quantile"]
     }
 
-    def _round_to_14_digits(row):
-        return {
-            # NOTE: Pandas and Arrow diverge on 14th digit (due to different formula
-            #       used with diverging FP numerical stability), hence we round it up
-            k: round(v, 14)
-            for k, v in row.items()
-        }
-
-    assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
+    assert expected_row.keys() == result_row.keys()
+    assert all(result_row[k] == pytest.approx(expected_row[k]) for k in expected_row)
 
 
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
