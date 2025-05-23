@@ -137,7 +137,7 @@ class LogMonitor:
         self,
         node_ip_address: str,
         logs_dir: str,
-        gcs_publisher: ray._raylet.GcsPublisher,
+        gcs_client: GcsClient,
         is_proc_alive_fn: Callable[[int], bool],
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
         gcs_address: Optional[str] = None,
@@ -145,7 +145,7 @@ class LogMonitor:
         """Initialize the log monitor object."""
         self.ip: str = node_ip_address
         self.logs_dir: str = logs_dir
-        self.publisher = gcs_publisher
+        self.gcs_client = gcs_client
         self.log_filenames: Set[str] = set()
         self.open_file_infos: List[LogFileInfo] = []
         self.closed_file_infos: List[LogFileInfo] = []
@@ -165,8 +165,7 @@ class LogMonitor:
             return False
 
         if not ray.experimental.internal_kv._internal_kv_initialized():
-            gcs_client = GcsClient(address=gcs_address)
-            ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+            ray.experimental.internal_kv._initialize_internal_kv(self.gcs_client)
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         return is_autoscaler_v2()
@@ -361,7 +360,7 @@ class LogMonitor:
                     "task_name": file_info.task_name,
                 }
                 try:
-                    self.publisher.publish_logs(data)
+                    self.gcs_client.publish_logs(data)
                 except Exception:
                     logger.exception(f"Failed to publish log messages {data}")
                 anything_published = True
@@ -586,10 +585,11 @@ if __name__ == "__main__":
     )
 
     node_ip = services.get_cached_node_ip_address(args.session_dir)
+    gcs_client = GcsClient(address=args.gcs_address)
     log_monitor = LogMonitor(
         node_ip,
         args.logs_dir,
-        ray._raylet.GcsPublisher(address=args.gcs_address),
+        gcs_client,
         is_proc_alive,
         gcs_address=args.gcs_address,
     )
@@ -598,7 +598,6 @@ if __name__ == "__main__":
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "
@@ -607,7 +606,7 @@ if __name__ == "__main__":
         ray._private.utils.publish_error_to_driver(
             ray_constants.LOG_MONITOR_DIED_ERROR,
             message,
-            gcs_publisher=gcs_publisher,
+            gcs_client=gcs_client,
         )
         logger.error(message)
         raise e

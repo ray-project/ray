@@ -100,8 +100,10 @@ class TestGC:
                 "working_dir": tmp_working_dir,
                 "py_modules": [
                     S3_PACKAGE_URI,
-                    Path(os.path.dirname(__file__))
-                    / "pip_install_test-0.5-py3-none-any.whl",
+                    str(
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
                 ],
             },
         )
@@ -224,8 +226,10 @@ class TestGC:
                 "working_dir": tmp_working_dir,
                 "py_modules": [
                     S3_PACKAGE_URI,
-                    Path(os.path.dirname(__file__))
-                    / "pip_install_test-0.5-py3-none-any.whl",
+                    str(
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
                 ],
             },
         )
@@ -375,7 +379,4 @@ def test_pin_runtime_env_uri(start_cluster, tmp_working_dir, expiration_s, monke
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

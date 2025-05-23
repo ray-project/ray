@@ -180,7 +180,8 @@ def main(scale_factor: int):
             ray.data.from_pandas(metadata, override_num_blocks=OVERRIDE_NUM_BLOCKS)
             .map(
                 LoadImage,
-                compute=ActorPoolStrategy(min_size=1, max_size=800),
+                # TODO(mowen): When we fix the deadlocking bug we should increase this to 800.
+                compute=ActorPoolStrategy(min_size=1, max_size=700),
                 max_concurrency=4,  # needed to prevent image loading from becoming the bottleneck
             )
             .filter(lambda row: row["image"].size != 0)

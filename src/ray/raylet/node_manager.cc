@@ -155,11 +155,20 @@ NodeManager::NodeManager(
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::Now(); },
           config.enable_resource_isolation),
-      client_call_manager_(io_service),
+      client_call_manager_(io_service, /*record_stats=*/true),
       worker_rpc_pool_([this](const rpc::Address &addr) {
-        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
-          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
-        });
+        return std::make_shared<rpc::CoreWorkerClient>(
+            addr,
+            client_call_manager_,
+            rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                gcs_client_.get(),
+                &worker_rpc_pool_,
+                [this](const std::string &node_manager_address, int32_t port) {
+                  return std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_manager_address, port, client_call_manager_));
+                },
+                addr));
       }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
@@ -179,8 +188,6 @@ NodeManager::NodeManager(
           gcs_client_,
           core_worker_subscriber_.get(),
           /*owner_client_pool=*/&worker_rpc_pool_,
-          /*max_object_report_batch_size=*/
-          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
@@ -2120,14 +2127,14 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
-  // Cancel lease requests that are waiting for workers
-  // to free the acquired pg bundle resources
-  // so that pg bundle can be returned.
+  // The PG bundle resource must be committed before a lease request asking for it
+  // can be added to local_task_manager and the only reason why we cancel
+  // a committed bundle is when the placement group is removed.
+  // In the case of placement group removal, we should cancel all the lease requests.
   local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return (bundle_id.first == bundle_spec.PlacementGroupId()) &&
-               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
+        return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
       absl::StrCat("Required placement group ",

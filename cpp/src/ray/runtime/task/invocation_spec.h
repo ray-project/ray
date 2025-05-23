@@ -29,7 +29,7 @@ class InvocationSpec {
   TaskType task_type;
   std::string name;
   ActorID actor_id;
-  int actor_counter;
+  int sequence_number;
   RemoteFunctionHolder remote_function_holder;
   std::vector<std::unique_ptr<::ray::TaskArg>> args;
 };

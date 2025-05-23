@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_EVALUATED,
     DATASET_NUM_ITERS_EVALUATED_LIFETIME,
@@ -32,10 +33,12 @@ from ray.rllib.utils.minibatch_utils import MiniBatchRayDataIterator
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.runners.runner import Runner
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ModuleID, StateDict, TensorType
+from ray.rllib.utils.typing import DeviceType, ModuleID, StateDict, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+torch, _ = try_import_torch()
 
 TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
 
@@ -274,8 +277,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     ) -> MultiAgentBatch:
         batch = convert_to_torch_tensor(
             batch.policy_batches,
-            # TODO (simon): Implement GPU inference.
-            device=None,  # self._device if to_device else None,
+            device=self._device if to_device else None,
             pin_memory=pin_memory,
             use_stream=use_stream,
         )
@@ -418,6 +420,18 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         )
 
     @override(Runner)
+    def set_device(self):
+        try:
+            self.__device = get_device(
+                self.config,
+                0
+                if not self.worker_index
+                else self.config.num_gpus_per_offline_eval_runner,
+            )
+        except NotImplementedError:
+            self.__device = None
+
+    @override(Runner)
     def make_module(self):
         try:
             from ray.rllib.env import INPUT_ENV_SPACES
@@ -441,14 +455,12 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             # TODO (sven): In order to make this framework-agnostic, we should maybe
             #  make the MultiRLModule.build() method accept a device OR create an
             #  additional `(Multi)RLModule.to()` override.
-            # if torch:
-            #     self.module.foreach_module(
-            #         lambda mid, mod: (
-            #             mod.to(self._device)
-            #             if isinstance(mod, torch.nn.Module)
-            #             else mod
-            #         )
-            #     )
+
+            self.module.foreach_module(
+                lambda mid, mod: (
+                    mod.to(self._device) if isinstance(mod, torch.nn.Module) else mod
+                )
+            )
 
         # If `AlgorithmConfig.get_multi_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
@@ -477,6 +489,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     @property
     def _batch_iterator(self) -> MiniBatchRayDataIterator:
         return self.__batch_iterator
+
+    @property
+    def _device(self) -> DeviceType:
+        return self.__device
 
     @property
     def _module_spec(self) -> MultiRLModuleSpec:

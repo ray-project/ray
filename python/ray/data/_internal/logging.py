@@ -1,7 +1,7 @@
 import logging
 import logging.config
 import os
-from typing import Optional, List
+from typing import List, Optional
 
 import yaml
 
@@ -212,9 +212,14 @@ def reset_logging() -> None:
 
     Used for testing.
     """
+    global _DATASET_LOGGER_HANDLER
+    global _ACTIVE_DATASET
     logger = logging.getLogger("ray.data")
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
+
+    _DATASET_LOGGER_HANDLER = {}
+    _ACTIVE_DATASET = None
 
 
 def get_log_directory() -> Optional[str]:

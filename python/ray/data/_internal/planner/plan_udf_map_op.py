@@ -43,7 +43,6 @@ from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockType,
     CallableClass,
     DataBatch,
     UserDefinedFunction,
@@ -51,7 +50,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
-
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +97,6 @@ def plan_project_op(
 
     def fn(block: Block) -> Block:
         try:
-            if BlockAccessor.for_block(block).block_type() == BlockType.PANDAS:
-                # TODO (srinathk) PandasBlockAccessor combine method needs to handle
-                # None types correctly. Until then, convert to Arrow Table.
-                block = BlockAccessor.for_block(block).to_arrow()
             if not BlockAccessor.for_block(block).num_rows():
                 return block
             if columns:

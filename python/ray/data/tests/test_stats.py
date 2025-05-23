@@ -1,5 +1,6 @@
 import gc
 import logging
+import platform
 import re
 import threading
 import time
@@ -8,12 +9,12 @@ from contextlib import contextmanager
 from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
-import platform
+
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -30,8 +31,8 @@ from ray.data._internal.stats import (
     _get_or_create_stats_actor,
     _StatsActor,
 )
-from ray.data.block import BlockMetadata
 from ray.data._internal.util import MemoryProfiler
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
@@ -104,6 +105,7 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -129,6 +131,7 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -620,6 +623,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      task_completion_time: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -740,6 +744,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      task_completion_time: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -815,6 +820,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
+        "            task_completion_time: N,\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"

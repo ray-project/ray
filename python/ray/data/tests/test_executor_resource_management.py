@@ -290,6 +290,9 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_context):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
+    # Block AP until all actors have fully started up
+    ctx.wait_for_min_actors_s = 60
+
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
     )
