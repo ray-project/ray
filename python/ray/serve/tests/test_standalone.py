@@ -32,13 +32,6 @@ from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
-
-# Explicitly importing it here because it is a ray core tests utility (
-# not in the tree)
-from ray.tests.conftest import (
-    maybe_setup_external_redis,  # noqa: F401
-    ray_start_with_dashboard,  # noqa: F401
-)
 from ray.util.state import list_actors
 
 
@@ -138,7 +131,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=16)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -155,12 +148,14 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     def check_alive():
         actors = list_actors(
+            address=address,
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
         return {actor["class_name"] for actor in actors} == actor_names
 
     def check_dead():
         actors = list_actors(
+            address=address,
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
         return len(actors) == 0
@@ -176,7 +171,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     Ensures that after deploying multiple distinct applications, serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=16)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -195,12 +190,14 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     def check_alive():
         actors = list_actors(
+            address=address,
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
         return {actor["class_name"] for actor in actors} == actor_names
 
     def check_dead():
         actors = list_actors(
+            address=address,
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
         return len(actors) == 0
@@ -484,7 +481,7 @@ def test_no_http(ray_shutdown):
 
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4)
+    head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
