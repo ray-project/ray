@@ -78,8 +78,9 @@ def test_concurrent_batching(serve_instance):
     result_futures = [handle.remote(i) for i in idxs]
     result_list = [future.result() for future in result_futures]
 
+    out_idxs = set()
     for idx, batches_in_flight, requests_in_flight in result_list:
-        idxs.remove(idx)
+        out_idxs.add(idx)
         assert (
             batches_in_flight == BATCHES_IN_FLIGHT
         ), f"Should have been {BATCHES_IN_FLIGHT} batches in flight at all times, got {batches_in_flight}"
@@ -87,7 +88,7 @@ def test_concurrent_batching(serve_instance):
             requests_in_flight == MAX_REQUESTS_IN_FLIGHT
         ), f"Should have been {MAX_REQUESTS_IN_FLIGHT} requests in flight at all times, got {requests_in_flight}"
 
-    assert len(idxs) == 0, "All requests should be processed"
+    assert idxs == out_idxs, "All requests should be processed"
 
 
 def test_batching_exception(serve_instance):
