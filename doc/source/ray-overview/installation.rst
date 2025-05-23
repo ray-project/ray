@@ -350,7 +350,7 @@ The optional ``Platform`` tag specifies the platform where the image is intended
    * - -cpu
      - These are based off of an Ubuntu image.
    * - -cuXX
-     - These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the Nvidia Docker Runtime.
+     - These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the NVIDIA Docker Runtime.
    * - -gpu
      - Aliases to a specific ``-cuXX`` tagged image.
    * - <no tag>
@@ -435,7 +435,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`f8534a5 <https://github.com/ray-project/ray/commit/f8534a51011a21effb0cbe7462c82454f495653c>`_)
+        Ray version: nightly (`52b43d0 <https://github.com/ray-project/ray/commit/52b43d0998f40d8aada0ffb89f41497fea4878b2>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 

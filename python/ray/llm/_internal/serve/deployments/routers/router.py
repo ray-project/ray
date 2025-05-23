@@ -10,6 +10,8 @@ from typing import (
     Dict,
     List,
     Optional,
+    Tuple,
+    TypeVar,
     Union,
 )
 
@@ -45,8 +47,11 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
+    LLMEmbeddingsResponse,
     OpenAIHTTPException,
     to_model_metadata,
 )
@@ -72,6 +77,13 @@ else:
     from async_timeout import timeout
 
 logger = get_logger(__name__)
+
+T = TypeVar("T")
+StreamResponseType = Union[
+    ChatCompletionStreamResponse,
+    CompletionStreamResponse,
+]
+BatchedStreamResponseType = List[StreamResponseType]
 
 
 def init() -> FastAPI:
@@ -113,9 +125,9 @@ fastapi_router_app = init()
 
 
 def _apply_openai_json_format(
-    response: Union[ChatCompletionStreamResponse, CompletionStreamResponse]
+    response: Union[StreamResponseType, BatchedStreamResponseType]
 ) -> str:
-    """Converts a CompletionStreamResponse to OpenAI format.
+    """Converts the stream response to OpenAI format.
 
     Each model response is converted to the string:
         data: <response-json1>\n\n
@@ -130,27 +142,38 @@ def _apply_openai_json_format(
     raise ValueError(f"Unexpected response type: {type(response)}")
 
 
+async def _peek_at_generator(
+    gen: AsyncGenerator[T, None]
+) -> Tuple[T, AsyncGenerator[T, None]]:
+    # Peek at the first element
+    first_item = await gen.__anext__()
+
+    # Create a new generator that yields the peeked item first
+    async def new_generator() -> AsyncGenerator[T, None]:
+        yield first_item
+        async for item in gen:
+            yield item
+
+    return first_item, new_generator()
+
+
 async def _openai_json_wrapper(
     generator: AsyncGenerator[
-        Union[ChatCompletionStreamResponse, CompletionStreamResponse], None
+        Union[StreamResponseType, BatchedStreamResponseType], None
     ],
-    first_response: Union[ChatCompletionStreamResponse, CompletionStreamResponse],
 ) -> AsyncGenerator[str, None]:
-    """Wrapper that converts CompletionStreamResponse into OpenAI JSON strings.
+    """Wrapper that converts stream responses into OpenAI JSON strings.
 
     Args:
-        generator: an async generator that yields CompletionStreamResponse.
-            Each response is converted into OpenAI JSON
-            format. The jsonified responses from a list are concatenated
-            together and yielded as a single string.
-        first_response: the first CompletionStreamResponse to yield.
+        generator: an async generator that yields either individual stream responses
+            (StreamResponseType) or batches of stream responses (BatchedStreamResponseType).
+            Each response is converted into OpenAI JSON format and streamed to the client.
+            For batched responses, the items are concatenated together as a single string.
 
     Yields:
-        Concatenated JSON strings that represent CompletionStreamResponse.
+        String chunks in OpenAI SSE format: "data: {json}\n\n", with a final
+        "data: [DONE]\n\n" to indicate completion.
     """
-    packet = _apply_openai_json_format(first_response)
-    yield packet
-
     async for response in generator:
         packet = _apply_openai_json_format(response)
         yield packet
@@ -253,9 +276,11 @@ class LLMRouter:
     async def _get_response(
         self,
         *,
-        body: Union[CompletionRequest, ChatCompletionRequest],
+        body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
         call_method: str,
-    ) -> AsyncGenerator[Union[LLMChatResponse, LLMCompletionsResponse], None]:
+    ) -> AsyncGenerator[
+        Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
+    ]:
         """Calls the model deployment and returns the stream."""
         model: str = body.model
         base_model_id = get_base_model_id(model)
@@ -347,24 +372,27 @@ class LLMRouter:
 
             gen = self._get_response(body=body, call_method=call_method)
 
-            first_response = await gen.__anext__()
+            # In streaming with batching enabled, this first response can be a list of chunks.
+            initial_response, gen = await _peek_at_generator(gen)
 
-            # In case of streaming the first response can be batched.
-            if body.stream and isinstance(first_response, list):
-                first_response = first_response[0]
+            if isinstance(initial_response, list):
+                first_chunk = initial_response[0]
+            else:
+                first_chunk = initial_response
 
-            if isinstance(first_response, ErrorResponse):
+            if isinstance(first_chunk, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=first_response.message,
-                    status_code=first_response.code,
-                    type=first_response.type,
+                    message=first_chunk.message,
+                    status_code=first_chunk.code,
+                    type=first_chunk.type,
                 )
 
-            if isinstance(first_response, NoneStreamingResponseType):
-                # Not streaming
-                return JSONResponse(content=first_response.model_dump())
+            if isinstance(first_chunk, NoneStreamingResponseType):
+                # Not streaming, first chunk should be a single response
+                return JSONResponse(content=first_chunk.model_dump())
 
-            openai_stream_generator = _openai_json_wrapper(gen, first_response)
+            # In case of streaming we need to iterate over the chunks and yield them
+            openai_stream_generator = _openai_json_wrapper(gen)
 
             return StreamingResponse(
                 openai_stream_generator, media_type="text/event-stream"
@@ -390,6 +418,26 @@ class LLMRouter:
         """
 
         return await self._process_llm_request(body, is_chat=True)
+
+    @fastapi_router_app.post("/v1/embeddings")
+    async def embeddings(self, body: EmbeddingRequest) -> Response:
+        """Create embeddings for the provided input.
+
+        Returns:
+            A response object with embeddings.
+        """
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(body=body, call_method="embeddings")
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.message,
+                    status_code=result.code,
+                    type=result.type,
+                )
+
+            if isinstance(result, EmbeddingResponse):
+                return JSONResponse(content=result.model_dump())
 
     @classmethod
     def as_deployment(

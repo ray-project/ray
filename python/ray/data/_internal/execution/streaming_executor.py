@@ -181,7 +181,14 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            logger.debug(f"Shutting down executor for dataset {self._dataset_id}")
+            status_detail = (
+                f"failed with {exception}" if exception else "completed successfully"
+            )
+
+            logger.debug(
+                f"Shutting down executor for dataset {self._dataset_id} "
+                f"({status_detail})"
+            )
 
             _num_shutdown += 1
             self._shutdown = True
@@ -227,9 +234,12 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
                 state.close_progress_bars()
 
+            min_ = round(timer.min(), 3)
+            max_ = round(timer.max(), 3)
+            total = round(timer.get(), 3)
             logger.debug(
                 f"Shut down operator hierarchy for dataset {self._dataset_id}"
-                f" (min/max/total={timer.min()}/{timer.max()}/{timer.get()}s)"
+                f" (min/max/total={min_}/{max_}/{total}s)"
             )
 
             if exception is None:
@@ -453,9 +463,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": (
-                        op.internal_queue_size() + op_state.total_input_enqueued()
-                    ),
+                    "queued_blocks": op_state.total_enqueued_input_bundles(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
@@ -477,7 +485,7 @@ class StreamingExecutor(Executor, threading.Thread):
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
     """Raises an exception on invalid DAGs.
 
-    It checks if the the sum of min actor pool sizes are larger than the resource
+    It checks if the sum of min actor pool sizes are larger than the resource
     limit, as well as other unsupported resource configurations.
 
     This should be called prior to creating the topology from the DAG.

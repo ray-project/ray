@@ -213,8 +213,6 @@ class vLLMEngineWrapper:
 
         lora_request = None
         if "model" in row and row["model"] != self.model:
-            if self.vllm_use_v1:
-                raise ValueError("LoRA is only supported with vLLM v0")
 
             lora_name = row["model"]
             if lora_name not in self.lora_name_to_request:
@@ -275,9 +273,6 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                if self.vllm_use_v1:
-                    raise ValueError("Guided decoding is only supported with vLLM v0")
-
                 guided_decoding = vllm.sampling_params.GuidedDecodingParams(
                     **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")

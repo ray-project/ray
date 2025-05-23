@@ -7,6 +7,7 @@ Dask
 [Dd]iscretizer(s)?
 dtype
 [Gg]roupby
+[Hh]asher(s)?
 [Hh]udi
 [Ii]ndexable
 [Ii]ngest
@@ -29,4 +30,5 @@ runai
 Spotify('s)?
 TFRecord(s)?
 UDF(s)?
+VLM(s)?
 XGBoost
