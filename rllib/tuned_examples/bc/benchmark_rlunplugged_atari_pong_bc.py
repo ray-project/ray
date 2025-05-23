@@ -338,7 +338,7 @@ if args.wandb_key:
     )
 
     # Initialize wandb.
-    wandb.init(project="benchmark_atari_pong_bc")
+    wandb.init(project=args.wandb_project)
     # Clean results to log seemlessly to wandb.
     from ray.air.integrations.wandb import _clean_log
 
