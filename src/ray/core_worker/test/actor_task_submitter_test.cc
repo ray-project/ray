@@ -817,8 +817,8 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   ASSERT_TRUE(submitter_.PendingTasksFull(actor_id));
 
   // All the replies comes, the queue shouble be empty.
-  for (auto &task : tasks) {
-    ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
+  for (auto &_task : tasks) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask(_task.GetTaskAttempt(), Status::OK()));
   }
   ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
 }
