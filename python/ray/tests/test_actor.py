@@ -93,7 +93,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     # Create some values to close over.
     val1 = 1
@@ -140,7 +140,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     @ray.remote
     class Actor1:
@@ -217,7 +217,7 @@ def test_use_actor_twice(ray_start_10_cpus):
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+    # Make sure we can define and actors within remote functions.
 
     @ray.remote
     def f(x, n):
@@ -239,7 +239,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+    # Make sure we can create and use actors within remote functions.
 
     @ray.remote
     class Actor1:
@@ -1650,8 +1650,35 @@ def test_get_local_actor_state(ray_start_regular_shared):
     )
 
 
+def _all_actors_dead():
+    return len(list_actors(filters=[("state", "=", "ALIVE")])) == 0
+
+
+def test_kill_actor_immediately_after_creation(ray_start_regular_shared):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    ray.kill(a)
+    ray.kill(b)
+    wait_for_condition(_all_actors_dead)
+
+
+def test_remove_actor_immediately_after_creation(ray_start_regular_shared):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    del a
+    del b
+    wait_for_condition(_all_actors_dead)
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

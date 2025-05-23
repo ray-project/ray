@@ -300,6 +300,8 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
+            # Set node labels from RayParams or environment override variables.
+            self._node_labels = self._get_node_labels()
             if (
                 self._ray_params.env_vars is not None
                 and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars
@@ -375,12 +377,17 @@ class Node:
                     "could happen because some of the Ray processes "
                     "failed to startup."
                 ) from te
-            node_info = ray._private.services.get_node(
-                self.gcs_address,
-                self._node_id,
-            )
-            if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info["node_manager_port"]
+
+        # Fetch node info to update port or get labels.
+        node_info = ray._private.services.get_node(
+            self.gcs_address,
+            self._node_id,
+        )
+        if not connect_only and self._ray_params.node_manager_port == 0:
+            self._ray_params.node_manager_port = node_info["node_manager_port"]
+        elif connect_only:
+            # Set node labels from GCS if provided at node init.
+            self._node_labels = node_info.get("labels", {})
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -741,6 +748,11 @@ class Node:
             "dashboard_agent_listen_port": self.dashboard_agent_listen_port,
         }
 
+    @property
+    def node_labels(self):
+        """Get the node labels."""
+        return self._node_labels
+
     def is_head(self):
         return self.head
 
@@ -1035,12 +1047,13 @@ class Node:
         port isn't already cached, an unused port is generated and cached.
 
         Args:
-            port_name: the name of the port, e.g. metrics_export_port
-            default_port (Optional[int]): The port to return and cache if no
-            port has already been cached for the given port_name.  If None, an
-            unused port is generated and cached.
+            port_name: The name of the port, e.g. metrics_export_port.
+            default_port: The port to return and cache if no port has already been
+                cached for the given port_name. If None, an unused port is generated
+                and cached.
+
         Returns:
-            port: the port number.
+            int: The port number.
         """
         file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
 
@@ -1322,7 +1335,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self._get_node_labels(),
+            labels=self.node_labels,
             resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1648,17 +1661,6 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive
-        )
-
-    def kill_reporter(self, check_alive: bool = True):
-        """Kill the reporter.
-
-        Args:
-            check_alive: Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive
         )
 
     def kill_dashboard(self, check_alive: bool = True):

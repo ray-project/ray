@@ -74,11 +74,14 @@ expected_lora_out = {
         "ignore_eos": None,
         "presence_penalty": None,
         "frequency_penalty": None,
+        "repetition_penalty": None,
         "best_of": 1,
         "response_format": None,
         "top_k": None,
         "seed": None,
+        "kv_transfer_params": None,
     },
+    "metadata": None,
     "multi_modal_data": None,
     "disk_multiplex_config": {
         "model_id": "test_model",
@@ -166,6 +169,7 @@ async def test_multiplex_deployment(
     print("**baseout**", arg.model_dump())
     expected_model_dump = {
         "prompt": "Generate some sql please.",
+        "prompt_token_ids": None,
         "request_id": "req_id",
         "sampling_params": {
             "max_tokens": None,
@@ -176,6 +180,7 @@ async def test_multiplex_deployment(
             "ignore_eos": None,
             "presence_penalty": None,
             "frequency_penalty": None,
+            "repetition_penalty": None,
             "top_k": None,
             "response_format": None,
             "logprobs": None,
@@ -184,7 +189,9 @@ async def test_multiplex_deployment(
             "logit_bias": None,
             "n": 1,
             "best_of": 1,
+            "kv_transfer_params": None,
         },
+        "metadata": None,
         "multi_modal_data": None,
         "disk_multiplex_config": None,
         "stream": stream_tokens,

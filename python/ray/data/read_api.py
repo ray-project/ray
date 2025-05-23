@@ -16,8 +16,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -2491,7 +2493,6 @@ def read_databricks_tables(
     from ray.data._internal.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
-    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     def get_dbutils():
         no_dbutils_error = RuntimeError("No dbutils module found.")
@@ -2517,6 +2518,8 @@ def read_databricks_tables(
 
     host = os.environ.get("DATABRICKS_HOST")
     if not host:
+        from ray.util.spark.utils import is_in_databricks_runtime
+
         if is_in_databricks_runtime():
             ctx = (
                 get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
@@ -2530,9 +2533,13 @@ def read_databricks_tables(
             )
 
     if not catalog:
+        from ray.util.spark.utils import get_spark_session
+
         catalog = get_spark_session().sql("SELECT CURRENT_CATALOG()").collect()[0][0]
 
     if not schema:
+        from ray.util.spark.utils import get_spark_session
+
         schema = get_spark_session().sql("SELECT CURRENT_DATABASE()").collect()[0][0]
 
     if query is not None and table is not None:
@@ -2617,15 +2624,30 @@ def read_hudi(
 def from_daft(df: "daft.DataFrame") -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
 
+    .. warning::
+
+        This function only works with PyArrow 13 or lower. For more details, see
+        https://github.com/ray-project/ray/issues/53278.
+
     Args:
         df: A Daft DataFrame
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
-    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such that we can stream object references into a Ray
-    # dataset. Unfortunately this is very tricky today because of the way Ray Datasources are implemented with a fully-materialized `list`
-    # of ReadTasks, rather than an iterator which can lazily return these tasks.
+    pyarrow_version = get_pyarrow_version()
+    assert pyarrow_version is not None
+    if pyarrow_version >= parse_version("14.0.0"):
+        raise RuntimeError(
+            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
+            "https://github.com/ray-project/ray/issues/53278."
+        )
+
+    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
+    # that we can stream object references into a Ray dataset. Unfortunately this is
+    # very tricky today because of the way Ray Datasources are implemented with a fully-
+    # materialized `list` of ReadTasks, rather than an iterator which can lazily return
+    # these tasks.
     return df.to_ray_dataset()
 
 

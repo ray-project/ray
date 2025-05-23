@@ -29,9 +29,7 @@ from ray._private.ray_constants import (
     PROCESS_TYPE_RAY_CLIENT_SERVER,
     PROCESS_TYPE_REAPER,
     PROCESS_TYPE_REDIS_SERVER,
-    PROCESS_TYPE_REPORTER,
     PROCESS_TYPE_RUNTIME_ENV_AGENT,
-    PROCESS_TYPE_WEB_UI,
     PROCESS_TYPE_WORKER,
 )
 from ray._private.log_monitor import (
@@ -546,10 +544,6 @@ def test_log_redirect_to_stderr(shutdown_only):
         PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
         PROCESS_TYPE_REAPER: "",
-        # No reporter process run.
-        PROCESS_TYPE_REPORTER: "",
-        # No web UI process run.
-        PROCESS_TYPE_WEB_UI: "",
         # Unused.
         PROCESS_TYPE_WORKER: "",
     }
@@ -1255,12 +1249,7 @@ class TestSetupLogRecordFactory:
 
 
 if __name__ == "__main__":
-    import sys
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

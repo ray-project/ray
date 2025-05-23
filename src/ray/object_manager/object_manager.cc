@@ -109,8 +109,10 @@ ObjectManager::ObjectManager(
                              ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(
-          main_service, ClusterID::Nil(), config_.rpc_service_threads_number),
+      client_call_manager_(main_service,
+                           /*record_stats=*/true,
+                           ClusterID::Nil(),
+                           config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
@@ -150,7 +152,7 @@ ObjectManager::ObjectManager(
                                                 get_spilled_object_url_);
 
   RAY_CHECK_OK(
-      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
+      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 300));
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
