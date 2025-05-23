@@ -90,7 +90,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
     public ActorExecutorService(TaskSpec taskSpec) {
       ActorCreationTaskSpec actorCreationTaskSpec = taskSpec.getActorCreationTaskSpec();
-      Preconditions.checkNotNull(actorCreationTaskSpec);
       final List<Common.ConcurrencyGroup> concurrencyGroups =
           actorCreationTaskSpec.getConcurrencyGroupsList();
       concurrencyGroups.forEach(
