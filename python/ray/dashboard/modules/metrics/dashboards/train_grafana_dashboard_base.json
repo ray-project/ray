@@ -158,7 +158,32 @@
           "text": ["All"],
           "value": ["$__all"]
         }
+      },
+
+      {
+        "name": "Instance",
+        "type": "query",
+        "description": "Filter queries to specific node instances.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, instance)",
+        "query": {
+          "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 2,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
       }
+
+
     ]
   }
 }
