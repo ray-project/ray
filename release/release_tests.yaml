@@ -4283,6 +4283,28 @@
     long_running: false
     script: pytest -vs test_llm_serve_correctness.py
 
+- name: llm_serve_qwen_3_8B_fp8_1p1d
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+      # TODO(lk-chen): remove once we bump vllm to 0.9.0
+      post_build_script: byod_llm_pd_disagg_test.sh
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_qwen3_8B_fp8_1p1d.yaml --skip-hf-token true
+
 
 ##############
 # LLM Batch
