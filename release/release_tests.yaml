@@ -4298,7 +4298,7 @@
 
   run:
     timeout: 3600
-    script: cd dist_xgboost && python tests.py  # <working_dir>/
+    script: PYTHONPATH=. python dist_xgboost/train.py  # <working_dir>/
 
   variations:
     - __suffix__: aws  # uses default specs above
