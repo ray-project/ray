@@ -1,5 +1,6 @@
 from typing import List
 
+from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Optimizer,
@@ -20,8 +21,6 @@ from ray.data._internal.logical.rules.zero_copy_map_fusion import (
     EliminateBuildOutputBlocks,
 )
 from ray.util.annotations import DeveloperAPI
-
-from .ruleset import Ruleset
 
 _LOGICAL_RULESET = Ruleset(
     [

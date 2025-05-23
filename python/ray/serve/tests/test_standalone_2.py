@@ -49,7 +49,7 @@ def start_and_shutdown_ray_cli_function():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True

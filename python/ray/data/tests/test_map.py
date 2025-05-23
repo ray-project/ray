@@ -1648,8 +1648,11 @@ def test_random_sample_fixed_seed_0002(
     assert set(ds.to_pandas()["item"].to_list()) == set(expected.tolist())
 
 
-def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
+def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path, restore_data_context):
     """Test that for the actor map operator, the UDF object is deleted properly."""
+    ctx = DataContext.get_current()
+    ctx._enable_actor_pool_on_exit_hook = True
+
     test_file = tmp_path / "test.txt"
 
     # Simulate the case that the UDF depends on some external resources that
