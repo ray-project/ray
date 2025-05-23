@@ -101,14 +101,17 @@ def plan_read_op(
         input_data_factory=get_input_data,
     )
 
-    def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
+    def do_read(
+        blocks: Iterable[ReadTask],
+        _: TaskContext,
+    ) -> Iterable[Block]:
         for read_task in blocks:
             yield from read_task()
 
     # Create a MapTransformer for a read operator
     transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
-        BlockMapTransformFn(do_read),
+        BlockMapTransformFn(do_read, None, None),
     ]
     transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
     map_transformer = MapTransformer(transform_fns)

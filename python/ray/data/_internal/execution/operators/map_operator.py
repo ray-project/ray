@@ -9,6 +9,7 @@ from typing import (
     Callable,
     Deque,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
@@ -44,6 +45,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
+    UdfArgAdapter,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
@@ -136,6 +138,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         kwargs = {}
         for fn in self._map_task_kwargs_fns:
             kwargs.update(fn())
+        kwargs.update(self._map_transformer.get_serialized_udf_fn_args())
         return kwargs
 
     def get_additional_split_factor(self) -> int:
@@ -169,6 +172,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
         supports_fusion: bool = True,
+        udf_fn_constructor_args: Optional[Iterable[Any]] = None,
+        udf_fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -192,6 +197,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             supports_fusion: Whether this operator supports fusion with other operators.
+            udf_fn_constructor_args: FIXME
+            udf_fn_constructor_kwargs: FIXME
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -234,6 +241,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
                 supports_fusion=supports_fusion,
+                udf_fn_constructor_args=udf_fn_constructor_args,
+                udf_fn_constructor_kwargs=udf_fn_constructor_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -544,12 +553,20 @@ def _map_task(
         ctx.task_idx,
     )
     DataContext._set_current(data_context)
+    # print(f"BEFORE MAP TASK: {kwargs}")
+    num_functions = len(map_transformer._transform_fns)
+    udf_fn_args_list, udf_fn_kwargs_list, kwargs = UdfArgAdapter.resolve_args(
+        kwargs, num_functions
+    )
+    # print(f'AFTER MAP TASK: {udf_fn_args_list} {udf_fn_kwargs_list} {kwargs}')
     ctx.kwargs.update(kwargs)
     TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+        for b_out in map_transformer.apply_transform(
+            iter(blocks), ctx, udf_fn_args_list, udf_fn_kwargs_list
+        ):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
             m_out.exec_stats = stats.build()

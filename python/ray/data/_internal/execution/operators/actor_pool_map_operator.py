@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -18,8 +18,14 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
-from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.operators.map_operator import (
+    MapOperator,
+    _map_task,
+)
+from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformer,
+    UdfArgAdapter,
+)
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
@@ -60,6 +66,8 @@ class ActorPoolMapOperator(MapOperator):
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         supports_fusion: bool = True,
+        udf_fn_constructor_args: Optional[Iterable[Any]] = None,
+        udf_fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -78,6 +86,8 @@ class ActorPoolMapOperator(MapOperator):
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             supports_fusion: Whether this operator supports fusion with other operators.
+            udf_fn_constructor_args: FIXME
+            udf_fn_constructor_kwargs: FIXME
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -133,6 +143,12 @@ class ActorPoolMapOperator(MapOperator):
         self._bundle_queue = create_bundle_queue()
         # Cached actor class.
         self._cls = None
+        # constructor args/kwargs to pass to udf
+        udf_fn_constructor_args = udf_fn_constructor_args or []
+        udf_fn_constructor_kwargs = udf_fn_constructor_kwargs or {}
+        self._udf_fn_constructor_args_and_kwargs = UdfArgAdapter.parse_args(
+            [udf_fn_constructor_args], [udf_fn_constructor_kwargs]
+        )
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
 
@@ -197,6 +213,7 @@ class ActorPoolMapOperator(MapOperator):
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
+            **self._udf_fn_constructor_args_and_kwargs,
         )
         res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
@@ -248,6 +265,7 @@ class ActorPoolMapOperator(MapOperator):
                 op_name=self.name,
                 target_max_block_size=self.actual_target_max_block_size,
             )
+            # print("ACTORPOOL MAP TASK ARGS", self.get_map_task_kwargs())
             gen = actor.submit.options(
                 num_returns="streaming",
                 name=f"{self.name}.submit",
@@ -436,12 +454,22 @@ class _MapWorker:
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
+        **udf_contructor_args_and_kwargs: Dict[str, Any],
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
         # Initialize state for this actor.
-        self._map_transformer.init()
+        (
+            udf_fn_constructor_args,
+            udf_fn_constructor_kwargs,
+            _,
+        ) = UdfArgAdapter.resolve_args(udf_contructor_args_and_kwargs, 1)
+        assert len(udf_fn_constructor_args) == 1, udf_fn_constructor_args
+        assert len(udf_fn_constructor_kwargs) == 1, udf_fn_constructor_kwargs
+        self._map_transformer.init(
+            *udf_fn_constructor_args[0], **udf_fn_constructor_kwargs[0]
+        )
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()

@@ -2,7 +2,7 @@ import itertools
 import time
 from abc import abstractmethod
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -50,6 +50,8 @@ class MapTransformFn:
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
         category: MapTransformFnCategory,
+        udf_fn_args: Optional[Iterable[Any]] = None,
+        udf_fn_kwargs: Optional[Dict[str, Any]] = None,
         is_udf: bool = False,
     ):
         """
@@ -64,6 +66,8 @@ class MapTransformFn:
         self._category = category
         self._output_block_size_option = None
         self._is_udf = is_udf
+        self._udf_fn_args = udf_fn_args
+        self._udf_fn_kwargs = udf_fn_kwargs
 
     @abstractmethod
     def __call__(
@@ -72,6 +76,18 @@ class MapTransformFn:
         ctx: TaskContext,
     ) -> Iterable[MapTransformFnData]:
         ...
+
+    @property
+    def udf_fn_args(self) -> Iterable[Any]:
+        if self._udf_fn_args is None:
+            return []
+        return self._udf_fn_args
+
+    @property
+    def udf_fn_kwargs(self) -> Dict[str, Any]:
+        if self._udf_fn_kwargs is None:
+            return {}
+        return self._udf_fn_kwargs
 
     @property
     def input_type(self) -> MapTransformFnDataType:
@@ -138,10 +154,13 @@ class MapTransformer:
             Used for the actor-based map operator.
         """
         self.set_transform_fns(transform_fns)
-
+        self._serialized_udf_fn_args = self.extract_args_from_transform_fns()
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option = None
         self._udf_time = 0
+
+    def get_serialized_udf_fn_args(self) -> Dict[str, Any]:
+        return self._serialized_udf_fn_args
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
@@ -159,6 +178,15 @@ class MapTransformer:
                 "the input type of the next transform function."
             )
         self._transform_fns = transform_fns
+
+    def extract_args_from_transform_fns(self) -> Dict[str, Any]:
+        """FIXME"""
+        udf_fn_args_list: List[Iterable[Any]] = []
+        udf_fn_kwargs_list: List[Dict[str, Any]] = []
+        for transform_fn in self._transform_fns:
+            udf_fn_args_list.append(transform_fn.udf_fn_args)
+            udf_fn_kwargs_list.append(transform_fn.udf_fn_kwargs)
+        return UdfArgAdapter.parse_args(udf_fn_args_list, udf_fn_kwargs_list)
 
     def get_transform_fns(self) -> List[MapTransformFn]:
         """Get the transform functions."""
@@ -195,12 +223,16 @@ class MapTransformer:
         else:
             return self._output_block_size_option.target_num_rows_per_block
 
-    def init(self) -> None:
+    def init(
+        self,
+        *udf_fn_constructor_args: Optional[Iterable[Any]],
+        **udf_fn_constructor_kwargs: Optional[Dict[str, Any]],
+    ) -> None:
         """Initialize the transformer.
 
         Should be called before applying the transform.
         """
-        self._init_fn()
+        self._init_fn(*udf_fn_constructor_args, **udf_fn_constructor_kwargs)
 
     def _udf_timed_iter(
         self, input: Iterable[MapTransformFnData]
@@ -218,6 +250,8 @@ class MapTransformer:
         self,
         input_blocks: Iterable[Block],
         ctx: TaskContext,
+        udf_fn_args_list: List[Iterable[Any]],
+        udf_fn_kwargs_list: List[Dict[str, Any]],
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
         assert (
@@ -229,8 +263,10 @@ class MapTransformer:
 
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
-        for transform_fn in self._transform_fns:
-            iter = transform_fn(iter, ctx)
+        for transform_fn, udf_fn_args, udf_fn_kwargs in zip(
+            self._transform_fns, udf_fn_args_list, udf_fn_kwargs_list
+        ):
+            iter = transform_fn(iter, ctx, *udf_fn_args, **udf_fn_kwargs)
             if transform_fn._is_udf:
                 iter = self._udf_timed_iter(iter)
         return iter
@@ -278,23 +314,113 @@ def create_map_transformer_from_block_fn(
     )
 
 
+class UdfArgAdapter:
+    """FIXME"""
+
+    KEY_NAME_POSITIONAL_PREFIX = "map_task_udf_arg_pos"
+    KEY_NAME_KEYWORD_PREFIX = "map_task_udf_arg_keyword"
+    DELIMITTER = "#"
+
+    @classmethod
+    def parse_args(
+        cls,
+        udf_fn_args_list: List[Iterable[Any]],
+        udf_fn_kwargs_list: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """FIXME"""
+        # print(f"PARSING ... {udf_fn_args_list} {udf_fn_kwargs_list}")
+        serialized_udf_args = {}
+
+        def keyname(prefix: str, fn_order: int, arg_pos_or_key: Union[int, str]):
+            return cls.DELIMITTER.join([prefix, str(fn_order), str(arg_pos_or_key)])
+
+        for fn_order, (udf_fn_args, udf_fn_kwargs) in enumerate(
+            zip(udf_fn_args_list, udf_fn_kwargs_list)
+        ):
+            for arg_pos, udf_fn_arg in enumerate(udf_fn_args):
+                key = keyname(cls.KEY_NAME_POSITIONAL_PREFIX, fn_order, arg_pos)
+                serialized_udf_args[key] = udf_fn_arg
+            for arg_key, udf_fn_kwarg in udf_fn_kwargs.items():
+                key = keyname(cls.KEY_NAME_KEYWORD_PREFIX, fn_order, arg_key)
+                serialized_udf_args[key] = udf_fn_kwarg
+        # print(f"PARSING RESULT = {serialized_udf_args}")
+        return serialized_udf_args
+
+    @classmethod
+    def resolve_args(
+        cls, arg_and_kwargs: Dict[str, Any], num_functions: int
+    ) -> Tuple[List[Iterable[Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """FIXME"""
+        # print(f"RESOLVING ... {arg_and_kwargs}")
+        # 1) Partitions keys into args and kwargs.
+        arg_keys = []
+        kwarg_keys = []
+        for key in arg_and_kwargs.keys():
+            parts = key.split(cls.DELIMITTER)
+            if len(parts) == 3:
+                prefix, fn_order, arg_pos_or_key = parts
+                if prefix == cls.KEY_NAME_POSITIONAL_PREFIX:
+                    assert fn_order.isdigit(), fn_order
+                    fn_order = int(fn_order)
+                    assert arg_pos_or_key.isdigit(), arg_pos_or_key
+                    arg_pos = int(arg_pos_or_key)
+                    arg_keys.append((fn_order, arg_pos, key))
+                elif prefix == cls.KEY_NAME_KEYWORD_PREFIX:
+                    assert fn_order.isdigit(), fn_order
+                    fn_order = int(fn_order)
+                    arg_key = arg_pos_or_key
+                    kwarg_keys.append((fn_order, arg_key, key))
+
+        args: List[List[Any]] = [[] for _ in range(num_functions)]
+        kwargs: List[Dict[str, Any]] = [{} for _ in range(num_functions)]
+        # print(f"RESOLVING KEYS: {arg_keys} {kwarg_keys}")
+        # 2) Reconstruct the args and kwargs by popping the keys to avoid double copy.
+        for (fn_order, arg_pos, key) in sorted(arg_keys):
+            value = arg_and_kwargs.pop(key)
+            assert len(args[fn_order]) == arg_pos, (arg_pos, args)
+            args[fn_order].append(value)
+
+        for (fn_order, arg_key, key) in sorted(kwarg_keys):
+            value = arg_and_kwargs.pop(key)
+            kwargs[fn_order][arg_key] = value
+
+        leftover = arg_and_kwargs
+
+        # print(f"RESOLVING RESULT: {args} {kwargs} {leftover}")
+        return args, kwargs, leftover
+
+
 # Below are subclasses of MapTransformFn.
 
 
 class RowMapTransformFn(MapTransformFn):
     """A rows-to-rows MapTransformFn."""
 
-    def __init__(self, row_fn: MapTransformCallable[Row, Row], is_udf: bool = False):
+    def __init__(
+        self,
+        row_fn: MapTransformCallable[Row, Row],
+        udf_fn_args: Optional[List[Any]],
+        udf_fn_kwargs: Optional[Dict[str, Any]],
+        is_udf: bool = False,
+    ):
         self._row_fn = row_fn
         super().__init__(
             MapTransformFnDataType.Row,
             MapTransformFnDataType.Row,
             category=MapTransformFnCategory.DataProcess,
+            udf_fn_args=udf_fn_args,
+            udf_fn_kwargs=udf_fn_kwargs,
             is_udf=is_udf,
         )
 
-    def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
-        yield from self._row_fn(input, ctx)
+    def __call__(
+        self,
+        input: Iterable[Row],
+        ctx: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
+    ) -> Iterable[Row]:
+        yield from self._row_fn(input, ctx, *udf_fn_args, **udf_fn_kwargs)
 
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
@@ -311,20 +437,30 @@ class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
     def __init__(
-        self, batch_fn: MapTransformCallable[DataBatch, DataBatch], is_udf: bool = False
+        self,
+        batch_fn: MapTransformCallable[DataBatch, DataBatch],
+        udf_fn_args: Optional[List[Any]],
+        udf_fn_kwargs: Optional[Dict[str, Any]],
+        is_udf: bool = False,
     ):
         self._batch_fn = batch_fn
         super().__init__(
             MapTransformFnDataType.Batch,
             MapTransformFnDataType.Batch,
             category=MapTransformFnCategory.DataProcess,
+            udf_fn_args=udf_fn_args,
+            udf_fn_kwargs=udf_fn_kwargs,
             is_udf=is_udf,
         )
 
     def __call__(
-        self, input: Iterable[DataBatch], ctx: TaskContext
+        self,
+        input: Iterable[DataBatch],
+        ctx: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
     ) -> Iterable[DataBatch]:
-        yield from self._batch_fn(input, ctx)
+        yield from self._batch_fn(input, ctx, *udf_fn_args, **udf_fn_kwargs)
 
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn})"
@@ -341,18 +477,30 @@ class RowToBlockMapTransformFn(MapTransformFn):
     """A Row-to-Batch MapTransformFn."""
 
     def __init__(
-        self, transform_fn: MapTransformCallable[Row, Block], is_udf: bool = False
+        self,
+        transform_fn: MapTransformCallable[Row, Block],
+        udf_fn_args: Optional[List[Any]],
+        udf_fn_kwargs: Optional[Dict[str, Any]],
+        is_udf: bool = False,
     ):
         self._transform_fn = transform_fn
         super().__init__(
             MapTransformFnDataType.Row,
             MapTransformFnDataType.Block,
             category=MapTransformFnCategory.DataProcess,
+            udf_fn_args=udf_fn_args,
+            udf_fn_kwargs=udf_fn_kwargs,
             is_udf=is_udf,
         )
 
-    def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Block]:
-        yield from self._transform_fn(input, ctx)
+    def __call__(
+        self,
+        input: Iterable[Row],
+        ctx: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
+    ) -> Iterable[Block]:
+        yield from self._transform_fn(input, ctx, *udf_fn_args, **udf_fn_kwargs)
 
     def __eq__(self, other):
         return (
@@ -365,16 +513,29 @@ class RowToBlockMapTransformFn(MapTransformFn):
 class BlockMapTransformFn(MapTransformFn):
     """A block-to-block MapTransformFn."""
 
-    def __init__(self, block_fn: MapTransformCallable[Block, Block]):
+    def __init__(
+        self,
+        block_fn: MapTransformCallable[Block, Block],
+        udf_fn_args: Optional[List[Any]],
+        udf_fn_kwargs: Optional[Dict[str, Any]],
+    ):
         self._block_fn = block_fn
         super().__init__(
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Block,
             category=MapTransformFnCategory.DataProcess,
+            udf_fn_args=udf_fn_args,
+            udf_fn_kwargs=udf_fn_kwargs,
         )
 
-    def __call__(self, input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        yield from self._block_fn(input, ctx)
+    def __call__(
+        self,
+        input: Iterable[Block],
+        ctx: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
+    ) -> Iterable[Block]:
+        yield from self._block_fn(input, ctx, *udf_fn_args, **udf_fn_kwargs)
 
     def __repr__(self) -> str:
         return f"BlockMapTransformFn({self._block_fn})"
@@ -395,7 +556,13 @@ class BlocksToRowsMapTransformFn(MapTransformFn):
             category=MapTransformFnCategory.PreProcess,
         )
 
-    def __call__(self, blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
+    def __call__(
+        self,
+        blocks: Iterable[Block],
+        _: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
+    ) -> Iterable[Row]:
         for block in blocks:
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows(public_row_format=True):
@@ -437,6 +604,8 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
         self,
         blocks: Iterable[Block],
         _: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
     ) -> Iterable[DataBatch]:
         """Converts input blocks to batches."""
         block_iter = iter(blocks)
@@ -514,6 +683,8 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         self,
         iter: Iterable[MapTransformFnData],
         _: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
     ) -> Iterable[Block]:
         """Convert UDF-returned data to output blocks.
 
@@ -597,7 +768,13 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
             category=MapTransformFnCategory.PostProcess,
         )
 
-    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+    def __call__(
+        self,
+        blocks: Iterable[Block],
+        ctx: TaskContext,
+        *udf_fn_args: List[Any],
+        **udf_fn_kwargs: Dict[str, Any],
+    ) -> Iterable[Block]:
         for block in blocks:
             block = BlockAccessor.for_block(block)
             offset = 0
