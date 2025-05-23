@@ -17,7 +17,6 @@ import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
 
-from ray._private import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -181,13 +180,19 @@ def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
+            from ray._private import setproctitle
+
             assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
 
         def f(self):
+            from ray._private import setproctitle
+
             assert setproctitle.getproctitle() == "ray::UniqueName.f"
 
     @ray.remote
     def unique_1():
+        from ray._private import setproctitle
+
         assert "unique_1" in setproctitle.getproctitle()
 
     actor = UniqueName.remote()
@@ -201,15 +206,21 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
+            from ray._private import setproctitle
+
             assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
 
         def f(self):
+            from ray._private import setproctitle
+
             assert setproctitle.getproctitle() == f"ray::{method_task_name}"
 
     task_name = "bar"
 
     @ray.remote
     def unique_1():
+        from ray._private import setproctitle
+
         assert task_name in setproctitle.getproctitle()
 
     actor = UniqueName.remote()
@@ -220,6 +231,8 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
 def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     @ray.remote
     def generator_task():
+        from ray._private import setproctitle
+
         for i in range(4):
             assert setproctitle.getproctitle() == "ray::generator_task"
             yield i
@@ -233,6 +246,8 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def f(self):
+            from ray._private import setproctitle
+
             for i in range(4):
                 assert setproctitle.getproctitle() == "ray::UniqueName.f"
                 yield i
