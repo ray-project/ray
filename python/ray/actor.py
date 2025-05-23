@@ -108,8 +108,16 @@ def method(*args, **kwargs):
     return annotate_method
 
 
-# ActorMethodShell holds static metadata without referencing the handle.
 class ActorMethodShell:
+    """A class used to invoke an actor method.
+
+    This class holds static metadata about the actor method, such as
+    the method name, number of return values, and whether the method is a
+    generator. It does not hold a reference to the actor handle.
+    This is used to create ActorMethod objects that hold a strong reference
+    to the actor handle for the duration of the invocation.
+    """
+
     def __init__(
         self,
         method_name: str,
@@ -122,7 +130,30 @@ class ActorMethodShell:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
     ):
+        """Initialize an ActorMethodShell.
+
+        Args:
+            method_name: The name of the actor method.
+            num_returns: The default number of return values that the method
+                invocation should return. If None is given, it uses
+                DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
+                and "streaming" for a generator task (when `is_generator` is True).
+            max_task_retries: Number of retries on method failure.
+            retry_exceptions: Boolean or list/tuple of exceptions to retry.
+            is_generator: True if the method is a generator.
+            generator_backpressure_num_objects: Generator-only config for backpressure.
+            enable_task_events: True if task events are enabled for this method.
+            decorator: Optional decorator for the method invocation.
+            signature: The signature of the actor method.
+        """
         self.method_name = method_name
+
+        # Default case.
+        if num_returns is None:
+            if is_generator:
+                num_returns = "streaming"
+            else:
+                num_returns = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
         self.num_returns = num_returns
         self.max_task_retries = max_task_retries
         self.retry_exceptions = retry_exceptions
@@ -161,24 +192,24 @@ class ActorMethod:
     preventing premature GC and simplifying lifecycle semantics.
 
     Attributes:
-        _actor: A handle to the actor.
-        _method_name: The name of the actor method.
-        _num_returns: The default number of return values that the method
+        actor: A handle to the actor.
+        method_name: The name of the actor method.
+        num_returns: The default number of return values that the method
             invocation should return. If None is given, it uses
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
             and "streaming" for a generator task (when `is_generator` is True).
-        _max_task_retries: Number of retries on method failure.
-        _retry_exceptions: Boolean of whether you want to retry all user-raised
+        max_task_retries: Number of retries on method failure.
+        retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry.
-        _is_generator: True if a given method is a Python generator.
-        _generator_backpressure_num_objects: Generator-only config.
+        is_generator: True if a given method is a Python generator.
+        generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
         enable_task_events: True if task events is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
-        _signature: The signature of the actor method. It is None only when cross
+        signature: The signature of the actor method. It is None only when cross
             language feature is used.
-        _decorator: An optional decorator that should be applied to the actor
+        decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
