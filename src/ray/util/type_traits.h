@@ -14,7 +14,12 @@
 
 #pragma once
 
+#include <sstream>
+#include <string>
 #include <type_traits>
+#include <utility>
+
+#include "absl/strings/str_cat.h"
 
 namespace ray {
 
@@ -38,4 +43,28 @@ struct has_equal_operator<T,
                           std::void_t<decltype(std::declval<T>() == std::declval<T>())>>
     : std::true_type {};
 
+template <typename T, typename = void>
+struct can_absl_str_append : std::false_type {};
+
+template <typename T>
+struct can_absl_str_append<
+    T,
+    std::void_t<decltype(absl::StrAppend(std::declval<std::string *>(),
+                                         std::forward<T>(std::declval<T>())))>>
+    : std::true_type {};
+
+template <typename T>
+inline constexpr bool can_absl_str_append_v = can_absl_str_append<std::decay_t<T>>::value;
+
+template <typename T, typename = void>
+struct is_streamable : std::false_type {};
+
+template <typename T>
+struct is_streamable<
+    T,
+    std::void_t<decltype(std::declval<std::ostringstream &>() << std::declval<T>())>>
+    : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_streamable_v = is_streamable<T>::value;
 }  // namespace ray
