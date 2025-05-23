@@ -11,7 +11,7 @@ from ray.data.preprocessors import StandardScaler
 from ray.train import CheckpointConfig, Result, RunConfig, ScalingConfig
 from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
-from dist_xgboost.constants import local_storage_path, preprocessor_path
+from dist_xgboost.constants import storage_path, preprocessor_path
 from dist_xgboost.data import log_run_to_mlflow, prepare_data
 import dist_xgboost
 
@@ -92,7 +92,7 @@ def main():
         ## If running in a multi-node cluster, this is where you
         ## should configure the run's persistent storage that is accessible
         ## across all worker nodes with `storage_path="s3://..."`
-        storage_path=local_storage_path,
+        storage_path=storage_path,
     )
 
     # Define the scaling config
