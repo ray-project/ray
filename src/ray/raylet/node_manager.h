@@ -39,7 +39,6 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/placement_group_resource_manager.h"
-#include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/wait_manager.h"
@@ -115,8 +114,6 @@ struct NodeManagerConfig {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup.
   bool enable_resource_isolation = false;
-
-  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -130,7 +127,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// allocation.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
-              const std::string &self_node_name,
+              std::string self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -141,7 +138,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client whose connection the error occurred on.
   /// \param error The error details.
-  void HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
                                    const boost::system::error_code &error);
 
   /// Process a message from a client. This method is responsible for
@@ -245,7 +242,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     SetIdleIfLeaseEmpty();
   }
 
-  inline void SetIdleIfLeaseEmpty() {
+  void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
       cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
           WorkFootprint::NODE_WORKERS);
@@ -373,7 +370,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param force true to kill immediately, false to give time for the worker to
   /// clean up and exit gracefully.
   /// \return Void.
-  void KillWorker(std::shared_ptr<WorkerInterface> worker, bool force = false);
+  void KillWorker(const std::shared_ptr<WorkerInterface> &worker, bool force = false);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
@@ -384,7 +381,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param force true to destroy immediately, false to give time for the worker to
   /// clean up and exit gracefully.
   /// \return Void.
-  void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
+  void DestroyWorker(const std::shared_ptr<WorkerInterface> &worker,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
                      bool force = false);
@@ -436,12 +433,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::optional<int> port);
 
   // Register a new worker into worker pool.
-  Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
+  Status RegisterForNewWorker(const std::shared_ptr<WorkerInterface> &worker,
                               pid_t pid,
                               const StartupToken &worker_startup_token,
                               std::function<void(Status, int)> send_reply_callback = {});
   // Register a new driver into worker pool.
-  Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
+  Status RegisterForNewDriver(const std::shared_ptr<WorkerInterface> &worker,
                               pid_t pid,
                               const JobID &job_id,
                               const ray::protocol::RegisterClientRequest *message,
@@ -735,21 +732,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
   /// Creates the detail message for the worker that is killed due to memory running low.
-  const std::string CreateOomKillMessageDetails(
-      const std::shared_ptr<WorkerInterface> &worker,
-      const NodeID &node_id,
-      const MemorySnapshot &system_memory,
-      float usage_threshold) const;
+  std::string CreateOomKillMessageDetails(const std::shared_ptr<WorkerInterface> &worker,
+                                          const NodeID &node_id,
+                                          const MemorySnapshot &system_memory,
+                                          float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
-  const std::string CreateOomKillMessageSuggestions(
+  std::string CreateOomKillMessageSuggestions(
       const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
   void SetTaskFailureReason(const TaskID &task_id,
-                            const rpc::RayErrorInfo &failure_reason,
+                            rpc::RayErrorInfo failure_reason,
                             bool should_retry);
 
   /// Checks the expiry time of the task failures and garbage collect them.
@@ -899,7 +895,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
-  uint64_t last_metrics_recorded_at_ms_;
+  uint64_t last_metrics_recorded_at_ms_ = 0;
 
   /// The number of workers killed due to memory above threshold since last report.
   uint64_t number_workers_killed_by_oom_ = 0;
@@ -908,13 +904,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t number_workers_killed_ = 0;
 
   /// Number of tasks that are received and scheduled.
-  uint64_t metrics_num_task_scheduled_;
+  uint64_t metrics_num_task_scheduled_ = 0;
 
   /// Number of tasks that are executed at this node.
-  uint64_t metrics_num_task_executed_;
+  uint64_t metrics_num_task_executed_ = 0;
 
   /// Number of tasks that are spilled back to other nodes.
-  uint64_t metrics_num_task_spilled_back_;
+  uint64_t metrics_num_task_spilled_back_ = 0;
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
