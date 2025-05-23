@@ -23,7 +23,7 @@ from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
-    PowerOfTwoChoicesReplicaRouter,
+    PowerOfTwoChoicesRequestRouter,
     RunningReplica,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
@@ -127,14 +127,14 @@ class FakeRunningReplica(RunningReplica):
 
 
 @pytest.fixture
-def pow_2_router(request) -> PowerOfTwoChoicesReplicaRouter:
+def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
     if not hasattr(request, "param"):
         request.param = {}
 
     # In order to prevent issues like https://github.com/ray-project/ray/issues/40631,
     # construct the request router on a different loop to mimic the deployment handle path.
     async def construct_request_router(loop: asyncio.AbstractEventLoop):
-        request_router = PowerOfTwoChoicesReplicaRouter(
+        request_router = PowerOfTwoChoicesRequestRouter(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=request.param.get(
                 "handle_source", DeploymentHandleSource.REPLICA
@@ -1761,7 +1761,7 @@ async def test_backoff_index_handling(pow_2_router, backoff_index: int):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
 async def test_replicas_actor_died_error(
-    pow_2_router: PowerOfTwoChoicesReplicaRouter,
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):
     """
     If replicas return an ActorDiedError, they should be removed from the
@@ -1795,7 +1795,7 @@ async def test_replicas_actor_died_error(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
 async def test_replicas_actor_unavailable_error(
-    pow_2_router: PowerOfTwoChoicesReplicaRouter,
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):
     """
     If replicas return an ActorUnavailableError, they should remain in the

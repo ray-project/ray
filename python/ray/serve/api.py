@@ -403,7 +403,7 @@ def deployment(
             deployment. This can be a string or a class. All the deployment
             handle created for this deployment will use the routing policy
             defined by the request router. Default to Serve's
-            PowerOfTwoChoicesReplicaRouter.
+            PowerOfTwoChoicesRequestRouter.
 
     Returns:
         `Deployment`

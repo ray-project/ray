@@ -24,7 +24,7 @@ from ray.serve._private.request_router.request_router import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PowerOfTwoChoicesReplicaRouter(
+class PowerOfTwoChoicesRequestRouter(
     FIFOMixin, LocalityMixin, MultiplexMixin, RequestRouter
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
