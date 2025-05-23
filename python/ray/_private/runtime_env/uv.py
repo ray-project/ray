@@ -4,6 +4,7 @@
 from typing import Dict, List, Optional
 import os
 import hashlib
+from python.ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.utils import check_output_cmd
@@ -15,7 +16,7 @@ import logging
 import json
 import asyncio
 import sys
-from ray._private.utils import try_to_create_directory, get_directory_size_bytes
+from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
 

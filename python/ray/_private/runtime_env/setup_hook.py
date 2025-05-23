@@ -7,7 +7,7 @@ from typing import Dict, Any, Callable, Union, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import load_class
+from python.ray._common.utils import load_class
 import ray.cloudpickle as pickle
 from ray.runtime_env import RuntimeEnv
 

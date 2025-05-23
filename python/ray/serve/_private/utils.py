@@ -20,9 +20,8 @@ import requests
 
 import ray
 import ray.util.serialization_addons
-from ray._common.utils import import_attr
+from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
@@ -344,7 +343,7 @@ def in_interactive_shell():
 def guarded_deprecation_warning(*args, **kwargs):
     """Wrapper for deprecation warnings, guarded by a flag."""
     if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
-        from ray._private.utils import deprecated
+        from python.ray._common.utils import deprecated
 
         return deprecated(*args, **kwargs)
     else:

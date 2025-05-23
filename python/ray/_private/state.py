@@ -4,15 +4,13 @@ import sys
 from collections import defaultdict
 from typing import Dict, Optional
 
+from python.ray._common.utils import binary_to_hex, decode, hex_to_binary
 from ray._private.protobuf_compat import message_to_dict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import (
-    binary_to_hex,
-    decode,
-    hex_to_binary,
     validate_actor_state_name,
 )
 from ray._raylet import GlobalStateAccessor

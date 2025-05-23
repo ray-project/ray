@@ -34,6 +34,7 @@ from typing import (
 from urllib.parse import urlparse
 
 import colorama
+from python.ray._common.utils import load_class
 import setproctitle
 
 from typing import Literal, Protocol
@@ -77,7 +78,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
-from ray._private.utils import get_ray_doc_version, load_class
+from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
