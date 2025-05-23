@@ -391,10 +391,14 @@ class AsyncioRouter:
 
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
-        # async def _request_router_initialized():
-        #     return asyncio.Event()
-        # self._request_router_initialized = asyncio.run_coroutine_threadsafe(_request_router_initialized(), self._event_loop)
-        self._request_router_initialized = asyncio.Event()
+
+        async def _request_router_initialized():
+            return asyncio.Event()
+
+        self._request_router_initialized = asyncio.run_coroutine_threadsafe(
+            _request_router_initialized(), self._event_loop
+        ).result()
+        # self._request_router_initialized = asyncio.Event()
         if self._request_router:
             self._request_router_initialized.set()
         self._resolve_request_arg_func = resolve_request_arg_func
@@ -613,14 +617,14 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         # while not self._request_router_initialized.is_set():
         #     await asyncio.sleep(0.1)
-        # await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
+        await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
         # f = asyncio.run_coroutine_threadsafe(self._request_router_initialized, self._event_loop)
         # lock_acquire_event, cancel_block_event = f.result()
         # await lock_acquire_event.wait()
 
-        asyncio.run_coroutine_threadsafe(
-            self._request_router_initialized.wait(), loop=self._event_loop
-        )
+        # asyncio.run_coroutine_threadsafe(
+        #     self._request_router_initialized.wait(), loop=self._event_loop
+        # )
 
         r = await self.request_router.choose_replica_for_request(pr)
 
@@ -695,10 +699,10 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         # while not self._request_router_initialized.is_set():
         #     await asyncio.sleep(0.1)
-        # await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
-        asyncio.run_coroutine_threadsafe(
-            self._request_router_initialized.wait(), loop=self._event_loop
-        )
+        await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
+        # asyncio.run_coroutine_threadsafe(
+        #     self._request_router_initialized.wait(), loop=self._event_loop
+        # )
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
