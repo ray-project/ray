@@ -518,7 +518,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskAttempt GetTaskAttempt() const;
 
  private:
-  void ComputeResources();
+  Status ComputeResources();
 
   /// Field storing required resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
