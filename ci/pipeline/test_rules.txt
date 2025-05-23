@@ -91,6 +91,10 @@ python/ray/util/client/
 @ python ray_client
 ;
 
+python/ray/util/dask/
+@ python dask
+;
+
 python/ray/util/spark/
 @ python spark_on_ray
 ;

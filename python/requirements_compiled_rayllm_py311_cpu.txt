@@ -3039,8 +3039,19 @@ transformers==4.51.3 \
     #   compressed-tensors
     #   vllm
     #   xgrammar
-triton==3.3.0 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:8cf975f47838c495a6a1a71007abad31b56312924a97d78874412de3232a7993
+triton==3.2.0 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:0fc1217eed33c7695272f981f5a8874ce3cb0195bbb2bfed16d58edd0aefef04 \
+    --hash=sha256:142dd3a9ac2fc3433768eeb4a4cd120655e2f658f4bf42726d2ea7f3748abffa \
+    --hash=sha256:30ceed0eff2c4a73b14eb63e052992f44bbdf175f3fad21e1ac8097a772de7ee \
+    --hash=sha256:468a01c9aa6e18fe2bba49c5e5002c1fd5f61b1af891c0594eaf446fe1aaae10 \
+    --hash=sha256:8009a1fb093ee8546495e96731336a33fb8856a38e45bb4ab6affd6dbc3ba220 \
+    --hash=sha256:8d9b215efc1c26fa7eefb9a157915c92d52e000d2bf83e5f69704047e63f125c \
+    --hash=sha256:b3e54983cd51875855da7c68ec05c05cf8bb08df361b1d5b69e05e40b0c9bd62 \
+    --hash=sha256:d528960c898f74596d5a8af1d70a7f0899c05a0781205eab51407b67f1644652 \
+    --hash=sha256:dd88c7a4255991bf034e1e381e26636f43d2f01a0f244c27b9c7dceae5656eb9 \
+    --hash=sha256:e5dfa23ba84541d7c0a531dfce76d8bcd19159d50a4a8b14ad01e91734a5c1b0 \
+    --hash=sha256:f1679fde231fb04c96cb5a01b160c8d0294ce6f7c122565d8b33ad8a910422d7 \
+    --hash=sha256:f24212d12744266f6229f90f820f34c43a538a69d6511b8e92ee392d2dc0d38b
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   xgrammar
@@ -3453,4 +3464,3 @@ zipp==3.19.2 \
 
 # The following packages were excluded from the output:
 # ray
-# setuptools

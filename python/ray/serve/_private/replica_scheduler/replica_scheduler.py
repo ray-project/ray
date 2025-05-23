@@ -49,6 +49,117 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
+class LocalityScheduleMixin:
+    """Mixin for locality scheduling.
+
+    This mixin is used to schedule requests to replicas that are colocated
+    with the handle. It adds necessary attributes and methods to keep track of
+    locality scopes and offer the helpers to apply locality scheduling and
+    rank replicas based on locality.
+    """
+
+    def __init__(
+        self,
+        self_node_id: Optional[str] = None,
+        prefer_local_node_routing: bool = False,
+        prefer_local_az_routing: bool = False,
+        self_availability_zone: Optional[str] = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._self_node_id = self_node_id
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
+        self._self_availability_zone = self_availability_zone
+
+        # Colocated replicas (e.g. wrt node, AZ)
+        self._colocated_replica_ids: DefaultDict[
+            LocalityScope, Set[ReplicaID]
+        ] = defaultdict(set)
+        self._replica_id_set: Set[ReplicaID] = set()
+
+    def discard_colocated_replica_ids_on_replica_actor_died(
+        self, replica_id: ReplicaID
+    ):
+        """Remove the replica ID from the colocated replica IDs.
+        This is called when a replica actor dies.
+        """
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def update_colocated_replica_ids_with_replicas(
+        self, replicas: List[RunningReplica]
+    ):
+        """Update the colocated replica IDs based on the replicas.
+        This is called when the replicas are updated.
+        """
+        new_colocated_replica_ids = defaultdict(set)
+
+        for r in replicas:
+            if self._self_node_id is not None and r.node_id == self._self_node_id:
+                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
+            if (
+                self._self_availability_zone is not None
+                and r.availability_zone == self._self_availability_zone
+            ):
+                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
+                    r.replica_id
+                )
+
+        self._colocated_replica_ids = new_colocated_replica_ids
+
+    def apply_locality_scheduling(
+        self,
+        pending_request: Optional[PendingRequest] = None,
+    ) -> Set[ReplicaID]:
+        """Apply locality scheduling to the pending request.
+
+        When the reqeust is None, return all replicas. Each call will try to
+        schedule the request to replicas in the priority of first on the
+        same node, then in the same availability zone, and finally all
+        replicas.
+
+        Args:
+            pending_request: The pending request to be scheduled.
+        Returns:
+            A set of replica IDs that are candidates based on
+            the locality policy.
+        """
+
+        if not pending_request:
+            return self._replica_id_set
+
+        if (
+            self._prefer_local_node_routing
+            and not pending_request.scheduling_context.tried_same_node
+            and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+        ):
+            # Attempt to schedule requests to replicas on the
+            # same node at most once
+            candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+            pending_request.scheduling_context.tried_same_node = True
+            pending_request.scheduling_context.should_backoff = False
+        elif (
+            self._prefer_local_az_routing
+            and not pending_request.scheduling_context.tried_same_az
+            and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
+        ):
+            # Attempt to schedule requests to replicas in the same
+            # AZ at most once
+            candidate_replica_ids = self._colocated_replica_ids[
+                LocalityScope.AVAILABILITY_ZONE
+            ]
+            pending_request.scheduling_context.tried_same_az = True
+            pending_request.scheduling_context.should_backoff = False
+        else:
+            # On subsequent iterations or when there are no replicas on the same
+            # node or AZ, consider all available replicas.
+            candidate_replica_ids = self._replica_id_set
+            pending_request.scheduling_context.should_backoff = True
+        return candidate_replica_ids
+
+
 class MultiplexScheduleMixin:
     """Mixin for multiplex scheduling.
 
@@ -71,6 +182,22 @@ class MultiplexScheduleMixin:
         self._multiplexed_model_id_fallback_match: Set[str] = set()
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
+
+    def _get_pending_request_matching_multiplexed_model_id(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        """Matching pending request based on the request metadata."""
+        if request_metadata is None or not request_metadata.multiplexed_model_id:
+            return None
+
+        for pr in self._pending_requests_to_fulfill:
+            if (
+                not pr.future.done()
+                and pr.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            ):
+                return pr
 
     def update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -184,6 +311,59 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
+class FIFOMixin:
+    """Mixin for FIFO scheduling.
+
+    This mixin is used to schedule requests in FIFO order, optionally prioritizing
+    requests with matching metadata. ReplicaScheduler's default behavior is
+    out-of-order scheduling and match exactly the internal request id of
+    the request.
+    """
+
+    def _get_pending_request_matching_metadata(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        """Matching pending request based on the request metadata.
+
+        If multiplex mixin is used, this will be using the multiplexed model
+        id for the matching. Else, it will return none as no matching pending request.
+        """
+        if hasattr(self, "_get_pending_request_matching_multiplexed_model_id"):
+            return self._get_pending_request_matching_multiplexed_model_id(
+                request_metadata
+            )
+
+        return None
+
+    def fulfill_next_pending_request(
+        self,
+        replica: RunningReplica,
+        request_metadata: Optional[RequestMetadata] = None,
+    ):
+        """Assign the replica to the next pending request in FIFO order.
+
+        If a pending request has been cancelled, it will be popped from the queue
+        and not assigned.
+        """
+        # First try to match a pending request based on the request metadata.
+        matched_pending_request = self._get_pending_request_matching_metadata(
+            request_metadata
+        )
+        if matched_pending_request is not None:
+            matched_pending_request.future.set_result(replica)
+            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            return
+
+        # If no pending request matches the request metadata, fulfill the next in the
+        # queue in FIFO order, passing over futures that have been cancelled.
+        while len(self._pending_requests_to_fulfill) > 0:
+            pr = self._pending_requests_to_fulfill.popleft()
+            if not pr.future.done():
+                pr.future.set_result(replica)
+                break
+
+
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
@@ -207,12 +387,8 @@ class ReplicaScheduler(ABC):
         self,
         deployment_id: DeploymentID,
         handle_source: DeploymentHandleSource,
-        prefer_local_node_routing: bool = False,
-        prefer_local_az_routing: bool = False,
-        self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_actor_handle: Optional[ActorHandle] = None,
-        self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
         create_replica_wrapper_func: Optional[
@@ -223,11 +399,7 @@ class ReplicaScheduler(ABC):
     ):
         self._deployment_id = deployment_id
         self._handle_source = handle_source
-        self._prefer_local_node_routing = prefer_local_node_routing
-        self._prefer_local_az_routing = prefer_local_az_routing
-        self._self_node_id = self_node_id
         self._self_actor_handle = self_actor_handle
-        self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
 
@@ -247,11 +419,6 @@ class ReplicaScheduler(ABC):
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
         self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
 
-        # Colocated replicas (e.g. wrt node, AZ)
-        self._colocated_replica_ids: DefaultDict[
-            LocalityScope, Set[ReplicaID]
-        ] = defaultdict(set)
-
         # Tasks running the scheduling loop. The size of this set may vary over time
         # as new tasks will be scheduled when a request comes in or new replicas are
         # added, but it will not exceed self.max_num_scheduling_tasks.
@@ -259,9 +426,7 @@ class ReplicaScheduler(ABC):
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
-        # requests in FIFO order by scheduling tasks once they've acquired a replica.
-        # To avoid long tail latencies due to backoff, the scheduling task started by
-        # a given request may not be the one to fulfill it.
+        # requests (potentially out of order) by scheduling tasks once they've acquired a replica.
         # - self._pending_requests_to_schedule is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for scheduling tasks to know which multiplexed model IDs they
@@ -364,8 +529,8 @@ class ReplicaScheduler(ABC):
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
         self._replica_id_set.discard(replica_id)
-        for id_set in self._colocated_replica_ids.values():
-            id_set.discard(replica_id)
+        if hasattr(self, "discard_colocated_replica_ids_on_replica_actor_died"):
+            self.discard_colocated_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
@@ -388,7 +553,8 @@ class ReplicaScheduler(ABC):
         """
         new_replicas = {}
         new_replica_id_set = set()
-        new_colocated_replica_ids = defaultdict(set)
+        if hasattr(self, "update_colocated_replica_ids_with_replicas"):
+            self.update_colocated_replica_ids_with_replicas(replicas)
         if hasattr(self, "update_multiplexed_model_ids_with_replicas"):
             self.update_multiplexed_model_ids_with_replicas(replicas)
 
@@ -404,15 +570,6 @@ class ReplicaScheduler(ABC):
 
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
-            if self._self_node_id is not None and r.node_id == self._self_node_id:
-                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
-            if (
-                self._self_availability_zone is not None
-                and r.availability_zone == self._self_availability_zone
-            ):
-                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
-                    r.replica_id
-                )
 
         if self._replica_id_set != new_replica_id_set:
             replica_id_set_strs = {r.unique_id for r in new_replica_id_set}
@@ -428,7 +585,6 @@ class ReplicaScheduler(ABC):
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
-        self._colocated_replica_ids = new_colocated_replica_ids
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
@@ -598,18 +754,23 @@ class ReplicaScheduler(ABC):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
-    def _get_pending_request_matching_metadata(
+    def _get_pending_request_matching_internal_request_id(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
+        """Get the pending request that matches on the internal request id.
+
+        If no request metadata is provided or no request is found that matches the internal request ID,
+        return None.
+        """
+        if request_metadata is None:
             return None
 
         for pr in self._pending_requests_to_fulfill:
             if (
                 not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
+                and pr.metadata.internal_request_id
+                == request_metadata.internal_request_id
             ):
                 return pr
 
@@ -620,28 +781,19 @@ class ReplicaScheduler(ABC):
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending request in FIFO order.
+        """Assign the replica to the next pending request, potentially not in order of when the request arrived.
 
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # First try to match a pending request based on the request metadata (currently
-        # this only looks at the multiplexed model ID).
-        matched_pending_request = self._get_pending_request_matching_metadata(
-            request_metadata
+        # Find the pending request that matches exactly.
+        matched_pending_request = (
+            self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
-
-        # If no pending request matches the request metadata, fulfill the next in the
-        # queue in FIFO order, passing over futures that have been cancelled.
-        while len(self._pending_requests_to_fulfill) > 0:
-            pr = self._pending_requests_to_fulfill.popleft()
-            if not pr.future.done():
-                pr.future.set_result(replica)
-                break
 
     def _get_next_pending_request_to_schedule(
         self,
@@ -807,9 +959,6 @@ class ReplicaScheduler(ABC):
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
         """Chooses a replica to send the provided request to.
-
-        By default, requests are scheduled in FIFO order, so this places a future on the
-        back of an internal queue that will be popped when a replica is available.
 
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
