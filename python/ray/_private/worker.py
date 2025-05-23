@@ -3261,6 +3261,12 @@ def _make_remote(function_or_class, options):
 
 
 class RemoteDecorator(Protocol):
+    # Pass on typing actors for now. The following makes it so no type errors
+    # are generated for actors.
+    @overload
+    def __call__(self, __t: type) -> Any:
+        ...
+
     @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
@@ -3321,11 +3327,12 @@ class RemoteDecorator(Protocol):
     ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
         ...
 
-    # Pass on typing actors for now. The following makes it so no type errors
-    # are generated for actors.
-    @overload
-    def __call__(self, __t: type) -> Any:
-        ...
+
+# Pass on typing actors for now. The following makes it so no type errors
+# are generated for actors.
+@overload
+def remote(__t: type) -> Any:
+    ...
 
 
 @overload
@@ -3350,57 +3357,50 @@ def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3], R]
+    __function: Callable[[T0, T1, T2, T3], R],
 ) -> RemoteFunction3[R, T0, T1, T2, T3]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4], R]
+    __function: Callable[[T0, T1, T2, T3, T4], R],
 ) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5], R],
 ) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R],
 ) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R],
 ) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R],
 ) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R],
 ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-    ...
-
-
-# Pass on typing actors for now. The following makes it so no type errors
-# are generated for actors.
-@overload
-def remote(__t: type) -> Any:
     ...
 
 
