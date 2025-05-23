@@ -759,6 +759,9 @@ def test_workload_placement_metrics(ray_start_regular):
     a = Actor.remote()
     ray.get(a.ready.remote())
     del a
+    import gc
+
+    gc.collect()
     pg = placement_group(bundles=[{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 

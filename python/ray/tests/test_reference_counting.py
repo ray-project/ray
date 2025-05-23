@@ -556,6 +556,9 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
     del a
     del b
+    import gc
+
+    gc.collect()
     wait_for_condition(_all_actors_dead, timeout=10)
 
 
