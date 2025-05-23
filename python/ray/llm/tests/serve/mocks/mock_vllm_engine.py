@@ -2,10 +2,14 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import Dict, Optional
+from typing import AsyncGenerator, Dict, Optional
+from transformers import AutoTokenizer
 
 from PIL import Image
+from vllm import CompletionOutput, PromptType, RequestOutput
+from vllm.engine.protocol import EngineClient
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
+from vllm.config import KVTransferConfig, VllmConfig, ModelConfig
 
 from ray.llm._internal.serve.configs.error_handling import ValidationError
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
@@ -27,11 +31,13 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
+    KV_TRANSFER_PARAMS_KEY,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 
 
 class MockVLLMEngine(LLMEngine):
@@ -162,6 +168,9 @@ class MockVLLMEngine(LLMEngine):
                 frequency_penalty=sampling_params.frequency_penalty
                 if sampling_params.frequency_penalty is not None
                 else 0.0,
+                repetition_penalty=sampling_params.repetition_penalty
+                if sampling_params.repetition_penalty is not None
+                else 1.0,
                 temperature=sampling_params.temperature
                 if sampling_params.temperature is not None
                 else 1.0,
@@ -402,6 +411,194 @@ class MockJSONModeVLLMEngine(MockVLLMEngine):
         new_sampling_params = super()._parse_sampling_params(sampling_params)
         new_sampling_params.response_format = sampling_params.response_format
         return new_sampling_params
+
+
+class MockPDDisaggVLLMEngineClient(EngineClient):
+    """
+    Mock vllm EngineClient that supports PD Disaggregation.
+    """
+
+    def __init__(self, vllm_config: VllmConfig):
+        self._llm_config = vllm_config
+        self._model_config = vllm_config.model_config
+
+    @property
+    def kv_transfer_config(self):
+        # https://github.com/vllm-project/vllm/blob/980a172474fa0f32433dda87ae1fa4aadba24c51/vllm/config.py#L4061
+        kv_transfer_config = self._llm_config.kv_transfer_config
+        if kv_transfer_config is not None:
+            assert isinstance(kv_transfer_config, KVTransferConfig)
+        return kv_transfer_config
+
+    @staticmethod
+    async def async_range(count):
+        for i in range(count):
+            yield i
+            await asyncio.sleep(0.0)
+
+    def is_running(self) -> bool:
+        return True
+
+    @property
+    def is_stopped(self) -> bool:
+        return False
+
+    @property
+    def errored(self) -> bool:
+        return False
+
+    @property
+    def dead_error(self) -> BaseException:
+        return None
+
+    def generate(
+        self,
+        prompt: PromptType,
+        sampling_params: VLLMInternalSamplingParams,
+        request_id: str,
+        **kwargs,
+    ) -> AsyncGenerator[RequestOutput, None]:
+        """Generate outputs for a request."""
+        max_tokens = sampling_params.max_tokens or randint(1, 10)
+
+        # vLLM uses `extra_args` to pass in `kv_transfer_params`:
+        # https://github.com/vllm-project/vllm/blob/980a172474fa0f32433dda87ae1fa4aadba24c51/vllm/v1/request.py#L65
+        kv_transfer_params = None
+        if (
+            self.kv_transfer_config is not None
+            and KV_TRANSFER_PARAMS_KEY in sampling_params.extra_args
+        ):
+            # For now we don't test the items in request/response, so just pass empty dict.
+            kv_transfer_params = {}  # noqa: F841
+
+        async def generate_response():
+            # vLLM EngineClient spits accumulated output in the response.
+            # ray serve's engine spits output in chunk.
+            accumulated_output = ""
+            async for i in self.async_range(max_tokens):
+                accumulated_output += f"mock_pd_client_response_{i} "
+                yield RequestOutput(
+                    finished=(i == max_tokens - 1),
+                    request_id=request_id,
+                    prompt=prompt,
+                    prompt_token_ids=[i],
+                    prompt_logprobs=[0.0],
+                    outputs=[
+                        CompletionOutput(
+                            index=i,
+                            text=accumulated_output,
+                            token_ids=[i],
+                            cumulative_logprob=None,
+                            logprobs=None,
+                        )
+                    ],
+                    # In vllm==0.8.5, RequestOutput does not accept kv_transfer_params
+                    # which will raise exception. see https://github.com/vllm-project/vllm/pull/18513
+                    # TODO(lk-chen): uncomment this once we bump vllm version in test env.
+                    # kv_transfer_params=kv_transfer_params,
+                )
+
+        return generate_response()
+
+    def encode(
+        self,
+        prompt: PromptType,
+        request_id: str,
+        **kwargs,
+    ) -> AsyncGenerator:
+        """Generate outputs for a request from a pooling model."""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def abort(self, request_id: str) -> None:
+        """Abort a request.
+
+        Args:
+            request_id: The unique id of the request.
+        """
+        return
+
+    async def get_vllm_config(self):
+        """Get the vllm configuration of the vLLM engine."""
+        return self._llm_config
+
+    async def get_model_config(self):
+        """Get the model configuration of the vLLM engine."""
+        return self._model_config
+
+    async def get_decoding_config(self):
+        """Get the decoding configuration of the vLLM engine."""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def get_input_preprocessor(self):
+        """Get the input processor of the vLLM engine."""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def get_tokenizer(
+        self,
+        lora_request=None,
+    ) -> any:
+        """Get the appropriate tokenizer for the request"""
+        return AutoTokenizer.from_pretrained(self._model_config.model)
+
+    async def is_tracing_enabled(self) -> bool:
+        """Check if tracing is enabled"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def do_log_stats(
+        self,
+        scheduler_outputs=None,
+        model_output=None,
+    ) -> None:
+        raise NotImplementedError("Not expected to be reached")
+
+    async def check_health(self) -> None:
+        """Raise if unhealthy"""
+        return
+
+    async def start_profile(self) -> None:
+        """Start profiling the engine"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def stop_profile(self) -> None:
+        """Start profiling the engine"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def reset_prefix_cache(self, device=None) -> None:
+        """Reset the prefix cache"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def sleep(self, level: int = 1) -> None:
+        """Sleep the engine"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def wake_up(self, tags: Optional[list[str]] = None) -> None:
+        """Wake up the engine"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is sleeping"""
+        raise NotImplementedError("Not expected to be reached")
+
+    async def add_lora(self, lora_request) -> None:
+        """Load a new LoRA adapter into the engine for future requests."""
+        raise NotImplementedError("Not expected to be reached")
+
+
+class MockPDDisaggVLLMEngine(VLLMEngine):
+    async def _start_engine(self) -> EngineClient:
+        return MockPDDisaggVLLMEngineClient(
+            VllmConfig(
+                model_config=ModelConfig(
+                    model=self.llm_config.model_loading_config.model_id,
+                    task="auto",
+                    tokenizer=self.llm_config.model_loading_config.model_id,
+                    tokenizer_mode="auto",
+                    trust_remote_code=False,
+                    dtype="auto",
+                    seed=0,
+                )
+            )
+        )
 
 
 def generate_from_schema(schema):
