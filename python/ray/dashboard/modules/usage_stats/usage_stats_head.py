@@ -67,7 +67,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         grafana_running = False
         try:
-            resp = requests.get(f"{self._dashboard_url_base}")
+            resp = requests.get(f"{self._dashboard_url_base}/api/grafana_health")
             if resp.status_code == 200:
                 json = resp.json()
                 grafana_running = (

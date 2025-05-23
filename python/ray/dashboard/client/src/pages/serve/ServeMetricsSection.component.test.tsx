@@ -42,7 +42,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
       value={{
         metricsContextLoaded: true,
         grafanaHost: undefined,
-        grafanaOrgId: undefined,
+        grafanaOrgId: "1",
         dashboardUids: {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",

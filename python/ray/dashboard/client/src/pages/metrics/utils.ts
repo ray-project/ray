@@ -43,7 +43,7 @@ const fetchPrometheusHealthcheck = async () => {
 
 type MetricsInfo = {
   grafanaHost?: string;
-  grafanaOrgId?: string;
+  grafanaOrgId: string;
   sessionName?: string;
   prometheusHealth?: boolean;
   dashboardUids?: DashboardUids;
@@ -53,7 +53,7 @@ type MetricsInfo = {
 export const getMetricsInfo = async () => {
   const info: MetricsInfo = {
     grafanaHost: undefined,
-    grafanaOrgId: undefined,
+    grafanaOrgId: "1",
     sessionName: undefined,
     prometheusHealth: undefined,
     dashboardUids: undefined,

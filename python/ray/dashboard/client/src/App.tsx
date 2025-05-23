@@ -83,7 +83,7 @@ export type GlobalContextType = {
   /**
    * The param 'orgId' used in grafana. Default is 1.
    */
-  grafanaOrgId: string | undefined;
+  grafanaOrgId: string;
   /**
    * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
@@ -115,7 +115,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   namespaceMap: {},
   metricsContextLoaded: false,
   grafanaHost: undefined,
-  grafanaOrgId: undefined,
+  grafanaOrgId: "1",
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
@@ -134,7 +134,7 @@ const App = () => {
     namespaceMap: {},
     metricsContextLoaded: false,
     grafanaHost: undefined,
-    grafanaOrgId: undefined,
+    grafanaOrgId: "1",
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
