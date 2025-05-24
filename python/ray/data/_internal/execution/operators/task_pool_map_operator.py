@@ -98,7 +98,7 @@ class TaskPoolMapOperator(MapOperator):
             )
 
         data_context = self.data_context
-
+        # print("TASKPOOL MAP TASK ARGS", self.get_map_task_kwargs())
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
             data_context,
