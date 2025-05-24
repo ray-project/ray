@@ -12,7 +12,6 @@ import numpy as np
 from dist_xgboost.serve import main as serve_main
 
 
-
 from dist_xgboost.infer import main as inference_main
 
 
@@ -38,8 +37,6 @@ def test_train_main(mock_log_run_to_mlflow, mock_save_preprocessor):
     mock_log_run_to_mlflow.assert_called_once()
 
 
-
-
 @patch(
     "dist_xgboost.serve.load_model_and_preprocessor", mock_load_model_and_preprocessor
 )
@@ -47,12 +44,12 @@ def test_serve_main():
     serve_main()
 
 
-
 @patch(
     "dist_xgboost.infer.load_model_and_preprocessor", mock_load_model_and_preprocessor
 )
 def test_infer_main():
     inference_main()
+
 
 if __name__ == "__main__":
     test_train_main()
