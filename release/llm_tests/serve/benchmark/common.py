@@ -23,7 +23,9 @@ def get_llm_config(serve_config_file: str) -> Dict[str, Any]:
         loaded_llm_config = yaml.safe_load(f)
 
     application = loaded_llm_config["applications"][0]
-    assert "args" in application, f"Application must contain an 'args' key, got {application}"
+    assert (
+        "args" in application
+    ), f"Application must contain an 'args' key, got {application}"
     if "llm_configs" in application["args"]:
         config = application["args"]["llm_configs"][0]
     elif "prefill_config" in application["args"]:

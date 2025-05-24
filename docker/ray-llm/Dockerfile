@@ -98,7 +98,6 @@ mkdir -p "${TEMP_DIR}"
 
     sudo ldconfig
 )
-rm -rf "${TEMP_DIR}/ucx-1.18.0"
 
 (
     echo "Installing NIXL"
