@@ -11,6 +11,7 @@ from unittest import mock
 
 import pytest
 
+from python.ray._common.utils import try_to_create_directory
 import ray
 from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
@@ -34,7 +35,6 @@ from ray._private.test_utils import (
 from ray._private.utils import (
     get_conda_env_dir,
     get_conda_bin_executable,
-    try_to_create_directory,
 )
 
 if not os.environ.get("CI"):

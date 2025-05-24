@@ -19,6 +19,7 @@ from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
 
+from python.ray._common.utils import try_to_create_directory
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
@@ -29,7 +30,6 @@ from ray._private.services import serialize_config, get_address
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     open_log,
-    try_to_create_directory,
     try_to_symlink,
     validate_socket_filepath,
 )
