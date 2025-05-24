@@ -608,6 +608,10 @@ message TaskInfoEntry {
   optional string call_site = 27;
 }
 
+message LabelSelector {
+  map<string, string> label_selector_dict = 1;
+}
+
 message TaskAttempt {
   // The task id of the task attempt.
   bytes task_id = 1;
@@ -624,6 +628,9 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Label selector associated with this bundle.
+  // Populated from bundle_label_selector if provided.
+  map<string, string> label_selector = 4;
 }
 
 message PlacementGroupSpec {
@@ -652,6 +659,8 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // The array of label selectors to apply per-bundle in Placement Group.
+  repeated LabelSelector bundle_label_selector = 12;
 }
 
 message ObjectReference {

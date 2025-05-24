@@ -3849,6 +3849,7 @@ cdef class CoreWorker:
                             self,
                             c_string name,
                             c_vector[unordered_map[c_string, double]] bundles,
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
                             c_string strategy,
                             c_bool is_detached,
                             double max_cpu_fraction_per_node,
@@ -3883,7 +3884,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 max_cpu_fraction_per_node,
-                                c_soft_target_node_id),
+                                c_soft_target_node_id,
+                                bundle_label_selector),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
