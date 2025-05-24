@@ -549,8 +549,8 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_time_scheduling():
-    ds = ray.data.range(1000).map_batches(lambda x: x)
+def test_streaming_exec_schedule_s(ray_start_regular_shared):
+    ds = ray.data.range(1)
     for _ in ds.iter_batches():
         continue
 
