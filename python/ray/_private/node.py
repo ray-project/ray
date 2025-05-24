@@ -1663,17 +1663,6 @@ class Node:
             ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive
         )
 
-    def kill_reporter(self, check_alive: bool = True):
-        """Kill the reporter.
-
-        Args:
-            check_alive: Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive
-        )
-
     def kill_dashboard(self, check_alive: bool = True):
         """Kill the dashboard.
 
