@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import pytest
 import requests
@@ -17,6 +17,15 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     SERVE_DEFAULT_APP_NAME,
+)
+from ray.serve._private.replica_scheduler.common import (
+    PendingRequest,
+)
+from ray.serve._private.replica_scheduler.replica_scheduler import (
+    ReplicaScheduler,
+)
+from ray.serve._private.replica_scheduler.replica_wrapper import (
+    RunningReplica,
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
@@ -60,6 +69,20 @@ class AsyncCounter:
         self.count += 1
         await asyncio.sleep(0.01)
         return {"count": self.count}
+
+
+class FakeRequestRouter(ReplicaScheduler):
+    async def choose_replicas(
+        self,
+        replicas_ranks: List[List[RunningReplica]],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        return replicas_ranks
+
+
+@serve.deployment(request_router_class=FakeRequestRouter)
+class AppWithCustomRequestRouter:
+    ...
 
 
 def test_e2e(serve_instance):
@@ -1060,6 +1083,13 @@ def test_max_ongoing_requests_none(serve_instance):
 
     serve.run(serve.deployment(A).options(max_ongoing_requests=12).bind())
     assert get_max_ongoing_requests() == 12
+
+
+def test_deploy_app_with_custom_request_router(serve_instance):
+    """Test deploying an app with a custom request router configured in the
+    deployment decorator."""
+
+    serve.run(AppWithCustomRequestRouter.bind())
 
 
 if __name__ == "__main__":
