@@ -112,6 +112,8 @@ def plan_project_op(
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
     map_transformer = _create_map_transformer_for_block_based_map_op(
+        None,
+        None,
         transform_fn,
     )
 
@@ -177,7 +179,7 @@ def plan_filter_op(
         filter_fn, init_fn = _parse_op_fn(op)
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, init_fn
+            op._fn_args, op._fn_kwargs, transform_fn, init_fn
         )
 
     return MapOperator.create(
@@ -544,7 +546,9 @@ def _generate_transform_fn_for_flat_map(
 def _generate_transform_fn_for_filter(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+    def transform_fn(
+        rows: Iterable[Row], _: TaskContext, *udf_fn_args, **udf_fn_kwargs
+    ) -> Iterable[Row]:
         for row in rows:
             if fn(row):
                 yield row
@@ -555,7 +559,9 @@ def _generate_transform_fn_for_filter(
 def _generate_transform_fn_for_map_block(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Block, Block]:
-    def transform_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+    def transform_fn(
+        blocks: Iterable[Block], _: TaskContext, *udf_fn_args, **udf_fn_kwargs
+    ) -> Iterable[Block]:
         for block in blocks:
             out_block = fn(block)
             yield out_block
@@ -615,13 +621,15 @@ def _create_map_transformer_for_row_based_map_op(
 
 
 def _create_map_transformer_for_block_based_map_op(
+    udf_fn_args,
+    udf_fn_kwargs,
     block_fn: MapTransformCallable[Block, Block],
     init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a block-based map operator."""
     transform_fns = [
         # Apply the UDF.
-        BlockMapTransformFn(block_fn),
+        BlockMapTransformFn(block_fn, udf_fn_args, udf_fn_kwargs),
         BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)

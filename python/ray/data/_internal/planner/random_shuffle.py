@@ -55,7 +55,7 @@ def generate_random_shuffle_fn(
             map_transformer.set_target_max_block_size(float("inf"))
 
             def upstream_map_fn(blocks):
-                return map_transformer.apply_transform(blocks, ctx)
+                return map_transformer.apply_transform(blocks, ctx, None, None)
 
             # If there is a fused upstream operator,
             # also use the ray_remote_args from the fused upstream operator.

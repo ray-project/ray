@@ -54,11 +54,15 @@ class MapTransformFn:
         udf_fn_kwargs: Optional[Dict[str, Any]] = None,
         is_udf: bool = False,
     ):
-        """
+        """Initialize the transform function configuration.
+
         Args:
-            callable: the underlying Python callable object.
-            input_type: the type of the input data.
-            output_type: the type of the output data.
+            input_type: The type of the input data.
+            output_type: The type of the output data.
+            category: Pre, Data, or Post process.
+            udf_fn_args: Args passed into the UDF in `_map_task`.
+            udf_fn_kwargs: Kwargs passed into the UDF in `_map_task`.
+            is_udf: True if the function is a UDF, otherwise False.
         """
         self._callable = callable
         self._input_type = input_type
@@ -250,8 +254,8 @@ class MapTransformer:
         self,
         input_blocks: Iterable[Block],
         ctx: TaskContext,
-        udf_fn_args_list: List[Iterable[Any]],
-        udf_fn_kwargs_list: List[Dict[str, Any]],
+        udf_fn_args_list: Optional[List[Iterable[Any]]],
+        udf_fn_kwargs_list: Optional[List[Dict[str, Any]]],
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
         assert (
@@ -260,15 +264,25 @@ class MapTransformer:
         for transform_fn in self._transform_fns:
             if not transform_fn.output_block_size_option:
                 transform_fn.set_target_max_block_size(self.target_max_block_size)
-
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
-        for transform_fn, udf_fn_args, udf_fn_kwargs in zip(
-            self._transform_fns, udf_fn_args_list, udf_fn_kwargs_list
-        ):
-            iter = transform_fn(iter, ctx, *udf_fn_args, **udf_fn_kwargs)
-            if transform_fn._is_udf:
-                iter = self._udf_timed_iter(iter)
+        if udf_fn_args_list is None and udf_fn_kwargs_list is None:
+            for transform_fn in self._transform_fns:
+                iter = transform_fn(iter, ctx, *[], **{})
+                if transform_fn._is_udf:
+                    iter = self._udf_timed_iter(iter)
+        elif udf_fn_args_list is not None and udf_fn_kwargs_list is not None:
+            assert len(self._transform_fns) == len(udf_fn_args_list) and len(
+                self._transform_fns
+            ) == len(udf_fn_kwargs_list)
+            for transform_fn, udf_fn_args, udf_fn_kwargs in zip(
+                self._transform_fns, udf_fn_args_list, udf_fn_kwargs_list
+            ):
+                iter = transform_fn(iter, ctx, *udf_fn_args, **udf_fn_kwargs)
+                if transform_fn._is_udf:
+                    iter = self._udf_timed_iter(iter)
+        else:
+            assert False, "invalid arguments"
         return iter
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
@@ -308,7 +322,7 @@ def create_map_transformer_from_block_fn(
     """
     return MapTransformer(
         [
-            BlockMapTransformFn(block_fn),
+            BlockMapTransformFn(block_fn, None, None),
         ],
         init_fn,
     )
@@ -682,7 +696,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     def __call__(
         self,
         iter: Iterable[MapTransformFnData],
-        _: TaskContext,
+        tc: TaskContext,
         *udf_fn_args: List[Any],
         **udf_fn_kwargs: Dict[str, Any],
     ) -> Iterable[Block]:
@@ -691,6 +705,9 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         Args:
             iter: the iterable of UDF-returned data, whose type
                 must match self._input_type.
+            tc: the task context
+            *udf_fn_args: args to be passed into udf in `_map_task`.
+            **udf_fn_kwargs: kwargs to be pass into udf in `_map_task`.
         """
         output_buffer = BlockOutputBuffer(self.output_block_size_option)
         if self._input_type == MapTransformFnDataType.Block:
