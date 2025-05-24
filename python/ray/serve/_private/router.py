@@ -353,6 +353,11 @@ class Router(ABC):
         pass
 
 
+async def create_event() -> asyncio.Event:
+    """Helper to create an asyncio event in the current event loop."""
+    return asyncio.Event()
+
+
 class AsyncioRouter:
     def __init__(
         self,
@@ -391,7 +396,13 @@ class AsyncioRouter:
 
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[ReplicaScheduler] = replica_scheduler
-        self._request_router_initialized = asyncio.Event()
+
+        if self._event_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
+            self._request_router_initialized = future.result()
+        else:
+            self._request_router_initialized = asyncio.Event()
+
         if self._request_router:
             self._request_router_initialized.set()
         self._resolve_request_arg_func = resolve_request_arg_func
@@ -608,9 +619,7 @@ class AsyncioRouter:
         request, so it's up to the caller to time out or cancel the request.
         """
         # Wait for the router to be initialized before sending the request.
-        while not self._request_router_initialized.is_set():
-            await asyncio.sleep(0.1)
-        # await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
+        await self._request_router_initialized.wait()
 
         r = await self.request_router.choose_replica_for_request(pr)
 
@@ -683,9 +692,7 @@ class AsyncioRouter:
         )
 
         # Wait for the router to be initialized before sending the request.
-        while not self._request_router_initialized.is_set():
-            await asyncio.sleep(0.1)
-        # await asyncio.wait_for(self._request_router_initialized.wait(), timeout=None)
+        await self._request_router_initialized.wait()
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
