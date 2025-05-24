@@ -1,3 +1,4 @@
+import abc
 import logging
 import uuid
 from abc import ABC, abstractmethod
@@ -5,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
+from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
@@ -18,8 +20,6 @@ from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
-
-from .ref_bundle import RefBundle
 
 logger = logging.getLogger(__name__)
 
@@ -654,3 +654,10 @@ class PhysicalOperator(Operator):
                     # failed with a different error, or cancellation failed.
                     # In all cases, we swallow the exception.
                     pass
+
+
+class ReportsExtraResourceUsage(abc.ABC):
+    @abc.abstractmethod
+    def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
+        """Returns resources used by this operator beyond standard accounting."""
+        ...
