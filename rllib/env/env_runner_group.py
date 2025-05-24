@@ -1003,6 +1003,7 @@ class EnvRunnerGroup:
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
+    @OldAPIStack
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
         """Calls `func` with all workers' sub-environments as args.
 
@@ -1026,6 +1027,7 @@ class EnvRunnerGroup:
             )
         )
 
+    @OldAPIStack
     def foreach_env_with_context(
         self, func: Callable[[BaseEnv, EnvContext], List[T]]
     ) -> List[List[T]]:
