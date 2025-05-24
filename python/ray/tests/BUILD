@@ -500,7 +500,7 @@ py_test_module_list(
         "test_channel_serialization.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
