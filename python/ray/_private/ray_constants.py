@@ -267,15 +267,12 @@ PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
-# TODO(sang): Delete it.
-PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
-PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
 PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER = "python-core-driver"
 PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
@@ -439,8 +436,6 @@ KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
 KV_NAMESPACE_JOB = b"job"
 KV_NAMESPACE_CLUSTER = b"cluster"
 KV_HEAD_NODE_ID_KEY = b"head_node_id"
-# Assure this stays in sync with kGcsPidKey in gcs_server.cc
-KV_GCS_PID = b"gcs_pid"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.

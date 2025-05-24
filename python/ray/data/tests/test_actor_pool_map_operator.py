@@ -4,7 +4,7 @@ import datetime
 import threading
 import time
 import unittest
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -49,8 +49,10 @@ class TestActorPool(unittest.TestCase):
     def teardown_class(self):
         ray.shutdown()
 
-    def _create_actor_fn(self) -> Tuple[ActorHandle, ObjectRef[Any]]:
-        actor = PoolWorker.remote(self._actor_node_id)
+    def _create_actor_fn(
+        self, labels: Dict[str, Any]
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
         return actor, ready_ref

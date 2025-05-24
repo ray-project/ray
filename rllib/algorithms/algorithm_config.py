@@ -81,6 +81,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
+from ray.util.placement_group import PlacementGroup
 
 
 if TYPE_CHECKING:
@@ -1303,6 +1304,7 @@ class AlgorithmConfig(_Config):
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
         rl_module_spec: Optional[RLModuleSpecType] = None,
+        placement_group: Optional["PlacementGroup"] = None,
     ) -> "LearnerGroup":
         """Builds and returns a new LearnerGroup object based on settings in `self`.
 
@@ -1334,7 +1336,11 @@ class AlgorithmConfig(_Config):
             rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
-        learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
+        learner_group = LearnerGroup(
+            config=self.copy(),
+            module_spec=rl_module_spec,
+            placement_group=placement_group,
+        )
 
         return learner_group
 

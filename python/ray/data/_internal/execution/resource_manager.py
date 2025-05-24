@@ -10,7 +10,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.physical_operator import (
+    PhysicalOperator,
+    ReportsExtraResourceUsage,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -161,6 +164,10 @@ class ResourceManager:
             op_running_usage.object_store_memory = self._estimate_object_store_memory(
                 op, state
             )
+
+            if isinstance(op, ReportsExtraResourceUsage):
+                op_usage.add(op.extra_resource_usage())
+
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage

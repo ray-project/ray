@@ -46,6 +46,7 @@ py_test_module_list(
         "test_advanced_9.py",
         "test_aggregated_prometheus_metrics.py",
         "test_async.py",
+        "test_asyncio.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
         "test_dashboard_profiler.py",
@@ -61,7 +62,9 @@ py_test_module_list(
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
+        "test_reference_counting.py",
         "test_reference_counting_2.py",
+        "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
     ],
     tags = [
@@ -78,7 +81,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_gcs_fault_tolerance.py",
         "test_global_gc.py",
         "test_job.py",
         "test_kill_subprocesses.py",
@@ -250,7 +252,6 @@ py_test_module_list(
         "test_logging_2.py",
         "test_metrics.py",
         "test_mpi.py",
-        "test_multi_node.py",
         "test_multi_node_2.py",
         "test_multi_tenancy.py",
         "test_multinode_failures.py",
@@ -437,7 +438,6 @@ py_test_module_list(
         "test_args.py",
         "test_array.py",
         "test_async_compat.py",
-        "test_asyncio.py",
         "test_asyncio_cluster.py",
         "test_autoscaling_policy.py",
         "test_bounded_unix_sockets.py",
@@ -631,7 +631,6 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
-        "test_autoscaler_drain_node_api.py",
         "test_autoscaler_gcp.py",
         "test_autoscaler_util.py",
     ],
@@ -734,10 +733,10 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_actor_resources.py",
+        "test_autoscaler_drain_node_api.py",
         "test_dataclient_disconnect.py",
         "test_iter.py",
         "test_placement_group.py",
-        "test_runtime_env_working_dir_remote_uri.py",
         "test_scheduling_performance.py",
         "test_state_api_2.py",
         "test_storage.py",
@@ -765,10 +764,12 @@ py_test_module_list(
         "test_failure.py",
         "test_failure_2.py",
         "test_generators.py",
+        "test_multi_node.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
         "test_reconstruction.py",
         "test_reconstruction_2.py",
+        "test_runtime_env_working_dir_remote_uri.py",
         "test_state_api.py",
         "test_task_events_2.py",
         "test_task_events_3.py",
@@ -788,6 +789,7 @@ py_test_module_list(
     size = "large",
     files = [
         "test_actor_advanced.py",
+        "test_gcs_fault_tolerance.py",
     ],
     tags = [
         "exclusive",
@@ -844,7 +846,6 @@ py_test_module_list(
         "test_object_spilling.py",
         "test_object_spilling_3.py",
         "test_placement_group_mini_integration.py",
-        "test_reference_counting.py",
         "test_scheduling_2.py",
     ],
     tags = [

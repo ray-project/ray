@@ -99,7 +99,19 @@ class ObjectManagerInterface {
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual int64_t PullManagerNumInactivePullsByTaskName(
       const TaskMetricsKey &task_key) const = 0;
-  virtual ~ObjectManagerInterface(){};
+  virtual int GetServerPort() const = 0;
+  virtual void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) = 0;
+  virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
+  virtual int64_t GetUsedMemory() const = 0;
+  virtual bool PullManagerHasPullsQueued() const = 0;
+  virtual int64_t GetMemoryCapacity() const = 0;
+  virtual std::string DebugString() const = 0;
+  virtual void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const = 0;
+  virtual double GetUsedMemoryPercentage() const = 0;
+  virtual void Stop() = 0;
+  virtual void RecordMetrics() = 0;
+
+  virtual ~ObjectManagerInterface() = default;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
@@ -139,7 +151,7 @@ class ObjectManager : public ObjectManagerInterface,
                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the port of the object manager rpc server.
-  int GetServerPort() const { return object_manager_server_.GetPort(); }
+  int GetServerPort() const override { return object_manager_server_.GetPort(); }
 
   bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const override {
     return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
@@ -172,18 +184,18 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
 
-  ~ObjectManager();
+  ~ObjectManager() override;
 
   /// Stop the Plasma Store eventloop. Currently it is only used to handle
   /// signals from Raylet.
-  void Stop();
+  void Stop() override;
 
   /// This methods call the plasma store which runs in a separate thread.
   /// Check if the given object id is evictable by directly calling plasma store.
   /// Plasma store will return true if the object is spillable, meaning it is only
   /// pinned by the raylet, so we can comfotable evict after spilling the object from
   /// local object manager. False otherwise.
-  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
+  bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -216,33 +228,35 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_ids the The list of ObjectIDs to be deleted.
   /// \param local_only Whether keep this request with local object store
   ///                   or send it to all the object stores.
-  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
+  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
 
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const;
+  std::string DebugString() const override;
 
   /// Record the internal stats.
-  void RecordMetrics();
+  void RecordMetrics() override;
 
   /// Populate object store stats.
   ///
   /// \param Output parameter.
-  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const override;
 
   void Tick(const boost::system::error_code &e);
 
   /// Get the current object store memory usage.
-  int64_t GetUsedMemory() const { return used_memory_; }
+  int64_t GetUsedMemory() const override { return used_memory_; }
 
-  int64_t GetMemoryCapacity() const { return config_.object_store_memory; }
+  int64_t GetMemoryCapacity() const override { return config_.object_store_memory; }
 
-  double GetUsedMemoryPercentage() const {
+  double GetUsedMemoryPercentage() const override {
     return static_cast<double>(used_memory_) / config_.object_store_memory;
   }
 
-  bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
+  bool PullManagerHasPullsQueued() const override {
+    return pull_manager_->HasPullsQueued();
+  }
 
  private:
   friend class TestObjectManager;

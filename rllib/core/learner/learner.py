@@ -240,6 +240,11 @@ class Learner(Checkpointable):
         # Whether self.build has already been called.
         self._is_built = False
 
+        # Attributes to be set separately (not by user's custom `build()` code)
+        # by a LearnerGroup.
+        self._learner_index = 0
+        self._placement_group = None
+
         # These are the attributes that are set during build.
 
         # The actual MultiRLModule used by this Learner.
@@ -1674,6 +1679,10 @@ class Learner(Checkpointable):
             reduce="sum",
             with_throughput=True,
         )
+
+    def _set_learner_index_and_placement_group(self, *, learner_index, placement_group):
+        self._learner_index = learner_index
+        self._placement_group = placement_group
 
     @Deprecated(new="Learner.update(batch=.., ..)", error=False)
     def update_from_batch(self, batch, **kwargs):
