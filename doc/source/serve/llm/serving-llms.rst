@@ -83,8 +83,6 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-                accelerator_type="A10G",
                 # You can customize the engine arguments (e.g. vLLM engine kwargs)
                 engine_kwargs=dict(
                     tensor_parallel_size=2,
@@ -112,8 +110,6 @@ Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-                accelerator_type="A10G",
                 # You can customize the engine arguments (e.g. vLLM engine kwargs)
                 engine_kwargs=dict(
                     tensor_parallel_size=2,
@@ -187,7 +183,6 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
             )
 
             llm_config2 = LLMConfig(
@@ -200,7 +195,6 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
             )
 
             app = build_openai_app({"llm_configs": [llm_config1, llm_config2]})
@@ -225,7 +219,6 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
             )
 
             llm_config2 = LLMConfig(
@@ -238,7 +231,6 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
             )
 
             # Deploy the application
@@ -268,7 +260,6 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                     - model_loading_config:
                         model_id: qwen-0.5b
                         model_source: Qwen/Qwen2.5-0.5B-Instruct
-                      accelerator_type: A10G
                       deployment_config:
                         autoscaling_config:
                             min_replicas: 1
@@ -276,7 +267,6 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                     - model_loading_config:
                         model_id: qwen-1.5b
                         model_source: Qwen/Qwen2.5-1.5B-Instruct
-                      accelerator_type: A10G
                       deployment_config:
                         autoscaling_config:
                             min_replicas: 1
@@ -308,7 +298,6 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
             model_loading_config:
               model_id: qwen-0.5b
               model_source: Qwen/Qwen2.5-0.5B-Instruct
-            accelerator_type: A10G
             deployment_config:
               autoscaling_config:
                 min_replicas: 1
@@ -320,7 +309,6 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
             model_loading_config:
               model_id: qwen-1.5b
               model_source: Qwen/Qwen2.5-1.5B-Instruct
-            accelerator_type: A10G
             deployment_config:
               autoscaling_config:
                 min_replicas: 1
@@ -470,7 +458,6 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                         max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
             )
 
             # Build and deploy the model
@@ -591,7 +578,6 @@ For structured output, you can use JSON mode similar to OpenAI's API:
                         max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
             )
 
             # Build and deploy the model
@@ -698,7 +684,8 @@ For multimodal models that can process both text and images:
         :sync: server
 
         .. code-block:: python
-
+            
+            # This example needs >= 40GB of GRAM per GPU to work (e.g. L40S, A100, etc.)
             from ray import serve
             from ray.serve.llm import LLMConfig, build_openai_app
 
@@ -715,7 +702,6 @@ For multimodal models that can process both text and images:
                         max_replicas=2,
                     )
                 ),
-                accelerator_type="L40S",
                 engine_kwargs=dict(
                     tensor_parallel_size=1,
                     max_model_len=8192,
@@ -793,8 +779,7 @@ You can then specify the `bucket_uri` in the `model_loading_config` to point to 
     applications:
     - args:
         llm_configs:
-            - accelerator_type: A10G
-              engine_kwargs:
+            - engine_kwargs:
                 max_model_len: 8192
               model_loading_config:
                 model_id: my_llama
@@ -829,8 +814,6 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
                 min_replicas=1, max_replicas=2,
             )
         ),
-        # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-        accelerator_type="A10G",
         runtime_env=dict(
             env_vars=dict(
                 HF_TOKEN=os.environ["HF_TOKEN"]
@@ -866,8 +849,6 @@ If you are using huggingface models, you can enable fast download by setting `HF
                 min_replicas=1, max_replicas=2,
             )
         ),
-        # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-        accelerator_type="A10G",
         runtime_env=dict(
             env_vars=dict(
                 HF_TOKEN=os.environ["HF_TOKEN"],
