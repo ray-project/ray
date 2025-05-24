@@ -294,6 +294,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                     for r in candidate_replica_ids:
                         queue_len = self._replica_queue_len_cache.get(r)
                         if queue_len is None:
+                            # Don't do any replica queue length probing; leave it to the default replica scheduler.
                             continue
                         else:
                             highest_queue_len = max(highest_queue_len, queue_len)
