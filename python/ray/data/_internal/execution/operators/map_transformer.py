@@ -54,11 +54,15 @@ class MapTransformFn:
         udf_fn_kwargs: Optional[Dict[str, Any]] = None,
         is_udf: bool = False,
     ):
-        """
+        """Initialize the transform function configuration.
+
         Args:
-            callable: the underlying Python callable object.
-            input_type: the type of the input data.
-            output_type: the type of the output data.
+            input_type: The type of the input data.
+            output_type: The type of the output data.
+            category: Pre, Data, or Post process.
+            udf_fn_args: Args passed into the UDF in `_map_task`.
+            udf_fn_kwargs: Kwargs passed into the UDF in `_map_task`.
+            is_udf: True if the function is a UDF, otherwise False.
         """
         self._callable = callable
         self._input_type = input_type
@@ -682,7 +686,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     def __call__(
         self,
         iter: Iterable[MapTransformFnData],
-        _: TaskContext,
+        tc: TaskContext,
         *udf_fn_args: List[Any],
         **udf_fn_kwargs: Dict[str, Any],
     ) -> Iterable[Block]:
@@ -691,6 +695,9 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         Args:
             iter: the iterable of UDF-returned data, whose type
                 must match self._input_type.
+            tc: the task context
+            *udf_fn_args: args to be passed into udf in `_map_task`.
+            **udf_fn_kwargs: kwargs to be pass into udf in `_map_task`.
         """
         output_buffer = BlockOutputBuffer(self.output_block_size_option)
         if self._input_type == MapTransformFnDataType.Block:
