@@ -79,20 +79,20 @@ struct Allocation {
 
  private:
   // Only created by Allocator
-  Allocation(void *address,
-             int64_t size,
-             MEMFD_TYPE fd,
-             ptrdiff_t offset,
-             int device_num,
-             int64_t mmap_size,
-             bool fallback_allocated)
-      : address(address),
-        size(size),
-        fd(std::move(fd)),
-        offset(offset),
-        device_num(device_num),
-        mmap_size(mmap_size),
-        fallback_allocated(fallback_allocated) {}
+  Allocation(void *_address,
+             int64_t _size,
+             MEMFD_TYPE _fd,
+             ptrdiff_t _offset,
+             int _device_num,
+             int64_t _mmap_size,
+             bool _fallback_allocated)
+      : address(_address),
+        size(_size),
+        fd(std::move(_fd)),
+        offset(_offset),
+        device_num(_device_num),
+        mmap_size(_mmap_size),
+        fallback_allocated(_fallback_allocated) {}
 
   // Test only
   Allocation()

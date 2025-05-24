@@ -99,28 +99,28 @@ struct PopWorkerRequest {
   PopWorkerCallback callback;
 
   PopWorkerRequest(rpc::Language lang,
-                   rpc::WorkerType worker_type,
+                   rpc::WorkerType _worker_type,
                    JobID job,
                    ActorID root_actor_id,
                    std::optional<bool> gpu,
                    std::optional<bool> actor_worker,
-                   rpc::RuntimeEnvInfo runtime_env_info,
-                   int runtime_env_hash,
+                   rpc::RuntimeEnvInfo _runtime_env_info,
+                   int _runtime_env_hash,
                    std::vector<std::string> options,
-                   std::optional<absl::Duration> worker_startup_keep_alive_duration,
-                   PopWorkerCallback callback)
+                   std::optional<absl::Duration> _worker_startup_keep_alive_duration,
+                   PopWorkerCallback _callback)
       : language(lang),
-        worker_type(worker_type),
+        worker_type(_worker_type),
         job_id(job),
         root_detached_actor_id(root_actor_id),
         is_gpu(gpu),
         is_actor_worker(actor_worker),
-        runtime_env_info(std::move(runtime_env_info)),
+        runtime_env_info(std::move(_runtime_env_info)),
         // this-> is needed to disambiguate the member variable from the ctor arg.
-        runtime_env_hash(runtime_env_hash),
+        runtime_env_hash(_runtime_env_hash),
         dynamic_options(std::move(options)),
-        worker_startup_keep_alive_duration(worker_startup_keep_alive_duration),
-        callback(std::move(callback)) {}
+        worker_startup_keep_alive_duration(_worker_startup_keep_alive_duration),
+        callback(std::move(_callback)) {}
 };
 
 /// \class WorkerPoolInterface
@@ -825,7 +825,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
-  int ray_debugger_external;
+  int ray_debugger_external_;
 
   /// If the first job has already been registered.
   bool first_job_registered_ = false;

@@ -51,7 +51,7 @@ struct RedisMatchPattern {
   const std::string escaped;
 
  private:
-  explicit RedisMatchPattern(std::string escaped) : escaped(std::move(escaped)) {}
+  explicit RedisMatchPattern(std::string _escaped) : escaped(std::move(_escaped)) {}
 };
 
 struct RedisCommand {

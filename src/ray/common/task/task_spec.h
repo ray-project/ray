@@ -78,11 +78,11 @@ struct SchedulingClassDescriptor {
   explicit SchedulingClassDescriptor(ResourceSet rs,
                                      FunctionDescriptor fd,
                                      int64_t d,
-                                     rpc::SchedulingStrategy scheduling_strategy)
+                                     rpc::SchedulingStrategy _scheduling_strategy)
       : resource_set(std::move(rs)),
         function_descriptor(std::move(fd)),
         depth(d),
-        scheduling_strategy(std::move(scheduling_strategy)) {}
+        scheduling_strategy(std::move(_scheduling_strategy)) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;
@@ -125,17 +125,17 @@ namespace std {
 template <>
 struct hash<ray::rpc::LabelOperator> {
   size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
-    size_t hash = std::hash<size_t>()(label_operator.label_operator_case());
+    size_t hash_value = std::hash<size_t>()(label_operator.label_operator_case());
     if (label_operator.has_label_in()) {
       for (const auto &value : label_operator.label_in().values()) {
-        hash ^= std::hash<std::string>()(value);
+        hash_value ^= std::hash<std::string>()(value);
       }
     } else if (label_operator.has_label_not_in()) {
       for (const auto &value : label_operator.label_not_in().values()) {
-        hash ^= std::hash<std::string>()(value);
+        hash_value ^= std::hash<std::string>()(value);
       }
     }
-    return hash;
+    return hash_value;
   }
 };
 
@@ -228,10 +228,10 @@ struct ConcurrencyGroup {
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &name,
-                   uint32_t max_concurrency,
+  ConcurrencyGroup(const std::string &_name,
+                   uint32_t _max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
-      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+      : name(_name), max_concurrency(_max_concurrency), function_descriptors(fds) {}
 
   std::string GetName() const { return name; }
 

@@ -211,18 +211,18 @@ using PlacementStrategy = rpc::PlacementStrategy;
 
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
-      std::string name,
-      PlacementStrategy strategy,
-      std::vector<std::unordered_map<std::string, double>> bundles,
+      std::string _name,
+      PlacementStrategy _strategy,
+      std::vector<std::unordered_map<std::string, double>> _bundles,
       bool is_detached_p,
-      double max_cpu_fraction_per_node,
-      NodeID soft_target_node_id = NodeID::Nil())
-      : name(std::move(name)),
-        strategy(strategy),
-        bundles(std::move(bundles)),
+      double _max_cpu_fraction_per_node,
+      NodeID _soft_target_node_id = NodeID::Nil())
+      : name(std::move(_name)),
+        strategy(_strategy),
+        bundles(std::move(_bundles)),
         is_detached(is_detached_p),
-        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        soft_target_node_id(soft_target_node_id) {
+        max_cpu_fraction_per_node(_max_cpu_fraction_per_node),
+        soft_target_node_id(_soft_target_node_id) {
     RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -302,13 +302,13 @@ namespace std {
 template <>
 struct hash<ray::rpc::LineageReconstructionTask> {
   size_t operator()(const ray::rpc::LineageReconstructionTask &task) const {
-    size_t hash = std::hash<std::string>()(task.name());
-    hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    size_t hash_value = std::hash<std::string>()(task.name());
+    hash_value ^= std::hash<ray::rpc::TaskStatus>()(task.status());
     for (const auto &label : task.labels()) {
-      hash ^= std::hash<std::string>()(label.first);
-      hash ^= std::hash<std::string>()(label.second);
+      hash_value ^= std::hash<std::string>()(label.first);
+      hash_value ^= std::hash<std::string>()(label.second);
     }
-    return hash;
+    return hash_value;
   }
 };
 }  // namespace std

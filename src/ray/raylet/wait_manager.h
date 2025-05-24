@@ -62,14 +62,14 @@ class WaitManager {
 
  private:
   struct WaitRequest {
-    WaitRequest(int64_t timeout_ms,
-                const WaitCallback &callback,
-                const std::vector<ObjectID> &object_ids,
-                uint64_t num_required_objects)
-        : timeout_ms(timeout_ms),
-          callback(callback),
-          object_ids(object_ids),
-          num_required_objects(num_required_objects) {}
+    WaitRequest(int64_t _timeout_ms,
+                const WaitCallback &_callback,
+                const std::vector<ObjectID> &_object_ids,
+                uint64_t _num_required_objects)
+        : timeout_ms(_timeout_ms),
+          callback(_callback),
+          object_ids(_object_ids),
+          num_required_objects(_num_required_objects) {}
     /// The period of time to wait before invoking the callback.
     const int64_t timeout_ms;
     /// The callback invoked when Wait is complete.

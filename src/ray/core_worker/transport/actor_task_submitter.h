@@ -257,14 +257,14 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     rpc::RayErrorInfo timeout_error_info;
     bool actor_preempted = false;
 
-    PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
-                                   TaskSpecification task_spec,
-                                   ray::Status status,
-                                   rpc::RayErrorInfo timeout_error_info)
-        : deadline_ms(deadline_ms),
-          task_spec(std::move(task_spec)),
-          status(std::move(status)),
-          timeout_error_info(std::move(timeout_error_info)) {}
+    PendingTaskWaitingForDeathInfo(int64_t _deadline_ms,
+                                   TaskSpecification _task_spec,
+                                   ray::Status _status,
+                                   rpc::RayErrorInfo _timeout_error_info)
+        : deadline_ms(_deadline_ms),
+          task_spec(std::move(_task_spec)),
+          status(std::move(_status)),
+          timeout_error_info(std::move(_timeout_error_info)) {}
   };
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
@@ -278,12 +278,12 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   struct ClientQueue {
     ClientQueue(ActorID actor_id,
                 bool execute_out_of_order,
-                int32_t max_pending_calls,
-                bool fail_if_actor_unreachable,
-                bool owned)
-        : max_pending_calls(max_pending_calls),
-          fail_if_actor_unreachable(fail_if_actor_unreachable),
-          owned(owned) {
+                int32_t _max_pending_calls,
+                bool _fail_if_actor_unreachable,
+                bool _owned)
+        : max_pending_calls(_max_pending_calls),
+          fail_if_actor_unreachable(_fail_if_actor_unreachable),
+          owned(_owned) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {

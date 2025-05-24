@@ -71,8 +71,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     // gcs_client.
     RAY_CHECK_OK(object_lookup_(
         object_id,
-        [this](const ObjectID &object_id, std::vector<rpc::Address> locations) {
-          PinOrReconstructObject(object_id, std::move(locations));
+        [this](const ObjectID &_object_id, std::vector<rpc::Address> locations) {
+          PinOrReconstructObject(_object_id, std::move(locations));
         }));
   } else if (requires_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Recovery already started for object";
