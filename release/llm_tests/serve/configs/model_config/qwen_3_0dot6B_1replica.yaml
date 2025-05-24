@@ -1,6 +1,6 @@
 model_loading_config:
-  model_id: Qwen/Qwen3-0.6B
-  model_source: Qwen/Qwen3-0.6B
+  model_id: Qwen3-0.6B
+  model_source: s3://air-example-data/rayllm-ossci/qwen3-0.6b
 
 accelerator_type: L40S
 

@@ -4303,7 +4303,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3_8B_fp8_1p1d.yaml --skip-hf-token true
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3_0dot6B_1p1d.yaml --skip-hf-token true
 
 
 ##############
