@@ -95,7 +95,7 @@ importlib-metadata==6.11.0
 tensorboardX
 tensorboard
 tensorboard-data-server==0.7.2
-h11==0.14.0
+h11==0.16.0
 markdown-it-py
 pytz==2022.7.1
 # Aim requires segment-analytics-python, which requires backoff~=2.10,
