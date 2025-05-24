@@ -26,6 +26,7 @@ from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_O
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
+    PowerOfTwoChoicesRequestRouter,
     RequestRouter,
     RunningReplica,
 )
@@ -1259,6 +1260,15 @@ class TestSingletonThreadRouter:
         assert assign_request_future.cancelled() is True
         with pytest.raises(concurrent.futures.CancelledError):
             assign_request_future.exception()
+
+
+def test_same_request_router_class(
+    setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+):
+    """Test that same_request_router_class works as expected."""
+    router, _ = setup_router
+    assert router.same_request_router_class(FakeRequestRouter) is True
+    assert router.same_request_router_class(PowerOfTwoChoicesRequestRouter) is False
 
 
 if __name__ == "__main__":

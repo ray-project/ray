@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from typing import Any, List
+from typing import Any, List, Optional
 
 import pytest
 
@@ -11,12 +11,27 @@ from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
 )
+from ray.serve._private.request_router import (
+    PendingRequest,
+    PowerOfTwoChoicesRequestRouter,
+    RequestRouter,
+    RunningReplica,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
 )
+
+
+class FakeRequestRouter(RequestRouter):
+    async def choose_replicas(
+        self,
+        replicas_ranks: List[List[RunningReplica]],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        return replicas_ranks
 
 
 def test_basic(serve_instance):
@@ -490,6 +505,32 @@ async def test_shutdown_async(serve_instance):
     assert await h.remote() == "hi"
 
     await h.shutdown_async()
+
+
+def test_reconfigure_request_router(serve_instance):
+    """Test that reconfiguring the request router works."""
+
+    @serve.deployment
+    class Deployment:
+        def __call__(self):
+            return "hello"
+
+    # Use PowerOfTwoChoicesRequestRouter by default.
+    handle = serve.run(Deployment.bind())
+    assert handle.remote().result() == "hello"
+    assert (
+        handle._router.same_request_router_class(PowerOfTwoChoicesRequestRouter) is True
+    )
+    assert handle._router.same_request_router_class(FakeRequestRouter) is False
+
+    # Reconfigure to FakeRequestRouter.
+    new_handle = handle.options(request_router_class=FakeRequestRouter)
+    assert new_handle.remote().result() == "hello"
+    assert (
+        new_handle._router.same_request_router_class(PowerOfTwoChoicesRequestRouter)
+        is False
+    )
+    assert new_handle._router.same_request_router_class(FakeRequestRouter) is True
 
 
 if __name__ == "__main__":
