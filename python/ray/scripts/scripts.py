@@ -18,7 +18,6 @@ from ray.util.check_open_ports import check_open_ports
 import requests
 
 import click
-import colorama
 import psutil
 import yaml
 
@@ -58,6 +57,8 @@ from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE
 from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
 from ray._private.resource_isolation_config import ResourceIsolationConfig
+
+from ray._private import colorama
 
 
 logger = logging.getLogger(__name__)

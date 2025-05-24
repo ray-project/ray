@@ -470,7 +470,7 @@ import multiprocessing
 import shutil
 import time
 import os
-import setproctitle
+from ray._private import setproctitle
 
 def change_name_and_sleep(label: str, index: int) -> None:
     proctitle = "child_proc_name_prefix_" + label + "_" + str(index)

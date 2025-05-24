@@ -25,11 +25,6 @@ from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api
 from ray.util.state import list_actors
 
 
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
-
-
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
@@ -857,6 +852,10 @@ def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
+            # NOTE: the shadowed package setproctitle cannot be pickled,
+            # so we need to import it from ray._private.
+            from ray._private import setproctitle  # noqa: F401
+
             assert setproctitle.getproctitle() == f"ray::{name}"
 
     f = Foo.remote()
