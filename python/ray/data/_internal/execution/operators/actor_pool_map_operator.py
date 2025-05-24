@@ -1,4 +1,6 @@
 import logging
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -16,6 +18,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
@@ -125,7 +128,10 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0),
         )
         self._actor_pool = _ActorPool(
-            compute_strategy, self._start_actor, per_actor_resource_usage
+            compute_strategy,
+            self._start_actor,
+            per_actor_resource_usage,
+            self.data_context._enable_actor_pool_on_exit_hook,
         )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -154,7 +160,9 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        self._actor_pool.scale_up(self._actor_pool.min_size())
+        self._actor_pool.scale_up(
+            self._actor_pool.min_size(), reason="scaling to min size"
+        )
 
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.
@@ -181,14 +189,21 @@ class ActorPoolMapOperator(MapOperator):
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
 
-    def _start_actor(self):
-        """Start a new actor and add it to the actor pool as a pending actor."""
+    def _start_actor(self, labels: Dict[str, str]) -> Tuple[ActorHandle, ObjectRef]:
+        """Start a new actor and add it to the actor pool as a pending actor.
+
+        Args:
+            labels: The key-value labels to launch the actor with.
+
+        Returns:
+            A tuple of the actor handle and the object ref to the actor's location.
+        """
         assert self._cls is not None
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.options(
-            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
             ctx,
             src_fn_name=self.name,
@@ -414,18 +429,16 @@ class ActorPoolMapOperator(MapOperator):
             elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
                 # be restarted indefinitely until execution finishes.
-                assert actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
+                assert (
+                    actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
+                ), actor_state
                 self._actor_pool.update_running_actor_state(actor, True)
             else:
                 self._actor_pool.update_running_actor_state(actor, False)
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
-        return self._actor_pool.actor_info_progress_str()
-
-    def actor_info_counts(self) -> Tuple[int, int, int]:
+    def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
-        return self._actor_pool.actor_info_counts()
+        return self._actor_pool.get_actor_info()
 
 
 class _MapWorker:
@@ -499,14 +512,29 @@ class _ActorPool(AutoscalingActorPool):
     actors when the operator is done submitting work to the pool.
     """
 
+    _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 30
     _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
+    _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
     def __init__(
         self,
         compute_strategy: ActorPoolStrategy,
-        create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef[Any]]],
+        create_actor_fn: Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]],
         per_actor_resource_usage: ExecutionResources,
+        _enable_actor_pool_on_exit_hook: bool = False,
     ):
+        """Initialize the actor pool.
+
+        Args:
+            compute_strategy: The autoscaling configuration to use.
+            create_actor_fn: This function should take key-value labels as input, and
+                create an actor with those labels. The function should return the actor
+                handle and a reference to the actor's node ID.
+            per_actor_resource_usage: The resource usage per actor.
+            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool on exit
+                hook.
+        """
+
         self._min_size: int = compute_strategy.min_size
         self._max_size: int = compute_strategy.max_size
         self._max_tasks_in_flight: int = (
@@ -520,13 +548,18 @@ class _ActorPool(AutoscalingActorPool):
         assert self._max_tasks_in_flight >= 1
         assert self._create_actor_fn is not None
 
+        # Timestamp of the last scale up action
+        self._last_scaling_up_ts: Optional[float] = None
         # Actors that have started running, including alive and restarting actors.
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
+        # Map from actor handle to its logical ID.
+        self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
+        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
 
     # === Overriding methods of AutoscalingActorPool ===
 
@@ -574,18 +607,60 @@ class _ActorPool(AutoscalingActorPool):
             for actor_state in self._running_actors.values()
         )
 
-    def scale_up(self, num_actors: int) -> int:
+    def can_scale_down(self):
+        """Returns whether Actor Pool is able to scale down.
+
+        To prevent bouncing back and forth, we disallow scale down for
+        a "cool-off" period after the most recent scaling up, with an intention
+        to allow application to actually utilize newly provisioned resources
+        before making decisions on subsequent actions.
+
+        Note that this action is unidirectional and doesn't apply to
+        scaling up, ie if actor pool just scaled down, it'd still be able
+        to scale back up immediately.
+        """
+
+        return (
+            self._last_scaling_up_ts is None
+            or time.time()
+            >= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+        )
+
+    def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
+        logger.info(
+            f"Scaling up actor pool by {num_actors} "
+            f"(reason={reason}, {self.get_actor_info()})"
+        )
+
         for _ in range(num_actors):
-            actor, ready_ref = self._create_actor_fn()
+            actor, ready_ref = self._create_actor()
             self.add_pending_actor(actor, ready_ref)
+
+        # Capture last scale up timestamp
+        self._last_scaling_up_ts = time.time()
+
         return num_actors
 
-    def scale_down(self, num_actors: int) -> int:
-        num_killed = 0
+    def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
+        logical_actor_id = str(uuid.uuid4())
+        labels = {self.get_logical_id_label_key(): logical_actor_id}
+        actor, ready_ref = self._create_actor_fn(labels)
+        self._actor_to_logical_id[actor] = logical_actor_id
+        return actor, ready_ref
+
+    def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
+        num_released = 0
         for _ in range(num_actors):
-            if self._kill_inactive_actor():
-                num_killed += 1
-        return num_killed
+            if self._remove_inactive_actor():
+                num_released += 1
+
+        if num_released > 0:
+            logger.info(
+                f"Scaled down actor pool by {num_released} "
+                f"(reason={reason}; {self.get_actor_info()})"
+            )
+
+        return num_released
 
     # === End of overriding methods of AutoscalingActorPool ===
 
@@ -744,6 +819,22 @@ class _ActorPool(AutoscalingActorPool):
     def get_running_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._running_actors.keys())
 
+    def get_logical_ids(self) -> List[str]:
+        """Get the logical IDs for pending and running actors in the actor pool.
+
+        We can’t use Ray Core actor IDs because we need to identify actors by labels,
+        but labels must be set before creation, and actor IDs aren’t available until
+        after.
+        """
+        return list(self._actor_to_logical_id.values())
+
+    def get_logical_id_label_key(self) -> str:
+        """Get the label key for the logical actor ID.
+
+        Actors launched by this pool should have this label.
+        """
+        return self._LOGICAL_ACTOR_ID_LABEL_KEY
+
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
         return sum(
@@ -760,29 +851,30 @@ class _ActorPool(AutoscalingActorPool):
             for running_actor in self._running_actors.values()
         )
 
-    def _kill_inactive_actor(self) -> bool:
+    def _remove_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
 
-        Returns whether an inactive actor was actually killed.
+        Returns whether an inactive actor was actually released.
         """
         # We prioritize killing pending actors over idle actors to reduce actor starting
         # churn.
-        killed = self._maybe_kill_pending_actor()
-        if not killed:
-            # If no pending actor was killed, so kill actor.
-            killed = self._maybe_kill_idle_actor()
-        return killed
+        released = self._try_remove_pending_actor()
+        if not released:
+            # If no pending actor was released, so kill actor.
+            released = self._try_remove_idle_actor()
+        return released
 
-    def _maybe_kill_pending_actor(self) -> bool:
+    def _try_remove_pending_actor(self) -> bool:
         if self._pending_actors:
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
-            del self._pending_actors[ready_ref]
+            actor = self._pending_actors.pop(ready_ref)
+            del self._actor_to_logical_id[actor]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
 
-    def _maybe_kill_idle_actor(self) -> bool:
+    def _try_remove_idle_actor(self) -> bool:
         for actor, state in self._running_actors.items():
             if state.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
@@ -818,7 +910,9 @@ class _ActorPool(AutoscalingActorPool):
 
         # First release actors and collect their shutdown hook object-refs
         for actor in running:
-            on_exit_refs.append(self._release_running_actor(actor))
+            ref = self._release_running_actor(actor)
+            if ref:
+                on_exit_refs.append(ref)
 
         # Wait for all actors to shutdown gracefully before killing them
         ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
@@ -844,31 +938,24 @@ class _ActorPool(AutoscalingActorPool):
         if actor not in self._running_actors:
             return None
 
-        # Call `on_exit` to trigger `UDF.__del__` which may perform
-        # cleanup operations.
-        ref = actor.on_exit.remote()
+        if self._enable_actor_pool_on_exit_hook:
+            # Call `on_exit` to trigger `UDF.__del__` which may perform
+            # cleanup operations.
+            ref = actor.on_exit.remote()
+        else:
+            ref = None
         del self._running_actors[actor]
+        del self._actor_to_logical_id[actor]
 
         return ref
 
-    def actor_info_counts(self) -> Tuple[int, int, int]:
-        """Returns Actor counts for Alive, Restarting and Pending Actors."""
-        alive = self.num_alive_actors()
-        pending = self.num_pending_actors()
-        restarting = self.num_restarting_actors()
-        return alive, pending, restarting
-
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
-        alive, pending, restarting = self.actor_info_counts()
-        total = alive + pending + restarting
-        if total == alive:
-            return f"; Actors: {total}"
-        else:
-            return (
-                f"; Actors: {total} (alive {alive}, restarting {restarting}, "
-                f"pending {pending})"
-            )
+    def get_actor_info(self) -> _ActorPoolInfo:
+        """Returns current snapshot of actors' being used in the pool"""
+        return _ActorPoolInfo(
+            running=self.num_alive_actors(),
+            pending=self.num_pending_actors(),
+            restarting=self.num_restarting_actors(),
+        )
 
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""

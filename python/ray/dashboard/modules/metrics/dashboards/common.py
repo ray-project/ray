@@ -114,6 +114,7 @@ GRAPH_PANEL_TEMPLATE = {
     "datasource": r"${datasource}",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
+    # Setting height and width is important here to ensure the default panel has some size to it.
     "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "fill": 10,
     "fillGradient": 0,
@@ -143,6 +144,31 @@ GRAPH_PANEL_TEMPLATE = {
     "pointradius": 2,
     "points": False,
     "renderer": "flot",
+    # These series overrides are necessary to make the "MAX" and "MAX + PENDING" dotted lines
+    # instead of stacked filled areas.
+    "seriesOverrides": [
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX",
+            "dashes": True,
+            "color": "#1F60C4",
+            "fill": 0,
+            "stack": False,
+        },
+        {
+            "$$hashKey": "object:78",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
+            "hiddenSeries": True,
+        },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX + PENDING",
+            "dashes": True,
+            "color": "#777777",
+            "fill": 0,
+            "stack": False,
+        },
+    ],
     "spaceLength": 10,
     "stack": True,
     "steppedLine": False,

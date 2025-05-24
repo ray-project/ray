@@ -719,8 +719,6 @@ class WorkerGroup:
 
         # Assign log paths to workers
         for worker, log_path in zip(workers, log_paths):
-            if log_path is None:
-                raise ValueError("Worker log file path is not set.")
             worker.log_file_path = log_path
 
         return workers

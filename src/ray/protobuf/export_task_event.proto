@@ -17,7 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/export_api/export_runtime_env.proto";
+import "src/ray/protobuf/export_runtime_env.proto";
 
 // ExportTaskEventData defines the event_data stored by the export API
 // for EXPORT_TASK type events. This schema is public and any changes must
