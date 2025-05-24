@@ -28,7 +28,6 @@ def mock_load_model_and_preprocessor():
 
 @patch("dist_xgboost.train.log_run_to_mlflow")
 @patch("dist_xgboost.train.save_preprocessor")
-@patch("dist_xgboost.train.local_storage_path", new=None)
 # @patch("dist_xgboost.train.NUM_WORKERS", new=1)  # uncomment to run the test locally
 # @patch("dist_xgboost.train.USE_GPU", new=False)  # uncomment to run the test locally
 def test_train_main(mock_log_run_to_mlflow, mock_save_preprocessor):
