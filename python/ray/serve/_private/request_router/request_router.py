@@ -34,11 +34,11 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.replica_scheduler.common import (
+from ray.serve._private.request_router.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
 )
-from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -49,12 +49,12 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
-class LocalityScheduleMixin:
-    """Mixin for locality scheduling.
+class LocalityMixin:
+    """Mixin for locality routing.
 
-    This mixin is used to schedule requests to replicas that are colocated
+    This mixin is used to route requests to replicas that are colocated
     with the handle. It adds necessary attributes and methods to keep track of
-    locality scopes and offer the helpers to apply locality scheduling and
+    locality scopes and offer the helpers to apply locality routing and
     rank replicas based on locality.
     """
 
@@ -109,19 +109,19 @@ class LocalityScheduleMixin:
 
         self._colocated_replica_ids = new_colocated_replica_ids
 
-    def apply_locality_scheduling(
+    def apply_locality_routing(
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        """Apply locality scheduling to the pending request.
+        """Apply locality routing to the pending request.
 
         When the reqeust is None, return all replicas. Each call will try to
-        schedule the request to replicas in the priority of first on the
+        route the request to replicas in the priority of first on the
         same node, then in the same availability zone, and finally all
         replicas.
 
         Args:
-            pending_request: The pending request to be scheduled.
+            pending_request: The pending request to be routed.
         Returns:
             A set of replica IDs that are candidates based on
             the locality policy.
@@ -132,40 +132,40 @@ class LocalityScheduleMixin:
 
         if (
             self._prefer_local_node_routing
-            and not pending_request.scheduling_context.tried_same_node
+            and not pending_request.routing_context.tried_same_node
             and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
         ):
-            # Attempt to schedule requests to replicas on the
+            # Attempt to route requests to replicas on the
             # same node at most once
             candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            pending_request.scheduling_context.tried_same_node = True
-            pending_request.scheduling_context.should_backoff = False
+            pending_request.routing_context.tried_same_node = True
+            pending_request.routing_context.should_backoff = False
         elif (
             self._prefer_local_az_routing
-            and not pending_request.scheduling_context.tried_same_az
+            and not pending_request.routing_context.tried_same_az
             and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
         ):
-            # Attempt to schedule requests to replicas in the same
+            # Attempt to route requests to replicas in the same
             # AZ at most once
             candidate_replica_ids = self._colocated_replica_ids[
                 LocalityScope.AVAILABILITY_ZONE
             ]
-            pending_request.scheduling_context.tried_same_az = True
-            pending_request.scheduling_context.should_backoff = False
+            pending_request.routing_context.tried_same_az = True
+            pending_request.routing_context.should_backoff = False
         else:
             # On subsequent iterations or when there are no replicas on the same
             # node or AZ, consider all available replicas.
             candidate_replica_ids = self._replica_id_set
-            pending_request.scheduling_context.should_backoff = True
+            pending_request.routing_context.should_backoff = True
         return candidate_replica_ids
 
 
-class MultiplexScheduleMixin:
-    """Mixin for multiplex scheduling.
+class MultiplexMixin:
+    """Mixin for multiplex routing.
 
-    This mixin is used to schedule requests to replicas that are multiplexed.
+    This mixin is used to route requests to replicas that are multiplexed.
     It adds necessary attributes and methods to keep track of multiplexed
-    model IDs and offer the helpers to apply multiplex scheduling and rank
+    model IDs and offer the helpers to apply multiplex routing and rank
     replicas based on multiplexed model IDs.
     """
 
@@ -239,36 +239,36 @@ class MultiplexScheduleMixin:
             RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
         )
 
-    def apply_multiplex_scheduling(
+    def apply_multiplex_routing(
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        """Apply multiplex scheduling to the pending request.
+        """Apply multiplex routing to the pending request.
 
         When the request is None, return all replicas. Each call will try to
-        schedule the request to the replicas that have the multiplexed model ID
+        route the request to the replicas that have the multiplexed model ID
         to the hierarchy of first the replicas with the multiplexed model ID,
         then the replicas with the fewest multiplexed models, and finally all
         replicas.
 
         Args:
-            pending_request: The pending request to be scheduled based on
+            pending_request: The pending request to be routed based on
                 multiplexed model policy.
 
         Returns:
             A set of replica IDs that are candidates for the existing
-            scheduling call.
+            routing call.
         """
         if not pending_request:
             return self._replica_id_set
 
-        if not pending_request.scheduling_context.multiplexed_start_matching_time:
-            pending_request.scheduling_context.multiplexed_start_matching_time = (
+        if not pending_request.routing_context.multiplexed_start_matching_time:
+            pending_request.routing_context.multiplexed_start_matching_time = (
                 time.time()
             )
 
         multiplexed_start_matching_time = (
-            pending_request.scheduling_context.multiplexed_start_matching_time
+            pending_request.routing_context.multiplexed_start_matching_time
         )
         multiplexed_model_id = pending_request.metadata.multiplexed_model_id
         if (
@@ -282,7 +282,7 @@ class MultiplexScheduleMixin:
                 not candidate_replica_ids
                 and multiplexed_model_id
                 not in self._multiplexed_model_id_fallback_match
-            ) or pending_request.scheduling_context.tried_first_multiplexed_models:
+            ) or pending_request.routing_context.tried_first_multiplexed_models:
                 # When there is no match for a multiplexed model id
                 # or when the replica(s) with the matching model id is busy,
                 # first try to fall back to replicas with the fewest models.
@@ -292,8 +292,8 @@ class MultiplexScheduleMixin:
                 self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
             elif candidate_replica_ids:
                 self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
-            pending_request.scheduling_context.tried_first_multiplexed_models = True
-        elif not pending_request.scheduling_context.tried_fewest_multiplexed_models:
+            pending_request.routing_context.tried_first_multiplexed_models = True
+        elif not pending_request.routing_context.tried_fewest_multiplexed_models:
             # After the `multiplexed_matching_timeout` is up, first try
             # routing to replicas that have the fewest models loaded.
             # We only try this once to avoid deterministically retrying on
@@ -301,22 +301,22 @@ class MultiplexScheduleMixin:
             candidate_replica_ids = (
                 self._get_replica_ids_with_fewest_multiplexed_models()
             )
-            pending_request.scheduling_context.tried_fewest_multiplexed_models = True
+            pending_request.routing_context.tried_fewest_multiplexed_models = True
         else:
             # If the timeout is up, and we've already tried the candidates
             # with the fewest models loaded, fall back to all replicas.
             candidate_replica_ids = self._replica_id_set
 
-        pending_request.scheduling_context.should_backoff = True
+        pending_request.routing_context.should_backoff = True
         return candidate_replica_ids
 
 
 class FIFOMixin:
-    """Mixin for FIFO scheduling.
+    """Mixin for FIFO routing.
 
-    This mixin is used to schedule requests in FIFO order, optionally prioritizing
-    requests with matching metadata. ReplicaScheduler's default behavior is
-    out-of-order scheduling and match exactly the internal request id of
+    This mixin is used to route requests in FIFO order, optionally prioritizing
+    requests with matching metadata. RequestRouter's default behavior is
+    out-of-order routing and match exactly the internal request id of
     the request.
     """
 
@@ -364,8 +364,8 @@ class FIFOMixin:
                 break
 
 
-class ReplicaScheduler(ABC):
-    """Abstract interface for a replica scheduler (how the router calls it)."""
+class RequestRouter(ABC):
+    """Abstract interface for a request router (how the router calls it)."""
 
     # The sequence of backoff timeouts to use when all replicas' queues are full.
     # The last item in the list is the max timeout and will be used repeatedly.
@@ -378,10 +378,10 @@ class ReplicaScheduler(ABC):
     queue_len_response_deadline_s = RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S
     max_queue_len_response_deadline_s = RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S
 
-    # Hard limit on the maximum number of scheduling tasks to run. Having too many of
+    # Hard limit on the maximum number of routing tasks to run. Having too many of
     # these tasks can cause stability issue due to too much load on the local process
     # and many too requests in flight to fetch replicas' queue lengths.
-    max_num_scheduling_tasks_cap = 50
+    max_num_routing_tasks_cap = 50
 
     def __init__(
         self,
@@ -403,7 +403,7 @@ class ReplicaScheduler(ABC):
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
 
-        # Current replicas available to be scheduled.
+        # Current replicas available to be routed.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
@@ -414,30 +414,30 @@ class ReplicaScheduler(ABC):
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
         # determine the loop to attach to. This class can be constructed for the handle
-        # from a different loop than it uses for scheduling, so we need to construct it
+        # from a different loop than it uses for routing, so we need to construct it
         # lazily to avoid an error due to the event being attached to the wrong loop.
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
         self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
 
-        # Tasks running the scheduling loop. The size of this set may vary over time
-        # as new tasks will be scheduled when a request comes in or new replicas are
-        # added, but it will not exceed self.max_num_scheduling_tasks.
-        self._scheduling_tasks: Set[asyncio.Task] = set()
+        # Tasks running the routing loop. The size of this set may vary over time
+        # as new tasks will be routed when a request comes in or new replicas are
+        # added, but it will not exceed self.max_num_routing_tasks.
+        self._routing_tasks: Set[asyncio.Task] = set()
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
-        # requests (potentially out of order) by scheduling tasks once they've acquired a replica.
-        # - self._pending_requests_to_schedule is a queue that is used for tasks to
+        # requests (potentially out of order) by routing tasks once they've acquired a replica.
+        # - self.routing is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
-        # currently used for scheduling tasks to know which multiplexed model IDs they
+        # currently used for routing tasks to know which multiplexed model IDs they
         # should be trying to get replicas for.
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
-        self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
+        self._pending_requests_to_route: Deque[PendingRequest] = deque()
 
-        # Prepare scheduler metrics.
-        self.num_scheduling_tasks_gauge = metrics.Gauge(
+        # Prepare request router metrics.
+        self.num_routing_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
-            description="The number of request scheduling tasks in the router.",
+            description="The number of request routing tasks in the router.",
             tag_keys=("app", "deployment", "actor_id"),
         ).set_default_tags(
             {
@@ -446,13 +446,13 @@ class ReplicaScheduler(ABC):
                 "actor_id": self_actor_id if self_actor_id else "",
             }
         )
-        self.num_scheduling_tasks_gauge.set(0)
+        self.num_routing_tasks_gauge.set(0)
 
-        self.num_scheduling_tasks_in_backoff = 0
-        self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
+        self.num_routing_tasks_in_backoff = 0
+        self.num_routing_tasks_in_backoff_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks_in_backoff",
             description=(
-                "The number of request scheduling tasks in the router "
+                "The number of request routing tasks in the router "
                 "that are undergoing backoff."
             ),
             tag_keys=("app", "deployment", "actor_id"),
@@ -463,9 +463,7 @@ class ReplicaScheduler(ABC):
                 "actor_id": self_actor_id if self_actor_id else "",
             }
         )
-        self.num_scheduling_tasks_in_backoff_gauge.set(
-            self.num_scheduling_tasks_in_backoff
-        )
+        self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -491,22 +489,22 @@ class ReplicaScheduler(ABC):
         return len(self._pending_requests_to_fulfill)
 
     @property
-    def curr_num_scheduling_tasks(self) -> int:
-        """Current number of scheduling tasks running."""
-        return len(self._scheduling_tasks)
+    def curr_num_routing_tasks(self) -> int:
+        """Current number of routing tasks running."""
+        return len(self._routing_tasks)
 
     @property
-    def max_num_scheduling_tasks(self) -> int:
-        """Max number of scheduling tasks to run at any time."""
-        return min(self.max_num_scheduling_tasks_cap, 2 * len(self._replicas))
+    def max_num_routing_tasks(self) -> int:
+        """Max number of routing tasks to run at any time."""
+        return min(self.max_num_routing_tasks_cap, 2 * len(self._replicas))
 
     @property
-    def target_num_scheduling_tasks(self) -> int:
-        """Target number of scheduling tasks to be running based on pending requests.
+    def target_num_routing_tasks(self) -> int:
+        """Target number of routing tasks to be running based on pending requests.
 
-        This will never exceed `self.max_num_scheduling_tasks`.
+        This will never exceed `self.max_num_routing_tasks`.
         """
-        return min(self.num_pending_requests, self.max_num_scheduling_tasks)
+        return min(self.num_pending_requests, self.max_num_routing_tasks)
 
     @property
     def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
@@ -546,9 +544,9 @@ class ReplicaScheduler(ABC):
             )
 
     def update_replicas(self, replicas: List[RunningReplica]):
-        """Update the set of available replicas to be considered for scheduling.
+        """Update the set of available replicas to be considered for routing.
 
-        When the set of replicas changes, we may spawn additional scheduling tasks
+        When the set of replicas changes, we may spawn additional routing tasks
         if there are pending requests.
         """
         new_replicas = {}
@@ -591,7 +589,7 @@ class ReplicaScheduler(ABC):
         # Populate cache for new replicas
         self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
-        self.maybe_start_scheduling_tasks()
+        self._maybe_start_routing_tasks()
 
     async def _probe_queue_lens(
         self,
@@ -703,7 +701,7 @@ class ReplicaScheduler(ABC):
     ) -> Optional[RunningReplica]:
         """Chooses the best replica from the list of candidates.
 
-        If none of the replicas can be scheduled, returns `None`.
+        If none of the replicas can be routed, returns `None`.
 
         The queue length for each replica is first looked up in the local cache. If not
         present in the cache, the replica will be actively probed and the cache updated.
@@ -729,8 +727,8 @@ class ReplicaScheduler(ABC):
         else:
             not_in_cache = candidates
 
-        # If there is a valid replica to schedule based on the information in the
-        # cache, schedule it. Else fall back to actively probing.
+        # If there is a valid replica to route based on the information in the
+        # cache, route it. Else fall back to actively probing.
         if chosen_replica_id is None:
             for r, queue_len in await self._probe_queue_lens(
                 not_in_cache,
@@ -760,8 +758,8 @@ class ReplicaScheduler(ABC):
     ) -> Optional[PendingRequest]:
         """Get the pending request that matches on the internal request id.
 
-        If no request metadata is provided or no request is found that matches the internal request ID,
-        return None.
+        If no request metadata is provided or no request is found that matches
+        the internal request ID, return None.
         """
         if request_metadata is None:
             return None
@@ -781,7 +779,8 @@ class ReplicaScheduler(ABC):
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending request, potentially not in order of when the request arrived.
+        """Assign the replica to the next pending request, potentially not in
+        order of when the request arrived.
 
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
@@ -795,11 +794,11 @@ class ReplicaScheduler(ABC):
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
 
-    def _get_next_pending_request_to_schedule(
+    def _get_next_pending_request_to_route(
         self,
     ) -> Optional[PendingRequest]:
-        while len(self._pending_requests_to_schedule) > 0:
-            pr = self._pending_requests_to_schedule.popleft()
+        while len(self._pending_requests_to_route) > 0:
+            pr = self._pending_requests_to_route.popleft()
             if not pr.future.done():
                 return pr
 
@@ -833,7 +832,7 @@ class ReplicaScheduler(ABC):
                     await self._replicas_updated_event.wait()
                     logger.info(
                         f"New replicas are available for {self._deployment_id}, "
-                        "attempting to schedule queued requests.",
+                        "attempting to route queued requests.",
                         extra={"log_to_stderr": False},
                     )
 
@@ -854,53 +853,53 @@ class ReplicaScheduler(ABC):
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not pending_request.scheduling_context.should_backoff:
+                if not pending_request.routing_context.should_backoff:
                     continue
 
                 if not entered_backoff:
                     entered_backoff = True
-                    self.num_scheduling_tasks_in_backoff += 1
-                    self.num_scheduling_tasks_in_backoff_gauge.set(
-                        self.num_scheduling_tasks_in_backoff
+                    self.num_routing_tasks_in_backoff += 1
+                    self.num_routing_tasks_in_backoff_gauge.set(
+                        self.num_routing_tasks_in_backoff
                     )
 
                 await asyncio.sleep(self.backoff_sequence_s[backoff_index])
                 backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
         finally:
             if entered_backoff:
-                self.num_scheduling_tasks_in_backoff -= 1
-                self.num_scheduling_tasks_in_backoff_gauge.set(
-                    self.num_scheduling_tasks_in_backoff
+                self.num_routing_tasks_in_backoff -= 1
+                self.num_routing_tasks_in_backoff_gauge.set(
+                    self.num_routing_tasks_in_backoff
                 )
 
     async def fulfill_pending_requests(self):
         """Repeatedly tries to fulfill a pending request with an available replica.
 
-        This is expected to be run inside a task in self._scheduling tasks.
+        This is expected to be run inside a task in self._routing_tasks.
 
-        When a replica is found, this method will exit if the number of scheduling tasks
-        has exceeded the target number. Else it will loop again to schedule another
+        When a replica is found, this method will exit if the number of routing tasks
+        has exceeded the target number. Else it will loop again to route another
         replica.
         """
         try:
-            while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+            while len(self._routing_tasks) <= self.target_num_routing_tasks:
                 start_time = time.time()
                 backoff_index = 0
-                pending_request = self._get_next_pending_request_to_schedule()
+                pending_request = self._get_next_pending_request_to_route()
                 request_metadata = pending_request.metadata if pending_request else None
                 async for candidates in self.choose_replicas_with_backoff(
                     pending_request
                 ):
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
-                    # if we need to continue this scheduling task.
+                    # if we need to continue this routing task.
                     while (
                         len(self._pending_requests_to_fulfill) > 0
                         and self._pending_requests_to_fulfill[0].future.done()
                     ):
                         self._pending_requests_to_fulfill.popleft()
 
-                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
+                    if len(self._routing_tasks) > self.target_num_routing_tasks:
                         break
 
                     replica = await self.select_from_candidate_replicas(
@@ -912,11 +911,11 @@ class ReplicaScheduler(ABC):
 
                     backoff_index += 1
                     if backoff_index >= 50 and backoff_index % 50 == 0:
-                        scheduling_time_elapsed = time.time() - start_time
+                        routing_time_elapsed = time.time() - start_time
                         warning_log = (
-                            "Failed to schedule request after "
+                            "Failed to route request after "
                             f"{backoff_index} attempts over "
-                            f"{scheduling_time_elapsed:.2f}s. Retrying."
+                            f"{routing_time_elapsed:.2f}s. Retrying."
                         )
                         if request_metadata is not None:
                             warning_log += (
@@ -932,28 +931,26 @@ class ReplicaScheduler(ABC):
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
-            self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
-            self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
+            self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
+            self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
 
-    def maybe_start_scheduling_tasks(self):
-        """Start scheduling tasks to fulfill pending requests if necessary.
+    def _maybe_start_routing_tasks(self):
+        """Start routing tasks to fulfill pending requests if necessary.
 
         Starts tasks so that there is at least one task per pending request
-        (respecting the max number of scheduling tasks).
+        (respecting the max number of routing tasks).
 
         In the common case, this will start a single task when a new request comes
-        in for scheduling. However, in cases where the number of available replicas
+        in for routing. However, in cases where the number of available replicas
         is updated or a task exits unexpectedly, we may need to start multiple.
         """
-        tasks_to_start = (
-            self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
-        )
+        tasks_to_start = self.target_num_routing_tasks - self.curr_num_routing_tasks
         for _ in range(tasks_to_start):
-            self._scheduling_tasks.add(
+            self._routing_tasks.add(
                 self._event_loop.create_task(self.fulfill_pending_requests())
             )
         if tasks_to_start > 0:
-            self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
+            self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
 
     async def choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
@@ -966,7 +963,7 @@ class ReplicaScheduler(ABC):
         try:
             if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)
-                self._pending_requests_to_schedule.append(pending_request)
+                self._pending_requests_to_route.append(pending_request)
             else:
                 pending_request.reset_future()
                 index = 0
@@ -979,15 +976,15 @@ class ReplicaScheduler(ABC):
                 self._pending_requests_to_fulfill.insert(index, pending_request)
 
                 index = 0
-                for pr in self._pending_requests_to_schedule:
+                for pr in self._pending_requests_to_route:
                     if pending_request.created_at < pr.created_at:
                         break
 
                     index += 1
 
-                self._pending_requests_to_schedule.insert(index, pending_request)
+                self._pending_requests_to_route.insert(index, pending_request)
 
-            self.maybe_start_scheduling_tasks()
+            self._maybe_start_routing_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
@@ -1010,7 +1007,7 @@ class ReplicaScheduler(ABC):
     ) -> List[List[RunningReplica]]:
         """Chooses a subset of candidate replicas from available replicas.
 
-        This is the main function each replica scheduler should implement to
+        This is the main function each request router should implement to
         decide which replica to send the request to. This is one iteration of
         replica selection.
 
@@ -1018,8 +1015,8 @@ class ReplicaScheduler(ABC):
             replicas_ranks: A list of lists of replicas, where each inner list
                 represents a rank of replicas. The first rank is the most
                 preferred and the last rank is the least preferred.
-            pending_request: The request to be scheduled. This is used to
-                determine which replicas are eligible for scheduling.
+            pending_request: The request to be routed. This is used to
+                determine which replicas are eligible for routing.
 
         Returns:
             A list of lists of replicas, where each inner list represents a

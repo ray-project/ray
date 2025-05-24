@@ -12,16 +12,16 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
-from ray.serve._private.replica_scheduler import ReplicaScheduler
+from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 
 
-def _get_replica_scheduler(handle: DeploymentHandle) -> ReplicaScheduler:
+def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
     # TODO(edoakes): we shouldn't be reaching into private fields, but better
     # to isolate it to one place (this function).
-    return handle._router._asyncio_router._replica_scheduler
+    return handle._router._asyncio_router._request_router
 
 
 @pytest.fixture()
@@ -325,8 +325,8 @@ def test_multiplexed_replica_info(serve_instance):
         if not handle.is_initialized:
             handle._init()
 
-        replica_scheduler = _get_replica_scheduler(handle)
-        for replica in replica_scheduler.curr_replicas.values():
+        request_router = _get_request_router(handle)
+        for replica in request_router.curr_replicas.values():
             if (
                 replica.replica_id != replica_id
                 or model_ids != replica.multiplexed_model_ids
@@ -366,10 +366,10 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     if not handle.is_initialized:
         handle._init()
 
-    replica_scheduler = _get_replica_scheduler(handle)
+    request_router = _get_request_router(handle)
     replica_to_model_ids = {
         tag: replica.multiplexed_model_ids
-        for tag, replica in replica_scheduler.curr_replicas.items()
+        for tag, replica in request_router.curr_replicas.items()
     }
     msg = (
         f"Model ID '{model_id}' not found in replica_to_model_ids: "
