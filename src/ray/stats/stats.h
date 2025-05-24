@@ -30,6 +30,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
+#include "ray/telemetry/open_telemetry_metric_recorder.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -67,6 +68,7 @@ static inline void Init(
 
   RAY_CHECK(metrics_io_service_pool == nullptr);
   bool disable_stats = !RayConfig::instance().enable_metrics_collection();
+  bool enable_open_telemetry = RayConfig::instance().enable_open_telemetry_on_worker();
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
@@ -96,6 +98,18 @@ static inline void Init(
                                     worker_id,
                                     metrics_report_batch_size,
                                     max_grpc_payload_size);
+
+  // Register the OpenTelemetry metric recorder.
+  if (enable_open_telemetry) {
+    auto &open_telemetry_metric_recorder =
+        ray::telemetry::OpenTelemetryMetricRecorder::GetInstance();
+    open_telemetry_metric_recorder.Register(
+        std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+        std::chrono::milliseconds(
+            absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
+        std::chrono::milliseconds(
+            absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+  }
 
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
