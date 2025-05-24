@@ -152,7 +152,6 @@ class _CollectiveOperation:
         else:
             recv_buf = self._execute_tensor(send_buf)
 
-        print(f"recv_buf: {recv_buf}")
         return recv_buf
 
     def _execute_tensor(self, send_buf: "torch.Tensor") -> "torch.Tensor":
@@ -182,6 +181,7 @@ class _CollectiveOperation:
                 dtype=send_buf.dtype,
                 device=send_buf.device,
             )
+            communicator.reducescatter(send_buf, recv_buf, self._op.reduceOp)
         return recv_buf
 
     def _execute_tuple(self, send_bufs: Tuple["torch.Tensor"]) -> Tuple["torch.Tensor"]:

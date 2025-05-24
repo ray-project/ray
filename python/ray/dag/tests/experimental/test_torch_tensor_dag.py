@@ -1444,9 +1444,6 @@ def test_torch_tensor_nccl_all_reduce_bind_list_of_nodes(ray_start_regular):
     """
     Test basic all-reduce with list of nodes.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1491,6 +1488,7 @@ def test_torch_tensor_nccl_all_reduce_bind_list_of_nodes(ray_start_regular):
         assert result_tensors_0[1][0].item() == result_tensors_1[1][0].item() == i * 4
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     """
