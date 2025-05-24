@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from threading import RLock
@@ -92,6 +93,7 @@ class PrefixTree:
 
         # LRU tracking - root is always the head, tail is the least recently used.
         self.tenant_to_lru_tail: Dict[str, Optional[Node]] = {}
+        self._eviction_task: Optional[asyncio.Task] = None
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -113,33 +115,14 @@ class PrefixTree:
         Note: This method is intended to be used only in tests.
         """
         with self.lock:
+            if tenant not in self.tenant_to_char_count:
+                return []
             nodes = []
             current_node = self.root
             while current_node:
                 nodes.append(current_node)
                 current_node = current_node.tenant_to_older_node.get(tenant)
             return nodes
-
-    def _add_tenant(self, tenant: str) -> None:
-        """
-        Add a new tenant to the tree.
-
-        If the tenant already exists, this is a no-op with a warning log.
-
-        Args:
-            tenant: Tenant to add
-        """
-        with self.lock:
-            if tenant in self.tenant_to_char_count:
-                logger.warning(f"Tenant '{tenant}' already exists. No action taken.")
-                return
-
-            self.tenant_to_char_count[tenant] = 0
-            self.tenant_to_lru_tail[tenant] = self.root
-
-            # Initialize the root node as the head of the LRU list for this tenant
-            self.root.tenant_to_newer_node[tenant] = None
-            self.root.tenant_to_older_node[tenant] = None
 
     def _insert_node_into_linked_list(
         self,
@@ -239,11 +222,36 @@ class PrefixTree:
 
             return removed_chars_len
 
+    def add_tenants(self, tenants: List[str], time_s: float) -> None:
+        """
+        Add multiple new tenants to the tree. Also inserts an empty string for each tenant into the tree.
+
+        For each tenant that already exists, a warning is logged and that tenant is skipped.
+
+        Args:
+            tenants: List of tenants to add
+            time_s: Current timestamp in seconds
+        """
+        with self.lock:
+            for tenant in tenants:
+                if tenant in self.tenant_to_char_count:
+                    logger.warning(f"Tenant '{tenant}' already exists. Skipping.")
+                    continue
+
+                self.tenant_to_char_count[tenant] = 0
+                self.tenant_to_lru_tail[tenant] = self.root
+
+                # Initialize the root node as the head of the LRU list for this tenant
+                self.root.tenant_to_newer_node[tenant] = None
+                self.root.tenant_to_older_node[tenant] = None
+                self.insert("", tenant, time_s)
+
     def insert(self, text: str, tenant: str, time_s: float) -> None:
         """
-        Insert text into tree for a specific tenant.
+        Insert text into tree for a specific tenant, but only if the tenant already exists.
 
-        If the tenant doesn't already exist in the tree, it will be automatically added.
+        If the tenant doesn't exist in the tree, this will log a warning and return without
+        inserting anything. Use add_tenants() first to add a new tenant.
 
         Args:
             text: Text to insert
@@ -263,7 +271,10 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                self._add_tenant(tenant)
+                logger.warning(
+                    f"Tenant '{tenant}' does not exist. Use add_tenants() first."
+                )
+                return
 
             curr_node: Node = self.root
             i: int = 0
@@ -373,10 +384,6 @@ class PrefixTree:
                 If the list of available tenants doesn't match any tenants in the tree: returns ("", None)
                 When no prefix match is found (does not traverse further than the root node): returns ("", list of available tenants)
                 When a prefix match is found: returns (matched_prefix, list of tenants that own the matched node)
-
-        Note:
-            A tenant is unable to be returned by prefix_match until it has inserted text into the tree, even if _add_tenant is called.
-            The replica scheduler is responsible for inserting text into new replicas; it should not only rely on prefix_match to select replicas.
         """
         with self.lock:
             if available_tenants:
@@ -433,38 +440,45 @@ class PrefixTree:
 
             return matched_text, matched_tenants
 
-    def remove_tenant(self, tenant: str) -> int:
+    def remove_tenants(self, tenants: List[str]) -> Dict[str, int]:
         """
-        Remove a tenant and all its nodes from the tree.
-        Time complexity: O(n) where n is the number of nodes owned by the tenant.
+        Remove multiple tenants and all their nodes from the tree.
+        Time complexity: O(n) where n is the total number of nodes owned by all tenants.
 
         Args:
-            tenant: Tenant to remove
+            tenants: List of tenants to remove
 
         Returns:
-            Number of characters removed (0 if tenant doesn't exist)
+            Dictionary mapping each tenant to the number of characters removed
+            (0 if tenant doesn't exist)
         """
+        chars_removed: Dict[str, int] = {}
+
         with self.lock:
-            if tenant not in self.tenant_to_char_count:
-                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
-                return 0
+            for tenant in tenants:
+                if tenant not in self.tenant_to_char_count:
+                    logger.warning(f"Tenant '{tenant}' does not exist. Skipping.")
+                    chars_removed[tenant] = 0
+                    continue
 
-            total_chars_removed: int = 0
+                tenant_chars_removed: int = 0
 
-            # Start from the tail and remove all nodes
-            current_tail = self.tenant_to_lru_tail.get(tenant)
-            while current_tail:
-                newer_neighbor = current_tail.tenant_to_newer_node.get(tenant)
-                total_chars_removed += self._remove_tenant_single_node(
-                    tenant, current_tail
-                )
-                current_tail = newer_neighbor
+                # Start from the tail and remove all nodes
+                current_tail = self.tenant_to_lru_tail.get(tenant)
+                while current_tail:
+                    newer_neighbor = current_tail.tenant_to_newer_node.get(tenant)
+                    tenant_chars_removed += self._remove_tenant_single_node(
+                        tenant, current_tail
+                    )
+                    current_tail = newer_neighbor
 
-            # Clean up tenant references
-            self.tenant_to_char_count.pop(tenant, None)
-            self.tenant_to_lru_tail.pop(tenant, None)
+                # Clean up tenant references
+                self.tenant_to_char_count.pop(tenant, None)
+                self.tenant_to_lru_tail.pop(tenant, None)
 
-            return total_chars_removed
+                chars_removed[tenant] = tenant_chars_removed
+
+            return chars_removed
 
     def evict_tenant_by_lru(self, tenant: str, min_remove_size: int) -> int:
         """
@@ -525,22 +539,58 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def get_smallest_tenant(self) -> Optional[str]:
+    def get_smallest_tenants(self) -> Optional[List[str]]:
         """
-        Get the tenant with the smallest total character count.
+        Get the tenants with the smallest total character count.
 
         Returns:
-            Tenant with smallest character count, or None if no tenants
+            Tenants with smallest character count, or None if no tenants
         """
         with self.lock:
             if not self.tenant_to_char_count:
                 return None
 
-            return min(
-                self.tenant_to_char_count,
-                key=self.tenant_to_char_count.get,
-                default=None,
-            )
+            min_count = min(self.tenant_to_char_count.values())
+            return [
+                tenant
+                for tenant, count in self.tenant_to_char_count.items()
+                if count == min_count
+            ]
+
+    def start_eviction_loop(
+        self, eviction_threshold, eviction_target, interval_secs
+    ) -> bool:
+        """Start a single eviction loop within the actor itself
+        Parameters:
+            eviction_threshold: Minimum number of characters a tenant must have to be evicted
+            eviction_target: The maximum number of characters a tenant should have after eviction
+            interval_secs: Number of seconds between eviction checks
+
+        Returns:
+            True if the loop was started, False if it was already running
+        """
+        with self.lock:
+            if self._eviction_task is None:
+                self._eviction_task = asyncio.create_task(
+                    self._run_eviction_loop(
+                        eviction_threshold, eviction_target, interval_secs
+                    )
+                )
+                return True
+            else:
+                logger.warning("Eviction loop already running")
+                return False
+
+    async def _run_eviction_loop(
+        self, eviction_threshold, eviction_target, interval_secs
+    ):
+        while True:
+            await asyncio.sleep(interval_secs)
+            with self.lock:
+                for tenant, char_count in self.tenant_to_char_count.items():
+                    if char_count > eviction_threshold:
+                        excess = char_count - eviction_target
+                        self.evict_tenant_by_lru(tenant, excess)
 
 
 @ray.remote
@@ -551,3 +601,6 @@ class PrefixTreeActor(PrefixTree):
         Note: This method is intended to be used only in tests.
         """
         return getattr(self, attribute)
+
+    def setattr(self, attribute: str, value: Any) -> None:
+        setattr(self, attribute, value)

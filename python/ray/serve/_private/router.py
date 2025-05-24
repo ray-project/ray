@@ -340,6 +340,9 @@ class Router(ABC):
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
+    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
+        return True
+
 
 class AsyncioRouter:
     def __init__(
@@ -522,7 +525,8 @@ class AsyncioRouter:
             )
 
     async def schedule_and_send_request(
-        self, pr: PendingRequest
+        self,
+        pr: PendingRequest,
     ) -> Tuple[ReplicaResult, ReplicaID]:
         """Choose a replica for the request and send it.
 
@@ -543,6 +547,9 @@ class AsyncioRouter:
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
+                await self._replica_scheduler.on_request_scheduled(
+                    pr, r.replica_id, result
+                )
                 if queue_info.accepted:
                     return result, r.replica_id
             except asyncio.CancelledError:
@@ -586,7 +593,6 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
-
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
@@ -649,6 +655,9 @@ class AsyncioRouter:
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
+
+    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
+        return isinstance(self._replica_scheduler, replica_scheduler)
 
 
 class SingletonThreadRouter(Router):
@@ -752,6 +761,9 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
+
+    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
+        return self._asyncio_router.same_scheduler_class(replica_scheduler)
 
 
 class SharedRouterLongPollClient:

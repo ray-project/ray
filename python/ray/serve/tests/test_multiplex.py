@@ -303,8 +303,8 @@ class TestBasicAPI:
         assert serve.get_multiplexed_model_id() == "1"
 
 
-def test_multiplexed_replica_info(serve_instance):
-    """Test MultiplexedReplicaInfo is passed to the controller & router"""
+def test_replica_scheduling_info(serve_instance):
+    """Test ReplicaSchedulingInfo is passed to the controller & router"""
 
     @serve.deployment
     class MyModel:

@@ -47,6 +47,8 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
+
+
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
@@ -63,6 +65,9 @@ from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_model_request_id,
     get_response_for_error,
     get_serve_request_id,
+)
+from ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
+    PrefixAwareReplicaScheduler,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
@@ -524,7 +529,6 @@ class LLMServer(_LLMServerBase):
             stream=stream,
             disk_lora_model=disk_lora_model,
         )
-
         async for llm_response in self.engine.generate(llm_request):
             yield llm_response
 
@@ -695,6 +699,7 @@ class LLMServer(_LLMServerBase):
 
 
 @serve.deployment(
+    replica_scheduler=PrefixAwareReplicaScheduler,
     # TODO make this configurable
     autoscaling_config={
         "min_replicas": 1,
