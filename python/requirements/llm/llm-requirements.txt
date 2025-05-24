@@ -1,5 +1,5 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
-vllm>=0.8.5
+vllm@https://wheels.vllm.ai/ed5272cf217cf81f004523a8e7ec67e65aa489c0/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl
 # For json mode
 jsonref>=1.1.0
 jsonschema
