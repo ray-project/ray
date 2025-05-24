@@ -738,6 +738,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "//:ray_mock",
         "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -764,7 +765,6 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1033,8 +1033,8 @@ filegroup(
         "//src/ray/protobuf:autoscaler_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
         "//src/ray/protobuf:event_py_proto",
+        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
         "//src/ray/protobuf:export_event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
@@ -1134,15 +1134,6 @@ genrule(
         # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
-        # TODO(rickyx): Remove this experimental path rewrite once we move autoscaler proto out
-        # of experimental.
-        autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
-        sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
-        # Help the generated export api files to have the correct module
-        export_api_files=(`ls python/ray/core/generated/export*_pb2*.py`)
-        sed -i -E 's/from ..export_api/from ./' "$${export_api_files[@]}"
-        events_files=(`ls python/ray/core/generated/events*_pb2*.py`)
-        sed -i -E 's/from ..events/from ./' "$${events_files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,
