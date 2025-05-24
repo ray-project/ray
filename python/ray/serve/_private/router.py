@@ -353,6 +353,11 @@ class Router(ABC):
         pass
 
 
+async def create_event() -> asyncio.Event:
+    """Helper to create an asyncio event in the current event loop."""
+    return asyncio.Event()
+
+
 class AsyncioRouter:
     def __init__(
         self,
@@ -392,12 +397,12 @@ class AsyncioRouter:
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
 
-        async def _request_router_initialized():
-            return asyncio.Event()
+        if self._event_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
+            self._request_router_initialized = future.result()
+        else:
+            self._request_router_initialized = asyncio.Event()
 
-        self._request_router_initialized = asyncio.run_coroutine_threadsafe(
-            _request_router_initialized(), self._event_loop
-        ).result()
         if self._request_router:
             self._request_router_initialized.set()
         self._resolve_request_arg_func = resolve_request_arg_func
