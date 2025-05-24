@@ -54,20 +54,26 @@ class _GeneratorResult:
 
 
 @dataclass
-class RuntimeSummaryStatistics:
-    min_start_time: Optional[float]
-    mean_start_time: Optional[float]
-    max_start_time: Optional[float]
-    num_requests: Optional[int]
+class _RuntimeSummaryStatistics:
+    start_times: List[float]
 
-    @classmethod
-    def as_none(cls):
-        return cls(
-            min_start_time=None,
-            mean_start_time=None,
-            max_start_time=None,
-            num_requests=0,
+    @property
+    def min_start_time(self) -> Optional[float]:
+        return min(self.start_times) if self.start_times else None
+
+    @property
+    def mean_start_time(self) -> Optional[float]:
+        return (
+            sum(self.start_times) / len(self.start_times) if self.start_times else None
         )
+
+    @property
+    def max_start_time(self) -> Optional[float]:
+        return max(self.start_times) if self.start_times else None
+
+    @property
+    def num_requests(self) -> int:
+        return len(self.start_times)
 
 
 def _batch_args_kwargs(
@@ -436,18 +442,11 @@ class _LazyBatchQueueWrapper:
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
 
-    def _get_curr_iteration_start_times(self) -> RuntimeSummaryStatistics:
+    def _get_curr_iteration_start_times(self) -> _RuntimeSummaryStatistics:
         """Gets summary statistics of current iteration's start times."""
-        cur_iter_times = list(self.queue.curr_iteration_start_times.values())
-        if cur_iter_times:
-            return RuntimeSummaryStatistics(
-                min_start_time=min(cur_iter_times),
-                max_start_time=max(cur_iter_times),
-                mean_start_time=sum(cur_iter_times) / len(cur_iter_times),
-                num_requests=len(cur_iter_times),
-            )
-        else:
-            return RuntimeSummaryStatistics.as_none()
+        return _RuntimeSummaryStatistics(
+            list(self.queue.curr_iteration_start_times.values())
+        )
 
     async def _is_batching_task_alive(self) -> bool:
         """Gets whether default _BatchQueue's background task is alive.

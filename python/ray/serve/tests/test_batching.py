@@ -245,7 +245,7 @@ async def test_observability_helpers():
 
     async with httpx.AsyncClient() as client:
         task = asyncio.create_task(client.get("http://localhost:8000/"))
-        await asyncio.sleep(0.01)  # yield control to the above task
+        await asyncio.sleep(0.1)  # yield control to the above task
         prev_iter_times = await handle._get_curr_iteration_start_times.remote()
         await task
 
@@ -255,7 +255,7 @@ async def test_observability_helpers():
     async with httpx.AsyncClient() as client:
         futures = [client.get("http://localhost:8000/") for _ in range(5)]
         tasks = [asyncio.create_task(future) for future in futures]
-        await asyncio.sleep(0.01)  # yield control to the above tasks
+        await asyncio.sleep(0.1)  # yield control to the above tasks
         new_iter_times = await handle._get_curr_iteration_start_times.remote()
         await asyncio.gather(*tasks)
 
