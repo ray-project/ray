@@ -1339,6 +1339,7 @@ opentelemetry-api==1.26.0
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-opencensus==0.47b0
@@ -1356,6 +1357,8 @@ opentelemetry-exporter-otlp-proto-grpc==1.26.0
     # via opentelemetry-exporter-otlp
 opentelemetry-exporter-otlp-proto-http==1.26.0
     # via opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.47b0
+    # via -r python/requirements.txt
 opentelemetry-proto==1.26.0
     # via
     #   opentelemetry-exporter-otlp-proto-common
@@ -1370,6 +1373,7 @@ opentelemetry-sdk==1.26.0
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.47b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
@@ -1528,6 +1532,7 @@ prometheus-client==0.19.0
     #   jupyter-server
     #   nbclassic
     #   notebook
+    #   opentelemetry-exporter-prometheus
 promise==2.3
     # via tensorflow-datasets
 prompt-toolkit==3.0.41
