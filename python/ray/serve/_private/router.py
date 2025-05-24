@@ -352,6 +352,9 @@ class Router(ABC):
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
+    def same_request_router_class(self, request_router_class: Callable) -> bool:
+        return True
+
 
 async def create_event() -> asyncio.Event:
     """Helper to create an asyncio event in the current event loop."""
@@ -743,6 +746,9 @@ class AsyncioRouter:
     async def shutdown(self):
         await self._metrics_manager.shutdown()
 
+    def same_request_router_class(self, request_router_class: Callable) -> bool:
+        return isinstance(self._request_router, request_router_class)
+
 
 class SingletonThreadRouter(Router):
     """Wrapper class that runs an AsyncioRouter on a separate thread.
@@ -845,6 +851,9 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
+
+    def same_request_router_class(self, request_router_class: Callable) -> bool:
+        return self._asyncio_router.same_request_router_class(request_router_class)
 
 
 class SharedRouterLongPollClient:

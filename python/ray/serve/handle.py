@@ -3,7 +3,7 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
@@ -172,6 +172,18 @@ class _DeploymentHandleBase:
 
         if not self.is_initialized:
             self._init()
+
+        if kwargs.get(
+            "request_router_class"
+        ) != DEFAULT.VALUE and not self._router.same_request_router_class(
+            new_handle_options.request_router_class
+        ):
+            self._router = self._create_router(
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
+                handle_options=self.init_options,
+                request_router_class=new_handle_options.request_router_class,
+            )
 
         return DeploymentHandle(
             self.deployment_name,
@@ -675,6 +687,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_router_class: Union[str, Callable, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -686,6 +699,23 @@ class DeploymentHandle(_DeploymentHandleBase):
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()
+
+        Args:
+            method_name: The name of the method to call on the deployment.
+                Defaults to `__call__`.
+            multiplexed_model_id: The multiplexed model ID to use for routing
+                requests.
+            stream: Whether to enable streaming for this handle.
+            use_new_handle_api: Deprecated. This argument no longer has any
+                effect.
+            _prefer_local_routing: Whether to prefer local routing for this
+                handle.
+            request_router_class: The class to use for the request router. This
+                can be a string or a callable.
+                Defaults `PowerOfTwoChoicesRequestRouter`.
+
+        Returns:
+            DeploymentHandle: A new handle with the updated options.
         """
         if use_new_handle_api is not DEFAULT.VALUE:
             warnings.warn(
@@ -704,6 +734,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            request_router_class=request_router_class,
         )
 
     def remote(
