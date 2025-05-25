@@ -73,6 +73,13 @@
                 "description": "Number of VMs to deploy"
             }
         },
+	"osDiskSize": {
+	    "type": "int",
+	    "defaultValue": 128,
+	    "metadata": {
+		"description": "Size of the OS disk in GB. Default is 30GB."
+	    }
+	},
         "provisionPublicIp": {
             "type": "bool",
             "defaultValue": true,
@@ -238,6 +245,7 @@
                 "storageProfile": {
                     "osDisk": {
                         "createOption": "fromImage",
+			"diskSizeGB": "[parameters('osDiskSize')]",
                         "managedDisk": {
                             "storageAccountType": "[variables('osDiskType')]"
                         }
