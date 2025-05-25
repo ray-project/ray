@@ -16,7 +16,7 @@ python-dotenv
 PyGithub
 expiringdict
 requests
-protobuf >= 4.25.7,<6.0.0
+protobuf >= 5.28.0,<6.0.0
 pytz
 retry
 kubernetes
