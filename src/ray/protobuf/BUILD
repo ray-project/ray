@@ -434,7 +434,6 @@ proto_library(
     name = "runtime_env_agent_proto",
     srcs = ["runtime_env_agent.proto"],
     deps = [
-        ":agent_manager_proto",
         ":common_proto",
         ":runtime_env_common_proto",
     ],
