@@ -380,7 +380,7 @@ class ActorMethod:
                     "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
                 )
 
-            _handle_tensor_transport(dst_actor, args)
+            _trigger_out_of_band_tensor_transfer(dst_actor, args)
 
             return dst_actor._actor_method_call(
                 self._method_name,
@@ -1952,7 +1952,9 @@ def exit_actor():
         )
 
 
-def _handle_tensor_transport(dst_actor: ActorHandle, task_args: Tuple[Any, ...]):
+def _trigger_out_of_band_tensor_transfer(
+    dst_actor: ActorHandle, task_args: Tuple[Any, ...]
+):
     """
     Trigger tensor communication operation between actors. This is a helper function
     to be called when an ObjectRef containing an in-actor tensor is passed to another actor
