@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/core_worker/core_worker.h"
@@ -31,8 +32,6 @@ namespace ray {
 namespace core {
 namespace {
 
-std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
-
 // Get out and error filepath for worker.
 // It's worth noticing that filepath format should be kept in sync with function
 // `get_worker_log_file_name` under file
@@ -41,7 +40,7 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
                                     const JobID &job_id,
                                     const WorkerID &worker_id,
                                     const std::string &suffix) {
-  std::string parsed_job_id = "";
+  std::string parsed_job_id;
   if (job_id.IsNil()) {
     char *job_id_env = ::getenv("RAY_JOB_ID");
     if (job_id_env != nullptr) {
@@ -215,9 +214,27 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   {
     // Initialize global worker instance.
-    auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
+    client_call_manager_ =
+        std::make_unique<rpc::ClientCallManager>(io_context_, /*record_stats=*/false);
+    gcs_client_ = std::make_shared<gcs::GcsClient>(options.gcs_options, worker_id_);
+    core_worker_client_pool_ =
+        std::make_shared<rpc::CoreWorkerClientPool>([this](const rpc::Address &addr) {
+          return std::make_shared<rpc::CoreWorkerClient>(
+              addr,
+              *client_call_manager_,
+              rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                  gcs_client_.get(),
+                  core_worker_client_pool_.get(),
+                  [this](const std::string &node_manager_address, int32_t port) {
+                    return std::make_shared<raylet::RayletClient>(
+                        rpc::NodeManagerWorkerClient::make(
+                            node_manager_address, port, *client_call_manager_));
+                  },
+                  addr));
+        });
+    auto worker = std::make_shared<CoreWorker>(options_, io_context_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
-    write_locked.Get() = worker;
+    write_locked.Get() = std::move(worker);
   }
 
   // Initialize event framework.

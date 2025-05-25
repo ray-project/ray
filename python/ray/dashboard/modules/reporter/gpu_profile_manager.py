@@ -69,8 +69,7 @@ class GpuProfilingManager:
             self._profile_dir_path / f"dynolog_daemon_{os.getpid()}.log"
         )
 
-        hostname = socket.gethostname()
-        self._ip_address = socket.gethostbyname(hostname)
+        self._ip_address = socket.gethostbyname("localhost")
 
         self._dynolog_bin = shutil.which("dynolog")
         self._dyno_bin = shutil.which("dyno")

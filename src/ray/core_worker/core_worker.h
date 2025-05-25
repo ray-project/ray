@@ -166,12 +166,12 @@ class TaskToRetryDescComparator {
 class CoreWorker : public rpc::CoreWorkerServiceHandler {
  public:
   /// Construct a CoreWorker instance.
-  ///
-  /// \param[in] options The various initialization options.
-  /// \param[in] worker_id ID of this worker.
-  CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id);
+  CoreWorker(CoreWorkerOptions options,
+             instrumented_io_context &io_context,
+             const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
+  void operator=(CoreWorker const &other) = delete;
 
   /// Core worker's deallocation lifecycle
   ///
@@ -182,8 +182,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the shutdown API before terminating. If the core worker is initiated at a worker,
   /// shutdown must be called before terminating the task execution loop.
   ~CoreWorker() override;
-
-  void operator=(CoreWorker const &other) = delete;
 
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
@@ -225,13 +223,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  const std::string GetCurrentTaskName() const {
+  std::string GetCurrentTaskName() const {
     return worker_context_.GetCurrentTask() != nullptr
                ? worker_context_.GetCurrentTask()->GetName()
                : "";
   }
 
-  const std::string GetCurrentTaskFunctionName() const {
+  std::string GetCurrentTaskFunctionName() const {
     return (worker_context_.GetCurrentTask() != nullptr &&
             worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
                ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString()
@@ -1412,6 +1410,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const std::unordered_map<std::string, std::string> &label_selector = {});
+
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1744,7 +1743,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_;
+  instrumented_io_context &io_service_;
 
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;

@@ -17,12 +17,16 @@
 #include <memory>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
 namespace core {
 
 class CoreWorker;
+
+class CoreWorkerProcessImpl;
 
 /// Lifecycle management of the `CoreWorker` instance in a process.
 ///
@@ -113,6 +117,8 @@ class CoreWorkerProcess {
   static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
+
+  static std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 };
 
 class CoreWorkerProcessImpl {
@@ -145,11 +151,20 @@ class CoreWorkerProcessImpl {
   /// The various options.
   const CoreWorkerOptions options_;
 
+  instrumented_io_context io_context_;
+
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
+
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
 
   /// The worker ID of this worker.
   const WorkerID worker_id_;
 };
+
 }  // namespace core
 }  // namespace ray
