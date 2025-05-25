@@ -20,8 +20,8 @@
 
 namespace ray {
 namespace core {
-SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID _actor_id)
-    : actor_id(_actor_id) {}
+SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)
+    : actor_id_(actor_id) {}
 
 bool SequentialActorSubmitQueue::Emplace(uint64_t sequence_no,
                                          const TaskSpecification &spec) {
