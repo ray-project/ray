@@ -49,6 +49,7 @@ repos:
     rev: "0.6.6"
     hooks:
       - id: pydoclint
+        exclude: ^python/ray/serve/tests/test_config_files/syntax_error\.py$
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
