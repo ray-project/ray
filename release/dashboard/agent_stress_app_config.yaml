@@ -11,7 +11,7 @@ python:
     - gcsfs==2022.5.0
     - gym==0.20.0
     - openskill
-    - protobuf >= 4.25.7,<6.0.0
+    - protobuf >= 5.28.0,<6.0.0
     - pyarrow==6.0.1
     - semidbm==0.5.1
     - trueskill
