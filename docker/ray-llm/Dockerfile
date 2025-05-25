@@ -117,8 +117,7 @@ mkdir -p "${TEMP_DIR}"
     meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
     cd build
     ninja
-    NINJA_PATH=$(which ninja)
-    sudo ${NINJA_PATH} install
+    sudo env "PATH=$PATH" ninja install
     pip install --no-cache-dir nixl==0.2.0
 )
 sudo rm -rf "${TEMP_DIR}"
@@ -127,3 +126,4 @@ EOF
 
 ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
 ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
