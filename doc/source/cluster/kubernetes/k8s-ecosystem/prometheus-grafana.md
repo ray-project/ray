@@ -355,7 +355,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
-Currently, we have added auto loading of dashboard JSON if you use [install.sh](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to deploy with the latest version of Kuberay. Dashboards (e.g. `KubeRay-Controller-Runtime-Controllers` etc.) should appear in Grafana automatically.
+Currently, we have added auto loading of dashboard JSON if you use [install.sh](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to deploy with the latest version of Kuberay. Dashboards in [config/grafana](https://github.com/ray-project/kuberay/tree/master/config/grafana) should appear in Grafana automatically.
 
 However, if the dashboards aren't loaded, you could still manually import them with the following steps.
 
