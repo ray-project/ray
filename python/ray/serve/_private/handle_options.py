@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
+from typing import Callable
 
 import ray
+from ray._common.utils import import_attr
 from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 
 
@@ -52,6 +55,7 @@ class DynamicHandleOptionsBase(ABC):
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
+    request_router_class: Callable = PowerOfTwoChoicesRequestRouter
 
     @abstractmethod
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptionsBase":
@@ -66,6 +70,11 @@ class DynamicHandleOptions(DynamicHandleOptionsBase):
         for f in fields(self):
             if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
                 new_kwargs[f.name] = getattr(self, f.name)
+            elif f.name == "request_router_class":
+                request_router_class = kwargs[f.name]
+                if isinstance(request_router_class, str):
+                    request_router_class = import_attr(kwargs[f.name])
+                new_kwargs[f.name] = request_router_class
             else:
                 new_kwargs[f.name] = kwargs[f.name]
 

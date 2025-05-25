@@ -4,7 +4,9 @@ import pytest
 
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
+from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
+from ray.serve.request_router import RequestRouter
 
 
 def test_dynamic_handle_options():
@@ -75,6 +77,24 @@ def test_init_handle_options():
     proxy_options = InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
     assert proxy_options._prefer_local_routing is False
     assert proxy_options._source == DeploymentHandleSource.PROXY
+
+
+def test_dynamic_handle_options_with_request_router_class():
+    # Default options should use PowerOfTwoChoicesRequestRouter
+    default_options = DynamicHandleOptions()
+    assert default_options.request_router_class == PowerOfTwoChoicesRequestRouter
+
+    # Test setting request router class with a callable.
+    updated_options_callable_class = default_options.copy_and_update(
+        request_router_class=RequestRouter
+    )
+    assert updated_options_callable_class.request_router_class == RequestRouter
+
+    # Test setting request router class with a string.
+    updated_options_string_class = default_options.copy_and_update(
+        request_router_class="ray.serve.request_router:RequestRouter"
+    )
+    assert updated_options_string_class.request_router_class == RequestRouter
 
 
 if __name__ == "__main__":
