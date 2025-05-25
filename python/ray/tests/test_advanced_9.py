@@ -2,7 +2,6 @@ import os
 import psutil
 import subprocess
 import sys
-import time
 
 import pytest
 
@@ -191,10 +190,9 @@ def test_node_liveness_after_restart(ray_start_cluster):
     wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
 
     cluster.remove_node(worker)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 1)
     worker = cluster.add_node(node_manager_port=9037)
-    for _ in range(10):
-        wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
-        time.sleep(1)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
 
 
 @pytest.mark.skipif(
@@ -274,8 +272,10 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             return "WORLD"
 
     with ray.init(cluster.address):
-        # Wait for everything to be ready.
-        time.sleep(10)
+        # Make sure cluster is ready.
+        _ = ray.get(A.remote().ready.remote())
+        # Makes a request to the GCS to be really sure.
+        _ = ray.available_resources()
         # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
@@ -320,7 +320,7 @@ import os
 import time
 @ray.remote(num_cpus=3)
 def use_gpu():
-    time.sleep(1)
+    pass
 
 @ray.remote(num_gpus=10)
 class A:

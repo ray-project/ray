@@ -55,7 +55,6 @@ def test_internal_free(shutdown_only):
     big_id = sampler.sample_big.remote()
     ray.get(big_id)
     ray._private.internal_api.free(big_id)
-    time.sleep(1)  # wait for delete RPC to propagate
     with pytest.raises(ObjectFreedError):
         ray.get(big_id)
 
@@ -227,12 +226,12 @@ def test_multiple_waits_and_gets(shutdown_only):
 
     # Make sure that multiple wait requests involving the same object ref
     # all return.
-    x = f.remote(1)
+    x = f.remote(0.1)
     ray.get([g.remote([x]), g.remote([x])])
 
     # Make sure that multiple get requests involving the same object ref all
     # return.
-    x = f.remote(1)
+    x = f.remote(0.1)
     ray.get([h.remote([x]), h.remote([x])])
 
 
@@ -329,17 +328,10 @@ def test_wait_cluster(ray_start_cluster_enabled):
     def f():
         return
 
-    # Make sure we have enough workers on the remote nodes to execute some
-    # tasks.
-    tasks = [f.remote() for _ in range(10)]
-    start = time.time()
-    ray.get(tasks)
-    end = time.time()
-
     # Submit some more tasks that can only be executed on the remote nodes.
     tasks = [f.remote() for _ in range(10)]
     # Sleep for a bit to let the tasks finish.
-    time.sleep((end - start) * 2)
+    _, _ = ray.wait(tasks, num_returns=len(tasks), fetch_local=False)
     _, unready = ray.wait(tasks, num_returns=len(tasks), timeout=0)
     # All remote tasks should have finished.
     assert len(unready) == 0
