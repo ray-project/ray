@@ -1654,6 +1654,10 @@ def _all_actors_dead():
     return len(list_actors(filters=[("state", "=", "ALIVE")])) == 0
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="test is repeated using client api's in test_client_terminate.py",
+)
 def test_kill_actor_immediately_after_creation(ray_start_regular_shared):
     @ray.remote
     class A:
