@@ -44,8 +44,6 @@ mkdir -p "${TEMP_DIR}"
     echo "Installing GDRCopy"
     cd "${TEMP_DIR}"
     sudo apt-get update
-    # Needed by GDRCopy
-    sudo apt-get install -y pkg-config
     # Needed by nvidia-installer
     sudo apt-get install -y kmod
     ls /lib/modules/${KVER} || sudo apt install linux-headers-${KVER} -y
@@ -59,11 +57,21 @@ mkdir -p "${TEMP_DIR}"
         --kernel-source-path="/lib/modules/${KVER}/build" \
         --utility-prefix="/usr"
 
-    wget https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz
-    tar xzf v2.5.tar.gz; rm v2.5.tar.gz
-    cd gdrcopy-2.5
-    sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
-    # sudo ./insmod.sh
+    (
+        # Needed by GDRCopy
+        sudo apt-get install -y pkg-config
+        wget https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz
+        tar xzf v2.5.tar.gz; rm v2.5.tar.gz
+        cd gdrcopy-2.5
+        sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
+    )
+
+    # Uninstall the driver, this driver might have conflict with the library
+    # version on host. Remove it from container.
+    sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
+        --uninstall \
+        --silent \
+        --no-questions
 )
 
 (
@@ -101,8 +109,7 @@ mkdir -p "${TEMP_DIR}"
 
 (
     echo "Installing NIXL"
-    # Needed by NIXL
-    pip install --no-deps meson pybind11 ninja
+    # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
     wget https://github.com/ai-dynamo/nixl/archive/refs/tags/0.2.0.tar.gz
     tar xzf 0.2.0.tar.gz; rm 0.2.0.tar.gz
@@ -112,10 +119,11 @@ mkdir -p "${TEMP_DIR}"
     ninja
     NINJA_PATH=$(which ninja)
     sudo ${NINJA_PATH} install
+    pip install --no-cache-dir nixl==0.2.0
 )
 sudo rm -rf "${TEMP_DIR}"
 
 EOF
 
 ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/${HOSTTYPE}-linux-gnu:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
