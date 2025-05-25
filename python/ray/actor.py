@@ -406,8 +406,8 @@ class ActorMethod:
         if tensor_transport != "OBJECT_STORE":
             if num_returns != 1:
                 raise ValueError(
-                    "Currently, GPU objects only support 1 return value. Please "
-                    "make sure the actor method returns a single object."
+                    f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
+                    "Please make sure the actor method returns a single object."
                 )
 
             actor = self._actor_hard_ref or self._actor_ref()
