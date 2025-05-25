@@ -892,8 +892,6 @@ class Algorithm(Checkpointable, Trainable):
             )
             agg_cls = ray.remote(
                 num_cpus=1,
-                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-                # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
                 max_restarts=-1,
             )(AggregatorActor)
             self._aggregator_actor_manager = FaultTolerantActorManager(
