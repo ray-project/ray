@@ -2897,7 +2897,7 @@
 
   run:
     timeout: 1800
-    script: python experimental/accelerated_dag_gpu_microbenchmark.py
+    script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode
   group: core-daily-test
@@ -2914,7 +2914,7 @@
 
   run:
     timeout: 1800
-    script: python experimental/accelerated_dag_gpu_microbenchmark.py --distributed
+    script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   group: core-daily-test
