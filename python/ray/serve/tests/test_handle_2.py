@@ -507,6 +507,10 @@ async def test_shutdown_async(serve_instance):
     await h.shutdown_async()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't set request router",
+)
 def test_reconfigure_request_router(serve_instance):
     """Test that reconfiguring the request router works."""
 
