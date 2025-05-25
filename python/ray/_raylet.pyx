@@ -1751,7 +1751,8 @@ cdef void execute_task(
         task_name,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects) except *:
+        int64_t generator_backpressure_num_objects,
+        c_string c_tensor_transport) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -2078,7 +2079,10 @@ cdef void execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs,
                     caller_address,
-                    returns)
+                    returns,
+                    None, # ref_generator_id
+                    c_tensor_transport
+                )
 
         except Exception as e:
             num_errors_stored = store_task_errors(
@@ -2114,7 +2118,8 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_reattempt,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects):
+        int64_t generator_backpressure_num_objects,
+        c_string c_tensor_transport):
 
     is_retryable_error[0] = False
 
@@ -2206,7 +2211,8 @@ cdef execute_task_with_cancellation_handler(
                      is_reattempt, execution_info, title, task_name,
                      is_streaming_generator,
                      should_retry_exceptions,
-                     generator_backpressure_num_objects)
+                     generator_backpressure_num_objects,
+                     c_tensor_transport)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -2303,7 +2309,8 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects) nogil:
+        int64_t generator_backpressure_num_objects,
+        c_string c_tensor_transport) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2331,7 +2338,8 @@ cdef CRayStatus task_execution_handler(
                         is_reattempt,
                         is_streaming_generator,
                         should_retry_exceptions,
-                        generator_backpressure_num_objects)
+                        generator_backpressure_num_objects,
+                        c_tensor_transport)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -3673,8 +3681,7 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector,
-                    ):
+                    label_selector):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
@@ -3719,7 +3726,9 @@ cdef class CoreWorker:
                 enable_task_events,
                 c_labels,
                 c_label_selector,
-                )
+                # `tensor_transport` is currently only supported in Ray Actor tasks.
+                # For Ray tasks, we always use `OBJECT_STORE`.
+                b"OBJECT_STORE")
 
             current_c_task_id = current_task.native()
 
@@ -3926,7 +3935,8 @@ cdef class CoreWorker:
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
-                          c_bool enable_task_events):
+                          c_bool enable_task_events,
+                          c_string tensor_transport):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3975,7 +3985,8 @@ cdef class CoreWorker:
                         serialized_runtime_env,
                         enable_task_events,
                         c_labels,
-                        c_label_selector),
+                        c_label_selector,
+                        tensor_transport),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4119,6 +4130,7 @@ cdef class CoreWorker:
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          method_meta.enable_task_events,
+                                         method_meta.method_name_to_tensor_transport,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
@@ -4135,6 +4147,7 @@ cdef class CoreWorker:
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
                                          {},  # enable_task_events
+                                         None,  # method_name_to_tensor_transport
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
@@ -4305,7 +4318,8 @@ cdef class CoreWorker:
                             const CAddress &caller_address,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
-                            ref_generator_id=None):
+                            ref_generator_id=None,
+                            c_string c_tensor_transport=b"OBJECT_STORE"):
         cdef:
             CObjectID return_id
             size_t data_size
@@ -4316,6 +4330,7 @@ cdef class CoreWorker:
             CObjectID c_ref_generator_id = CObjectID.Nil()
             shared_ptr[CRayObject] *return_ptr
 
+        tensor_transport = c_tensor_transport.decode("ascii")
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
 
@@ -4373,7 +4388,7 @@ cdef class CoreWorker:
 
             context = worker.get_serialization_context()
 
-            serialized_object = context.serialize(output)
+            serialized_object = context.serialize(output, return_id.Hex(), tensor_transport)
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:

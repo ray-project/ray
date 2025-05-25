@@ -5,6 +5,7 @@ from ray.core.generated.common_pb2 import (
     WorkerType,
     ErrorType,
     Language,
+    TensorTransport,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -118,6 +119,14 @@ ERROR_TYPE = [
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
+# See `common.proto` for more details.
+TENSOR_TRANSPORT = [
+    "OBJECT_STORE",
+    "NCCL",
+    "GLOO",
+]
+TypeTensorTransport = Literal[tuple(TENSOR_TRANSPORT)]
+
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
@@ -145,3 +154,4 @@ validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
 validate_protobuf_enum(Language, LANGUAGE)
+validate_protobuf_enum(TensorTransport, TENSOR_TRANSPORT)

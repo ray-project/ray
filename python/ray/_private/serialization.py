@@ -2,7 +2,10 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
 
 
 import google.protobuf.message
@@ -10,6 +13,7 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
+from ray._private.custom_types import TypeTensorTransport, TENSOR_TRANSPORT
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
@@ -253,7 +257,36 @@ class SerializationContext:
                     object_ref
                 )
 
-    def _deserialize_pickle5_data(self, data):
+    def _deserialize_pickle5_data(
+        self, data: Any, object_id: Optional[str] = None
+    ) -> Any:
+        """
+        If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
+        out-of-band instead of through the object store. In this case, we need to retrieve
+        the tensors from the in-actor object store. Then, we deserialize `data` with the
+        retrieved tensors in the serialization context.
+
+        Args:
+            data: The data to deserialize.
+            object_id: The object ID to use as the key for the in-actor object store
+                to retrieve tensors.
+
+        Returns:
+            Any: The deserialized object.
+        """
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        worker = ray._private.worker.global_worker
+
+        enable_gpu_objects = object_id in worker.in_actor_object_store
+        if enable_gpu_objects:
+            tensors = worker.in_actor_object_store[object_id]
+            ctx.reset_out_of_band_tensors(tensors)
+            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
+            # is naive. We garbage collect each object after it is consumed once.
+            del worker.in_actor_object_store[object_id]
+
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -263,13 +296,18 @@ class SerializationContext:
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()
+        finally:
+            if enable_gpu_objects:
+                ctx.reset_out_of_band_tensors([])
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata_fields):
+    def _deserialize_msgpack_data(
+        self, data, metadata_fields, object_id: Optional[str] = None
+    ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data)
+            python_objects = self._deserialize_pickle5_data(pickle5_data, object_id)
         else:
             python_objects = []
 
@@ -314,7 +352,9 @@ class SerializationContext:
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
-                return self._deserialize_msgpack_data(data, metadata_fields)
+                return self._deserialize_msgpack_data(
+                    data, metadata_fields, object_ref.hex()
+                )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
@@ -541,16 +581,62 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value):
+    def serialize(
+        self,
+        value,
+        obj_id: Optional[bytes] = None,
+        tensor_transport: TypeTensorTransport = "OBJECT_STORE",
+    ):
         """Serialize an object.
 
         Args:
             value: The value to serialize.
+            obj_id: The object ID of the value. If `tensor_transport` is not `OBJECT_STORE`,
+                `obj_id` is required and the tensors in `value` will be stored in the in-actor object store
+                with the key `obj_id`.
+            tensor_transport: The tensor transport to use. The valid values are `OBJECT_STORE` (default),
+                `NCCL`, and `GLOO`.
         """
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
-        else:
+
+        assert (
+            tensor_transport in TENSOR_TRANSPORT
+        ), f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
+        if tensor_transport == "OBJECT_STORE":
             return self._serialize_to_msgpack(value)
+
+        # Retrieve tensors from `value` and store them in the `in_actor_object_store`.
+        assert (
+            obj_id is not None
+        ), "obj_id is the key to retrieve corresponding tensors from the in-actor object store, and it should not be None."
+        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+        if tensors:
+            obj_id = obj_id.decode("ascii")
+            worker = ray._private.worker.global_worker
+            worker.in_actor_object_store[obj_id] = tensors
+
+        return serialized_val
+
+    def _serialize_and_retrieve_tensors(
+        self, value: Any
+    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+        """
+        Serialize `value` and return the serialized value and any tensors retrieved from `value`.
+        This is only used for GPU objects.
+        """
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        prev_use_external_transport = ctx.use_external_transport
+        ctx.set_use_external_transport(True)
+        try:
+            serialized_val = self._serialize_to_msgpack(value)
+        finally:
+            ctx.set_use_external_transport(prev_use_external_transport)
+
+        tensors, _ = ctx.reset_out_of_band_tensors([])
+        return serialized_val, tensors
