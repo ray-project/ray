@@ -2,7 +2,6 @@ import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
 from ray.experimental.util.types import Device
-from ray.experimental.channel.accelerator_context import AcceleratorContext
 
 if TYPE_CHECKING:
     import numpy as np
@@ -121,7 +120,7 @@ class _SerializationContext:
         # CPU and another from CPU to shared memory. Ideally we should elide
         # the first copy and memcpy directly from GPU to the shared memory
         # buffer.
-        if tensor_device_type != "cpu":
+        if tensor_device_type == "cuda":
             tensor = tensor.to("cpu")
 
         # Numpy does not have an equivalent dtype for all torch dtypes, so
@@ -170,12 +169,12 @@ class _SerializationContext:
         if target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
         elif target_device in [Device.GPU, Device.CUDA]:
-            target_device_type = AcceleratorContext.get().module_name
+            target_device_type = "cuda"
         else:
-            target_device_type = target_device.value
+            target_device_type = "cpu"
 
         # TODO(swang): Support local P2P transfers if available.
-        if target_device_type != "cpu":
+        if target_device_type == "cuda":
 
             def convert_numpy_to_tensor(np_array):
                 if not isinstance(np_array, np.ndarray):
