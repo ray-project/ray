@@ -539,6 +539,64 @@ class GroupedData:
         """
         return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
+    def sample(
+        self,
+        n: int = None,
+        frac: float = None,
+        replace: bool = False,
+        random_state: int = None,
+        **kwargs,
+    ) -> Dataset:
+        """Return a stratified sample of each group, similar to pandas GroupBy.sample.
+
+        This method is commonly used in conjunction with train_test_split() for stratified
+        sampling. For that use case, it's recommended to:
+        1. Add global indices to the dataset first (e.g., using zip_with_index)
+        2. Use groupby().sample() to get the test set
+        3. Filter the original dataset to get the training set
+
+        Args:
+            n: Number of items to return for each group. Cannot be used with frac.
+            frac: Fraction of items to return for each group. Cannot be used with n.
+            replace: Sample with or without replacement. Default is False.
+            random_state: Seed for the random number generator.
+            **kwargs: Additional keyword arguments passed to pandas.DataFrame.sample.
+
+        Returns:
+            A new Dataset containing the sampled rows from each group.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> ds = ray.data.from_pandas(pd.DataFrame({"A": [1, 1, 2, 2, 2], "B": range(5)}))
+            >>> ds.groupby("A").sample(n=1, random_state=42).show()  # doctest: +SKIP
+        """
+        if n is not None and frac is not None:
+            raise ValueError("Only one of 'n' or 'frac' may be specified.")
+
+        _ROW_INDEX_COL = "_row_index"
+
+        def _sample_group(df):
+            import pandas as pd
+            if not isinstance(df, pd.DataFrame):
+                df = df.to_pandas()
+
+            added_row_index = _ROW_INDEX_COL not in df.columns
+            if added_row_index:
+                df[_ROW_INDEX_COL] = range(len(df))
+
+            sampled_df = df.sample(
+                n=n, frac=frac, replace=replace, random_state=random_state, **kwargs
+            )
+
+            if added_row_index:
+                sampled_df = sampled_df.drop(columns=[_ROW_INDEX_COL])
+
+            return sampled_df
+
+        return self.map_groups(_sample_group, batch_format="pandas")
+
 
 # Backwards compatibility alias.
 GroupedDataset = GroupedData
