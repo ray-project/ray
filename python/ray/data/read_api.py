@@ -410,7 +410,6 @@ def read_datasource(
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
-        needs_stats_actor=True,
         stats_uuid=uuid.uuid4(),
     )
     read_op = Read(
