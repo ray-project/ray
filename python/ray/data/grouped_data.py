@@ -540,7 +540,7 @@ class GroupedData:
         return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
 
     @PublicAPI(api_group=CDS_API_GROUP)
-    def sample(
+    def random_sample(
         self,
         n: int = None,
         frac: float = None,
@@ -549,12 +549,6 @@ class GroupedData:
         **kwargs,
     ) -> Dataset:
         """Return a stratified sample of each group, similar to pandas GroupBy.sample.
-
-        This method is commonly used in conjunction with train_test_split() for stratified
-        sampling. For that use case, it's recommended to:
-        1. Add global indices to the dataset first (e.g., using zip_with_index)
-        2. Use groupby().sample() to get the test set
-        3. Filter the original dataset to get the training set
 
         Args:
             n: Number of items to return for each group. Cannot be used with frac.
@@ -570,7 +564,7 @@ class GroupedData:
             >>> import ray
             >>> import pandas as pd
             >>> ds = ray.data.from_pandas(pd.DataFrame({"A": [1, 1, 2, 2, 2], "B": range(5)}))
-            >>> ds.groupby("A").sample(n=1, random_state=42).show()  # doctest: +SKIP
+            >>> ds.groupby("A").random_sample(n=1, random_state=42).show()  # doctest: +SKIP
         """
         if n is not None and frac is not None:
             raise ValueError("Only one of 'n' or 'frac' may be specified.")

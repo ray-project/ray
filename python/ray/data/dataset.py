@@ -155,9 +155,6 @@ IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
 E_API_GROUP = "Execution"
 
-# Add constant for row index column
-_ROW_INDEX_COL = "_row_index"
-
 
 @PublicAPI
 class Dataset:
@@ -2210,7 +2207,6 @@ class Dataset:
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
-        stratify: Optional[str] = None,
     ) -> Tuple["MaterializedDataset", "MaterializedDataset"]:
         """Materialize and split the dataset into train and test subsets.
 
@@ -2224,19 +2220,6 @@ class Dataset:
             >>> test.take_batch()
             {'id': array([6, 7])}
 
-            # With stratification
-            >>> ds = ray.data.from_items([
-            ...     {"label": 0, "value": 1},
-            ...     {"label": 0, "value": 2},
-            ...     {"label": 1, "value": 3},
-            ...     {"label": 1, "value": 4},
-            ... ])
-            >>> train, test = ds.train_test_split(test_size=0.5, stratify="label")
-            >>> train.take_batch()
-            {'label': array([0, 1]), 'value': array([1, 3])}
-            >>> test.take_batch()
-            {'label': array([0, 1]), 'value': array([2, 4])}
-
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
                 proportion of the dataset to include in the test split. If int,
@@ -2247,9 +2230,6 @@ class Dataset:
                 large dataset.
             seed: Fix the random seed to use for shuffle, otherwise one is chosen
                 based on system randomness. Ignored if ``shuffle=False``.
-            stratify: Column name to use for stratification. If provided, the train and test
-                splits will maintain the same class distribution as the original dataset.
-                Defaults to None.
 
         Returns:
             Train and test subsets as two ``MaterializedDatasets``.
@@ -2265,14 +2245,13 @@ class Dataset:
 
         if not isinstance(test_size, (int, float)):
             raise TypeError(f"`test_size` must be int or float got {type(test_size)}.")
-
         if isinstance(test_size, float):
             if test_size <= 0 or test_size >= 1:
                 raise ValueError(
                     "If `test_size` is a float, it must be bigger than 0 and smaller "
                     f"than 1. Got {test_size}."
                 )
-            test_prop = test_size
+            return ds.split_proportionately([1 - test_size])
         else:
             ds_length = ds.count()
             if test_size <= 0 or test_size >= ds_length:
@@ -2281,41 +2260,7 @@ class Dataset:
                     f"than the size of the dataset ({ds_length}). "
                     f"Got {test_size}."
                 )
-            test_prop = test_size / ds_length
-
-        if stratify is not None:
-            # Add global row indices to track rows
-            indexed_ds = ds.zip_with_index().map_batches(
-                lambda df: df.rename(columns={"index": _ROW_INDEX_COL}), batch_format="pandas"
-            )
-
-            # Perform stratified sampling to get test set
-            test_ds = (
-                indexed_ds.groupby(stratify)
-                .sample(frac=test_prop, replace=False, random_state=seed)
-                .materialize()  # Materialize to freeze the test dataset before filtering original rows
-            )
-
-            # Get set of test row indices
-            test_indices = set()
-            for batch in test_ds.iter_batches(batch_format="pandas"):
-                test_indices.update(batch[_ROW_INDEX_COL].tolist())
-
-            # Filter out test rows to get the training set
-            train_ds = (
-                indexed_ds.filter(lambda row: row[_ROW_INDEX_COL] not in test_indices)
-                .drop_columns([_ROW_INDEX_COL])
-                .materialize()
-            )
-
-            # Drop row_index from test set too
-            test_ds = test_ds.drop_columns([_ROW_INDEX_COL])
-
-            return train_ds, test_ds
-        else:
-            # Use existing split logic for non-stratified case
-            [train_ds], test_ds = ds.split_proportionately([1 - test_prop])
-            return train_ds.materialize(), test_ds.materialize()
+            return ds.split_at_indices([ds_length - test_size])
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
@@ -4504,7 +4449,7 @@ class Dataset:
                 * order_by:
                     Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
                     When overwriting an existing table, its previous `ORDER BY` (if any) is reused.
-                    Otherwise, a "best" column is selected automatically (favoring a timestamp column,
+                    Otherwise, a “best” column is selected automatically (favoring a timestamp column,
                     then a non-string column, and lastly the first column).
 
                 * partition_by:
