@@ -1,4 +1,14 @@
-# This script used to create a msgpack-checkpoint in the same directory.
+"""Use this script to create "legacy" msgpack-checkpoints in the same directory.
+
+Backward compatibility tests of future Ray and RLlib versions check for compatibility
+with these legacy msgpack checkpoints.
+
+Run this script roughly once per Ray release and save the resulting checkpoint
+.zip file into a newly created `ray_[major]_[minor]` subdirectory.
+
+The CI test in `test_checkpointable.py` can then loop through all the Ray version
+subdirectories and try to restore the original Algo's state and continue training.
+"""
 
 import argparse
 from pathlib import Path

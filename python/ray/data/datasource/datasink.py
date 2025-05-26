@@ -64,13 +64,13 @@ class Datasink(Generic[WriteReturnType]):
     def on_write_complete(self, write_result: WriteResult[WriteReturnType]):
         """Callback for when a write job completes.
 
-        This can be used to "commit" a write output. This method must
+        This can be used to `commit` a write output. This method must
         succeed prior to ``write_datasink()`` returning to the user. If this
         method fails, then ``on_write_failed()`` is called.
 
         Args:
             write_result: Aggregated result of the
-            the Write operator, containing write results and stats.
+               Write operator, containing write results and stats.
         """
         pass
 
@@ -103,7 +103,7 @@ class Datasink(Generic[WriteReturnType]):
         return True
 
     @property
-    def num_rows_per_write(self) -> Optional[int]:
+    def min_rows_per_write(self) -> Optional[int]:
         """The target number of rows to pass to each :meth:`~ray.data.Datasink.write` call.
 
         If ``None``, Ray Data passes a system-chosen number of rows.

@@ -1,18 +1,29 @@
 import json
 import os
-import platform
 import subprocess
 import sys
-from telnetlib import Telnet
 import unittest
-
 import pexpect
+from pexpect.popen_spawn import PopenSpawn
+from telnetlib import Telnet
+from typing import Union
+
 import pytest
 
 import ray
 from ray._private import ray_constants, services
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
+
+
+def _pexpect_spawn(cmd: str) -> Union["pexpect.spawn", PopenSpawn]:
+    """Handles compatibility for pexpect on Windows."""
+    if sys.platform == "win32":
+        p = PopenSpawn(cmd, encoding="utf-8")
+    else:
+        p = pexpect.spawn(cmd)
+
+    return p
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -76,12 +87,7 @@ def test_ray_debugger_commands(shutdown_only):
 
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
-    if sys.platform == "win32":
-        from pexpect.popen_spawn import PopenSpawn
-
-        p = PopenSpawn("ray debug", encoding="utf-8")
-    else:
-        p = pexpect.spawn("ray debug")
+    p = _pexpect_spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> ray.util.pdb.set_trace()")
@@ -123,12 +129,7 @@ def test_ray_debugger_stepping(shutdown_only):
         > 0
     )
 
-    if sys.platform == "win32":
-        from pexpect.popen_spawn import PopenSpawn
-
-        p = PopenSpawn("ray debug", encoding="utf-8")
-    else:
-        p = pexpect.spawn("ray debug")
+    p = _pexpect_spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> x = g.remote()")
@@ -165,13 +166,7 @@ def test_ray_debugger_recursive(shutdown_only):
         > 0
     )
 
-    p = pexpect.spawn("ray debug")
-    if sys.platform == "win32":
-        from pexpect.popen_spawn import PopenSpawn
-
-        p = PopenSpawn("ray debug", encoding="utf-8")
-    else:
-        p = pexpect.spawn("ray debug")
+    p = _pexpect_spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("(Pdb)")
@@ -229,12 +224,7 @@ time.sleep(5)
 
     # Start the debugger. This should clean up any existing sessions that
     # belong to dead jobs.
-    if sys.platform == "win32":
-        from pexpect.popen_spawn import PopenSpawn
-
-        p = PopenSpawn("ray debug", encoding="utf-8")  # noqa: F841
-    else:
-        p = pexpect.spawn("ray debug")  # noqa:F841
+    _ = _pexpect_spawn("ray debug")
 
     def no_active_sessions():
         return not len(
@@ -247,7 +237,7 @@ time.sleep(5)
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Windows does not print '--address' on init"
+    sys.platform == "win32", reason="Windows does not print '--address' on init"
 )
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_external):
@@ -399,12 +389,7 @@ def test_env_var_enables_ray_debugger():
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

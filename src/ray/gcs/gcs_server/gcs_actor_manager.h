@@ -15,7 +15,11 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <list>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
@@ -31,6 +35,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -51,6 +56,7 @@ class GcsActor {
           counter)
       : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -69,6 +75,7 @@ class GcsActor {
         counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by TaskSpec.
@@ -128,7 +135,7 @@ class GcsActor {
           function_descriptor.python_function_descriptor().class_name());
       break;
     default:
-      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // TODO(Alex): Handle the C++ case, which we currently don't have an
       // easy equivalent to class_name for.
       break;
     }
@@ -139,6 +146,7 @@ class GcsActor {
       actor_table_data_.set_call_site(task_spec.call_site());
     }
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   ~GcsActor() {
@@ -195,6 +203,13 @@ class GcsActor {
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
   void WriteActorExportEvent() const;
+  // Verify if export events should be written for EXPORT_ACTOR source types
+  bool IsExportAPIEnabledActor() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_ACTOR",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   const ResourceRequest &GetAcquiredResources() const;
   void SetAcquiredResources(ResourceRequest &&resource_request);
@@ -255,6 +270,8 @@ class GcsActor {
   bool grant_or_reject_ = false;
   /// The last recorded metric state.
   std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
+  /// If true, actor events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 using RegisterActorCallback =
@@ -318,6 +335,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
@@ -503,7 +521,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
+    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
         : client(std::move(client)) {}
     /// A client that can be used to contact the owner.
     std::shared_ptr<rpc::CoreWorkerClientInterface> client;
@@ -659,7 +677,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages come from a Driver/Worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<CreateActorCallback>>
       actor_to_create_callbacks_;
-  /// All registered actors (unresoved and pending actors are also included).
+  /// All registered actors (unresolved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// All destroyed actors.
@@ -691,6 +709,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
   GcsTableStorage *gcs_table_storage_;
+  instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
@@ -717,6 +736,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
+
+  // Make sure our unprotected maps are accessed from the same thread.
+  // Currently protects actor_to_register_callbacks_.
+  ThreadChecker thread_checker_;
 
   // Debug info.
   enum CountType {

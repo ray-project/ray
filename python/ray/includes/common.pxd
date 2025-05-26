@@ -330,8 +330,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events,
-                     const unordered_map[c_string, c_string] &labels)
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &labels,
+                     const unordered_map[c_string, c_string] &label_selector)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -350,7 +352,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool execute_out_of_order,
             int32_t max_pending_calls,
             c_bool enable_task_events,
-            const unordered_map[c_string, c_string] &labels)
+            const unordered_map[c_string, c_string] &labels,
+            const unordered_map[c_string, c_string] &label_selector)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -376,13 +379,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
-            object (*)(CRayStatus, c_vector[T] &&) nogil,
+            object (*)(CRayStatus, c_vector[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
     cdef cppclass OptionalItemPyCallback[T]:
         OptionalItemPyCallback(
-            object (*)(CRayStatus, const optional[T]&) nogil,
+            object (*)(CRayStatus, optional[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
@@ -444,7 +447,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
         CRayStatus AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            optional[CNodeID] node_id)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -515,7 +519,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &value,
             c_bool overwrite,
             int64_t timeout_ms,
-            const OptionalItemPyCallback[int] &callback)
+            const OptionalItemPyCallback[c_bool] &callback)
 
         CRayStatus AsyncInternalKVExists(
             const c_string &ns,
@@ -554,9 +558,18 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &serialized_reply
         )
 
+        CRayStatus AsyncGetClusterStatus(
+            int64_t timeout_ms,
+            const OptionalItemPyCallback[CGetClusterStatusReply] &callback)
+
         CRayStatus ReportAutoscalingState(
             int64_t timeout_ms,
             const c_string &serialized_state
+        )
+
+        CRayStatus ReportClusterConfig(
+            int64_t timeout_ms,
+            const c_string &serialized_cluster_config
         )
 
         CRayStatus DrainNode(
@@ -567,6 +580,23 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_bool &is_accepted,
             c_string &rejection_reason_message
+        )
+
+    cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
+        CRayStatus PublishError(
+            c_string key_id,
+            CErrorTableData data,
+            int64_t timeout_ms)
+
+        CRayStatus PublishLogs(
+            c_string key_id,
+            CLogBatch data,
+            int64_t timeout_ms)
+
+        CRayStatus AsyncPublishNodeResourceUsage(
+            c_string key_id,
+            c_string node_resource_usage,
+            const StatusPyCallback &callback
         )
 
 
@@ -596,6 +626,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CNodeResourceInfoAccessor& NodeResources()
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
+        CPublisherAccessor& Publisher()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
@@ -604,18 +635,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
         const CGcsNodeInfo& node_info)
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
-
-    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
-
-        CPythonGcsPublisher(const c_string& gcs_address)
-
-        CRayStatus Connect()
-
-        CRayStatus PublishError(
-            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
-
-        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
-
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(
@@ -722,6 +741,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
+cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
+    cdef cppclass CGetClusterStatusReply "ray::rpc::autoscaler::GetClusterStatusReply":
+        c_string serialized_cluster_status() const
+        void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString() const
+
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
@@ -738,3 +763,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef const char[] kGcsAutoscalerStateNamespace
+    cdef const char[] kGcsAutoscalerV2EnabledKey
+    cdef const char[] kGcsAutoscalerClusterConfigKey
+    cdef const char[] kGcsPidKey

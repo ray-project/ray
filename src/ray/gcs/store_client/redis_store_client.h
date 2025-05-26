@@ -16,7 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -135,7 +139,7 @@ class RedisStoreClient : public StoreClient {
                           const std::vector<std::string> &keys,
                           Postable<void(int64_t)> callback) override;
 
-  int GetNextJobID() override;
+  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
 
   Status AsyncGetKeys(const std::string &table_name,
                       const std::string &prefix,

@@ -1,15 +1,12 @@
 import sys
+import time
 import random
-import string
-
-import ray
 
 import pytest
-import time
 
+import ray
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
-from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import (
     RayletKiller,
@@ -63,44 +60,6 @@ def set_kill_interval(request):
         yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
 
 
-@pytest.mark.skip(
-    reason="Skip until https://github.com/ray-project/ray/issues/20706 is fixed."
-)
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "set_kill_interval",
-    [(True, None), (True, 20), (False, None), (False, 20)],
-    indirect=True,
-)
-def test_chaos_task_retry(set_kill_interval):
-    # Chaos testing.
-    @ray.remote(max_retries=-1)
-    def task():
-        a = ""
-        for _ in range(100000):
-            a = a + random.choice(string.ascii_letters)
-        return
-
-    @ray.remote(max_retries=-1)
-    def invoke_nested_task():
-        time.sleep(0.8)
-        return ray.get(task.remote())
-
-    # 50MB of return values.
-    TOTAL_TASKS = 100
-
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS, "task")
-    results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
-    start = time.time()
-    pb.block_until_complete(results)
-    runtime_with_failure = time.time() - start
-    print(f"Runtime when there are many failures: {runtime_with_failure}")
-    pb.close()
-
-    # TODO(sang): Enable this again.
-    # assert_no_system_failure(p, 10)
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "set_kill_interval",
@@ -120,16 +79,15 @@ def test_chaos_actor_retry(set_kill_interval):
     NUM_CPUS = 16
     TOTAL_TASKS = 300
 
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS, "task")
     actors = [Actor.remote() for _ in range(NUM_CPUS)]
     results = []
     for a in actors:
         results.extend([a.add.remote(str(i)) for i in range(TOTAL_TASKS)])
+
     start = time.time()
-    pb.fetch_until_complete(results)
+    ray.get(results)
     runtime_with_failure = time.time() - start
     print(f"Runtime when there are many failures: {runtime_with_failure}")
-    pb.close()
 
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
@@ -358,10 +316,4 @@ def test_node_killer_filter(autoscaler_v2):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <utility>
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -25,7 +28,7 @@
 #include "ray/common/test_util.h"
 // clang-format on
 
-using namespace ::testing;
+using namespace ::testing;  // NOLINT
 
 namespace ray {
 using raylet::NoopLocalTaskManager;
@@ -39,9 +42,9 @@ class GcsActorSchedulerMockTest : public Test {
  public:
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
-    actor_table = std::make_unique<GcsActorTable>(store_client, io_context);
-    gcs_node_manager =
-        std::make_unique<GcsNodeManager>(nullptr, nullptr, nullptr, ClusterID::Nil());
+    actor_table = std::make_unique<GcsActorTable>(store_client);
+    gcs_node_manager = std::make_unique<GcsNodeManager>(
+        nullptr, nullptr, io_context, nullptr, ClusterID::Nil());
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::NodeManagerClientPool>(
@@ -59,8 +62,8 @@ class GcsActorSchedulerMockTest : public Test {
         local_node_id,
         *cluster_resource_scheduler,
         /*get_node_info=*/
-        [this](const NodeID &node_id) {
-          auto node = gcs_node_manager->GetAliveNode(node_id);
+        [this](const NodeID &nid) {
+          auto node = gcs_node_manager->GetAliveNode(nid);
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_task=*/nullptr,

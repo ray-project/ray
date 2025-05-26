@@ -63,6 +63,7 @@ from typing import Optional, Sequence
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -131,7 +132,7 @@ class EnvRenderCallback(RLlibCallback):
             return
 
         # If we have a vector env, only render the sub-env at index 0.
-        if isinstance(env.unwrapped, gym.vector.VectorEnv):
+        if isinstance(env.unwrapped, (gym.vector.VectorEnv, VectorMultiAgentEnv)):
             image = env.unwrapped.envs[0].render()
         # Render the gym.Env.
         else:
@@ -148,7 +149,9 @@ class EnvRenderCallback(RLlibCallback):
         # See below:
         # `on_episode_end()`: We compile the video and maybe store it).
         # `on_sample_end()` We log the best and worst video to the `MetricsLogger`.
-        episode.add_temporary_timestep_data("render_images", image)
+        if "render_images" not in episode.custom_data:
+            episode.custom_data["render_images"] = []
+        episode.custom_data["render_images"].append(image)
 
     def on_episode_end(
         self,
@@ -182,7 +185,7 @@ class EnvRenderCallback(RLlibCallback):
             or episode_return < self.worst_episode_and_return[1]
         ):
             # Pull all images from the temp. data of the episode.
-            images = episode.get_temporary_timestep_data("render_images")
+            images = episode.custom_data["render_images"]
             # `images` is now a list of 3D ndarrays
 
             # Create a video from the images by simply stacking them AND

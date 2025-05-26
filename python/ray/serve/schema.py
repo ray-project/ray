@@ -15,11 +15,13 @@ from ray._private.pydantic_compat import (
     root_validator,
     validator,
 )
+from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
+    RequestProtocol,
     ServeDeployMode,
 )
 from ray.serve._private.constants import (
@@ -140,6 +142,15 @@ class LoggingConfig(BaseModel):
             "Whether to enable access logs for each request. Default to True."
         ),
     )
+    additional_log_standard_attrs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Default attributes from the Python standard logger that will be "
+            "added to all log records. "
+            "See https://docs.python.org/3/library/logging.html#logrecord-attributes "
+            "for a list of available attributes."
+        ),
+    )
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
@@ -167,6 +178,16 @@ class LoggingConfig(BaseModel):
                 f"{list(logging._nameToLevel.keys())}."
             )
         return v
+
+    @validator("additional_log_standard_attrs")
+    def valid_additional_log_standard_attrs(cls, v):
+        for attr in v:
+            if attr not in LOGRECORD_STANDARD_ATTRS:
+                raise ValueError(
+                    f"Unknown attribute '{attr}'. "
+                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                )
+        return list(set(v))
 
     def _compute_hash(self) -> int:
         return crc32(
@@ -240,8 +261,8 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -554,8 +575,8 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -637,6 +658,10 @@ class gRPCOptionsSchema(BaseModel):
             "will be added and no gRPC server will be started. The servicer functions "
             "need to be importable from the context of where Serve is running."
         ),
+    )
+    request_timeout_s: float = Field(
+        default=None,
+        description="The timeout for gRPC requests. Defaults to no timeout.",
     )
 
 
@@ -879,6 +904,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     Attributes:
         node_id: ID of the node that the actor is running on.
         node_ip: IP address of the node that the actor is running on.
+        node_instance_id: Cloud provider instance id of the node that the actor is running on.
         actor_id: Actor ID.
         actor_name: Actor name.
         worker_id: Worker ID.
@@ -891,6 +917,9 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
     node_ip: Optional[str] = Field(
         description="IP address of the node that the actor is running on."
+    )
+    node_instance_id: Optional[str] = Field(
+        description="Cloud provider instance id of the node that the actor is running on."
     )
     actor_id: Optional[str] = Field(description="Actor ID.")
     actor_name: Optional[str] = Field(description="Actor name.")
@@ -951,6 +980,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "change over time for autoscaling deployments, but will remain a constant "
             "number for other deployments."
         )
+    )
+    required_resources: Dict = Field(
+        description="The resources required per replica of this deployment."
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
@@ -1041,6 +1073,20 @@ class ProxyDetails(ServeActorDetails, frozen=True):
     status: ProxyStatus = Field(description="Current status of the proxy.")
 
 
+@PublicAPI(stability="alpha")
+class Target(BaseModel, frozen=True):
+    ip: str = Field(description="IP address of the target.")
+    port: int = Field(description="Port of the target.")
+    instance_id: str = Field(description="Instance ID of the target.")
+
+
+@PublicAPI(stability="alpha")
+class TargetGroup(BaseModel, frozen=True):
+    targets: List[Target] = Field(description="List of targets for the given route.")
+    route_prefix: str = Field(description="Prefix route of the targets.")
+    protocol: RequestProtocol = Field(description="Protocol of the targets.")
+
+
 @PublicAPI(stability="stable")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
@@ -1079,6 +1125,14 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         description="Details about all live applications running on the cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+
+    target_groups: List[TargetGroup] = Field(
+        default_factory=list,
+        description=(
+            "List of target groups, each containing target info for a given route and "
+            "protocol."
+        ),
+    )
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:

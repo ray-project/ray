@@ -70,7 +70,7 @@ class TorchDistribution(Distribution, abc.ABC):
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
-    """Wrapper class for PyTorch Categorical distribution.
+    r"""Wrapper class for PyTorch Categorical distribution.
 
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).
@@ -129,7 +129,9 @@ class TorchCategorical(TorchDistribution):
         logits: "torch.Tensor" = None,
         probs: "torch.Tensor" = None,
     ) -> "torch.distributions.Distribution":
-        return torch.distributions.categorical.Categorical(logits=logits, probs=probs)
+        return torch.distributions.categorical.Categorical(
+            logits=logits, probs=probs, validate_args=False
+        )
 
     @staticmethod
     @override(Distribution)
@@ -141,7 +143,7 @@ class TorchCategorical(TorchDistribution):
     def rsample(self, sample_shape=()):
         if self._one_hot is None:
             self._one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-                logits=self.logits, probs=self.probs
+                logits=self.logits, probs=self.probs, validate_args=False
             )
         one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
@@ -207,7 +209,7 @@ class TorchDiagGaussian(TorchDistribution):
         super().__init__(loc=loc, scale=scale)
 
     def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
-        return torch.distributions.normal.Normal(loc, scale)
+        return torch.distributions.normal.Normal(loc, scale, validate_args=False)
 
     @override(TorchDistribution)
     def logp(self, value: TensorType) -> TensorType:
@@ -255,7 +257,7 @@ class TorchSquashedGaussian(TorchDistribution):
         super().__init__(loc=loc, scale=scale)
 
     def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
-        return torch.distributions.normal.Normal(loc, scale)
+        return torch.distributions.normal.Normal(loc, scale, validate_args=False)
 
     @override(TorchDistribution)
     def sample(
@@ -528,12 +530,11 @@ class TorchMultiDistribution(Distribution):
         self,
         child_distribution_struct: Union[Tuple, List, Dict],
     ):
-        """Initializes a TorchMultiActionDistribution object.
+        """Initializes a TorchMultiDistribution object.
 
         Args:
-            child_distribution_struct: Any struct
-                that contains the child distribution classes to use to
-                instantiate the child distributions from `logits`.
+            child_distribution_struct: A complex struct that contains the child
+                distribution instances that make up this multi-distribution.
         """
         super().__init__()
         self._original_struct = child_distribution_struct
@@ -634,7 +635,6 @@ class TorchMultiDistribution(Distribution):
         logits: "torch.Tensor",
         child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
-        space: gym.Space,
         **kwargs,
     ) -> "TorchMultiDistribution":
         """Creates this Distribution from logits (and additional arguments).
@@ -651,11 +651,10 @@ class TorchMultiDistribution(Distribution):
             input_lens: A list or dict of integers that indicate the length of each
                 logit. If this is given as a dict, the structure should match the
                 structure of child_distribution_cls_struct.
-            space: The possibly nested output space.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A TorchMultiActionDistribution object.
+            A TorchMultiDistribution object.
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)

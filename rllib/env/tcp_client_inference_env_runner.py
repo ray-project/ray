@@ -331,7 +331,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
                 truncated=episode_data["is_truncated"],
                 len_lookback_buffer=0,
             )
-            episodes.append(episode.finalize())
+            episodes.append(episode.to_numpy())
 
         # Push episodes into the to-be-returned list (for `sample()` requests).
         with self._sample_lock:
@@ -427,7 +427,7 @@ def _get_message(sock_):
         # Check for proper protocol.
         if "type" not in message:
             raise ConnectionError(
-                "Protocol Error! Message from peer does not contain `type` " "field."
+                "Protocol Error! Message from peer does not contain `type` field."
             )
         return rllink(message.pop("type")), message
     except Exception as e:

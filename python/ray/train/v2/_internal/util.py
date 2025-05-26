@@ -8,6 +8,7 @@ from typing import (
     ContextManager,
     Dict,
     Generator,
+    Generic,
     List,
     Optional,
     TypeVar,
@@ -16,7 +17,6 @@ from typing import (
 
 import ray
 from ray.train._internal.utils import count_required_parameters
-from ray.train.v2._internal.execution.callback import Callback
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -43,7 +43,7 @@ def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
     train_func_context: ContextManager,
-    fn_arg_name: Optional[str] = "train_func",
+    fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -87,6 +87,16 @@ def construct_train_func(
     return train_fn
 
 
+class ObjectRefWrapper(Generic[T]):
+    """Thin wrapper around ray.put to manually control dereferencing."""
+
+    def __init__(self, obj: T):
+        self._ref = ray.put(obj)
+
+    def get(self) -> T:
+        return ray.get(self._ref)
+
+
 def date_str(include_ms: bool = False):
     pattern = "%Y-%m-%d_%H-%M-%S"
     if include_ms:
@@ -107,7 +117,7 @@ def _copy_doc(copy_func):
 
 
 def ray_get_safe(
-    object_refs: Union[ObjectRef, List[ObjectRef]]
+    object_refs: Union[ObjectRef, List[ObjectRef]],
 ) -> Union[Any, List[Any]]:
     """This is a safe version of `ray.get` that raises an exception immediately
     if an input task dies, while the others are still running.
@@ -145,25 +155,18 @@ def ray_get_safe(
 
 
 @contextlib.contextmanager
-def invoke_callbacks_context_managers(
-    callbacks: List[Callback],
-    method_name: str,
+def invoke_context_managers(
+    context_managers: List[ContextManager],
 ) -> Generator[None, None, None]:
     """
-    Utility to invoke a generator method on a list of callback instances and
-    yield sequentially, with context management using ExitStack.
+    Utility to invoke a list of context managers and yield sequentially.
 
     Args:
-        callbacks: List of class instances (callbacks).
-        method_name: The name of the generator method to invoke on each callback.
-        *args: Any positional arguments to pass to the generator method.
-        **kwargs: Any keyword arguments to pass to the generator method.
+        context_managers: List of context managers to invoke.
     """
     with contextlib.ExitStack() as stack:
-        for callback in callbacks:
-            method = getattr(callback, method_name)
-            generator = method()
-            stack.enter_context(generator)
+        for context_manager in context_managers:
+            stack.enter_context(context_manager())
         yield
 
 
@@ -177,3 +180,33 @@ def get_module_name(obj: object) -> str:
         Full module and qualified name as a string.
     """
     return f"{obj.__module__}.{obj.__qualname__}"
+
+
+def get_callable_name(fn: Callable) -> str:
+    """Returns a readable name for any callable.
+
+    Examples:
+
+        >>> get_callable_name(lambda x: x)
+        '<lambda>'
+        >>> def foo(a, b): pass
+        >>> get_callable_name(foo)
+        'foo'
+        >>> from functools import partial
+        >>> bar = partial(partial(foo, a=1), b=2)
+        >>> get_callable_name(bar)
+        'foo'
+        >>> class Dummy:
+        ...     def __call__(self, a, b): pass
+        >>> get_callable_name(Dummy())
+        'Dummy'
+    """
+    if isinstance(fn, functools.partial):
+        return get_callable_name(fn.func)
+
+    # Use __name__ for regular functions and lambdas
+    if hasattr(fn, "__name__"):
+        return fn.__name__
+
+    # Fallback to the class name for objects that implement __call__
+    return fn.__class__.__name__

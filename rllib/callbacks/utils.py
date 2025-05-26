@@ -1,16 +1,31 @@
+from typing import Any, Callable, Dict, List, Optional
+
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack
 
 
 def make_callback(
-    callback_name,
-    callbacks_objects=None,
-    callbacks_functions=None,
+    callback_name: str,
+    callbacks_objects: Optional[List[RLlibCallback]] = None,
+    callbacks_functions: Optional[List[Callable]] = None,
     *,
-    args=None,
-    kwargs=None,
+    args: List[Any] = None,
+    kwargs: Dict[str, Any] = None,
 ) -> None:
+    """Calls an RLlibCallback method or a registered callback callable.
+
+    Args:
+        callback_name: The name of the callback method or key, for example:
+            "on_episode_start" or "on_train_result".
+        callbacks_objects: The RLlibCallback object or list of RLlibCallback objects
+            to call the `callback_name` method on (in the order they appear in the
+            list).
+        callbacks_functions: The callable or list of callables to call
+            (in the order they appear in the list).
+        args: Call args to pass to the method/callable calls.
+        kwargs: Call kwargs to pass to the method/callable calls.
+    """
     # Loop through all available RLlibCallback objects.
     callbacks_objects = force_list(callbacks_objects)
     for callback_obj in callbacks_objects:
@@ -43,6 +58,9 @@ def _make_multi_callbacks(callback_class_list):
 
         # Only on new API stack.
         def on_env_runners_recreated(self, **kwargs) -> None:
+            pass
+
+        def on_offline_eval_runners_recreated(self, **kwargs) -> None:
             pass
 
         def on_checkpoint_loaded(self, **kwargs) -> None:
@@ -84,6 +102,16 @@ def _make_multi_callbacks(callback_class_list):
         def on_evaluate_end(self, **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_evaluate_end(**kwargs)
+
+        # TODO (simon, sven): Fix the test such that we can simply remove
+        # these.
+        def on_evaluate_offline_start(self, **kwargs):
+            for callback in self._callback_list:
+                callback.on_evaluate_offline_start(**kwargs)
+
+        def on_evaluate_offline_end(self, **kwargs):
+            for callback in self._callback_list:
+                callback.on_evaluate_offline_end(**kwargs)
 
         def on_postprocess_trajectory(
             self,

@@ -1,7 +1,8 @@
 import json
 import logging
+import sys
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._private.protobuf_compat import message_to_dict
 
@@ -17,6 +18,7 @@ from ray._private.utils import (
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
+from ray.core.generated import autoscaler_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -81,7 +83,10 @@ class GlobalState:
         self.global_state_accessor.connect()
 
     def actor_table(
-        self, actor_id: str, job_id: ray.JobID = None, actor_state_name: str = None
+        self,
+        actor_id: Optional[str],
+        job_id: Optional[ray.JobID] = None,
+        actor_state_name: Optional[str] = None,
     ):
         """Fetch and parse the actor table information for a single actor ID.
 
@@ -837,6 +842,42 @@ class GlobalState:
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
 
+    def get_cluster_config(self) -> autoscaler_pb2.ClusterConfig:
+        """Get the cluster config of the current cluster."""
+        self._check_connected()
+        serialized_cluster_config = self.global_state_accessor.get_internal_kv(
+            ray._raylet.GCS_AUTOSCALER_STATE_NAMESPACE.encode(),
+            ray._raylet.GCS_AUTOSCALER_CLUSTER_CONFIG_KEY.encode(),
+        )
+        if serialized_cluster_config:
+            return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
+        return None
+
+    def get_max_resources_from_cluster_config(self) -> Optional[int]:
+        config = self.get_cluster_config()
+        if config is None:
+            return None
+
+        def calculate_max_resource_from_cluster_config(key: str) -> Optional[int]:
+            max_value = 0
+            for node_group_config in config.node_group_configs:
+                num_cpus = node_group_config.resources.get(key, default=0)
+                num_nodes = node_group_config.max_count
+                if num_nodes == 0 or num_cpus == 0:
+                    continue
+                if num_nodes == -1 or num_cpus == -1:
+                    return sys.maxsize
+                max_value += num_nodes * num_cpus
+            if max_value == 0:
+                return None
+            max_value_limit = config.max_resources.get(key, default=sys.maxsize)
+            return min(max_value, max_value_limit)
+
+        return {
+            key: calculate_max_resource_from_cluster_config(key)
+            for key in ["CPU", "GPU", "TPU"]
+        }
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -920,7 +961,9 @@ def node_ids():
 
 
 def actors(
-    actor_id: str = None, job_id: ray.JobID = None, actor_state_name: str = None
+    actor_id: Optional[str] = None,
+    job_id: Optional[ray.JobID] = None,
+    actor_state_name: Optional[str] = None,
 ):
     """Fetch actor info for one or more actor IDs (for debugging only).
 

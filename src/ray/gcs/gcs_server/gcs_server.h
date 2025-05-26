@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -205,6 +206,7 @@ class GcsServer {
   /// Get cluster id if persisted, otherwise generate
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
+  /// Makes several InternalKV calls, all in continuation.io_context().
   void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
 
   /// Print the asio event loop stats for debugging.

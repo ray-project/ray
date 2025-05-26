@@ -56,7 +56,7 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 """
 from functools import partial
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
@@ -216,7 +216,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_envs_per_env_runner=5,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             num_epochs=6,

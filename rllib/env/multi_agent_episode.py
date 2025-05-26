@@ -20,6 +20,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import MultiAgentEnvError
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
@@ -78,7 +79,7 @@ class MultiAgentEpisode:
         "_last_step_time",
         "_len_lookback_buffers",
         "_start_time",
-        "_temporary_timestep_data",
+        "_custom_data",
     )
 
     SKIP_ENV_TS_TAG = "S"
@@ -117,8 +118,8 @@ class MultiAgentEpisode:
                 (actions, rewards, etc.) in terms of list lengths and agent IDs.
             observation_space: An optional gym.spaces.Dict mapping agent IDs to
                 individual agents' spaces, which all (individual agents') observations
-                should abide to. If not None and this MultiAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this MultiAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: A list of dictionaries mapping agent IDs to info dicts.
                 Can be None. If provided, should match all other episode data
@@ -128,8 +129,8 @@ class MultiAgentEpisode:
                 (observations, rewards, etc.) in terms of list lengths and agent IDs.
             action_space: An optional gym.spaces.Dict mapping agent IDs to
                 individual agents' spaces, which all (individual agents') actions
-                should abide to. If not None and this MultiAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this MultiAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: A list of dictionaries mapping agent IDs to rewards.
                 Can be None. If provided, should match all other episode data
@@ -284,9 +285,9 @@ class MultiAgentEpisode:
             extra_model_outputs=extra_model_outputs,
         )
 
-        # Caches for temporary per-timestep data. May be used to store custom metrics
-        # from within a callback for the ongoing episode (e.g. render images).
-        self._temporary_timestep_data = defaultdict(list)
+        # Cache for custom data. May be used to store custom metrics from within a
+        # callback for the ongoing episode (e.g. render images).
+        self._custom_data = {}
 
         # Keep timer stats on deltas between steps.
         self._start_time = None
@@ -657,18 +658,28 @@ class MultiAgentEpisode:
         #  action/reward caches, etc..
 
     @property
-    def is_finalized(self) -> bool:
+    def custom_data(self):
+        return self._custom_data
+
+    @property
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return any(
+            len(sa_episode.observations) > 0
+            for sa_episode in self.agent_episodes.values()
+        )
+
+    @property
+    def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
-        is_finalized = next(iter(self.agent_episodes.values())).is_finalized
-        # Make sure that all single agent's episodes' `finalized` flags are the same.
-        if not all(
-            eps.is_finalized is is_finalized for eps in self.agent_episodes.values()
-        ):
+        is_numpy = next(iter(self.agent_episodes.values())).is_numpy
+        # Make sure that all single agent's episodes' `is_numpy` flags are the same.
+        if not all(eps.is_numpy is is_numpy for eps in self.agent_episodes.values()):
             raise RuntimeError(
-                f"Only some SingleAgentEpisode objects in {self} are finalized (others "
-                f"are not)!"
+                f"Only some SingleAgentEpisode objects in {self} are converted to "
+                f"numpy, others are not!"
             )
-        return is_finalized
+        return is_numpy
 
     @property
     def is_done(self):
@@ -699,10 +710,7 @@ class MultiAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def finalize(
-        self,
-        drop_zero_len_single_agent_episodes: bool = False,
-    ) -> "MultiAgentEpisode":
+    def to_numpy(self) -> "MultiAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         This means in particular that this episodes' lists (per single agent) of
@@ -748,14 +756,14 @@ class MultiAgentEpisode:
                 actions=actions,
                 rewards=rewards,
                 # Note: terminated/truncated have nothing to do with an episode
-                # being `finalized` or not (via the `self.finalize()` method)!
+                # being converted `to_numpy` or not (via the `self.to_numpy()` method)!
                 terminateds=terminateds,
                 truncateds=truncateds,
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
 
-            # Episode has not been finalized (numpy'ized) yet.
-            assert not episode.is_finalized
+            # Episode has not been numpy'ized yet.
+            assert not episode.is_numpy
             # We are still operating on lists.
             assert (
                 episode.get_observations(
@@ -764,9 +772,9 @@ class MultiAgentEpisode:
                 ) == {"agent_1": [1]}
             )
 
-            # Let's finalize the episode.
-            episode.finalize()
-            assert episode.is_finalized
+            # Numpy'ized the episode.
+            episode.to_numpy()
+            assert episode.is_numpy
 
             # Everything is now numpy arrays (with 0-axis of size
             # B=[len of requested slice]).
@@ -777,27 +785,17 @@ class MultiAgentEpisode:
                 )["agent_1"], np.ndarray)
             )
 
-        Args:
-            drop_zero_len_single_agent_episodes: If True, will remove from this
-                episode all underlying SingleAgentEpisodes that have a len of 0
-                (meaning that these SingleAgentEpisodes only have a reset obs as
-                their data thus far, making them useless for learning anything from
-                them).
-
         Returns:
              This `MultiAgentEpisode` object with the converted numpy data.
         """
 
         for agent_id, agent_eps in self.agent_episodes.copy().items():
-            if len(agent_eps) == 0 and drop_zero_len_single_agent_episodes:
-                del self.agent_episodes[agent_id]
-            else:
-                agent_eps.finalize()
+            agent_eps.to_numpy()
 
         return self
 
     def concat_episode(self, other: "MultiAgentEpisode") -> None:
-        """Adds the given `other` MultiAgentEpisode to the right side of self.
+        """Adds the given `other` MultiAgentEpisode to the right side of `self`.
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
@@ -809,7 +807,8 @@ class MultiAgentEpisode:
         Args:
             other: The other `MultiAgentEpisode` to be concatenated to this one.
 
-        Returns: A `MultiAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `MultiAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         # Make sure the IDs match.
@@ -893,8 +892,10 @@ class MultiAgentEpisode:
         elif other.is_truncated:
             self.is_truncated = True
 
-        # Erase all temporary timestep data caches.
-        self._temporary_timestep_data.clear()
+        # Merge with `other`'s custom_data, but give `other` priority b/c we assume
+        # that as a follow-up chunk of `self` other has a more complete version of
+        # `custom_data`.
+        self.custom_data.update(other.custom_data)
 
         # Validate.
         self.validate()
@@ -909,7 +910,7 @@ class MultiAgentEpisode:
         the returned successor will have `len_lookback_buffer` observations (and
         actions, rewards, etc..) taken from the right side (end) of `self`. For example
         if `len_lookback_buffer=2`, the returned successor's lookback buffer actions
-        will be identical to teh results of `self.get_actions([-2, -1])`.
+        will be identical to the results of `self.get_actions([-2, -1])`.
 
         This method is useful if you would like to discontinue building an episode
         chunk (b/c you have to return it from somewhere), but would like to have a new
@@ -972,6 +973,7 @@ class MultiAgentEpisode:
             indices=indices_rest,
             return_list=True,
         )
+
         successor = MultiAgentEpisode(
             # Same ID.
             id_=self.id_,
@@ -1003,9 +1005,12 @@ class MultiAgentEpisode:
             len_lookback_buffer="auto",
         )
 
-        # Copy over the hanging (end) values into the hanging (begin) chaches of the
+        # Copy over the hanging (end) values into the hanging (begin) caches of the
         # successor.
         successor._hanging_rewards_begin = self._hanging_rewards_end.copy()
+
+        # Deepcopy all custom data in `self` to be continued in the cut episode.
+        successor._custom_data = copy.deepcopy(self.custom_data)
 
         return successor
 
@@ -1439,48 +1444,6 @@ class MultiAgentEpisode:
         truncateds.update({"__all__": self.is_terminated})
         return truncateds
 
-    def add_temporary_timestep_data(self, key: str, data: Any) -> None:
-        """Temporarily adds (until `finalized()` called) per-timestep data to self.
-
-        The given `data` is appended to a list (`self._temporary_timestep_data`), which
-        is cleared upon calling `self.finalize()`. To get the thus-far accumulated
-        temporary timestep data for a certain key, use the `get_temporary_timestep_data`
-        API.
-        Note that the size of the per timestep list is NOT checked or validated against
-        the other, non-temporary data in this episode (like observations).
-
-        Args:
-            key: The key under which to find the list to append `data` to. If `data` is
-                the first data to be added for this key, start a new list.
-            data: The data item (representing a single timestep) to be stored.
-        """
-        if self.is_finalized:
-            raise ValueError(
-                "Cannot use the `add_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}!"
-            )
-        self._temporary_timestep_data[key].append(data)
-
-    def get_temporary_timestep_data(self, key: str) -> List[Any]:
-        """Returns all temporarily stored data items (list) under the given key.
-
-        Note that all temporary timestep data is erased/cleared when calling
-        `self.finalize()`.
-
-        Returns:
-            The current list storing temporary timestep data under `key`.
-        """
-        if self.is_finalized:
-            raise ValueError(
-                "Cannot use the `get_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}! All temporary data has been erased "
-                f"upon `{type(self).__name__}.finalize()`."
-            )
-        try:
-            return self._temporary_timestep_data[key]
-        except KeyError:
-            raise KeyError(f"Key {key} not found in temporary timestep data!")
-
     def slice(
         self,
         slice_: slice,
@@ -1687,9 +1650,9 @@ class MultiAgentEpisode:
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
 
-        # Finalize slice if `self` is also finalized.
-        if self.is_finalized:
-            ma_episode.finalize()
+        # Numpy'ize slice if `self` is also finalized.
+        if self.is_numpy:
+            ma_episode.to_numpy()
 
         return ma_episode
 
@@ -1702,13 +1665,6 @@ class MultiAgentEpisode:
         Returns: An integer defining the length of the episode or an
             error if the episode has not yet started.
         """
-        assert (
-            sum(len(agent_map) for agent_map in self.env_t_to_agent_t.values()) > 0
-        ), (
-            "ERROR: Cannot determine length of episode that hasn't started, yet!"
-            "Call `MultiAgentEpisode.add_env_reset(observations=)` "
-            "first (after which `len(MultiAgentEpisode)` will be 0)."
-        )
         return self.env_t - self.env_t_started
 
     def __repr__(self):
@@ -1785,6 +1741,7 @@ class MultiAgentEpisode:
             ),
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
+            "custom_data": self.custom_data,
         }
 
     @staticmethod
@@ -1828,6 +1785,7 @@ class MultiAgentEpisode:
         }
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
+        episode._custom_data = state.get("custom_data", {})
 
         # Validate the episode.
         episode.validate()
@@ -2502,7 +2460,7 @@ class MultiAgentEpisode:
                             **one_hot_discrete,
                         )
                     )
-            if self.is_finalized:
+            if self.is_numpy:
                 ret = batch(ret)
         else:
             # Filter these indices out up front.
@@ -2607,3 +2565,11 @@ class MultiAgentEpisode:
             return inf_lookback_buffer_or_dict, filter_for_skip_indices
         else:
             return inf_lookback_buffer_or_dict
+
+    @Deprecated(new="MultiAgentEpisode.custom_data[some-key] = ...", error=True)
+    def add_temporary_timestep_data(self):
+        pass
+
+    @Deprecated(new="MultiAgentEpisode.custom_data[some-key]", error=True)
+    def get_temporary_timestep_data(self):
+        pass

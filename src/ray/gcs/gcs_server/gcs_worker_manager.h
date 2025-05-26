@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
@@ -26,8 +28,12 @@ namespace gcs {
 /// This implementation class of `WorkerInfoHandler`.
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
-  GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage, GcsPublisher &gcs_publisher)
-      : gcs_table_storage_(gcs_table_storage), gcs_publisher_(gcs_publisher) {}
+  GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
+                   instrumented_io_context &io_context,
+                   GcsPublisher &gcs_publisher)
+      : gcs_table_storage_(gcs_table_storage),
+        io_context_(io_context),
+        gcs_publisher_(gcs_publisher) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -56,21 +62,21 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
       rpc::SendReplyCallback send_reply_callback) override;
 
   void AddWorkerDeadListener(
-      std::function<void(std::shared_ptr<WorkerTableData>)> listener);
+      std::function<void(std::shared_ptr<rpc::WorkerTableData>)> listener);
 
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
 
  private:
-  void GetWorkerInfo(
-      const WorkerID &worker_id,
-      std::function<void(const std::optional<WorkerTableData> &)> callback) const;
+  void GetWorkerInfo(const WorkerID &worker_id,
+                     Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
 
   gcs::GcsTableStorage &gcs_table_storage_;
+  instrumented_io_context &io_context_;
   GcsPublisher &gcs_publisher_;
   UsageStatsClient *usage_stats_client_;
-  std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
+  std::vector<std::function<void(std::shared_ptr<rpc::WorkerTableData>)>>
       worker_dead_listeners_;
 
   /// Tracks the number of occurences of worker crash due to system error

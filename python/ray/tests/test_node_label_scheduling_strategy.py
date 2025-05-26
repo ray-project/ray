@@ -1,4 +1,3 @@
-import os
 import sys
 import pytest
 
@@ -338,7 +337,4 @@ def test_node_label_scheduling_invalid_paramter(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

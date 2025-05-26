@@ -1,12 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _rllib-examples-overview-docs:
 
 Examples
 ========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
 `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__
@@ -56,6 +55,13 @@ All example sub-folders
 
 Actions
 +++++++
+
+.. _rllib-examples-overview-autoregressive-actions:
+
+- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py>`__:
+   Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
+   the previously sampled first component of the same action.
+
 - `Nested Action Spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py>`__:
    Sets up an environment with nested action spaces using custom single- or multi-agent
    configurations. This example demonstrates how RLlib manages complex action structures,
@@ -64,11 +70,24 @@ Actions
 
 Algorithms
 ++++++++++
+
+- `Custom implementation of the Model-Agnostic Meta-Learning (MAML) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/maml_lr_supervised_learning.py>`__:
+   Shows how to stably train a model in an "infinite-task" environment, where each task corresponds
+   to a sinusoidal function with randomly sampled amplitude and phase. Because each new task introduces
+   a shift in data distribution, traditional learning algorithms would fail to generalize.
+
 - `Custom "vanilla policy gradient" (VPG) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py>`__:
    Shows how to write a very simple policy gradient :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from scratch,
    including a matching :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`,
    a matching :py:class:`~ray.rllib.core.learner.learner.Learner` which defines the loss function,
    and the Algorithm's :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` implementation.
+
+- `Custom algorithm with a global, shared data actor for sending manipulated rewards from EnvRunners to Learners <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py>`__:
+   Shows how to write a custom shared data actor accessible from any of the Algorithm's other actors,
+   like :py:class:`~ray.rllib.env.env_runner.EnvRunner` and :py:class:`~ray.rllib.core.learner.learner.Learner` actors.
+   The new actor stores manipulated rewards from sampled episodes under unique, per-episode keys and then serves
+   this information to the :py:class:`~ray.rllib.core.learner.learner.Learner` for adding these rewards to the train
+   batch.
 
 
 Checkpoints
@@ -108,6 +127,9 @@ Connectors
    Adds mean and standard deviation normalization for observations, shifting by the mean and dividing by std-dev.
    This type of filtering can improve learning stability in environments with highly variable state magnitudes
    by scaling observations to a normalized range.
+
+- `Multi-agent connector mapping global observations to different per-agent/policy observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_with_different_observation_spaces.py>`__:
+   A connector example showing how to map from a global, multi-agent observation space to n individual, per-agent, per-module observation spaces.
 
 - `Prev-actions, prev-rewards connector <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
    Augments observations with previous actions and rewards, giving the agent a short-term memory of past events, which can improve
@@ -223,16 +245,20 @@ Inference of models or policies
 +++++++++++++++++++++++++++++++
 
 - `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
-   Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
+   Demonstrates performing inference using a checkpointed :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   First trains the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, creates a checkpoint, then re-loads the module from this checkpoint or ONNX file, and computes
+   actions in a simulated environment.
 
 - `Policy inference after training, with ConnectorV2 <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__:
-   Runs inference with a trained, LSTM-based policy using connectors, which preprocess observations and actions, allowing for more modular and flexible inference setups.
+   Runs inference with a trained, LSTM-based :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` or an `ONNX runtime <https://onnx.ai/>`__.
+   Two connector pipelines, env-to-module and module-to-env, preprocess observations and LSTM-states and postprocess model outputs into actions,
+   allowing for very modular and flexible inference setups.
 
 
 Learners
 ++++++++
 
-- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__:
+- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__:
    Implements a custom loss function for training, demonstrating how users can define tailored loss objectives for specific environments or
    behaviors.
 
@@ -247,6 +273,11 @@ Learners
 
 Metrics
 +++++++
+
+- `Logging custom metrics in Algorithm.training_step <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__:
+   Shows how to log custom metrics inside a custom :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` through overriding
+   the :py:meth:`` method and making calls to the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method
+   of the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` instance.
 
 - `Logging custom metrics in EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__:
    Demonstrates adding custom metrics to :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, providing a way to track specific
@@ -346,9 +377,8 @@ RLModules
    Implements an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` with action masking, where certain disallowed actions are
    masked based on parts of the observation dict, useful for environments with conditional action availability.
 
-- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions_rl_module.py>`__:
-   Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
-   the previously sampled first component of the same action.
+- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py>`__:
+   :ref:`See here for more details <rllib-examples-overview-autoregressive-actions>`.
 
 - `Custom CNN-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__:
    Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional

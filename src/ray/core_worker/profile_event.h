@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/task_event_buffer.h"
 

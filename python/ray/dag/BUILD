@@ -1,5 +1,5 @@
-load("//bazel:python.bzl", "doctest")
-load("//bazel:python.bzl", "py_test_module_list")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 doctest(
     files = glob(
@@ -102,15 +102,16 @@ py_test(
 py_test_module_list(
     size = "medium",
     files = [
-        "tests/experimental/test_multi_node_dag.py",
-        "tests/experimental/test_mocked_nccl_dag.py",
-        "tests/experimental/test_torch_tensor_dag.py",
         "tests/experimental/test_collective_dag.py",
-        "tests/experimental/test_execution_schedule.py",
+        "tests/experimental/test_dag_error_handling.py",
         "tests/experimental/test_dag_visualization.py",
+        "tests/experimental/test_execution_schedule.py",
+        "tests/experimental/test_mocked_nccl_dag.py",
+        "tests/experimental/test_multi_node_dag.py",
+        "tests/experimental/test_torch_tensor_dag.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -121,10 +122,10 @@ py_test_module_list(
 py_test_module_list(
     size = "enormous",
     files = [
-        "tests/experimental/test_accelerated_dag.py",
+        "tests/experimental/test_compiled_graphs.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -134,18 +135,67 @@ py_test_module_list(
 
 py_test(
     name = "test_torch_tensor_dag_gpu",
-    size = "large",
+    size = "enormous",
     srcs = [
         "tests/experimental/test_torch_tensor_dag.py",
     ],
     env = {"RAY_PYTEST_USE_GPU": "1"},
     main = "tests/experimental/test_torch_tensor_dag.py",
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "multi_gpu",
         "no_windows",
         "team:core",
     ],
     deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_torch_tensor_transport_gpu",
+    size = "enormous",
+    srcs = [
+        "tests/experimental/test_torch_tensor_transport.py",
+    ],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_torch_tensor_transport.py",
+    tags = [
+        "compiled_graphs",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+# TODO(ruisearch42): Add this test once issues are fixed.
+# py_test(
+#     name = "test_execution_schedule_gpu",
+#     size = "enormous",
+#     srcs = [
+#         "tests/experimental/test_execution_schedule_gpu.py",
+#     ],
+#     env = {"RAY_PYTEST_USE_GPU": "1"},
+#     main = "tests/experimental/test_execution_schedule_gpu.py",
+#     tags = [
+#         "compiled_graphs",
+#         "exclusive",
+#         "multi_gpu",
+#         "no_windows",
+#         "team:core",
+#     ],
+#     deps = ["//:ray_lib"],
+# )
+
+py_test(
+    name = "test_cpu_communicator_dag",
+    size = "medium",
+    srcs = dag_tests_srcs,
+    tags = [
+        "exclusive",
+        "ray_dag_tests",
+        "team:core",
+    ],
+    deps = [":dag_lib"],
 )

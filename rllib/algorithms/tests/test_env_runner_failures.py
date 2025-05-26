@@ -331,8 +331,8 @@ class TestWorkerFailures(unittest.TestCase):
         for _ in range(2):
             algo.train()
             time.sleep(15.0)
-            algo.restore_workers(algo.env_runner_group)
-            algo.restore_workers(algo.eval_env_runner_group)
+            algo.restore_env_runners(algo.env_runner_group)
+            algo.restore_env_runners(algo.eval_env_runner_group)
 
             self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 1)
             self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
@@ -350,7 +350,9 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
             PPOConfig().env_runners(
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
             )
         )
 
@@ -563,7 +565,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         time.sleep(15.0)
-        algo.restore_workers(algo.env_runner_group)
+        algo.restore_env_runners(algo.env_runner_group)
 
         # After training, still 2 healthy workers.
         self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
@@ -645,8 +647,8 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         time.sleep(15.0)
-        algo.restore_workers(algo.env_runner_group)
-        algo.restore_workers(algo.eval_env_runner_group)
+        algo.restore_env_runners(algo.env_runner_group)
+        algo.restore_env_runners(algo.eval_env_runner_group)
 
         # Everything healthy again. And all workers have been restarted.
         self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
@@ -730,7 +732,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         time.sleep(15.0)
-        algo.restore_workers(algo.eval_env_runner_group)
+        algo.restore_env_runners(algo.eval_env_runner_group)
 
         # Everything still healthy. And all workers are restarted.
         self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 2)

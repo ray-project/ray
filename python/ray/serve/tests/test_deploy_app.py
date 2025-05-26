@@ -70,7 +70,7 @@ def start_and_shutdown_ray_cli_module():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -79,7 +79,7 @@ def _check_ray_stop():
 @pytest.fixture(scope="function")
 def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )
@@ -928,6 +928,12 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
         and serve.status().applications["app2"].status
         == ApplicationStatus.DEPLOY_FAILED
     )
+
+    # Ensure the request doesn't hang and actually returns a 503 error.
+    # The timeout is there to prevent the test from hanging and blocking
+    # the test suite if it does fail.
+    r = requests.post("http://localhost:8000/app2", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text
 
 
 def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):

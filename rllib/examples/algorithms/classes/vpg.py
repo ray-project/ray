@@ -113,7 +113,7 @@ class VPG(Algorithm):
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             episodes, env_runner_results = self._sample_episodes()
         # Merge results from n parallel sample calls into self's metrics logger.
-        self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+        self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Just for demonstration purposes, log the number of time steps sampled in this
         # `training_step` round.
@@ -133,7 +133,7 @@ class VPG(Algorithm):
 
         # Update model.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -144,7 +144,7 @@ class VPG(Algorithm):
                 },
             )
         # Merge results from m parallel update calls into self's metrics logger.
-        self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+        self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Sync weights.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
@@ -155,8 +155,8 @@ class VPG(Algorithm):
 
     def _sample_episodes(self):
         # How many episodes to sample from each EnvRunner?
-        num_episodes_per_env_runner = (
-            self.config.num_episodes_per_train_batch // self.config.num_env_runners
+        num_episodes_per_env_runner = self.config.num_episodes_per_train_batch // (
+            self.config.num_env_runners or 1
         )
         # Send parallel remote requests to sample and get the metrics.
         sampled_data = self.env_runner_group.foreach_env_runner(

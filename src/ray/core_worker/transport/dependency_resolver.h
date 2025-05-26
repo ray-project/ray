@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -22,7 +23,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_manager.h"
+#include "ray/core_worker/task_finisher.h"
 
 namespace ray {
 namespace core {
@@ -70,14 +71,14 @@ class LocalDependencyResolver {
               const absl::flat_hash_set<ObjectID> &deps,
               const absl::flat_hash_set<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
-        : task(t),
+        : task(std::move(t)),
           local_dependencies(),
           actor_dependencies_remaining(actor_ids.size()),
           status(Status::OK()),
           on_dependencies_resolved(std::move(on_dependencies_resolved)) {
       local_dependencies.reserve(deps.size());
       for (const auto &dep : deps) {
-        local_dependencies.emplace(dep, nullptr);
+        local_dependencies.emplace(dep, /*ray_object=*/nullptr);
       }
       obj_dependencies_remaining = local_dependencies.size();
     }

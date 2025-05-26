@@ -14,21 +14,21 @@ import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.default_impl import get_image_uri_plugin
+from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.uv import UvPlugin
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
     create_for_plugin_if_needed,
 )
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
+from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
@@ -38,6 +38,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray._raylet import GcsClient
 
 default_logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ class ReferenceTable:
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
+        """Decrease reference count for the given [serialized_env]. Throw exception if we cannot decrement reference."""
         default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
@@ -126,10 +128,12 @@ class ReferenceTable:
                 del self._runtime_env_reference[serialized_env]
         else:
             default_logger.warning(f"Runtime env {serialized_env} does not exist.")
+            raise ValueError(
+                f"{serialized_env} cannot decrement reference since the reference count is 0"
+            )
         if unused:
             default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
-        return unused
 
     def increase_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
@@ -143,8 +147,9 @@ class ReferenceTable:
     def decrease_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
     ) -> None:
+        """Decrease reference count for runtime env and uri. Throw exception if decrement reference count fails."""
         if source_process in self._reference_exclude_sources:
-            return list()
+            return
         self._decrease_reference_for_runtime_env(serialized_env)
         uris = self._uris_parser(runtime_env)
         self._decrease_reference_for_uris(uris)
@@ -166,14 +171,11 @@ class RuntimeEnvAgent:
         dashboard_agent: The DashboardAgent object contains global config.
     """
 
-    LOG_FILENAME = "runtime_env_agent.log"
-
     def __init__(
         self,
         runtime_env_dir,
         logging_params,
-        gcs_address: str,
-        cluster_id_hex: str,
+        gcs_client: GcsClient,
         temp_dir,
         address,
         runtime_env_agent_port,
@@ -182,7 +184,6 @@ class RuntimeEnvAgent:
 
         self._logger = default_logger
         self._logging_params = logging_params
-        self._logging_params.update(filename=self.LOG_FILENAME)
         self._logger = setup_component_logger(
             logger_name=default_logger.name, **self._logging_params
         )
@@ -202,28 +203,25 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_aio_client = GcsAioClient(
-            address=gcs_address, cluster_id=cluster_id_hex
-        )
+        self._gcs_client = gcs_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._uv_plugin = UvPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(
-            self._runtime_env_dir, self._gcs_aio_client
+            self._runtime_env_dir, self._gcs_client
         )
-        self._java_jars_plugin = JavaJarsPlugin(
-            self._runtime_env_dir, self._gcs_aio_client
-        )
+        self._py_executable_plugin = PyExecutablePlugin()
+        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir, self._gcs_client)
         self._working_dir_plugin = WorkingDirPlugin(
-            self._runtime_env_dir, self._gcs_aio_client
+            self._runtime_env_dir, self._gcs_client
         )
         self._container_plugin = ContainerPlugin(temp_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._mpi_plugin = MPIPlugin()
-        self._image_uri_plugin = get_image_uri_plugin(temp_dir)
+        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -234,6 +232,7 @@ class RuntimeEnvAgent:
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
+            self._py_executable_plugin,
             self._java_jars_plugin,
             self._container_plugin,
             self._nsight_plugin,
@@ -357,26 +356,34 @@ class RuntimeEnvAgent:
             setup_timeout_seconds,
             runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
-            """
-            Create runtime env with retry times. This function won't raise exceptions.
+            """Create runtime env with retry times. This function won't raise exceptions.
 
             Args:
                 runtime_env: The instance of RuntimeEnv class.
                 setup_timeout_seconds: The timeout of runtime environment creation for
-                each attempt.
+                    each attempt.
+                runtime_env_config: The configuration for the runtime environment.
 
             Returns:
-                a tuple which contains result (bool), runtime env context (str), error
-                message(str).
-
+                Tuple[bool, str, str]: A tuple containing:
+                    - result (bool): Whether the creation was successful
+                    - runtime_env_context (str): The serialized context if successful, None otherwise
+                    - error_message (str): Error message if failed, None otherwise
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
                 f"{setup_timeout_seconds} seconds."
             )
-            serialized_context = None
+            num_retries = runtime_env_consts.RUNTIME_ENV_RETRY_TIMES
             error_message = None
-            for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
+            serialized_context = None
+            for i in range(num_retries):
+                # Only sleep when retrying.
+                if i != 0:
+                    await asyncio.sleep(
+                        runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
+                    )
+
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
                         runtime_env, runtime_env_config
@@ -405,19 +412,16 @@ class RuntimeEnvAgent:
                             f"{DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS} seconds. "
                         )
                         error_message = hint + error_message
-                    await asyncio.sleep(
-                        runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
-                    )
+
             if error_message:
                 self._logger.error(
-                    "Runtime env creation failed for %d times, "
-                    "don't retry any more.",
-                    runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
+                    "runtime_env creation failed %d times, giving up.",
+                    num_retries,
                 )
                 return False, None, error_message
             else:
                 self._logger.info(
-                    "Successfully created runtime env: %s, the context: %s",
+                    "Successfully created runtime env: %s, context: %s",
                     serialized_env,
                     serialized_context,
                 )
@@ -543,9 +547,15 @@ class RuntimeEnvAgent:
                 ),
             )
 
-        self._reference_table.decrease_reference(
-            runtime_env, request.serialized_runtime_env, request.source_process
-        )
+        try:
+            self._reference_table.decrease_reference(
+                runtime_env, request.serialized_runtime_env, request.source_process
+            )
+        except Exception as e:
+            return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=f"Fails to decrement reference for runtime env for {str(e)}",
+            )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK

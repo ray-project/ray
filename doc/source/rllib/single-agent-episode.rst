@@ -1,13 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _single-agent-episode-docs:
-
 
 Episodes
 ========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib stores and transports all trajectory data in the form of `Episodes`, in particular
 :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` for single-agent setups
@@ -93,7 +91,7 @@ and extract information from this episode using its different "getter" methods:
     **SingleAgentEpisode getter APIs**: "getter" methods exist for all of the Episode's fields, which are `observations`,
     `actions`, `rewards`, `infos`, and `extra_model_outputs`. For simplicity, only the getters for observations, actions, and rewards
     are shown here. Their behavior is intuitive, returning a single item when provided with a single index and returning a list of items
-    (in the non-finalized case; see further below) when provided with a list of indices or a slice (range) of indices.
+    (in the non-numpy'ized case; see further below) when provided with a list of indices or a slice of indices.
 
 
 Note that for `extra_model_outputs`, the getter is slightly more complicated as there exist sub-keys in this data (for example:
@@ -107,24 +105,24 @@ The following code snippet summarizes the various capabilities of the different 
     :end-before: rllib-sa-episode-02-end
 
 
-Finalized and Non-Finalized Episodes
-------------------------------------
+Numpy'ized and non-numpy'ized Episodes
+--------------------------------------
 
 The data in a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can exist in two states:
-non-finalized and finalized. A non-finalized episode stores its data items in plain python lists
-and appends new timestep data to these. In a finalized episode,
-these lists have been converted into (possibly complex) structures that have NumPy arrays at their leafs.
-Note that a "finalized" episode doesn't necessarily have to be terminated or truncated yet
-in the sense that the underlying RL environment declared the episode to be over (or has reached some
-maximum number of timesteps).
+non-numpy'ized and numpy'ized. A non-numpy'ized episode stores its data items in plain python lists
+and appends new timestep data to these. In a numpy'ized episode,
+these lists have been converted into possibly complex structures that have NumPy arrays at their leafs.
+Note that a numpy'ized episode doesn't necessarily have to be terminated or truncated yet
+in the sense that the underlying RL environment declared the episode to be over or has reached some
+maximum number of timesteps.
 
 .. figure:: images/episodes/sa_episode_non_finalized_vs_finalized.svg
     :width: 900
     :align: left
 
 
-:py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects start in the non-finalized
-state (data stored in python lists), making it very fast to append data from an ongoing episode:
+:py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects start in the non-numpy'ized
+state, in which data is stored in python lists, making it very fast to append data from an ongoing episode:
 
 
 .. literalinclude:: doc_code/sa_episode.py
@@ -133,22 +131,22 @@ state (data stored in python lists), making it very fast to append data from an 
     :end-before: rllib-sa-episode-03-end
 
 
-To illustrate the differences between the data stored in a non-finalized episode vs. the same data stored in
-a finalized one, take a look at this complex observation example here, showing the exact same observation data in two
-episodes (one non-finalized the other finalized):
+To illustrate the differences between the data stored in a non-numpy'ized episode vs. the same data stored in
+a numpy'ized one, take a look at this complex observation example here, showing the exact same observation data in two
+episodes (one non-numpy'ized the other numpy'ized):
 
 .. figure:: images/episodes/sa_episode_non_finalized.svg
     :width: 800
     :align: left
 
-    **Complex observations in a non-finalized episode**: Each individual observation is a (complex) dict matching the
+    **Complex observations in a non-numpy'ized episode**: Each individual observation is a (complex) dict matching the
     gymnasium environment's observation space. There are three such observation items stored in the episode so far.
 
 .. figure:: images/episodes/sa_episode_finalized.svg
     :width: 600
     :align: left
 
-    **Complex observations in a finalized episode**: The entire observation record is a single (complex) dict matching the
+    **Complex observations in a numpy'ized episode**: The entire observation record is a single complex dict matching the
     gymnasium environment's observation space. At the leafs of the structure are `NDArrays` holding the individual values of the leaf.
     Note that these `NDArrays` have an extra batch dim (axis=0), whose length matches the length of the episode stored (here 3).
 

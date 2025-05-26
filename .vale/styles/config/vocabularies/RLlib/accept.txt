@@ -2,7 +2,14 @@
 # Add new terms alphabetically.
 [Aa]lgos?
 (APPO|appo)
-boolean
+[Aa]utoscal(e|ing)
+[Bb]oolean
+[Aa]utoregressive
+[Cc]allables?
+[Cc]heckpoints?(ing)?
+[Cc]heckpointable
+classmethods?
+CNNs?
 coeff
 config
 (DQN|dqn)
@@ -10,11 +17,14 @@ config
 (IMPALA|impala)
 logits?
 log-probs?
-hyperparameters?
+LSTMs?
+[Hh]yperparameters?
 MARLModule
 (MARWIL|marwil)
 MLAgents
+MLPs?
 multiagent
+[Pp]erceptrons?
 postprocessing
 (PPO|ppo)
 [Pp]y[Tt]orch
@@ -22,8 +32,10 @@ pragmas?
 (RL|rl)lib
 RNN
 RLModules?
-rollout
+[Rr]ollout
 (SAC|sac)
 SGD
+[Ss]ubcomponents?
 [Tt]ensor[Ff]low
 timesteps?
+vectorizes?

@@ -135,7 +135,7 @@ def _load_experiments_from_file(
                 "Your Python file must contain a 'config' variable "
                 "that is an AlgorithmConfig object."
             )
-        algo_config = getattr(module, "config")
+        algo_config = module.config
         if stop is None:
             stop = getattr(module, "stop", {})
         else:

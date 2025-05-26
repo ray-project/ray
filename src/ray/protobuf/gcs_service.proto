@@ -229,6 +229,7 @@ message GetAllNodeInfoRequest {
     optional bytes node_id = 1;
     optional GcsNodeInfo.GcsNodeState state = 2;
     optional string node_name = 3;
+    optional string node_ip_address = 4;
   }
 
   // Maximum number to return.
@@ -565,7 +566,8 @@ message InternalKVPutRequest {
 
 message InternalKVPutReply {
   GcsStatus status = 1;
-  int32 added_num = 2;
+  // Refers to whether the key / value was actually added.
+  bool added = 2;
 }
 
 message InternalKVDelRequest {

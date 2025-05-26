@@ -1,21 +1,21 @@
 import copy
+import itertools
 import json
 import os
 import re
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import jsonschema
 import yaml
-from ray_release.test import (
-    Test,
-    TestDefinition,
-)
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
+from ray_release.test import (
+    Test,
+    TestDefinition,
+)
 from ray_release.util import DeferredEnvVar, deep_update
-
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
 DEFAULT_COMMAND_TIMEOUT = 1800
@@ -31,7 +31,7 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_FKRmeV5pA6X72aVscFALNC32",
+    "prj_6rfevmf12tbsbd6g3al5f6zssh",
 )
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -84,6 +84,11 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     default_definition = {}
     tests = []
     for test_definition in test_definitions:
+        if "matrix" in test_definition and "variations" in test_definition:
+            raise ReleaseTestConfigError(
+                "You can't specify both 'matrix' and 'variations' in a test definition"
+            )
+
         if test_definition["name"] == "DEFAULTS":
             default_definition = copy.deepcopy(test_definition)
             continue
@@ -93,27 +98,100 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             copy.deepcopy(default_definition), test_definition
         )
 
-        if "variations" not in test_definition:
+        if "variations" in test_definition:
+            tests.extend(_parse_test_definition_with_variations(test_definition))
+        elif "matrix" in test_definition:
+            tests.extend(_parse_test_definition_with_matrix(test_definition))
+        else:
             tests.append(Test(test_definition))
-            continue
 
-        variations = test_definition.pop("variations")
+    return tests
+
+
+def _parse_test_definition_with_variations(
+    test_definition: TestDefinition,
+) -> List[Test]:
+    tests = []
+
+    variations = test_definition.pop("variations")
+    _test_definition_invariant(
+        test_definition,
+        variations,
+        "variations field cannot be empty in a test definition",
+    )
+    for variation in variations:
         _test_definition_invariant(
             test_definition,
-            variations,
-            "variations field cannot be empty in a test definition",
+            "__suffix__" in variation,
+            "missing __suffix__ field in a variation",
         )
-        for variation in variations:
-            _test_definition_invariant(
-                test_definition,
-                "__suffix__" in variation,
-                "missing __suffix__ field in a variation",
-            )
-            test = copy.deepcopy(test_definition)
-            test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
-            test = deep_update(test, variation)
-            tests.append(Test(test))
+        test = copy.deepcopy(test_definition)
+        test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
+        test = deep_update(test, variation)
+        tests.append(Test(test))
+
     return tests
+
+
+def _parse_test_definition_with_matrix(test_definition: TestDefinition) -> List[Test]:
+    tests = []
+
+    matrix = test_definition.pop("matrix")
+    variables = tuple(matrix["setup"].keys())
+    combinations = itertools.product(*matrix["setup"].values())
+    for combination in combinations:
+        test = test_definition
+        for variable, value in zip(variables, combination):
+            test = _substitute_variable(test, variable, str(value))
+        tests.append(Test(test))
+
+    adjustments = matrix.pop("adjustments", [])
+    for adjustment in adjustments:
+        if not set(adjustment["with"]) == set(variables):
+            raise ReleaseTestConfigError(
+                "You need to specify all matrix variables in the adjustment."
+            )
+
+        test = test_definition
+        for variable, value in adjustment["with"].items():
+            test = _substitute_variable(test, variable, str(value))
+        tests.append(Test(test))
+
+    return tests
+
+
+def _substitute_variable(data: Dict, variable: str, replacement: str) -> Dict:
+    """Substitute a variable in the provided dictionary with a replacement value.
+
+    This function traverses dict and list values, and substitutes the variable in
+    string values. The syntax for variables is `{{variable}}`.
+
+    Args:
+        data: The dictionary to substitute the variable in.
+        variable: The variable to substitute.
+        replacement: The replacement value.
+
+    Returns:
+        A new dictionary with the variable substituted.
+
+    Examples:
+        >>> test_definition = {"name": "test-{{arg}}"}
+        >>> _substitute_variable(test_definition, "arg", "1")
+        {'name': 'test-1'}
+    """
+    # Create a copy to avoid mutating the original.
+    data = copy.deepcopy(data)
+
+    pattern = r"\{\{\s*" + re.escape(variable) + r"\s*\}\}"
+    for key, value in data.items():
+        if isinstance(value, dict):
+            data[key] = _substitute_variable(value, variable, replacement)
+        elif isinstance(value, list):
+            data[key] = [re.sub(pattern, replacement, string) for string in value]
+        elif isinstance(value, str):
+            data[key] = re.sub(pattern, replacement, value)
+
+    return data
 
 
 def load_schema_file(path: Optional[str] = None) -> Dict:
@@ -203,7 +281,7 @@ def validate_aws_config(aws_config: Dict[str, Any]) -> Optional[str]:
         if not ebs:
             continue
 
-        if not ebs.get("DeleteOnTermination", False) is True:
+        if ebs.get("DeleteOnTermination", False) is not True:
             return "Ebs volume does not have `DeleteOnTermination: true` set"
     return None
 
@@ -253,3 +331,9 @@ def get_test_cloud_id(test: Test) -> str:
     else:
         cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id
+
+
+def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
+    if default_project_id is None:
+        default_project_id = str(DEFAULT_ANYSCALE_PROJECT)
+    return test.get("cluster", {}).get("project_id", default_project_id)

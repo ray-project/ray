@@ -186,12 +186,12 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    # Dreamer-style (S-sized model) Atari or DM Control Suite.
+    # Dreamer-style (XS-sized model) Atari or DM Control Suite.
     filters_64x64 = [
+        [16, [4, 4], 2],
         [32, [4, 4], 2],
         [64, [4, 4], 2],
         [128, [4, 4], 2],
-        [256, [4, 4], 2],
     ]
     # Small (1/2) Atari.
     filters_42x42 = [
@@ -217,12 +217,21 @@ def get_filter_config(shape):
     elif len(shape) in [2, 3] and (shape[:2] == [10, 10] or shape[1:] == [10, 10]):
         return filters_10x10
     else:
+        if list(shape) == [210, 160, 3]:
+            atari_help = (
+                "This is the default atari obs shape. You may want to look at one of "
+                "RLlib's Atari examples for an example of how to wrap an Atari env. "
+            )
+        else:
+            atari_help = ""
         raise ValueError(
-            "No default configuration for obs shape {}".format(shape)
-            + ", you must specify `conv_filters` manually as a model option. "
+            "No default CNN configuration for obs shape {}. ".format(shape)
+            + atari_help
+            + "You can specify `conv_filters` manually through your "
+            "AlgorithmConfig's model_config. "
             "Default configurations are only available for inputs of the following "
             "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K]. You may "
-            "alternatively want to use a custom model or preprocessor."
+            "want to use a custom RLModule or a ConnectorV2 for that."
         )
 
 

@@ -44,6 +44,45 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
 
+        # Possibly apply masking to some sub loss terms and to the total loss term
+        # at the end. Masking could be used for RNN-based model (zero padded `batch`)
+        # and for PPO's batched value function (and bootstrap value) computations,
+        # for which we add an (artificial) timestep to each episode to
+        # simplify the actual computation.
+        if Columns.LOSS_MASK in batch:
+            mask = batch[Columns.LOSS_MASK].clone()
+            # Check, if a burn-in should be used to recover from a poor state.
+            if self.config.burn_in_len > 0:
+                # Train only on the timesteps after the burn-in period.
+                mask[:, : self.config.burn_in_len] = False
+            num_valid = torch.sum(mask)
+
+            def possibly_masked_mean(data_):
+                return torch.sum(data_[mask]) / num_valid
+
+            def possibly_masked_min(data_):
+                # Prevent minimum over empty tensors, which can happened
+                # when all elements in the mask are `False`.
+                return (
+                    torch.tensor(float("nan"))
+                    if data_[mask].numel() == 0
+                    else torch.min(data_[mask])
+                )
+
+            def possibly_masked_max(data_):
+                # Prevent maximum over empty tensors, which can happened
+                # when all elements in the mask are `False`.
+                return (
+                    torch.tensor(float("nan"))
+                    if data_[mask].numel() == 0
+                    else torch.max(data_[mask])
+                )
+
+        else:
+            possibly_masked_mean = torch.mean
+            possibly_masked_min = torch.min
+            possibly_masked_max = torch.max
+
         q_curr = fwd_out[QF_PREDS]
         q_target_next = fwd_out[QF_TARGET_NEXT_PREDS]
 
@@ -53,11 +92,13 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
         q_selected = torch.nan_to_num(
             torch.gather(
                 q_curr,
-                dim=1,
-                index=batch[Columns.ACTIONS].view(-1, 1).expand(-1, 1).long(),
+                dim=-1,
+                index=batch[Columns.ACTIONS]
+                .view(*batch[Columns.ACTIONS].shape, 1)
+                .long(),
             ),
             neginf=0.0,
-        ).squeeze()
+        ).squeeze(dim=-1)
 
         # Use double Q learning.
         if config.double_q:
@@ -65,22 +106,22 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
             # over the online Q-function.
             # Mark the best online Q-value of the next state.
             q_next_best_idx = (
-                torch.argmax(fwd_out[QF_NEXT_PREDS], dim=1).unsqueeze(dim=-1).long()
+                torch.argmax(fwd_out[QF_NEXT_PREDS], dim=-1).unsqueeze(dim=-1).long()
             )
             # Get the Q-value of the target network at maximum of the online network
             # (bootstrap action).
             q_next_best = torch.nan_to_num(
-                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+                torch.gather(q_target_next, dim=-1, index=q_next_best_idx),
                 neginf=0.0,
             ).squeeze()
         else:
             # Mark the maximum Q-value(s).
             q_next_best_idx = (
-                torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
+                torch.argmax(q_target_next, dim=-1).unsqueeze(dim=-1).long()
             )
             # Get the maximum Q-value(s).
             q_next_best = torch.nan_to_num(
-                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+                torch.gather(q_target_next, dim=-1, index=q_next_best_idx),
                 neginf=0.0,
             ).squeeze()
 
@@ -179,7 +220,7 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
             # Compute the TD error.
             td_error = torch.abs(q_selected - q_selected_target)
             # Compute the weighted loss (importance sampling weights).
-            total_loss = torch.mean(
+            total_loss = possibly_masked_mean(
                 batch["weights"]
                 * loss_fn(reduction="none")(q_selected, q_selected_target)
             )
@@ -198,10 +239,10 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
         self.metrics.log_dict(
             {
                 QF_LOSS_KEY: total_loss,
-                QF_MEAN_KEY: torch.mean(q_selected),
-                QF_MAX_KEY: torch.max(q_selected),
-                QF_MIN_KEY: torch.min(q_selected),
-                TD_ERROR_MEAN_KEY: torch.mean(td_error),
+                QF_MEAN_KEY: possibly_masked_mean(q_selected),
+                QF_MAX_KEY: possibly_masked_max(q_selected),
+                QF_MIN_KEY: possibly_masked_min(q_selected),
+                TD_ERROR_MEAN_KEY: possibly_masked_mean(td_error),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
