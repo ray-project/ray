@@ -548,7 +548,7 @@ class GroupedData:
         random_state: int = None,
         **kwargs,
     ) -> Dataset:
-        """Return a stratified sample of each group, similar to pandas GroupBy.sample.
+        """Return a sample of each group, similar to pandas GroupBy.sample.
 
         Args:
             n: Number of items to return for each group. Cannot be used with frac.
@@ -569,25 +569,14 @@ class GroupedData:
         if n is not None and frac is not None:
             raise ValueError("Only one of 'n' or 'frac' may be specified.")
 
-        _ROW_INDEX_COL = "_row_index"
-
         def _sample_group(df):
             import pandas as pd
             if not isinstance(df, pd.DataFrame):
                 df = df.to_pandas()
 
-            added_row_index = _ROW_INDEX_COL not in df.columns
-            if added_row_index:
-                df[_ROW_INDEX_COL] = range(len(df))
-
-            sampled_df = df.sample(
+            return df.sample(
                 n=n, frac=frac, replace=replace, random_state=random_state, **kwargs
             )
-
-            if added_row_index:
-                sampled_df = sampled_df.drop(columns=[_ROW_INDEX_COL])
-
-            return sampled_df
 
         return self.map_groups(_sample_group, batch_format="pandas")
 
