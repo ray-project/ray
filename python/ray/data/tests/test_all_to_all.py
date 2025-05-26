@@ -2219,7 +2219,7 @@ def test_random_shuffle_spread(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
-def test_groupby_sample(
+def test_groupby_random_sample(
     ray_start_regular_shared_2_cpus,
     ds_format,
     num_parts,
@@ -2228,7 +2228,7 @@ def test_groupby_sample(
 ):
     # Test sampling with fixed number of items per group
     seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_sample with: {seed}")
+    print(f"Seeding RNG for test_groupby_random_sample with: {seed}")
     random.seed(seed)
     
     # Create a dataset with 3 groups, each having 10 items
@@ -2266,7 +2266,7 @@ def test_groupby_sample(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
-def test_groupby_sample_edge_cases(
+def test_groupby_random_sample_edge_cases(
     ray_start_regular_shared_2_cpus,
     ds_format,
     num_parts,
@@ -2293,6 +2293,14 @@ def test_groupby_sample_edge_cases(
     sampled_ds = ds.groupby("A").random_sample(n=10)
     assert sampled_ds.count() == 5  # Should return all items
     
+    # Test sampling with frac=0.0 (should return 0 items)
+    sampled_ds = ds.groupby("A").random_sample(frac=0.0)
+    assert sampled_ds.count() == 0
+
+    # Test sampling with frac=1.0 (should return all items)
+    sampled_ds = ds.groupby("A").random_sample(frac=1.0)
+    assert sampled_ds.count() == ds.count()
+
     # Test sampling with invalid parameters
     with pytest.raises(ValueError):
         ds.groupby("A").random_sample(n=1, frac=0.5)  # Cannot specify both n and frac
