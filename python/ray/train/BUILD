@@ -2,6 +2,7 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
+    name = "py_doctest[train]",
     size = "large",
     files = glob(
         ["**/*.py"],
@@ -20,6 +21,7 @@ doctest(
 )
 
 doctest(
+    name = "py_doctest[train-gpu]",
     size = "large",
     files = [
         "_internal/session.py",

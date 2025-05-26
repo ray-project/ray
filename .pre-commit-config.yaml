@@ -43,14 +43,13 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/[a-q]'
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
     hooks:
       - id: pydoclint
         args: [
-          python/ray,
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
           --exclude=thirdparty,
@@ -67,7 +66,6 @@ repos:
         ]
         types: [python]
         files: '^python/ray/'
-        pass_filenames: false
 
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0

@@ -119,7 +119,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define our custom connector pipelines.
-    def _make_env_to_module_connector(env):
+    def _make_env_to_module_connector(env, spaces, device):
         # Create the env-to-module connector. We return an individual connector piece
         # here, which RLlib automatically integrates into a pipeline (and
         # add its default connector piece to the end of that pipeline).
