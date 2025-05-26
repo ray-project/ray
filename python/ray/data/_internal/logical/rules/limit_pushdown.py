@@ -22,6 +22,10 @@ class LimitPushdownRule(Rule):
     Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
     """
 
+    def enabled(self) -> bool:
+        self._enabled = False
+        return False
+
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         optimized_dag = self._apply_limit_pushdown(plan.dag)
         optimized_dag = self._apply_limit_fusion(optimized_dag)

@@ -1136,6 +1136,26 @@ def test_limit_pushdown(ray_start_regular_shared_2_cpus):
     )
 
 
+def test_set_optimizer_rule_enabled(ray_start_regular_shared_2_cpus):
+    from ray.data._internal.logical.optimizers import get_logical_ruleset
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    original_value = ctx.optimizer_rules.get("LimitPushdownRule", False)
+
+    try:
+        ctx.set_optimizer_rule_enabled("LimitPushdownRule", True)
+        assert get_logical_ruleset().get_rule_by_name("LimitPushdownRule").enabled
+
+        test_limit_pushdown(ray_start_regular_shared_2_cpus)
+
+        ctx.set_optimizer_rule_enabled("LimitPushdownRule", False)
+        assert not get_logical_ruleset().get_rule_by_name("LimitPushdownRule").enabled
+
+    finally:
+        ctx.set_optimizer_rule_enabled("LimitPushdownRule", original_value)
+
 def test_execute_to_legacy_block_list(
     ray_start_regular_shared_2_cpus,
 ):

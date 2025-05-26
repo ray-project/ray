@@ -445,6 +445,19 @@ class DataContext:
     # retry task may still be scheduled to this actor and it will fail.
     _enable_actor_pool_on_exit_hook: bool = False
 
+    optimizer_rules = {}
+
+    def set_optimizer_rule_enabled(self, rule_name: str, enabled: bool):
+        from ray.data._internal.logical.optimizers import (
+            get_logical_ruleset,
+            get_physical_ruleset,
+        )
+
+        for ruleset in [get_logical_ruleset(), get_physical_ruleset()]:
+            rule = ruleset.get_rule_by_name(rule_name)
+            if rule:
+                rule.enabled = enabled
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.

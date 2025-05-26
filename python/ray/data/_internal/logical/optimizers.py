@@ -14,6 +14,7 @@ from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFo
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
     InheritTargetMaxBlockSizeRule,
 )
+from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
@@ -26,6 +27,7 @@ _LOGICAL_RULESET = Ruleset(
     [
         ReorderRandomizeBlocksRule,
         InheritBatchFormatRule,
+        LimitPushdownRule,
     ]
 )
 
@@ -58,6 +60,9 @@ class LogicalOptimizer(Optimizer):
     def rules(self) -> List[Rule]:
         return [rule_cls() for rule_cls in get_logical_ruleset()]
 
+    def active_rules(self) -> List[Rule]:
+        return [rule_cls() for rule_cls in get_logical_ruleset().get_active_rules()]
+
 
 class PhysicalOptimizer(Optimizer):
     """The optimizer for physical operators."""
@@ -65,6 +70,9 @@ class PhysicalOptimizer(Optimizer):
     @property
     def rules(self) -> List[Rule]:
         return [rule_cls() for rule_cls in get_physical_ruleset()]
+
+    def active_rules(self) -> List[Rule]:
+        return [rule_cls() for rule_cls in get_physical_ruleset().get_active_rules()]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
