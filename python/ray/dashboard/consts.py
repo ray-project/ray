@@ -29,8 +29,6 @@ RAY_DASHBOARD_STATS_PURGING_INTERVAL = env_integer(
 RAY_DASHBOARD_STATS_UPDATING_INTERVAL = env_integer(
     "RAY_DASHBOARD_STATS_UPDATING_INTERVAL", 15
 )
-DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
-DASHBOARD_RPC_PORT = env_integer("RAY_DASHBOARD_RPC_PORT", 0)
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_INTERVAL_SECONDS = env_integer("GCS_CHECK_ALIVE_INTERVAL_SECONDS", 5)
@@ -73,6 +71,7 @@ CLUSTER_TAG_KEYS = ["node_type", "Version", "SessionName"]
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
 
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
+# Note that for dashboard subprocess module, the component name is "dashboard_[module_name]".
 AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "workers",
     "raylet",

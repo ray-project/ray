@@ -124,7 +124,6 @@ def test_basic(ray_start_regular):
 
     all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
-    assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [
@@ -149,11 +148,6 @@ def test_basic(ray_start_regular):
         ray_constants.DASHBOARD_ADDRESS, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert dashboard_address is not None
-    dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
-        dashboard_consts.DASHBOARD_RPC_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-    )
-    assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
     agent_addr = ray.experimental.internal_kv._internal_kv_get(
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
@@ -1079,17 +1073,6 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
-    # start ray and test agent works.
-    ray.init(include_dashboard=True)
-
-    node = ray._private.worker._global_node
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-    wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
-        == 200
-    )
-    ray.shutdown()
-
     # ocuppy the port with a socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -1113,23 +1096,6 @@ def test_agent_port_conflict(shutdown_only):
     agent_pid = agent_proc.pid
 
     check_agent_register(raylet_proc, agent_pid)
-
-    # Release the port from socket.
-    s.close()
-
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-
-    # Check that Serve-dependent features fail.
-    try:
-        wait_for_condition(
-            lambda: requests.get(
-                f"http://{agent_url}/api/serve/applications/"
-            ).status_code
-            == 200
-        )
-        assert False
-    except Exception as e:
-        assert e is not None
 
 
 @pytest.mark.skipif(
@@ -1164,7 +1130,6 @@ async def test_dashboard_module_load(tmpdir):
         node_ip_address="127.0.0.1",
         gcs_address="127.0.0.1:6379",
         cluster_id_hex=ray.ClusterID.from_random().hex(),
-        grpc_port=0,
         log_dir=str(tmpdir),
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,

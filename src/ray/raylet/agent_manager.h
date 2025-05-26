@@ -48,8 +48,7 @@ class AgentManager {
   struct Options {
     const NodeID node_id;
     const std::string agent_name;
-    // Commands to start the agent. Note we append extra arguments:
-    // --agent-id $AGENT_ID # A random string of int
+    // Commands to start the agent.
     std::vector<std::string> agent_commands;
     // If true: the started process fate-shares with the raylet. i.e., when the process
     // fails to start or exits, we SIGTERM the raylet.

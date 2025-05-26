@@ -60,7 +60,6 @@ ray_cc_library(
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
     ],
 )
 
@@ -205,6 +204,9 @@ ray_cc_library(
 ray_cc_library(
     name = "sample",
     hdrs = ["sample.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
 )
 
 ray_cc_library(
@@ -303,6 +305,7 @@ ray_cc_library(
         ":stream_redirection_options",
         ":util",
         "//src/ray/util/internal:stream_redirection_handle",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

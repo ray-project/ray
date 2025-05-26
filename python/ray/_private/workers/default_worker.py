@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
-    # external storage is intialized.
+    # external storage is initialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray._private import external_storage, storage
 

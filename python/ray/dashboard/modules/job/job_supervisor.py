@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -25,6 +24,7 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
+from ray._raylet import GcsClient
 
 import psutil
 
@@ -76,8 +76,8 @@ class JobSupervisor:
         logs_dir: Optional[str] = None,
     ):
         self._job_id = job_id
-        gcs_aio_client = GcsAioClient(address=gcs_address, cluster_id=cluster_id_hex)
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
+        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
+        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 

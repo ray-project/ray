@@ -655,7 +655,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      object_size,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     std::optional<NodeID>(node1));
   rc->HandleObjectSpilled(obj1, "url1", node1);
   rpc::WorkerObjectLocationsPubMessage object_info;
   rc->FillObjectInformation(obj1, &object_info);
@@ -685,7 +685,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      object_size,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     std::optional<NodeID>(node1));
   auto locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_TRUE(locality_data_obj1.has_value());
   ASSERT_EQ(locality_data_obj1->object_size, object_size);
@@ -760,7 +760,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      -1,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node2));
+                     std::optional<NodeID>(node2));
   auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
   ASSERT_FALSE(locality_data_obj2_no_object_size.has_value());
 

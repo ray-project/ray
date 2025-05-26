@@ -92,8 +92,7 @@ def execute_to_legacy_bundle_iterator(
             )
             return bundle
 
-    bundle_iter = CacheMetadataIterator(bundle_iter)
-    return bundle_iter
+    return CacheMetadataIterator(bundle_iter)
 
 
 def execute_to_legacy_block_list(

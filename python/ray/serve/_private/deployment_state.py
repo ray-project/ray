@@ -242,7 +242,7 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
-
+        self._docs_path: Optional[str] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -253,6 +253,7 @@ class ActorReplicaWrapper:
         self._worker_id: str = None
         self._node_id: str = None
         self._node_ip: str = None
+        self._node_instance_id: str = None
         self._log_file_path: str = None
 
         # Populated in self.stop().
@@ -324,6 +325,10 @@ class ActorReplicaWrapper:
         return self._version.deployment_config
 
     @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
+
+    @property
     def max_ongoing_requests(self) -> int:
         return self.deployment_config.max_ongoing_requests
 
@@ -367,6 +372,11 @@ class ActorReplicaWrapper:
     def node_ip(self) -> Optional[str]:
         """Returns the node ip of the actor, None if not placed."""
         return self._node_ip
+
+    @property
+    def node_instance_id(self) -> Optional[str]:
+        """Returns the node instance id of the actor, None if not placed."""
+        return self._node_instance_id
 
     @property
     def log_file_path(self) -> Optional[str]:
@@ -649,6 +659,7 @@ class ActorReplicaWrapper:
                     self._worker_id,
                     self._node_id,
                     self._node_ip,
+                    self._node_instance_id,
                     self._log_file_path,
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
@@ -691,6 +702,7 @@ class ActorReplicaWrapper:
                         self._version,
                         self._initialization_latency_s,
                         self._port,
+                        self._docs_path,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -957,6 +969,10 @@ class DeploymentReplica:
         return self._actor.version
 
     @property
+    def docs_path(self) -> Optional[str]:
+        return self._actor.docs_path
+
+    @property
     def actor_id(self) -> str:
         return self._actor.actor_id
 
@@ -1030,6 +1046,7 @@ class DeploymentReplica:
             pid=self._actor.pid,
             node_id=self._actor.node_id,
             node_ip=self._actor.node_ip,
+            node_instance_id=self._actor.node_instance_id,
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
@@ -1304,6 +1321,8 @@ class DeploymentState:
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
 
+        self._docs_path: Optional[str] = None
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1390,6 +1409,10 @@ class DeploymentState:
     @property
     def app_name(self) -> str:
         return self._id.app_name
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
 
     @property
     def _failed_to_start_threshold(self) -> int:
@@ -1730,7 +1753,7 @@ class DeploymentState:
 
         Args:
             max_to_stop: max number of replicas to stop, by default,
-            it will stop all replicas with outdated version.
+                         it stops all replicas with an outdated version.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -1998,6 +2021,11 @@ class DeploymentState:
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
+
+                # if replica version is the same as the target version,
+                # we update the docs path
+                if replica.version == self._target_state.version:
+                    self._docs_path = replica.docs_path
 
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
@@ -2568,6 +2596,10 @@ class DeploymentStateManager:
             return self._deployment_states[deployment_id].target_info
         else:
             return None
+
+    def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].docs_path
 
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.

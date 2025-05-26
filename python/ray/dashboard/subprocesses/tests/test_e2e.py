@@ -117,6 +117,26 @@ async def test_load_multiple_modules(aiohttp_client, default_module_config):
     assert await response.text() == "Hello from TestModule1"
 
 
+async def test_redirect_between_modules(aiohttp_client, default_module_config):
+    """Tests that a redirect can be handled between modules."""
+    app = await start_http_server_app(default_module_config, [TestModule, TestModule1])
+    client = await aiohttp_client(app)
+
+    # Allow redirects to be handled between modules.
+    # NOTE: If redirects were followed at the module level,
+    # the test would error, since following /test in TestModule1 would
+    # result in a 404.
+    # Instead, the redirect should be handled at the subprocess proxy level,
+    # where the redirect request is forwarded to the correct module.
+    response = await client.get("/redirect_between_modules", allow_redirects=True)
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /test, run_finished: True"
+
+    response = await client.get("/redirect_within_module", allow_redirects=True)
+    assert response.status == 200
+    assert await response.text() == "Hello from TestModule1"
+
+
 async def test_cached_endpoint(aiohttp_client, default_module_config):
     """
     Test whether the ray.dashboard.optional_utils.aiohttp_cache decorator works.
@@ -277,16 +297,21 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
 
-    # Assert that stdout and stderr are logged to "dashboard.TestModule.err"
+    # Assert that stdout is logged to "dashboard_TestModule.out"
+    out_log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.out"
+    )
+    with out_log_file_path.open("r") as f:
+        out_log_file_content = f.read()
+    assert out_log_file_content == "In /logging_in_module, stdout\n"
+
+    # Assert that stderr is logged to "dashboard_TestModule.err"
     err_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
     )
     with err_log_file_path.open("r") as f:
         err_log_file_content = f.read()
-    assert (
-        err_log_file_content
-        == "In /logging_in_module, stdout\nIn /logging_in_module, stderr\n"
-    )
+    assert err_log_file_content == "In /logging_in_module, stderr\n"
 
 
 async def test_logging_in_module_with_multiple_incarnations(

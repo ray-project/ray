@@ -17,6 +17,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -89,6 +90,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
+        self.spaces = kwargs.get("spaces", {})
 
         self._setup_metrics()
 
@@ -104,11 +106,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
-        self.make_env()
+        if (
+            self.worker_index is None
+            or self.worker_index > 0
+            or self.config.create_env_on_local_worker
+            or self.config.num_env_runners == 0
+        ):
+            self.make_env()
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(
-            self.env, device=self._device
+            env=self.env, spaces=self.spaces, device=self._device
         )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
@@ -126,7 +134,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Create the module-to-env connector pipeline.
         self._module_to_env = self.config.build_module_to_env_connector(
-            self.env.unwrapped
+            env=self.env.unwrapped if self.env else None, spaces=self.spaces
         )
 
         self._needs_initial_reset: bool = True
@@ -173,6 +181,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         Returns:
             A list of `MultiAgentEpisode` instances, carrying the sampled data.
         """
+        if self.env is None:
+            raise ValueError(
+                f"{self} doesn't have an env! Can't call `sample()` on it."
+            )
+
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # Log time between `sample()` requests.
@@ -560,9 +573,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def get_spaces(self):
+        if self.env is None:
+            return self.spaces
         # Return the already agent-to-module translated spaces from our connector
         # pipeline.
         return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            INPUT_ENV_SINGLE_SPACES: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
             **{
                 mid: (o, self._env_to_module.action_space[mid])
                 for mid, o in self._env_to_module.observation_space.spaces.items()
@@ -849,9 +869,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_module(self):
+        env = self.env.unwrapped if self.env is not None else None
         try:
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+                env=env, spaces=self.get_spaces(), inference_only=True
             )
             # Build the module from its spec.
             self.module = module_spec.build()
@@ -876,7 +897,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
-        self.env.close()
+        if self.env is not None:
+            self.env.close()
 
     def _setup_metrics(self):
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
@@ -900,21 +922,26 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
-        self, which: str, idx: int, episodes: List[MultiAgentEpisode] = None
+        self, which: str, idx: int, episodes: List[MultiAgentEpisode]
     ):
-        # episode = episode if episode is not None else self._episode
+        kwargs = dict(
+            episode=episodes[idx],
+            env_runner=self,
+            metrics_logger=self.metrics,
+            env=self.env.unwrapped,
+            rl_module=self.module,
+            env_index=idx,
+        )
+        if which == "on_episode_end":
+            kwargs["prev_episode_chunks"] = self._ongoing_episodes_for_metrics[
+                episodes[idx].id_
+            ]
+
         make_callback(
             which,
             callbacks_objects=self._callbacks,
             callbacks_functions=getattr(self.config, f"callbacks_{which}"),
-            kwargs=dict(
-                episode=episodes[idx],
-                env_runner=self,
-                metrics_logger=self.metrics,
-                env=self.env.unwrapped,
-                rl_module=self.module,
-                env_index=idx,
-            ),
+            kwargs=kwargs,
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):

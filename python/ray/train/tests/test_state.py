@@ -292,7 +292,8 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
     # Check Datasets
     for dataset_info in run.datasets:
         dataset = datasets[dataset_info.name]
-        assert dataset_info.dataset_name == dataset._plan._dataset_name
+        # DataConfig will automatically set the dataset_name to the key of the dataset dict.
+        assert dataset_info.dataset_name == dataset_info.name
         assert dataset_info.dataset_uuid == dataset._plan._dataset_uuid
 
 

@@ -26,7 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
@@ -61,6 +61,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
+                           /*record_stats=*/true,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
@@ -596,6 +597,20 @@ void GcsServer::InitKVManager() {
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(
       std::move(instance), config_.raylet_config_list, io_context);
+
+  kv_manager_->GetInstance().Put(
+      "",
+      kGcsPidKey,
+      std::to_string(getpid()),
+      /*overwrite=*/true,
+      {[](bool added) {
+         if (!added) {
+           RAY_LOG(WARNING)
+               << "Failed to put the GCS pid in the kv store. GCS process metrics "
+                  "will not be emitted.";
+         }
+       },
+       io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::InitKVService() {

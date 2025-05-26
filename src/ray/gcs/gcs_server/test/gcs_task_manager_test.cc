@@ -104,7 +104,7 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
       const TaskID &parent_task_id = TaskID::Nil(),
       int job_id = 0,
-      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt,
+      std::optional<rpc::RayErrorInfo> error_info = absl::nullopt,
       ActorID actor_id = ActorID::Nil()) {
     auto events = GenTaskEvents(
         tasks,
@@ -228,7 +228,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
-                                            absl::optional<JobID> job_id = absl::nullopt,
+                                            std::optional<JobID> job_id = absl::nullopt,
                                             int64_t limit = -1,
                                             bool exclude_driver = true,
                                             const std::string &task_name = "",
@@ -307,10 +307,10 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<TaskID> &task_ids,
       int32_t attempt_number = 0,
       int32_t job_id = 0,
-      absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
-      absl::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
-      absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
-      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
+      std::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
+      std::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
+      std::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
+      std::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
     std::vector<rpc::TaskEvents> result;
     for (auto const &task_id : task_ids) {
       rpc::TaskEvents events;

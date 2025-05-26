@@ -2,15 +2,14 @@ import base64
 import copy
 import logging
 import os
-import pytest
 import subprocess
 import sys
 import tempfile
 import unittest
-
 from typing import Any, Dict
-
 import yaml
+
+import pytest
 
 from ray.tests.kuberay.utils import (
     get_pod,
@@ -88,6 +87,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 config = k8s_object
                 break
         head_group = config["spec"]["headGroupSpec"]
+        if "rayStartParams" not in head_group:
+            head_group["rayStartParams"] = {}
         head_group["rayStartParams"][
             "resources"
         ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
@@ -97,6 +98,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         cpu_group["minReplicas"] = min_replicas
         # Keep maxReplicas big throughout the test.
         cpu_group["maxReplicas"] = 300
+        if "rayStartParams" not in cpu_group:
+            cpu_group["rayStartParams"] = {}
         cpu_group["rayStartParams"][
             "resources"
         ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
@@ -105,6 +108,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # (We're not using real GPUs, just adding a GPU annotation for the autoscaler
         # and Ray scheduler.)
         gpu_group = copy.deepcopy(cpu_group)
+        if "rayStartParams" not in gpu_group:
+            gpu_group["rayStartParams"] = {}
         gpu_group["rayStartParams"]["num-gpus"] = "1"
         gpu_group["replicas"] = gpu_replicas
         gpu_group["minReplicas"] = 0
@@ -367,8 +372,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     kubeconfig_base64 = os.environ.get("KUBECONFIG_BASE64")
     if kubeconfig_base64:
         kubeconfig_file = os.environ.get("KUBECONFIG")

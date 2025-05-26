@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -393,10 +394,9 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert not ds._plan.has_started_execution
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
 
     # Schema isn't available, so we do a partial read.
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert ds._plan.has_started_execution
     assert not ds._plan.has_computed_output()
 
     # Forces a data read.
@@ -476,7 +476,7 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert ds._plan.has_started_execution
+    assert not ds._plan.has_started_execution
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -909,24 +909,94 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
-def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
-    df = pd.DataFrame(
-        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
-    )
-    table = pa.Table.from_pandas(df)
-    pq.write_to_dataset(
-        table,
-        root_path=str(tmp_path),
-        partition_cols=["one"],
-    )
-    # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
+def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    os.mkdir(path)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="ignore")
 
-    ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
-    )
+    # directory was created, should ignore
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 0
 
-    parquet_output_path = os.path.join(tmp_path, "parquet")
-    ds.write_parquet(parquet_output_path, num_rows_per_file=6)
+    # now remove dir
+    shutil.rmtree(path)
+
+    # should write
+    ds.write_parquet(path, filesystem=None, mode="ignore")
+    on_disk_table = pq.read_table(path)
+
+    assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    os.mkdir(path)
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+
+    with pytest.raises(ValueError):
+        ds.write_parquet(path, filesystem=None, mode="error")
+
+    # now remove dir
+    shutil.rmtree(path)
+
+    # should write
+    ds.write_parquet(path, filesystem=None, mode="error")
+    on_disk_table = pq.read_table(path)
+
+    assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="append")
+
+    # one file should be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 1
+
+    appended_in_memory_table = pa.Table.from_pydict({"two": [2]})
+    ds = ray.data.from_arrow(appended_in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="append")
+
+    # another file should be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 2
+
+
+def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path):
+    data_path = local_path
+    path = os.path.join(data_path, "test_parquet_dir")
+    in_memory_table = pa.Table.from_pydict({"one": [1]})
+    ds = ray.data.from_arrow(in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="overwrite")
+
+    # one file should be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 1
+
+    overwritten_in_memory_table = pa.Table.from_pydict({"two": [2]})
+    ds = ray.data.from_arrow(overwritten_in_memory_table)
+    ds.write_parquet(path, filesystem=None, mode="overwrite")
+
+    # another file should NOT be added
+    with os.scandir(path) as file_paths:
+        count_of_files = sum(1 for path in file_paths)
+        assert count_of_files == 1
+
+    on_disk_table = pq.read_table(path)
+    assert on_disk_table.equals(overwritten_in_memory_table)
 
 
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
@@ -1488,6 +1558,54 @@ def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_
 
     with pytest.warns(FutureWarning, match="file_extensions"):
         ray.data.read_parquet(tmp_path)
+
+
+def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
+    """Verify row_group_size is respected."""
+
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_5k.parquet",
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_5k.parquet",
+            use_legacy_dataset=False,  # required for .fragments attribute
+        )
+    assert ds.fragments[0].num_row_groups == 2
+
+
+def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
+    """Verify arrow_parquet_args_fn is working with row_group_size."""
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_1k.parquet",
+            arrow_parquet_args_fn=lambda: {
+                "row_group_size": 1000,  # overrides row_group_size
+            },
+            row_group_size=5000,
+        )
+    )
+
+    # Since version 15, use_legacy_dataset is deprecated.
+    if parse_version(pa.__version__) >= parse_version("15.0.0"):
+        ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
+    else:
+        ds = pq.ParquetDataset(
+            tmp_path / "test_row_group_1k.parquet",
+            use_legacy_dataset=False,
+        )
+    assert ds.fragments[0].num_row_groups == 10
 
 
 if __name__ == "__main__":

@@ -1,19 +1,18 @@
+from typing import Literal
+
 from ray.core.generated.common_pb2 import (
+    ErrorType,
+    Language,
     TaskStatus,
     TaskType,
     WorkerExitType,
     WorkerType,
-    ErrorType,
-    Language,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-
-from typing import Literal
-
 
 ACTOR_STATUS = [
     "DEPENDENCIES_UNREADY",
@@ -121,7 +120,7 @@ LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
-    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name)
+    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name.keys())
     # Sometimes, the grpc enum is mocked, and it
     # doesn't include any values in that case.
     if len(enum_vals) > 0:

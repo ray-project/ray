@@ -63,7 +63,8 @@ class _DAGNodeOperation:
         return (
             f"_DAGNodeOperation("
             f"exec_task_idx: {self.exec_task_idx}, "
-            f" type: {self.type})"
+            f"type: {self.type}, "
+            f"method_name: {self.method_name})"
         )
 
     def viz_str(self):
@@ -130,7 +131,7 @@ class _DAGOperationGraphNode:
             f"_DAGOperationGraphNode("
             f"operation: {self.operation}, "
             f"task_idx: {self.task_idx}, "
-            f"actor_handle: {self.actor_handle}, "
+            f"actor_id: {self.actor_handle._ray_actor_id}, "
             f"requires_nccl: {self.requires_nccl})"
         )
 
@@ -140,28 +141,18 @@ class _DAGOperationGraphNode:
         `_select_next_nodes`. The priority queue is a min-heap, so the node with
         higher priority is considered "less than" the other node.
         """
-
-        def compare(lhs: "_DAGOperationGraphNode", rhs: "_DAGOperationGraphNode"):
-            # If both nodes belong to the same actor, the node with the smaller
-            # `exec_task_idx` is prioritized. If two nodes belong to different
-            # actors, it approximates balancing the scheduled tasks across actors,
-            # by prioritizing the node with the smaller `exec_task_idx`. The tie
-            # is broken by the `task_idx`.
-            if lhs.operation.exec_task_idx != rhs.operation.exec_task_idx:
-                return lhs.operation.exec_task_idx < rhs.operation.exec_task_idx
-            return lhs.task_idx < rhs.task_idx
-
-        if self.actor_handle == other.actor_handle:
-            # When both nodes belong to the same actor, use the default comparison.
-            return compare(self, other)
-        elif self.is_nccl_op != other.is_nccl_op:
+        if self.is_nccl_op != other.is_nccl_op:
             # When one node is a NCCL operation and the other is not, prioritize
-            # the non-NCCL operation.
-            return not self.is_nccl_op
+            # the NCCL operation.
+            return self.is_nccl_op
         else:
-            # When either both nodes are NCCL operations or both nodes are not
-            # NCCL operations, use the default comparison.
-            return compare(self, other)
+            # When either both nodes are NCCL operations or both nodes are not NCCL
+            # operations, prioritize the earlier task within the same actor and load
+            # balance tasks across actors. The tie is broken by the `task_idx`.
+            return (self.operation.exec_task_idx, self.task_idx) < (
+                other.operation.exec_task_idx,
+                other.task_idx,
+            )
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
         """
@@ -270,10 +261,20 @@ def _push_candidate_node_if_ready(
                 (node.task_idx, node.operation.type)
             )
     if node.is_ready:
-        heapq.heappush(
-            actor_to_candidates[node.actor_handle._actor_id],
-            node,
-        )
+        if not node.is_nccl_collective:
+            heapq.heappush(
+                actor_to_candidates[node.actor_handle._actor_id],
+                node,
+            )
+        else:
+            # Push all the nodes in the collective operation to the candidates.
+            for collective_node_metadata in node.collective_idxs:
+                task_idx, op_type = collective_node_metadata
+                collective_node = graph[task_idx][op_type]
+                heapq.heappush(
+                    actor_to_candidates[collective_node.actor_handle._actor_id],
+                    collective_node,
+                )
 
 
 def _select_next_nodes(
@@ -316,7 +317,7 @@ def _select_next_nodes(
         execution schedules.
     """
     top_priority_node = None
-    for _, candidates in actor_to_candidates.items():
+    for candidates in actor_to_candidates.values():
         if len(candidates) == 0:
             continue
         if top_priority_node is None or candidates[0] < top_priority_node:
@@ -324,15 +325,13 @@ def _select_next_nodes(
 
     if top_priority_node is None:
         return None
-    next_nodes = [
-        heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
-    ]
+    next_nodes = [top_priority_node]
 
     if not top_priority_node.is_nccl_op:
         # A non-NCCL operation node is picked.
         assert len(next_nodes) == 1
     elif top_priority_node.is_nccl_write:
-        # a NCCL write node is picked. NCCL is a blocking operation, so we need
+        # A NCCL write node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL read nodes to avoid a deadlock.
         for downstream_node_metadata in top_priority_node.out_edges:
             task_idx, op_type = downstream_node_metadata
@@ -341,7 +340,7 @@ def _select_next_nodes(
             next_nodes.append(downstream_node)
         assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
     elif top_priority_node.is_nccl_collective:
-        # a NCCL collective node is picked. NCCL is a blocking operation, so we need
+        # A NCCL collective node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL collective nodes in its collective
         # operation to avoid a deadlock.
         for collective_node_metadata in top_priority_node.collective_idxs:
@@ -351,6 +350,14 @@ def _select_next_nodes(
             if collective_node != top_priority_node:
                 next_nodes.append(collective_node)
         assert len(next_nodes) == len(top_priority_node.collective_idxs)
+
+    # Remove the selected nodes from the candidates.
+    for node in next_nodes:
+        candidates = actor_to_candidates[node.actor_handle._actor_id]
+        #  The NCCL read nodes are not added to the candidates.
+        if node in candidates:
+            candidates.remove(node)
+            heapq.heapify(candidates)
 
     return next_nodes
 
@@ -692,8 +699,9 @@ def _generate_actor_to_execution_schedule(
         nodes = [node for node in nodes if node not in visited_nodes]
         # Add the selected nodes to the execution schedule.
         for node in nodes:
-            actor_to_execution_schedule[node.actor_handle].append(node)
+            assert node not in visited_nodes
             visited_nodes.add(node)
+            actor_to_execution_schedule[node.actor_handle].append(node)
         # Update the in-degree of the downstream nodes.
         for node in nodes:
             for out_node_task_idx, out_node_type in node.out_edges:
@@ -707,7 +715,7 @@ def _generate_actor_to_execution_schedule(
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"
-    for _, candidates in actor_to_candidates.items():
+    for candidates in actor_to_candidates.values():
         assert len(candidates) == 0, "Expected all candidates to be empty"
 
     return actor_to_execution_schedule
