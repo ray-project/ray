@@ -1890,7 +1890,7 @@ def test_map_operator_warns_on_few_inputs(
             def __call__(self, row):
                 return row
 
-    with pytest.warns(UserWarning, match="input(s)"):
+    with pytest.warns(UserWarning, match="can launch at most 1 task"):
         # The user specified `concurrency=2` for the map operator, but the pipeline
         # can only launch one task because there's only one input block. So, Ray Data
         # should emit a warning instructing the user to increase the number of input
