@@ -247,7 +247,7 @@ class ClientCallManager {
     }
 
     auto call = new ClientCallImpl<Reply>(
-        callback, cluster_id_, std::move(stats_handle), method_timeout_ms);
+        callback, cluster_id_, std::move(stats_handle), record_stats_, method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
