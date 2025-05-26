@@ -2230,39 +2230,42 @@ def test_groupby_random_sample(
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_random_sample with: {seed}")
     random.seed(seed)
-    
+
     # Create a dataset with 3 groups, each having 10 items
     xs = list(range(30))
     random.shuffle(xs)
-    
+
     def _to_batch_format(ds):
         return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
-    
-    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(num_parts)
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
+    )
     ds = _to_batch_format(ds)
-    
+
     # Test sampling n items per group
     sampled_ds = ds.groupby("A").random_sample(n=2, random_state=42)
     assert sampled_ds.count() == 6  # 2 items per group * 3 groups
-    
+
     # Verify each group has exactly 2 items
     result = sampled_ds.sort("A").to_pandas()
     assert len(result[result["A"] == 0]) == 2
     assert len(result[result["A"] == 1]) == 2
     assert len(result[result["A"] == 2]) == 2
-    
+
     # Test sampling with fraction
     sampled_ds = ds.groupby("A").random_sample(frac=0.3, random_state=42)
     assert sampled_ds.count() == 9  # 30% of 30 items
-    
+
     # Test sampling with replacement
     sampled_ds = ds.groupby("A").random_sample(n=5, replace=True, random_state=42)
     assert sampled_ds.count() == 15  # 5 items per group * 3 groups
-    
+
     # Test sampling with weights
     weights = [1 if x % 2 == 0 else 2 for x in xs]  # Higher weight for odd numbers
     sampled_ds = ds.groupby("A").random_sample(n=2, weights=weights, random_state=42)
     assert sampled_ds.count() == 6  # 2 items per group * 3 groups
+
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
@@ -2276,23 +2279,25 @@ def test_groupby_random_sample_edge_cases(
     # Test edge cases for sampling
     def _to_batch_format(ds):
         return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
-    
+
     # Test empty dataset
     ds = ray.data.from_items([]).repartition(num_parts)
     ds = _to_batch_format(ds)
     sampled_ds = ds.groupby("A").random_sample(n=1)
     assert sampled_ds.count() == 0
-    
+
     # Test dataset with single group
-    ds = ray.data.from_items([{"A": 1, "B": i} for i in range(5)]).repartition(num_parts)
+    ds = ray.data.from_items([{"A": 1, "B": i} for i in range(5)]).repartition(
+        num_parts
+    )
     ds = _to_batch_format(ds)
     sampled_ds = ds.groupby("A").random_sample(n=3)
     assert sampled_ds.count() == 3
-    
+
     # Test sampling more items than available in a group
     sampled_ds = ds.groupby("A").random_sample(n=10)
     assert sampled_ds.count() == 5  # Should return all items
-    
+
     # Test sampling with frac=0.0 (should return 0 items)
     sampled_ds = ds.groupby("A").random_sample(frac=0.0)
     assert sampled_ds.count() == 0
@@ -2304,13 +2309,13 @@ def test_groupby_random_sample_edge_cases(
     # Test sampling with invalid parameters
     with pytest.raises(ValueError):
         ds.groupby("A").random_sample(n=1, frac=0.5)  # Cannot specify both n and frac
-    
+
     with pytest.raises(ValueError):
         ds.groupby("A").random_sample(n=-1)  # Invalid n
-    
+
     with pytest.raises(ValueError):
         ds.groupby("A").random_sample(frac=-0.5)  # Invalid frac
-    
+
     with pytest.raises(ValueError):
         ds.groupby("A").random_sample(frac=1.5)  # Invalid frac > 1
 

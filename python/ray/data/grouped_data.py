@@ -555,7 +555,8 @@ class GroupedData:
             frac: Fraction of items to return for each group. Cannot be used with n.
             replace: Sample with or without replacement. Default is False.
             random_state: Seed for the random number generator.
-            **kwargs: Additional keyword arguments passed to pandas.DataFrame.sample.
+            **kwargs: Additional keyword arguments passed to pandas.DataFrame.sample,
+                such as `weights`.
 
         Returns:
             A new Dataset containing the sampled rows from each group.
@@ -571,6 +572,7 @@ class GroupedData:
 
         def _sample_group(df):
             import pandas as pd
+
             if not isinstance(df, pd.DataFrame):
                 df = df.to_pandas()
 
