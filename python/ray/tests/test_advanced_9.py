@@ -272,10 +272,8 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             return "WORLD"
 
     with ray.init(cluster.address):
-        # Make sure cluster is ready.
-        _ = ray.get(A.remote().ready.remote())
-        # Makes a request to the GCS to be really sure.
-        _ = ray.available_resources()
+        # Wait for everything to be ready.
+        wait_for_condition(lambda: get_gcs_num_of_connections() == 21)
         # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
