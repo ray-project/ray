@@ -58,7 +58,9 @@ class Info:
         self.gloo_timeout = 30000
         self.group_metadata = None
 
-    def set_info(self, ids, world_size, rank, backend, gloo_timeout, group_metadata=None):
+    def set_info(
+        self, ids, world_size, rank, backend, gloo_timeout, group_metadata=None
+    ):
         """Store collective information."""
         self.ids = ids
         self.world_size = world_size
@@ -69,4 +71,11 @@ class Info:
 
     def get_info(self):
         """Get previously stored collective information."""
-        return self.ids, self.world_size, self.rank, self.backend, self.gloo_timeout, self.group_metadata
+        return (
+            self.ids,
+            self.world_size,
+            self.rank,
+            self.backend,
+            self.gloo_timeout,
+            self.group_metadata,
+        )

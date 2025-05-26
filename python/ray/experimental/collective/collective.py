@@ -4,7 +4,7 @@ import threading
 import uuid
 
 import ray
-from ray.experimental.collective.communicator import Communicator,  CommunicatorHandle
+from ray.experimental.collective.communicator import Communicator, CommunicatorHandle
 from ray.experimental.collective.util import get_address_and_port
 from ray.util.collective.types import Backend
 from ray.util.collective.util import Info
@@ -41,8 +41,9 @@ class RemoteCommunicatorManager:
             popped = None
         return popped
 
-    def get_collective_groups(self, actors: List[ray.actor.ActorHandle] = None,
-                              backend: Optional[str] = None):
+    def get_collective_groups(
+        self, actors: List[ray.actor.ActorHandle] = None, backend: Optional[str] = None
+    ):
         """
         Get the collective groups that the given actors are a subset of. Filter by
         backend if provided.
@@ -64,6 +65,7 @@ class LocalCommunicatorManager:
     """
     Class to manage all communicators that we are a member of.
     """
+
     def __init__(self):
         # Communicators that we are a member of. Key is a user-provided
         # name or UUID.
@@ -95,7 +97,9 @@ def _do_init_collective_group(
     backend=Backend.NCCL,
     name: str = "default",
 ):
-    ray.util.collective.init_collective_group(world_size, rank, backend, group_name=name)
+    ray.util.collective.init_collective_group(
+        world_size, rank, backend, group_name=name
+    )
 
     manager = LocalCommunicatorManager.get()
     comm = Communicator(name, rank, backend)
@@ -108,8 +112,9 @@ def _do_destroy_collective_group(self, name):
         ray.util.collective.destroy_collective_group(name)
 
 
-def get_collective_groups(actors: List[ray.actor.ActorHandle],
-                          backend: Optional[str] = None) -> List[CommunicatorHandle]:
+def get_collective_groups(
+    actors: List[ray.actor.ActorHandle], backend: Optional[str] = None
+) -> List[CommunicatorHandle]:
     """
     Get the collective groups that the given actors are a subset of. Filter by
     backend if provided.
@@ -128,10 +133,10 @@ def get_collective_groups(actors: List[ray.actor.ActorHandle],
 
 
 def create_collective_group(
-        actors: List[ray.actor.ActorHandle],
-        backend: str,
-        name: Optional[str] = None,
-        ) -> CommunicatorHandle:
+    actors: List[ray.actor.ActorHandle],
+    backend: str,
+    name: Optional[str] = None,
+) -> CommunicatorHandle:
     """
     Create a collective group on the given list of actors. If this function
     returns successfully, then the collective group has been initialized on all
@@ -163,7 +168,9 @@ def create_collective_group(
 
     for actor in actors:
         if manager.get_collective_groups([actor], backend):
-            raise RuntimeError(f"Actor {actor} already in group for backend {backend}. Actors can currently only participate in at most one group per backend.")
+            raise RuntimeError(
+                f"Actor {actor} already in group for backend {backend}. Actors can currently only participate in at most one group per backend."
+            )
 
     actor_ids = [actor._ray_actor_id for actor in actors]
     if len(set(actor_ids)) != len(actor_ids):
@@ -174,23 +181,27 @@ def create_collective_group(
         # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
-        master_metadata = ray.get(actors[0].__ray_call__.remote(lambda self: get_address_and_port()))
+        master_metadata = ray.get(
+            actors[0].__ray_call__.remote(lambda self: get_address_and_port())
+        )
 
         # Store the metadata on a named actor that all of the other
         # actors can access.
         info_actor_name = "info_" + name
         info_actor = Info.options(name=info_actor_name).remote()
         actor_ids = [a._ray_actor_id for a in actors]
-        ray.get(info_actor.set_info.remote(actor_ids,
-                                      world_size,
-                                      -1, backend,
-                                      -1, master_metadata))
+        ray.get(
+            info_actor.set_info.remote(
+                actor_ids, world_size, -1, backend, -1, master_metadata
+            )
+        )
 
-    init_tasks = [actor.__ray_call__.remote(_do_init_collective_group,
-                               world_size,
-                               rank,
-                               backend,
-                               name) for rank, actor in enumerate(actors)]
+    init_tasks = [
+        actor.__ray_call__.remote(
+            _do_init_collective_group, world_size, rank, backend, name
+        )
+        for rank, actor in enumerate(actors)
+    ]
     ray.get(init_tasks)
 
     # Make sure the temporary named actor is cleaned up.
@@ -223,7 +234,10 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     manager = RemoteCommunicatorManager.get()
     group = manager.remove_remote_communicator(name)
     if group is not None:
-        destroy_tasks = [actor.__ray_call__.remote(_do_destroy_collective_group, name) for actor in group.actors]
+        destroy_tasks = [
+            actor.__ray_call__.remote(_do_destroy_collective_group, name)
+            for actor in group.actors
+        ]
         ray.get(destroy_tasks)
     else:
         raise ValueError(f"No group with name {name} found.")

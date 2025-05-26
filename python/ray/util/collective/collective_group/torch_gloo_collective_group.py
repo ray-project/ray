@@ -28,22 +28,28 @@ TORCH_REDUCE_OP_MAP = {
 
 
 class TorchGLOOGroup(BaseGroup):
-    def __init__(self, world_size: int, rank: int, group_name: str,):
+    def __init__(
+        self,
+        world_size: int,
+        rank: int,
+        group_name: str,
+    ):
         info_actor_name = "info_" + group_name
         try:
             info_actor = ray.get_actor(info_actor_name)
         except ValueError:
-            raise RuntimeError(f"TorchGLOOGroup expected actor with name `{info_actor_name}` to be created. TorchGLOOGroup should not be instantiated directly. Use ray.experimental.collective.create_collective_group to create the group.")
+            raise RuntimeError(
+                f"TorchGLOOGroup expected actor with name `{info_actor_name}` to be created. TorchGLOOGroup should not be instantiated directly. Use ray.experimental.collective.create_collective_group to create the group."
+            )
 
         _, _, _, _, _, metadata = ray.get(info_actor.get_info.remote())
         master_addr, master_port = metadata
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = str(master_port)
 
-        dist.init_process_group(backend="gloo",
-                                             init_method="env://",
-                                             world_size=world_size,
-                                             rank=rank)
+        dist.init_process_group(
+            backend="gloo", init_method="env://", world_size=world_size, rank=rank
+        )
         super().__init__(world_size, rank, group_name)
 
     def destroy_group(self):
@@ -59,7 +65,9 @@ class TorchGLOOGroup(BaseGroup):
         assert isinstance(tensor, list) and len(tensor) == 1
         tensor = tensor[0]
         if not isinstance(tensor, torch.Tensor):
-            raise ValueError(f"torch_gloo group only accepts torch.Tensor types, received {tensor}")
+            raise ValueError(
+                f"torch_gloo group only accepts torch.Tensor types, received {tensor}"
+            )
         return tensor
 
     def _check_tensor_list_input(self, tensor_list):
@@ -67,7 +75,9 @@ class TorchGLOOGroup(BaseGroup):
         tensor_list = tensor_list[0]
         for tensor in tensor_list:
             if not isinstance(tensor, torch.Tensor):
-                raise ValueError(f"torch_gloo group only accepts torch.Tensor types, received tensor list with value {tensor}")
+                raise ValueError(
+                    f"torch_gloo group only accepts torch.Tensor types, received tensor list with value {tensor}"
+                )
         return tensor_list
 
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
@@ -98,7 +108,9 @@ class TorchGLOOGroup(BaseGroup):
         tensor_list = self._check_tensor_list_input(tensor_list)
         output_tensor = self._check_tensor_input(output_tensor)
         if output_tensor.shape != tensor_list[self._rank].shape:
-            raise ValueError("Output tensor has wrong shape {output_tensor.shape}, expected {tensor_list[self._rank].shape}")
+            raise ValueError(
+                "Output tensor has wrong shape {output_tensor.shape}, expected {tensor_list[self._rank].shape}"
+            )
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reducescatter_options.reduceOp]
 
         # torch.distributed gloo doesn't support reducescatter. Implement a

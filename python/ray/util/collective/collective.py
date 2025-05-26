@@ -31,7 +31,9 @@ except ImportError:
 
 
 try:
-    from ray.util.collective.collective_group.torch_gloo_collective_group import TorchGLOOGroup
+    from ray.util.collective.collective_group.torch_gloo_collective_group import (
+        TorchGLOOGroup,
+    )
 except ImportError:
     _TORCH_DISTRIBUTED_AVAILABLE = False
 
@@ -85,7 +87,9 @@ class GroupManager(object):
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
         elif backend == types.Backend.TORCH_GLOO:
-            logger.debug("Creating torch.distributed GLOO group: '{}'...".format(group_name))
+            logger.debug(
+                "Creating torch.distributed GLOO group: '{}'...".format(group_name)
+            )
             g = TorchGLOOGroup(world_size, rank, group_name)
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")

@@ -18,5 +18,3 @@ def get_address_and_port() -> Tuple[str, int]:
     port = find_free_port()
 
     return addr, port
-
-

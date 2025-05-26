@@ -16,6 +16,7 @@ class Communicator:
     """
     A handle to a communicator that we are a member of.
     """
+
     # The name of the communicator.
     name: str
     # Our rank in the collective group.
@@ -30,10 +31,8 @@ class CommunicatorHandle:
     A communicator handle used by the driver to store handles to the
     actors in the communicator.
     """
-    def __init__(self,
-                 actors: List[ray.actor.ActorHandle],
-                 name: str,
-                 backend: str):
+
+    def __init__(self, actors: List[ray.actor.ActorHandle], name: str, backend: str):
         """
         Initializes the CommunicatorHandle with the given actor handles.
         Assumes that the communicator has already been initialized on all actors.

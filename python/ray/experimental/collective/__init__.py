@@ -11,9 +11,11 @@ from ray.experimental.collective.collective import (
 )
 
 __all__ = [
-        "allgather", "allreduce", "reducescatter",
-        "get_collective_groups",
-        "create_collective_group",
-        "destroy_collective_group",
-        "destroy_all_collective_groups",
-        ]
+    "allgather",
+    "allreduce",
+    "reducescatter",
+    "get_collective_groups",
+    "create_collective_group",
+    "destroy_collective_group",
+    "destroy_all_collective_groups",
+]

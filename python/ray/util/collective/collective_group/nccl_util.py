@@ -82,6 +82,7 @@ if torch_available():
         torch.float64: numpy.float64,
     }
 
+
 def get_num_gpus():
     """Returns the number of compute-capable GPUs."""
     return cupy.cuda.runtime.getDeviceCount()
