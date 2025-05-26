@@ -538,6 +538,11 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
+    logger.debug(
+        "Executing map task of operator %s with task index %d",
+        ctx.op_name,
+        ctx.task_idx,
+    )
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
     TaskContext.set_current(ctx)

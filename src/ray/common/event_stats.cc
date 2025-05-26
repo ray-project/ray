@@ -76,7 +76,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   }
 
   return std::make_shared<StatsHandle>(
-      name,
+      std::move(name),
       absl::GetCurrentTimeNanos() + expected_queueing_delay_ns,
       std::move(stats),
       global_stats_);

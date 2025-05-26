@@ -374,9 +374,16 @@ class RuntimeEnvAgent:
                 f"Creating runtime env: {serialized_env} with timeout "
                 f"{setup_timeout_seconds} seconds."
             )
-            serialized_context = None
+            num_retries = runtime_env_consts.RUNTIME_ENV_RETRY_TIMES
             error_message = None
-            for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
+            serialized_context = None
+            for i in range(num_retries):
+                # Only sleep when retrying.
+                if i != 0:
+                    await asyncio.sleep(
+                        runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
+                    )
+
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
                         runtime_env, runtime_env_config
@@ -405,19 +412,16 @@ class RuntimeEnvAgent:
                             f"{DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS} seconds. "
                         )
                         error_message = hint + error_message
-                    await asyncio.sleep(
-                        runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
-                    )
+
             if error_message:
                 self._logger.error(
-                    "Runtime env creation failed for %d times, "
-                    "don't retry any more.",
-                    runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
+                    "runtime_env creation failed %d times, giving up.",
+                    num_retries,
                 )
                 return False, None, error_message
             else:
                 self._logger.info(
-                    "Successfully created runtime env: %s, the context: %s",
+                    "Successfully created runtime env: %s, context: %s",
                     serialized_env,
                     serialized_context,
                 )
