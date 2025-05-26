@@ -124,11 +124,13 @@ def create_collective_group(
 
     world_size = len(actors)
 
-    if backend == Backend.TORCH_GLOO:
-        for actor in actors:
-            if manager.get_collective_groups([actor], backend):
-                raise RuntimeError(f"Actor {actor} already in group. Actors can currently only participate in at most one torch_gloo group.")
+    for actor in actors:
+        if manager.get_collective_groups([actor], backend):
+            raise RuntimeError(f"Actor {actor} already in group for backend {backend}. Actors can currently only participate in at most one group per backend.")
 
+    info_actor = None
+    if backend == Backend.TORCH_GLOO:
+        # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
         master_metadata = ray.get(actors[0].__ray_call__.remote(lambda self: get_address_and_port()))
@@ -136,9 +138,9 @@ def create_collective_group(
         # Store the metadata on a named actor that all of the other
         # actors can access.
         info_actor_name = "info_" + name
-        info = Info.options(name=info_actor_name).remote()
+        info_actor = Info.options(name=info_actor_name).remote()
         actor_ids = [a._ray_actor_id for a in actors]
-        ray.get(info.set_info.remote(actor_ids,
+        ray.get(info_actor.set_info.remote(actor_ids,
                                       world_size,
                                       -1, backend,
                                       -1, master_metadata))
@@ -149,6 +151,10 @@ def create_collective_group(
                                backend,
                                name) for rank, actor in enumerate(actors)]
     ray.get(init_tasks)
+
+    # Make sure the temporary named actor is cleaned up.
+    if info_actor is not None:
+        ray.kill(info_actor, no_restart=True)
 
     # Group was successfully created.
     comm = CommunicatorHandle(actors, name, backend)
