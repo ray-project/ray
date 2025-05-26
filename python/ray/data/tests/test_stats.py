@@ -1543,7 +1543,7 @@ def test_task_duration_stats():
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_dataset_throughput():
+def test_dataset_throughput(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
 
