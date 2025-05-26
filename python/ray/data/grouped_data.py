@@ -542,45 +542,68 @@ class GroupedData:
     @PublicAPI(api_group=CDS_API_GROUP)
     def random_sample(
         self,
-        n: int = None,
-        frac: float = None,
-        replace: bool = False,
-        random_state: int = None,
-        **kwargs,
-    ) -> Dataset:
-        """Return a sample of each group, similar to pandas GroupBy.sample.
+        frac: float,
+        *,
+        random_state: Optional[int] = None,
+    ) -> "Dataset":
+        """Returns a new :class:`Dataset` containing a random fraction of the rows for each group.
 
-        Args:
-            n: Number of items to return for each group. Cannot be used with frac.
-            frac: Fraction of items to return for each group. Cannot be used with n.
-            replace: Sample with or without replacement. Default is False.
-            random_state: Seed for the random number generator.
-            **kwargs: Additional keyword arguments passed to pandas.DataFrame.sample,
-                such as `weights`.
+        .. note::
 
-        Returns:
-            A new Dataset containing the sampled rows from each group.
+            This method returns roughly ``frac * total_rows`` rows per group. An exact number
+            of rows isn't guaranteed.
 
         Examples:
             >>> import ray
-            >>> import pandas as pd
-            >>> ds = ray.data.from_pandas(pd.DataFrame({"A": [1, 1, 2, 2, 2], "B": range(5)}))
-            >>> ds.groupby("A").random_sample(n=1, random_state=42).show()  # doctest: +SKIP
+            >>> ds = ray.data.from_items([{"A": 1, "B": 1}, {"A": 1, "B": 2}, {"A": 2, "B": 3}])
+            >>> ds.groupby("A").random_sample(0.5).count()  # doctest: +SKIP
+            1
+            >>> ds.groupby("A").random_sample(0.5, random_state=42).take(2)  # doctest: +SKIP
+            [{'A': 1, 'B': 1}, {'A': 2, 'B': 3}]
+            >>> ds.groupby("A").random_sample(0.5, random_state=42).take(2)  # doctest: +SKIP
+            [{'A': 1, 'B': 1}, {'A': 2, 'B': 3}]
+
+        Args:
+            frac: The fraction of elements to sample from each group.
+            random_state: Seeds the python random pRNG generator.
+
+        Returns:
+            Returns a :class:`Dataset` containing the sampled rows.
         """
-        if n is not None and frac is not None:
-            raise ValueError("Only one of 'n' or 'frac' may be specified.")
+        import numpy as np
+        import pandas as pd
+        import pyarrow as pa
 
-        def _sample_group(df):
-            import pandas as pd
+        if frac < 0 or frac > 1:
+            raise ValueError("Fraction must be between 0 and 1.")
 
-            if not isinstance(df, pd.DataFrame):
-                df = df.to_pandas()
+        from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-            return df.sample(
-                n=n, frac=frac, replace=replace, random_state=random_state, **kwargs
-            )
+        def _sample_group(batch: DataBatch, seed: Optional[int]):
+            ctx = TaskContext.get_current()
 
-        return self.map_groups(_sample_group, batch_format="pandas")
+            if "rng" in ctx.kwargs:
+                rng = ctx.kwargs["rng"]
+            elif seed is None:
+                rng = np.random.default_rng()
+                ctx.kwargs["rng"] = rng
+            else:
+                rng = np.random.default_rng([ctx.task_idx, seed])
+                ctx.kwargs["rng"] = rng
+
+            mask_idx = np.where(rng.random(len(batch)) < frac)[0]
+            if isinstance(batch, pa.Table):
+                return batch.take(mask_idx)
+            elif isinstance(batch, pd.DataFrame):
+                return batch.iloc[mask_idx, :]
+
+            raise ValueError(f"Unsupported batch type: {type(batch)}")
+
+        return self.map_groups(
+            _sample_group,
+            fn_args=[random_state],
+            batch_format=None,
+        )
 
 
 # Backwards compatibility alias.
