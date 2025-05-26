@@ -25,12 +25,11 @@ def collective_actors():
     world_size = 3
     actors = [Actor.remote(SHAPE, DTYPE) for _ in range(world_size)]
 
-    group_name = "test"
-    ray.experimental.collective.create_collective_group(actors, name=group_name, backend="torch_gloo")
-    return group_name, actors
+    group = ray.experimental.collective.create_collective_group(actors, backend="torch_gloo")
+    return group.name, actors
 
 
-def test_basic(ray_start_regular_shared):
+def test_api_basic(ray_start_regular_shared):
     world_size = 3
     actors = [Actor.remote(SHAPE, DTYPE) for _ in range(world_size)]
 
@@ -44,7 +43,7 @@ def test_basic(ray_start_regular_shared):
 
     # Check that the collective group is created with the correct actors and
     # ranks.
-    group = ray.experimental.collective.create_collective_group(actors, name="test", backend="torch_gloo")
+    group = ray.experimental.collective.create_collective_group(actors, backend="torch_gloo", name="test")
     assert group.name == "test"
     for i, actor in enumerate(actors):
         assert group.get_rank(actor) == i
@@ -57,14 +56,6 @@ def test_basic(ray_start_regular_shared):
     groups = ray.experimental.collective.get_collective_groups(actors)
     assert groups == [group]
 
-    # Check that we cannot create another group using the same actors.
-    with pytest.raises(RuntimeError):
-        ray.experimental.collective.create_collective_group(actors, name="test2", backend="torch_gloo")
-    with pytest.raises(RuntimeError):
-        ray.experimental.collective.create_collective_group(actors[:2], name="test2", backend="torch_gloo")
-    with pytest.raises(RuntimeError):
-        ray.experimental.collective.create_collective_group(actors[1:], name="test2", backend="torch_gloo")
-
     # Check that the group is destroyed.
     ray.experimental.collective.destroy_collective_group(group)
 
@@ -76,7 +67,25 @@ def test_basic(ray_start_regular_shared):
     assert groups == []
 
     # Check that we can recreate the group with the same name and actors.
-    ray.experimental.collective.create_collective_group(actors, name="test", backend="torch_gloo")
+    ray.experimental.collective.create_collective_group(actors, backend="torch_gloo", name="test")
+
+
+def test_api_exceptions(ray_start_regular_shared):
+    world_size = 3
+    actors = [Actor.remote(SHAPE, DTYPE) for _ in range(world_size)]
+
+    with pytest.raises(ValueError, match="All actors must be unique"):
+        ray.experimental.collective.create_collective_group(actors + [actors[0]], "torch_gloo")
+
+    group = ray.experimental.collective.create_collective_group(actors, backend="torch_gloo")
+
+    # Check that we cannot create another group using the same actors.
+    with pytest.raises(RuntimeError, match="already in group"):
+        ray.experimental.collective.create_collective_group(actors, backend="torch_gloo")
+    with pytest.raises(RuntimeError, match="already in group"):
+        ray.experimental.collective.create_collective_group(actors[:2], backend="torch_gloo")
+    with pytest.raises(RuntimeError, match="already in group"):
+        ray.experimental.collective.create_collective_group(actors[1:], backend="torch_gloo")
 
 
 def test_allreduce(ray_start_regular_shared, collective_actors):

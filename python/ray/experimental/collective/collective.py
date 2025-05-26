@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 import threading
+import uuid
 
 import ray
 from ray.experimental.collective.communicator import Communicator,  CommunicatorHandle
@@ -42,6 +43,10 @@ class RemoteCommunicatorManager:
 
     def get_collective_groups(self, actors: List[ray.actor.ActorHandle] = None,
                               backend: Optional[str] = None):
+        """
+        Get the collective groups that the given actors are a subset of. Filter by
+        backend if provided.
+        """
         actors = actors or []
         actors = set(actors)
 
@@ -105,15 +110,47 @@ def _do_destroy_collective_group(self, name):
 
 def get_collective_groups(actors: List[ray.actor.ActorHandle],
                           backend: Optional[str] = None) -> List[CommunicatorHandle]:
+    """
+    Get the collective groups that the given actors are a subset of. Filter by
+    backend if provided.
+
+    Args:
+        actors: List of actors. Return handles to all collective groups that
+            these actors are a subset of.
+        backend: An optional backend to filter by. See
+            ray.util.collective.types.Backend for valid backends.
+
+    Returns:
+        A list of communicator handles that the actors are a subset of.
+    """
     manager = RemoteCommunicatorManager.get()
     return manager.get_collective_groups(actors, backend)
 
 
 def create_collective_group(
         actors: List[ray.actor.ActorHandle],
+        backend: str,
         name: Optional[str] = None,
-        backend: Optional[str] = None,
         ) -> CommunicatorHandle:
+    """
+    Create a collective group on the given list of actors. If this function
+    returns successfully, then the collective group has been initialized on all
+    actors, using the given order of actors as the ranks.
+
+    Currently, an actor can only participate in one collective group per
+    backend at a time. To reuse an actor, destroy its collective group and
+    create a new one.
+
+    Args:
+        actors: The actors to participate in the collective group.
+        backend: The backend to use. See ray.util.collective.types.Backend for
+            valid backends.
+        name: A name to use for the collective group. If None is provided, a
+            random name will be generated.
+
+    Returns:
+        Handle to the communicator.
+    """
     manager = RemoteCommunicatorManager.get()
 
     if name is None:
@@ -127,6 +164,10 @@ def create_collective_group(
     for actor in actors:
         if manager.get_collective_groups([actor], backend):
             raise RuntimeError(f"Actor {actor} already in group for backend {backend}. Actors can currently only participate in at most one group per backend.")
+
+    actor_ids = [actor._ray_actor_id for actor in actors]
+    if len(set(actor_ids)) != len(actor_ids):
+        raise ValueError(f"All actors must be unique, got: {actors}")
 
     info_actor = None
     if backend == Backend.TORCH_GLOO:
@@ -163,6 +204,15 @@ def create_collective_group(
 
 
 def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
+    """
+    Destroy a collective group. If this functions returns successfully, then
+    the actors that were in the collective can be reused to create a new
+    collective group.
+
+    Args:
+        group_or_name: Either a communicator handle or the name of the group to
+            destroy.
+    """
     if isinstance(group_or_name, CommunicatorHandle):
         name = group_or_name.name
     elif isinstance(group_or_name, str):
