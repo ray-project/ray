@@ -279,13 +279,14 @@ class SerializationContext:
         ctx = ChannelContext.get_current().serialization_context
         worker = ray._private.worker.global_worker
 
-        enable_gpu_objects = object_id in worker.in_actor_object_store
+        gpu_object_manager = worker.get_gpu_object_manager()
+        enable_gpu_objects = gpu_object_manager.has_gpu_object(object_id)
         if enable_gpu_objects:
-            tensors = worker.in_actor_object_store[object_id]
+            tensors = gpu_object_manager.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
             # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
             # is naive. We garbage collect each object after it is consumed once.
-            del worker.in_actor_object_store[object_id]
+            gpu_object_manager.remove_gpu_object(object_id)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -617,7 +618,8 @@ class SerializationContext:
         if tensors:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
-            worker.in_actor_object_store[obj_id] = tensors
+            gpu_object_manager = worker.get_gpu_object_manager()
+            gpu_object_manager.add_gpu_object(obj_id, tensors)
 
         return serialized_val
 

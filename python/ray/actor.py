@@ -413,7 +413,10 @@ class ActorMethod:
             actor = self._actor_hard_ref or self._actor_ref()
             tensor_meta = actor.__ray_get_tensor_meta__.remote(obj_ref.hex())
             worker = ray._private.worker.global_worker
-            worker.in_actor_object_refs[obj_ref] = (self._actor_ref(), tensor_meta)
+            gpu_object_manager = worker.get_gpu_object_manager()
+            gpu_object_manager.add_gpu_object_ref(
+                obj_ref, self._actor_ref(), tensor_meta
+            )
 
         return obj_ref
 
@@ -1839,16 +1842,17 @@ def _modify_class(cls):
             import torch.distributed as dist
 
             worker = ray._private.worker.global_worker
-            assert (
-                obj_id in worker.in_actor_object_store
-            ), f"obj_id={obj_id} not found in in_actor_object_store"
-            tensors = worker.in_actor_object_store[obj_id]
+            gpu_object_manager = worker.get_gpu_object_manager()
+            assert gpu_object_manager.has_gpu_object(
+                obj_id
+            ), f"obj_id={obj_id} not found in GPU object store"
+            tensors = gpu_object_manager.get_gpu_object(obj_id)
             for tensor in tensors:
                 dist.send(tensor, dst_rank)
             # TODO(kevin85421): The current garbage collection implementation for the
             # in-actor object store is naive. We garbage collect each object after it
             # is consumed once.
-            del worker.in_actor_object_store[obj_id]
+            gpu_object_manager.remove_gpu_object(obj_id)
 
         def __ray_recv__(
             self,
@@ -1864,20 +1868,26 @@ def _modify_class(cls):
             import torch.distributed as dist
 
             worker = ray._private.worker.global_worker
+            gpu_object_manager = worker.get_gpu_object_manager()
             tensors = []
             for meta in tensor_meta:
                 shape, dtype = meta
                 tensor = torch.zeros(shape, dtype=dtype)
                 dist.recv(tensor, src_rank)
                 tensors.append(tensor)
-            worker.in_actor_object_store[obj_id] = tensors
+            gpu_object_manager.add_gpu_object(obj_id, tensors)
 
         def __ray_get_tensor_meta__(self, obj_id: str):
             # Gets the tensor metadata from `in_actor_object_store` and
             # returns a list of tuples, each containing the shape and dtype
             # of a tensor in the object store.
             worker = ray._private.worker.global_worker
-            return [(t.shape, t.dtype) for t in worker.in_actor_object_store[obj_id]]
+            gpu_object_manager = worker.get_gpu_object_manager()
+            assert gpu_object_manager.has_gpu_object(
+                obj_id
+            ), f"obj_id={obj_id} not found in GPU object store"
+            tensors = gpu_object_manager.get_gpu_object(obj_id)
+            return [(t.shape, t.dtype) for t in tensors]
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
@@ -1986,9 +1996,10 @@ def _trigger_out_of_band_tensor_transfer(
             continue
 
         worker = ray._private.worker.global_worker
-        tensor_meta = worker.in_actor_object_refs.get(arg, None)
-        if tensor_meta is None:
+        gpu_object_manager = worker.get_gpu_object_manager()
+        if not gpu_object_manager.is_gpu_object_ref(arg):
             continue
+        tensor_meta = gpu_object_manager.get_gpu_object_ref(arg)
 
         src_actor, tensor_meta = tensor_meta
         if not actor_id_to_rank:
