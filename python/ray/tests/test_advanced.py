@@ -210,8 +210,7 @@ def test_multiple_waits_and_gets(shutdown_only):
     ray.init(num_cpus=3)
 
     @ray.remote
-    def f(delay):
-        time.sleep(delay)
+    def f():
         return 1
 
     @ray.remote
@@ -226,12 +225,12 @@ def test_multiple_waits_and_gets(shutdown_only):
 
     # Make sure that multiple wait requests involving the same object ref
     # all return.
-    x = f.remote(0.1)
+    x = f.remote()
     ray.get([g.remote([x]), g.remote([x])])
 
     # Make sure that multiple get requests involving the same object ref all
     # return.
-    x = f.remote(0.1)
+    x = f.remote()
     ray.get([h.remote([x]), h.remote([x])])
 
 
@@ -330,8 +329,9 @@ def test_wait_cluster(ray_start_cluster_enabled):
 
     # Submit some more tasks that can only be executed on the remote nodes.
     tasks = [f.remote() for _ in range(10)]
-    # Sleep for a bit to let the tasks finish.
+    # Wait for all tasks to finish.
     _, _ = ray.wait(tasks, num_returns=len(tasks), fetch_local=False)
+    # Make sure a wait with 0 timeout works.
     _, unready = ray.wait(tasks, num_returns=len(tasks), timeout=0)
     # All remote tasks should have finished.
     assert len(unready) == 0
