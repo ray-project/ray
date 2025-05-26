@@ -5,40 +5,39 @@ import re
 import threading
 import time
 import traceback
-from collections import namedtuple, defaultdict
-from typing import List, Tuple, Any, Dict, Set, Union
+from collections import defaultdict, namedtuple
 from enum import Enum
+from typing import Any, Dict, List, Set, Tuple, Union
 
-from prometheus_client.core import (
-    CounterMetricFamily,
-    GaugeMetricFamily,
-    HistogramMetricFamily,
-)
-from opencensus.metrics.export.value import ValueDouble
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
-from opencensus.stats import aggregation
-from opencensus.stats import measure as measure_module
-from opencensus.stats.view_manager import ViewManager
-from opencensus.stats.stats_recorder import StatsRecorder
-from opencensus.stats.base_exporter import StatsExporter
-from prometheus_client.core import Metric as PrometheusMetric
+from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats import aggregation, measure as measure_module
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
     SumAggregationData,
 )
+from opencensus.stats.base_exporter import StatsExporter
+from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats.view import View
-from opencensus.tags import tag_key as tag_key_module
-from opencensus.tags import tag_map as tag_map_module
-from opencensus.tags import tag_value as tag_value_module
+from opencensus.stats.view_manager import ViewManager
+from opencensus.tags import (
+    tag_key as tag_key_module,
+    tag_map as tag_map_module,
+    tag_value as tag_value_module,
+)
+from prometheus_client.core import (
+    CounterMetricFamily,
+    GaugeMetricFamily,
+    HistogramMetricFamily,
+    Metric as PrometheusMetric,
+)
 
 import ray
+from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL, env_bool
 from ray._raylet import GcsClient
-
 from ray.core.generated.metrics_pb2 import Metric
-from ray._private.ray_constants import env_bool, RAY_METRIC_CARDINALITY_LEVEL
-
 from ray.util.metrics import _is_invalid_metric_name
 
 logger = logging.getLogger(__name__)

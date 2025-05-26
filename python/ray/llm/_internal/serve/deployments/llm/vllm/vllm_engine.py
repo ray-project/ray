@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from typing import AsyncGenerator, List, Optional, Tuple, TYPE_CHECKING
+import uuid
 
 import ray
 import re
@@ -30,6 +31,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMEmbeddingRequest,
     VLLMSamplingParams,
+    KV_TRANSFER_PARAMS_KEY,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -60,11 +62,11 @@ from ray.llm._internal.utils import try_import
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 
 if TYPE_CHECKING:
+    from vllm import SamplingParams as VLLMInternalSamplingParams
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
     from vllm.outputs import RequestOutput, PoolingRequestOutput
-    from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -190,6 +192,38 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+
+        # Pick a random port in P/D case.
+        kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
+        if kv_transfer_config is not None:
+            if not vllm.envs.VLLM_USE_V1:
+                logger.warning("Ray Serve LLM only supports P/D with v1 vLLM engine.")
+            connector_type = getattr(kv_transfer_config, "kv_connector", "")
+            if connector_type != "NixlConnector":
+                raise ValueError("Only NixlConnector is supported for kv transfer.")
+            if "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables:
+                logger.warning(
+                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
+                    "environment variable. It's likely that you are using an older"
+                    "version of vLLM."
+                )
+            elif not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                port: int = vllm.utils.get_open_port()
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+
+            # We need to overwrite the engine_id to make it unique across replicas.
+            # "engine_id" is added in vllm 0.9.0, so do existance check.
+            if "engine_id" in kv_transfer_config.model_fields:
+                engine_id = getattr(kv_transfer_config, "engine_id", uuid.uuid4())
+                host = vllm.envs.NIXL_SIDE_CHANNEL_HOST
+                port = vllm.envs.NIXL_SIDE_CHANNEL_PORT
+                kv_transfer_config.engine_id = "-".join([engine_id, host, port])
+            else:
+                # TODO(lk-chen): Raise error once vllm 0.9.0 is pinned to rayllm
+                logger.warning(
+                    "engine_id is not supported in vllm < 0.9.0, NIXL-backed kv transfer "
+                    "is not supported."
+                )
 
         assert isinstance(
             llm_config, LLMConfig
@@ -317,16 +351,6 @@ class VLLMEngine(LLMEngine):
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
 
-        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
-        # decide which engine to use based on the passed configs.
-        # Here we set it explicitly to make sure Ray Serve LLM and vLLM
-        # configs are consistent.
-        runtime_env = dict(
-            env_vars=dict(
-                VLLM_USE_V1=str(int(use_v1)),
-            ),
-        )
-
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
@@ -338,7 +362,7 @@ class VLLMEngine(LLMEngine):
                         accelerator_type=self.llm_config.accelerator_type,
                     )(_get_vllm_engine_config)
                     .options(
-                        runtime_env=runtime_env,
+                        runtime_env=node_initialization.runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
                         ),
@@ -349,7 +373,7 @@ class VLLMEngine(LLMEngine):
                 ref = (
                     ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
                     .options(
-                        runtime_env=runtime_env,
+                        runtime_env=node_initialization.runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
                         ),
@@ -483,10 +507,7 @@ class VLLMEngine(LLMEngine):
         use_v1: bool = False,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        if use_v1:
-            from vllm.v1.executor.ray_distributed_executor import RayDistributedExecutor
-        else:
-            from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+        from vllm.v1.executor.abstract import Executor
 
         vllm_config.parallel_config.placement_group = placement_group
 
@@ -502,9 +523,11 @@ class VLLMEngine(LLMEngine):
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
+        executor_class = Executor.get_class(vllm_config)
+        logger.info(f"Using executor class: {executor_class}")
         engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
-            executor_class=RayDistributedExecutor,
+            executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
@@ -651,6 +674,11 @@ class VLLMEngine(LLMEngine):
                     log_probs_idx,
                     request.sampling_params.top_logprobs,
                 )
+                internal_metadata = {}
+                if getattr(request_output, "kv_transfer_params", None) is not None:
+                    internal_metadata[
+                        KV_TRANSFER_PARAMS_KEY
+                    ] = request_output.kv_transfer_params
                 yield LLMRawResponse(
                     generated_text=text_output,
                     num_generated_tokens=tokens_collected,
@@ -661,6 +689,7 @@ class VLLMEngine(LLMEngine):
                     preprocessing_time=0,
                     generation_time=clock.reset_interval(),
                     finish_reason=finish_reason,
+                    metadata=internal_metadata,
                 )
 
             if request_output is not None:
@@ -926,6 +955,10 @@ class VLLMEngine(LLMEngine):
                 ] = sampling_params.response_format.to_guided_decoding_params(
                     backend=RAYLLM_GUIDED_DECODING_BACKEND
                 )
+            if sampling_params.kv_transfer_params is not None:
+                kwargs["extra_args"] = {
+                    KV_TRANSFER_PARAMS_KEY: sampling_params.kv_transfer_params
+                }
 
             return vllm.SamplingParams(**kwargs)
         except Exception as e:
