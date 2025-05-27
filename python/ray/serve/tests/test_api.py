@@ -82,7 +82,8 @@ class FakeRequestRouter(ReplicaScheduler):
 
 @serve.deployment(request_router_class=FakeRequestRouter)
 class AppWithCustomRequestRouter:
-    ...
+    def __call__(self) -> str:
+        return "Hello, world!"
 
 
 def test_e2e(serve_instance):
@@ -1089,7 +1090,8 @@ def test_deploy_app_with_custom_request_router(serve_instance):
     """Test deploying an app with a custom request router configured in the
     deployment decorator."""
 
-    serve.run(AppWithCustomRequestRouter.bind())
+    handle = serve.run(AppWithCustomRequestRouter.bind())
+    assert handle.remote().result() == "Hello, world!"
 
 
 if __name__ == "__main__":
