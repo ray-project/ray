@@ -2160,7 +2160,7 @@ Status CoreWorker::GetLocationFromOwner(
     const std::vector<ObjectID> &object_ids,
     int64_t timeout_ms,
     std::vector<std::shared_ptr<ObjectLocation>> *results) {
-  results->resize(object_ids.size());
+  results->reserve(object_ids.size());
   if (object_ids.empty()) {
     return Status::OK();
   }
@@ -2177,6 +2177,7 @@ Status CoreWorker::GetLocationFromOwner(
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
+  location_by_id->reserve(object_ids.size());
 
   for (const auto &owner_and_objects : objects_by_owner) {
     const auto &owner_address = owner_and_objects.first;
@@ -2200,36 +2201,40 @@ Status CoreWorker::GetLocationFromOwner(
         request.add_object_ids(owner_object_ids[i].Binary());
       }
 
-      client->GetObjectLocationsOwner(
-          request,
-          [owner_object_ids,
-           batch_start,
-           mutex,
-           num_remaining,
-           ready_promise,
-           location_by_id,
-           owner_address](const Status &status,
-                          const rpc::GetObjectLocationsOwnerReply &reply) {
-            absl::MutexLock lock(mutex.get());
-            if (status.ok()) {
-              for (int i = 0; i < reply.object_location_infos_size(); ++i) {
-                // Map the object ID to its location, adjusting index by batch_start
-                location_by_id->emplace(
-                    owner_object_ids[batch_start + i],
-                    std::make_shared<ObjectLocation>(
-                        CreateObjectLocation(reply.object_location_infos(i))));
-              }
-            } else {
-              RAY_LOG(WARNING).WithField(WorkerID::FromBinary(owner_address.worker_id()))
-                  << "Failed to query location information for objects "
-                  << debug_string(owner_object_ids)
-                  << " owned by worker with error: " << status;
-            }
-            (*num_remaining)--;
-            if (*num_remaining == 0) {
-              ready_promise->set_value();
-            }
-          });
+      auto callback = [owner_object_ids,
+                       batch_start,
+                       mutex,
+                       num_remaining,
+                       ready_promise,
+                       location_by_id,
+                       owner_address](const Status &status,
+                                      const rpc::GetObjectLocationsOwnerReply &reply) {
+        absl::MutexLock lock(mutex.get());
+        if (status.ok()) {
+          for (int i = 0; i < reply.object_location_infos_size(); ++i) {
+            // Map the object ID to its location, adjusting index by batch_start
+            location_by_id->emplace(owner_object_ids[batch_start + i],
+                                    std::make_shared<ObjectLocation>(CreateObjectLocation(
+                                        reply.object_location_infos(i))));
+          }
+        } else {
+          RAY_LOG(WARNING).WithField(WorkerID::FromBinary(owner_address.worker_id()))
+              << "Failed to query location information for objects "
+              << debug_string(owner_object_ids)
+              << " owned by worker with error: " << status;
+        }
+        (*num_remaining)--;
+        if (*num_remaining == 0) {
+          ready_promise->set_value();
+        }
+      };
+      if (owner_address == rpc_address_) {
+        rpc::GetObjectLocationsOwnerReply reply;
+        HandleGetObjectLocationsOwner(
+            request, &reply, [](const auto &, const auto &, const auto &) {});
+        callback(Status::OK(), reply);
+      }
+      client->GetObjectLocationsOwner(request, callback);
     }
   }
 
@@ -2248,9 +2253,10 @@ Status CoreWorker::GetLocationFromOwner(
   for (size_t i = 0; i < object_ids.size(); i++) {
     auto pair = location_by_id->find(object_ids[i]);
     if (pair == location_by_id->end()) {
+      results->emplace_back();
       continue;
     }
-    (*results)[i] = pair->second;
+    results->push_back(std::move(pair->second));
   }
 
   return Status::OK();
