@@ -425,6 +425,9 @@ class ActorPoolMapOperator(MapOperator):
             if actor_state is None:
                 # actor._get_local_state can return None if the state is Unknown
                 continue
+            elif actor_state == gcs_pb2.ActorTableData.ActorState.DEAD:
+                # The actor is dead, so nothing to do.
+                continue
             elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
                 # be restarted indefinitely until execution finishes.
