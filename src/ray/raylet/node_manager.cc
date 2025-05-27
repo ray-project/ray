@@ -26,7 +26,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
@@ -119,7 +118,9 @@ NodeManager::NodeManager(
     std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
     std::unique_ptr<IObjectDirectory> object_directory,
     std::unique_ptr<ObjectManagerInterface> object_manager,
-    std::unique_ptr<plasma::PlasmaClientInterface> store_client,
+    plasma::PlasmaClientInterface &store_client,
+    std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+        mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
@@ -165,7 +166,8 @@ NodeManager::NodeManager(
       core_worker_subscriber_(std::move(core_worker_subscriber)),
       object_directory_(std::move(object_directory)),
       object_manager_(std::move(object_manager)),
-      store_client_(std::move(store_client)),
+      store_client_(store_client),
+      mutable_object_provider_(std::move(mutable_object_provider)),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
@@ -305,7 +307,7 @@ NodeManager::NodeManager(
       RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
       "NodeManager.CheckForUnexpectedWorkerDisconnects");
 
-  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
+  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name));
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false);
   node_manager_server_.RegisterService(ray_syncer_service_);
@@ -334,21 +336,7 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
-
-  mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this), nullptr);
 }
-
-std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
-    const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
-  RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
-      rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                         node_info->node_manager_port(),
-                                         client_call_manager);
-  return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-};
 
 ray::Status NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
@@ -2255,7 +2243,7 @@ void NodeManager::MarkObjectsAsFailed(
         << "Mark the object as failed due to " << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_->TryCreateImmediately(
+    status = store_client_.TryCreateImmediately(
         object_id,
         ref.owner_address(),
         0,
@@ -2264,7 +2252,7 @@ void NodeManager::MarkObjectsAsFailed(
         &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_->Seal(object_id);
+      status = store_client_.Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
@@ -2583,7 +2571,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
   if (!store_client_
-           ->Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
            .ok()) {
     return false;
   }
@@ -2909,7 +2897,7 @@ void NodeManager::TriggerGlobalGC() {
 
 void NodeManager::Stop() {
   // This never fails.
-  RAY_CHECK_OK(store_client_->Disconnect());
+  RAY_CHECK_OK(store_client_.Disconnect());
   object_manager_->Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
