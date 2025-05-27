@@ -161,61 +161,6 @@ def test_aggregator_agent_receive_event_full(
     assert reply.status.status_message == "event buffer full, drop event"
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_BUFFER_SEND_INTERVAL_SECONDS": 3600,
-            },
-        },
-    ],
-    indirect=True,
-)
-def test_aggregator_agent_publish_events_at_exit(
-    ray_start_cluster_head_with_env_vars, httpserver
-):
-    cluster = ray_start_cluster_head_with_env_vars
-    stub = _get_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
-    )
-
-    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
-
-    request = AddEventRequest(
-        events_data=RayEventsData(
-            events=[
-                RayEvent(
-                    event_id=b"1",
-                    source_type=RayEvent.SourceType.CORE_WORKER,
-                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
-                    timestamp=timestamp,
-                    severity=RayEvent.Severity.INFO,
-                    message="hello",
-                ),
-            ],
-            task_events_metadata=TaskEventsMetadata(
-                dropped_task_attempts=[],
-            ),
-        )
-    )
-
-    reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "received"
-
-    time.sleep(10)
-    assert len(httpserver.log) == 0
-
-    # Kill raylet, so that the agent will exit and publish the events.
-    cluster.head_node.kill_raylet()
-    wait_for_condition(lambda: len(httpserver.log) == 1)
-
-
 def test_aggregator_agent_receive_dropped_at_core_worker(
     ray_start_cluster_head, httpserver
 ):

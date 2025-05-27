@@ -1,3 +1,5 @@
+import time
+
 import atexit
 import signal
 import requests
@@ -35,11 +37,14 @@ env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 GRPC_TPE_MAX_WORKERS = ray_constants.env_integer(
     f"{env_var_prefix}_GRPC_TPE_MAX_WORKERS", 10
 )
+LOOP_TPE_MAX_WORKERS = ray_constants.env_integer(
+    f"{env_var_prefix}_LOOP_TPE_MAX_WORKERS", 1
+)
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_BUFFER_SIZE", 1000000
 )
-BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_BUFFER_SEND_INTERVAL_SECONDS", 0.1
+MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
+    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 0.1
 )
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
@@ -93,6 +98,10 @@ class AggregatorAgent(
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
+        )
+        self._loop_executor = ThreadPoolExecutor(
+            max_workers=LOOP_TPE_MAX_WORKERS,
+            thread_name_prefix="event_aggregator_agent_loop_executor",
         )
 
         self._lock = threading.Lock()
@@ -157,37 +166,39 @@ class AggregatorAgent(
         )
         return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
-    @async_loop_forever(BUFFER_SEND_INTERVAL_SECONDS)
-    async def _publish_events(self):
+    def _publish_events(self):
         # self._event_batch is only used in this thread, so we don't need to
         # acquire the lock when accessing it.
 
-        while len(self._event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
-            try:
-                event_proto = self._event_buffer.get(block=False)
-                self._event_batch.append(json.loads(MessageToJson((event_proto))))
-            except queue.Empty:
-                break
+        while True:
+            while len(self._event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
+                try:
+                    event_proto = self._event_buffer.get(block=False)
+                    self._event_batch.append(json.loads(MessageToJson((event_proto))))
+                except queue.Empty:
+                    break
 
-        if self._event_batch:
-            # query external service to send the events
-            try:
-                async with self._dashboard_agent.http_session.post(
-                    f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=self._event_batch
-                ) as response:
-                    response.raise_for_status()
-                self._event_batch.clear()
-                with self._lock:
-                    self._events_published_since_last_metrics_update += len(
-                        self._event_batch
+            if self._event_batch:
+                # query external service to send the events
+                try:
+                    response = requests.post(
+                        f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=self._event_batch
                     )
-            except Exception as e:
-                logger.error(
-                    "Failed to send events to external service. Error: %s",
-                    e,
-                )
-                # If failed, self._event_batch will be reused in the next iteration.
-                # Retry sending with other events in the next iteration.
+                    response.raise_for_status()
+                    self._event_batch.clear()
+                    with self._lock:
+                        self._events_published_since_last_metrics_update += len(
+                            self._event_batch
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Failed to send events to external service. Error: %s",
+                        e,
+                    )
+                    # If failed, self._event_batch will be reused in the next iteration.
+                    # Retry sending with other events in the next iteration.
+            else:
+                time.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
 
     @async_loop_forever(METRICS_UPDATE_INTERVAL_SECONDS)
     async def _update_metrics(self):
@@ -246,8 +257,10 @@ class AggregatorAgent(
                 self, server
             )
 
+        loop = get_or_create_event_loop()
+
         await asyncio.gather(
-            self._publish_events(),
+            loop.run_in_executor(self._loop_executor, self._publish_events),
             self._update_metrics(),
         )
 
