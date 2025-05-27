@@ -70,7 +70,7 @@ def start_and_shutdown_ray_cli_module():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -79,7 +79,7 @@ def _check_ray_stop():
 @pytest.fixture(scope="function")
 def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )
