@@ -420,9 +420,7 @@ if __name__ == "__main__":
         loss_per_module[DEFAULT_MODULE_ID].backward()
         optim.step()
         # Show the loss for few-shot learning (fine-tuning).
-        print(
-            f"Few shot loss: {loss_per_module[DEFAULT_MODULE_ID].detach().cpu().numpy().item()}"
-        )
+        print(f"Few shot loss: {loss_per_module[DEFAULT_MODULE_ID].item()}")
 
     # Run the model again after fine-tuning.
     with torch.no_grad():

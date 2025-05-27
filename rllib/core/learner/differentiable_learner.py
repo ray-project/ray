@@ -119,7 +119,7 @@ class DifferentiableLearner(Checkpointable):
         self.iterator: MiniBatchRayDataIterator = None
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self, device: Optional[DeviceType]) -> None:
+    def build(self, device: Optional[DeviceType] = None) -> None:
 
         if self._is_built:
             logger.debug("DifferentiableLearner already built. Skipping built.")
