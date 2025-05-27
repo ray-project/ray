@@ -153,16 +153,6 @@ class _EngineBackgroundProcess:
         # Clear the cache of the current platform.
         _clear_current_platform_cache()
 
-        # Beginning of injected code: to log metrics from vllm
-        from vllm.engine.metrics import RayPrometheusStatLogger
-
-        additional_metrics_logger = RayPrometheusStatLogger(
-            local_interval=0.5,
-            labels={"model_name": engine_args.model},
-            vllm_config=engine_config,
-        )
-        # End of injected code
-
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
@@ -171,7 +161,6 @@ class _EngineBackgroundProcess:
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
             usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
-            stat_loggers={"ray": additional_metrics_logger},  # Add this line
         )
         self._error = None
 

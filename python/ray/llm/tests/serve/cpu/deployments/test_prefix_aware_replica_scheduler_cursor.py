@@ -1,59 +1,19 @@
 import asyncio
 import pytest
-from typing import Optional, Set
 
-import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.common import ReplicaID
 from ray.serve._private.replica_scheduler import PendingRequest
-from ray.serve._private.replica_scheduler.prefix_aware_scheduler import PrefixAwareReplicaScheduler
+from ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
+    PrefixAwareReplicaScheduler,
+)
 from ray.llm.tests.serve.cpu.deployments.test_pow_2_replica_scheduler import (
     FakeRunningReplica,
-    fake_pending_request,
     TIMER,
     SCHEDULER_NODE_ID,
-    SCHEDULER_AZ,
-    DEFAULT_MAX_ONGOING_REQUESTS,
 )
 
 # Import all tests from pow2 scheduler to reuse them
-from ray.llm.tests.serve.cpu.deployments.test_pow_2_replica_scheduler import (
-    test_no_replicas_available_then_one_available,
-    test_replica_does_not_accept_then_accepts,
-    test_no_replicas_accept_then_new_one_accepts,
-    test_one_replica_available_then_none_then_one,
-    test_two_replicas_available_then_one,
-    test_two_replicas_one_accepts,
-    test_three_replicas_two_accept,
-    test_two_replicas_choose_shorter_queue,
-    test_tasks_scheduled_fifo,
-    test_retried_tasks_scheduled_fifo,
-    test_cancellation,
-    test_cancellation_when_replicas_maxed,
-    test_only_task_cancelled,
-    test_scheduling_task_cap,
-    test_scheduling_task_cap_hard_limit,
-    test_replica_responds_after_being_removed,
-    test_prefer_replica_on_same_node,
-    test_prefer_replica_in_same_az,
-    test_prefer_az_off,
-    test_prefer_replica_in_same_az_without_prefer_node,
-    test_prefer_replica_on_same_node_without_prefer_az,
-    TestModelMultiplexing,
-    test_get_queue_len_cancelled_on_timeout,
-    test_queue_len_response_deadline_backoff,
-    test_max_queue_len_response_deadline,
-    test_replicas_updated_event_on_correct_loop,
-    test_queue_len_cache,
-    test_queue_len_cache_active_probing,
-    test_queue_len_cache_replica_at_capacity_is_probed,
-    test_queue_len_cache_background_probing,
-    test_queue_len_cache_entries_added_correctly,
-    test_backoff_index_handling,
-    test_replicas_actor_died_error,
-    test_replicas_actor_unavailable_error,
-    test_locality_aware_backoff_skips_sleeps,
-)
+
 
 @pytest.fixture
 def prefix_aware_scheduler(request) -> PrefixAwareReplicaScheduler:
@@ -81,7 +41,9 @@ def prefix_aware_scheduler(request) -> PrefixAwareReplicaScheduler:
             imbalanced_threshold=request.param.get("imbalanced_threshold", 10),
             match_rate_threshold=request.param.get("match_rate_threshold", 0.1),
             do_eviction=request.param.get("do_eviction", False),
-            eviction_threshold_chars=request.param.get("eviction_threshold_chars", 400_000),
+            eviction_threshold_chars=request.param.get(
+                "eviction_threshold_chars", 400_000
+            ),
             eviction_target_chars=request.param.get("eviction_target_chars", 360_000),
             eviction_interval_secs=request.param.get("eviction_interval_secs", 10),
         )
@@ -103,6 +65,7 @@ def prefix_aware_scheduler(request) -> PrefixAwareReplicaScheduler:
     # Always verify that all scheduling tasks exit once all queries are satisfied.
     assert s.curr_num_scheduling_tasks == 0
     assert s.num_pending_requests == 0
+
 
 class TestPrefixAwareFallbackToPow2:
     """Tests for when prefix aware scheduler falls back to pow2 behavior."""
@@ -152,9 +115,7 @@ class TestPrefixAwareFallbackToPow2:
         async def choose_replicas():
             tasks = []
             for _ in range(10):
-                tasks.append(
-                    loop.create_task(s.choose_replica_for_request(request))
-                )
+                tasks.append(loop.create_task(s.choose_replica_for_request(request)))
             return await asyncio.gather(*tasks)
 
         # All requests should go to r1 since it has lower queue length
@@ -202,14 +163,13 @@ class TestPrefixAwareFallbackToPow2:
         async def choose_replicas():
             tasks = []
             for _ in range(10):
-                tasks.append(
-                    loop.create_task(s.choose_replica_for_request(request))
-                )
+                tasks.append(loop.create_task(s.choose_replica_for_request(request)))
             return await asyncio.gather(*tasks)
 
         # All requests should go to r1 since it has lower queue length
         # (no text to extract, so we fall back to pow2 behavior)
         assert all(replica == r1 for replica in await choose_replicas())
+
 
 class TestPrefixAwareBehavior:
     """Tests for when prefix aware scheduler uses its own logic."""
@@ -259,9 +219,7 @@ class TestPrefixAwareBehavior:
         async def choose_replicas():
             tasks = []
             for _ in range(10):
-                tasks.append(
-                    loop.create_task(s.choose_replica_for_request(request))
-                )
+                tasks.append(loop.create_task(s.choose_replica_for_request(request)))
             return await asyncio.gather(*tasks)
 
         # All requests should go to r2 since it has higher match rate
@@ -279,7 +237,9 @@ class TestPrefixAwareBehavior:
         ],
         indirect=True,
     )
-    async def test_choose_smallest_tree_when_match_rate_low(self, prefix_aware_scheduler):
+    async def test_choose_smallest_tree_when_match_rate_low(
+        self, prefix_aware_scheduler
+    ):
         """Test that when match rate is below threshold, we choose replica with smallest tree."""
         s = prefix_aware_scheduler
         loop = get_or_create_event_loop()
@@ -313,9 +273,7 @@ class TestPrefixAwareBehavior:
         async def choose_replicas():
             tasks = []
             for _ in range(10):
-                tasks.append(
-                    loop.create_task(s.choose_replica_for_request(request))
-                )
+                tasks.append(loop.create_task(s.choose_replica_for_request(request)))
             return await asyncio.gather(*tasks)
 
         # All requests should go to r1 since it has smaller tree
@@ -370,9 +328,7 @@ class TestPrefixAwareBehavior:
         async def choose_replicas():
             tasks = []
             for _ in range(30):  # More requests to ensure good distribution
-                tasks.append(
-                    loop.create_task(s.choose_replica_for_request(request))
-                )
+                tasks.append(loop.create_task(s.choose_replica_for_request(request)))
             return await asyncio.gather(*tasks)
 
         # All requests should go to one of the replicas with same tree size
@@ -427,10 +383,8 @@ class TestPrefixAwareBehavior:
         async def choose_replicas():
             tasks = []
             for _ in range(10):
-                tasks.append(
-                    loop.create_task(s.choose_replica_for_request(request))
-                )
+                tasks.append(loop.create_task(s.choose_replica_for_request(request)))
             return await asyncio.gather(*tasks)
 
         # All requests should go to r2 since it has higher match rate
-        assert all(replica == r2 for replica in await choose_replicas()) 
+        assert all(replica == r2 for replica in await choose_replicas())

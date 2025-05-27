@@ -1,27 +1,21 @@
 import os
 import asyncio
-import random
 from types import SimpleNamespace
 from typing import Optional, Set, List
 
 import pytest
 
-import ray
-from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError
 
-from ray._private.test_utils import get_or_create_event_loop, async_wait_for_condition
+from ray._private.test_utils import get_or_create_event_loop
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     RequestMetadata,
 )
-from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
 from ray.serve._private.replica_scheduler.prefix_aware_scheduler import (
     PrefixAwareReplicaScheduler,
 )
-from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import PendingRequest, RunningReplica
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
@@ -126,6 +120,7 @@ def fake_pending_request(
 
 # === Scheduler fixture ===
 
+
 @pytest.fixture
 def prefix_scheduler(request) -> PrefixAwareReplicaScheduler:
     """Construct a PrefixAwareReplicaScheduler on its own loop."""
@@ -175,6 +170,7 @@ def prefix_scheduler(request) -> PrefixAwareReplicaScheduler:
 
 # === 1️⃣ Fallback to Po2 when no prefix logic applies ===
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("prefix_scheduler", [{}], indirect=True)
 async def test_fallback_on_empty_args(prefix_scheduler):
@@ -188,12 +184,16 @@ async def test_fallback_on_empty_args(prefix_scheduler):
     s.update_replicas([r1, r2])
 
     # args=[] → no prompt/messages → should behave exactly like Po2: pick the least busy
-    results = [await s.choose_replica_for_request(fake_pending_request()) for _ in range(10)]
+    results = [
+        await s.choose_replica_for_request(fake_pending_request()) for _ in range(10)
+    ]
     assert all(replica == r1 for replica in results)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prefix_scheduler", [{"imbalanced_threshold": 1}], indirect=True)
+@pytest.mark.parametrize(
+    "prefix_scheduler", [{"imbalanced_threshold": 1}], indirect=True
+)
 async def test_fallback_on_imbalanced_load(prefix_scheduler):
     s = prefix_scheduler
     loop = get_or_create_event_loop()
@@ -205,14 +205,19 @@ async def test_fallback_on_imbalanced_load(prefix_scheduler):
     r2.set_queue_len_response(5)
     s.update_replicas([r1, r2])
 
-    results = [await s.choose_replica_for_request(fake_pending_request()) for _ in range(10)]
+    results = [
+        await s.choose_replica_for_request(fake_pending_request()) for _ in range(10)
+    ]
     assert all(replica == r1 for replica in results)
 
 
 # === 2️⃣ Core prefix‐aware behaviors ===
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prefix_scheduler", [{"imbalanced_threshold": 100}], indirect=True)
+@pytest.mark.parametrize(
+    "prefix_scheduler", [{"imbalanced_threshold": 100}], indirect=True
+)
 async def test_highest_prefix_match_rate(prefix_scheduler):
     s = prefix_scheduler
     loop = get_or_create_event_loop()
@@ -243,7 +248,9 @@ async def test_highest_prefix_match_rate(prefix_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "prefix_scheduler", [{"imbalanced_threshold": 100, "match_rate_threshold": 0.8}], indirect=True
+    "prefix_scheduler",
+    [{"imbalanced_threshold": 100, "match_rate_threshold": 0.8}],
+    indirect=True,
 )
 async def test_fallback_to_smallest_tree_on_low_match_rate(prefix_scheduler):
     s = prefix_scheduler
@@ -278,7 +285,9 @@ async def test_fallback_to_smallest_tree_on_low_match_rate(prefix_scheduler):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prefix_scheduler", [{"imbalanced_threshold": 100}], indirect=True)
+@pytest.mark.parametrize(
+    "prefix_scheduler", [{"imbalanced_threshold": 100}], indirect=True
+)
 async def test_fallback_to_po2_when_no_tenants_found(prefix_scheduler):
     s = prefix_scheduler
     loop = get_or_create_event_loop()

@@ -4,7 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
