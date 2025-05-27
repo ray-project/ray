@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from ray._private.test_utils import convert_actor_state, wait_for_condition
+from ray._private.test_utils import convert_actor_state
 from ray.exceptions import (
     GetTimeoutError,
     ObjectLostError,
