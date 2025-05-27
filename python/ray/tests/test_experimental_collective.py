@@ -136,6 +136,43 @@ def test_barrier(ray_start_regular_shared, collective_actors):
     ray.get(barriers)
 
 
+def test_allgather(ray_start_regular_shared, collective_actors):
+    group_name, actors = collective_actors
+
+    [actor.make_tensor.remote(SHAPE, DTYPE) for actor in actors]
+    tensors = ray.get([actor.get_tensor.remote() for actor in actors])
+
+    def do_allgather(self, world_size, group_name):
+        tensor_list = [torch.zeros(SHAPE, dtype=DTYPE) for _ in range(world_size)]
+        ray.util.collective.allgather(tensor_list, self.tensor, group_name=group_name)
+        return tensor_list
+
+    all_tensor_lists = ray.get(
+        [
+            actor.__ray_call__.remote(do_allgather, len(actors), group_name)
+            for actor in actors
+        ]
+    )
+    for tensor_list in all_tensor_lists:
+        for tensor, expected_tensor in zip(tensors, tensor_list):
+            assert torch.allclose(tensor, expected_tensor)
+
+
+def test_broadcast(ray_start_regular_shared, collective_actors):
+    group_name, actors = collective_actors
+
+    actors[0].make_tensor.remote(SHAPE, DTYPE)
+    expected_tensor = ray.get(actors[0].get_tensor.remote())
+
+    def do_broadcast(self, src_rank, group_name):
+        ray.util.collective.broadcast(self.tensor, src_rank, group_name=group_name)
+
+    [actor.__ray_call__.remote(do_broadcast, 0, group_name) for actor in actors]
+    tensors = ray.get([actor.get_tensor.remote() for actor in actors])
+    for tensor in tensors:
+        assert torch.allclose(tensor, expected_tensor)
+
+
 def test_reduce(ray_start_regular_shared, collective_actors):
     group_name, actors = collective_actors
 
