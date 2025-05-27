@@ -43,33 +43,43 @@ deserialize
 dev
 dev to prod
 DPO
+Flink
 GGUF
 GKE
 GPTQ
 GPU(s)?
+hostfile
+HTTP
+KServe
 KTO
 Kueue
 LMs
 LSH
 Megatron
+MLflow
 namespace
 NER
 Nsight
 NumPy
-Nvidia
+OOM
+pipelining
+NVIDIA
 pretraining
+productionize
 Pythonic
 QPS
+retrigger
 RISECamp
 rollouts
 SFT
 ShareGPT
 teardown
 deserialization
-VPC[s]
+VPC(s)?
 preemptible
-CRD[s]
-VM[s]
+CRD(s)?
+VM(s)?
 uncaptured
 URI(s)?
 [Vv]ision LMs
+VS Code

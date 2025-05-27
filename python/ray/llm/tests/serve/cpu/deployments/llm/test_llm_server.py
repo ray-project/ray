@@ -14,17 +14,10 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ErrorResponse,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import (
-    LLMServer,
     ResponsePostprocessor,
 )
 from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
-
-
-async def create_server(*args, **kwargs):
-    server = LLMServer.__new__(LLMServer)
-    await server.__init__(*args, **kwargs)
-    return server
 
 
 async def stream_generator():
@@ -178,7 +171,7 @@ class TestResponsePostprocessor:
 
 class TestLLMServer:
     @pytest.mark.asyncio
-    async def test_get_batch_interval_ms(self):
+    async def test_get_batch_interval_ms(self, create_server):
         """Test that the batch interval is set correctly in the config."""
 
         # Test with a no stream_batching_interval_ms.
@@ -216,7 +209,7 @@ class TestLLMServer:
         assert server._get_batch_interval_ms() == 0
 
     @pytest.mark.asyncio
-    async def test_chat_streaming(self):
+    async def test_chat_streaming(self, create_server):
         """Test chat completion in streaming mode."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -265,7 +258,7 @@ class TestLLMServer:
         assert text == "test_0 test_1 test_2 test_3 test_4 "
 
     @pytest.mark.asyncio
-    async def test_chat_non_streaming(self):
+    async def test_chat_non_streaming(self, create_server):
         """Test non-streaming chat completion."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -301,7 +294,7 @@ class TestLLMServer:
         assert responses[0].choices[0].finish_reason == "stop"
 
     @pytest.mark.asyncio
-    async def test_completions_streaming(self):
+    async def test_completions_streaming(self, create_server):
         """Test streaming text completion."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -343,7 +336,7 @@ class TestLLMServer:
         assert text == "test_0 test_1 test_2 test_3 test_4 "
 
     @pytest.mark.asyncio
-    async def test_completions_non_streaming(self):
+    async def test_completions_non_streaming(self, create_server):
         """Test non-streaming text completion."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -375,7 +368,7 @@ class TestLLMServer:
         assert responses[0].choices[0].finish_reason == "stop"
 
     @pytest.mark.asyncio
-    async def test_check_health(self):
+    async def test_check_health(self, create_server):
         """Test health check functionality."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -394,7 +387,7 @@ class TestLLMServer:
         server.engine.check_health.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_error_handling(self):
+    async def test_error_handling(self, create_server):
         """Test error handling in the server."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(

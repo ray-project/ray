@@ -375,7 +375,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_.get_executor()),
       exiting_detail_(std::nullopt),
       pid_(getpid()),
@@ -528,7 +527,10 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
-  core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
+
+  core_worker_server_->RegisterService(
+      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *this),
+      false /* token_auth */);
   core_worker_server_->Run();
 
   // Set our own address.
@@ -1487,11 +1489,9 @@ Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
   // resolves some race conditions in resource release (#16025).
-  if (RayConfig::instance().inline_object_status_in_refs()) {
-    auto existing_object = memory_store_->GetIfExists(object_id);
-    if (existing_object != nullptr) {
-      PopulateObjectStatus(object_id, existing_object, &object_status);
-    }
+  auto existing_object = memory_store_->GetIfExists(object_id);
+  if (existing_object != nullptr) {
+    PopulateObjectStatus(object_id, existing_object, &object_status);
   }
   *serialized_object_status = object_status.SerializeAsString();
   return Status::OK();

@@ -18,16 +18,24 @@ from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 def test_dedup_logs():
     script = """
-import ray
 import time
 
-@ray.remote
-def verbose():
-    print(f"hello world, id={time.time()}")
-    time.sleep(1)
+import ray
+from ray._private.test_utils import SignalActor, wait_for_condition
 
-ray.init(num_cpus=4)
-ray.get([verbose.remote() for _ in range(10)])
+signal = SignalActor.remote()
+
+@ray.remote(num_cpus=0)
+def verbose():
+    ray.get(signal.wait.remote())
+    print(f"hello world, id={time.time()}")
+
+refs = [verbose.remote() for _ in range(4)]
+wait_for_condition(
+    lambda: ray.get(signal.cur_num_waiters.remote()) == 4
+)
+ray.get(signal.send.remote())
+ray.get(refs)
 """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -35,7 +43,7 @@ ray.get([verbose.remote() for _ in range(10)])
 
     assert out_str.count("hello") == 2, out_str
     assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
-    assert out_str.count("[repeated 9x across cluster]") == 1, out_str
+    assert out_str.count("[repeated 3x across cluster]") == 1, out_str
 
 
 def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):

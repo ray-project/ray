@@ -317,7 +317,10 @@ class LLMConfig(BaseModelExtended):
         return self.engine_kwargs.get("max_model_len")
 
     @field_validator("accelerator_type")
-    def validate_accelerator_type(cls, value: str):
+    def validate_accelerator_type(cls, value: Optional[str]):
+        if value is None:
+            return value
+
         # Ensure A10 is converted to A10G.
         if value == "A10":
             value = "A10G"
@@ -485,7 +488,8 @@ class LLMConfig(BaseModelExtended):
         deployment_config["ray_actor_options"] = ray_actor_options
 
         # Set the name of the deployment config to map to the model ID.
-        deployment_config["name"] = self._get_deployment_name(name_prefix)
+        if "name" not in deployment_config:
+            deployment_config["name"] = self._get_deployment_name(name_prefix)
         return deployment_config
 
 
@@ -712,7 +716,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
         timestamp: The timestamp of the response.
         finish_reason: The reason the generation finished.
         error: The error, if any.
-
+        metadata: The metadata for internal usage.
     """
 
     generated_text: Optional[str] = None
@@ -726,6 +730,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
     timestamp: Optional[float] = Field(default_factory=time.time)
     finish_reason: Optional[str] = None
     error: Optional[ErrorResponse] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -818,6 +823,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
             timestamp=responses[-1].timestamp,
             finish_reason=responses[-1].finish_reason,
             error=error,
+            metadata=responses[-1].metadata,
         )
 
     @property
@@ -927,7 +933,7 @@ class SamplingParams(BaseModelExtended):
     best_of: int = 1
     response_format: Optional[ResponseFormatType] = None
 
-    def model_dump(self, **kwargs):
+    def model_dump(self, **kwargs) -> Dict[str, Any]:
         if kwargs.get("exclude", None) is None:
             kwargs["exclude"] = self._ignored_fields
         return super().model_dump(**kwargs)
@@ -948,8 +954,7 @@ class SamplingParams(BaseModelExtended):
         return unique_val
 
     @classmethod
-    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
-        # Extract parameters object from prompt
+    def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
         generate_kwargs = prompt.parameters or {}
         if not isinstance(generate_kwargs, dict):
             generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
@@ -957,6 +962,12 @@ class SamplingParams(BaseModelExtended):
         generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
         generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
 
+        return generate_kwargs
+
+    @classmethod
+    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
+        # Extract parameters object from prompt
+        generate_kwargs = cls._get_model_validate_kwargs(prompt)
         return cls.model_validate(generate_kwargs)
 
 
@@ -966,3 +977,4 @@ class GenerationRequest(BaseModelExtended):
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
     stream: bool = False
+    metadata: Optional[Dict[str, Any]] = None
