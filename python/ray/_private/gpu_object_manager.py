@@ -63,12 +63,12 @@ class GPUObjectManager:
     def remove_gpu_object_ref(self, obj_ref: ObjectRef):
         del self.gpu_object_refs[obj_ref]
 
-    def get_gpu_object_ref(
+    def _get_gpu_object_ref(
         self, obj_ref: ObjectRef
     ) -> Optional[Tuple[ActorHandle, ObjectRef]]:
         return self.gpu_object_refs[obj_ref]
 
-    def is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
+    def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
         return obj_ref in self.gpu_object_refs
 
     def _send_gpu_object(self, src_actor: ActorHandle, obj_id: str, dst_rank: int):
@@ -101,7 +101,6 @@ class GPUObjectManager:
     ):
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
-
         def __ray_recv__(
             self,
             obj_id: str,
@@ -156,9 +155,9 @@ class GPUObjectManager:
             if not isinstance(arg, ObjectRef):
                 continue
 
-            if not self.is_gpu_object_ref(arg):
+            if not self._is_gpu_object_ref(arg):
                 continue
-            tensor_meta = self.get_gpu_object_ref(arg)
+            tensor_meta = self._get_gpu_object_ref(arg)
 
             src_actor, tensor_meta = tensor_meta
             if not actor_id_to_rank:
