@@ -18,7 +18,7 @@ TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 @DeveloperAPI
 class Communicator(ABC):
     """
-    Communicator for a group of Compiled Graph actors on Nvidia GPU.
+    Communicator for a group of Compiled Graph actors on NVIDIA GPU.
 
     The Compiled Graph execution leverages this internally to support communication
     between actors in the group.
