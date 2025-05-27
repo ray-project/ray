@@ -29,7 +29,7 @@ class ProtocolsProvider:
             # File storage path, assumes everything packed in one zip file.
             "file",
             # download file from git repository
-            "git"
+            "git",
         }
 
     @classmethod

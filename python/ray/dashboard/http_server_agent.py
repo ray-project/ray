@@ -1,5 +1,4 @@
 import logging
-from ray._private.utils import get_or_create_event_loop
 from ray._private.utils import is_ipv6_address
 
 from packaging.version import Version

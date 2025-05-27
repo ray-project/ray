@@ -399,7 +399,7 @@ NodeManager::NodeManager(
         runtime_env_agent_ip.substr(1, runtime_env_agent_ip.length() - 2);
   }
 
-  runtime_env_agent_client_ = RuntimeEnvAgentClient::Create(
+  auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       runtime_env_agent_ip,
       config.runtime_env_agent_port, /*delay_executor=*/

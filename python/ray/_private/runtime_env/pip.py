@@ -133,7 +133,9 @@ class PipProcessor:
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        pip_requirements_file = dependency_utils.get_requirements_file(path, pip_packages)
+        pip_requirements_file = dependency_utils.get_requirements_file(
+            path, pip_packages
+        )
 
         pip_packages_list = []
         pip_packages_specfic_command = []
@@ -152,8 +154,8 @@ class PipProcessor:
         await loop.run_in_executor(
             None,
             dependency_utils.gen_requirements_txt,
+            pip_requirements_file,
             pip_packages_list,
-            pip_packages,
         )
 
         for package_command in pip_packages_specfic_command:

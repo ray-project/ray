@@ -3,9 +3,8 @@ import asyncio
 import hashlib
 import logging
 import os
-import json
-import subprocess
 import shutil
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -709,13 +708,10 @@ async def download_and_unpack_package(
         if not pkg_uri.startswith("git://"):
             assert local_dir != pkg_file, "Invalid pkg_file!"
 
-        if local_dir.exists():
-            assert local_dir != pkg_file, "Invalid pkg_file!"
-
-            download_package: bool = True
-            if not overwrite:
-                download_package = False
-                assert local_dir.is_dir(), f"{local_dir} is not a directory"
+        download_package: bool = True
+        if local_dir.exists() and not overwrite:
+            download_package = False
+            assert local_dir.is_dir(), f"{local_dir} is not a directory"
         elif local_dir.exists():
             logger.info(f"Removing {local_dir} with pkg_file {pkg_file}")
             shutil.rmtree(local_dir)
@@ -768,7 +764,7 @@ async def download_and_unpack_package(
             elif protocol == Protocol.GIT:
                 await download_package_from_git(
                     runtime_env, str(pkg_file), logger, pkg_uri
-                ) 
+                )
             elif protocol in Protocol.remote_protocols():
                 protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
 

@@ -79,7 +79,6 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import (
-    get_component_file_name,  # noqa: F401
     parse_import_path,
 )
 from ray.serve._private.version import DeploymentVersion
@@ -1395,6 +1394,7 @@ class UserCallableWrapper:
                 # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
                 # With same reasoning, we are not handling TimeoutError because it's a generic exception
                 # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
+
                 def handle_exception(_: Request, exc: Exception):
                     return self.handle_exception(exc)
 

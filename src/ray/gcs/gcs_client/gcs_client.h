@@ -66,7 +66,7 @@ class GcsClientOptions {
       : cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
-    std::vector<std::string> address = SplitIpPort(gcs_address, ':');
+    std::vector<std::string> address = SplitIpPort(gcs_address);
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];

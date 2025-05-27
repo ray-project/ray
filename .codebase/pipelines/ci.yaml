@@ -13,7 +13,7 @@ jobs:
           - bash .codebase/patch/codebase_format_check.sh
   build-wheels:
     depends: [format-check]
-    image: hub.byted.org/compile/manylinux2014:6d45df5397bbc592d7b77f05bdc8c202
+    image: hub.byted.org/kuberay/test.ray.any:230a1f88797dfd9fe36712e0686e4bdc
     steps:
       - name: BUILD_WHEEL
         commands:
@@ -25,7 +25,7 @@ jobs:
           path: .whl
   core-cpp-ut:
     depends: [format-check]
-    image: hub.byted.org/compile/manylinux2014:6d45df5397bbc592d7b77f05bdc8c202
+    image: hub.byted.org/kuberay/test.ray.any:230a1f88797dfd9fe36712e0686e4bdc
     steps:
       - name: CORE_CPP_UT
         commands:
@@ -54,18 +54,6 @@ jobs:
       - name: PYTHON_UT
         commands:
           - bash .codebase/patch/codebase_python_ut_normal_clientset.sh
-            #  python-ut-data:
-            #    depends: [build-wheels]
-            #    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
-            #    steps:
-            #      - name: DOWNLOAD_WHEEL
-            #        uses: actions/download-artifact
-            #        inputs:
-            #          name: release
-            #          path: ./
-            #      - name: PYTHON_UT
-            #        commands:
-            #          - bash .codebase/patch/codebase_python_ut_data.sh
   python-ut-serve:
     depends: [build-wheels]
     image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6

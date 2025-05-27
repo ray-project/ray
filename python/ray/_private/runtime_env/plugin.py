@@ -4,7 +4,6 @@ import json
 from abc import ABC
 from typing import List, Dict, Optional, Any, Type
 
-import asyncio
 from ray._common.utils import import_attr
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
@@ -18,11 +17,7 @@ from ray._private.runtime_env.constants import (
 )
 from ray.util.annotations import DeveloperAPI
 
-from ray._private.runtime_env.packaging import parse_uri
-
 default_logger = logging.getLogger(__name__)
-byted_create_locks: Dict[str, asyncio.Lock] = {}
-byted_lock_for_create = asyncio.Lock()
 
 
 @DeveloperAPI
@@ -254,30 +249,6 @@ async def create_for_plugin_if_needed(
         await plugin.create(None, runtime_env, context, logger=logger)
 
     for uri in uris:
-        if plugin.name == "pip":
-            if uri in uri_cache:
-                _, hash = parse_uri(uri)
-                virtualenv_python = os.path.join(
-                    plugin._pip_resources_dir, hash, "virtualenv", "bin", "python"
-                )
-                if not os.path.exists(virtualenv_python):
-                    uri_cache.delete(uri, logger=logger)
-            async with byted_lock_for_create:
-                if uri not in byted_create_locks:
-                    # async lock to prevent the same virtualenv being concurrently installed
-                    byted_create_locks[uri] = asyncio.Lock()
-            async with byted_create_locks[uri]:
-                if uri not in uri_cache:
-                    logger.info(f"Cache miss for pip URI {uri}.")
-                    size_bytes = await plugin.create(
-                        uri, runtime_env, context, logger=logger
-                    )
-                    uri_cache.add(uri, size_bytes, logger=logger)
-                else:
-                    logger.info(f"Cache hit for pip URI {uri}.")
-                    uri_cache.mark_used(uri, logger=logger)
-            continue
-
         if uri not in uri_cache:
             logger.info(f"Cache miss for URI {uri}.")
             size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)

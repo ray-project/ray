@@ -212,7 +212,11 @@ class PyModulesPlugin(RuntimeEnvPlugin):
                 uri = uri[:python_path_index]
 
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_client, logger=logger, runtime_env=runtime_env,
+            uri,
+            self._resources_dir,
+            self._gcs_client,
+            logger=logger,
+            runtime_env=runtime_env,
         )
 
         if is_whl_uri(uri):

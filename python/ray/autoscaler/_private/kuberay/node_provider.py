@@ -11,7 +11,6 @@ import requests
 from ray._private.utils import is_ipv6_address
 from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
@@ -141,7 +140,6 @@ def pod_ip(pod: Dict[str, Any]) -> NodeIP:
         return "[" + ip + "]" if ip is not None else "IP not yet assigned"
     else:
         return pod["status"].get("podIP", "IP not yet assigned")
-
 
 def status_tag(pod: Dict[str, Any]) -> NodeStatus:
     """Convert pod state to Ray autoscaler node status.

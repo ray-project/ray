@@ -227,8 +227,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
-    numpy_dep = "numpy >= 1.20"
+    pandas_dep = "pandas >= 1.3, < 2.0"
+    numpy_dep = "numpy >= 1.20, < 2.0"
     pyarrow_deps = [
         "pyarrow >= 9.0.0, < 20.0",
         "pyarrow < 18, < 20.0; sys_platform == 'darwin' and platform_machine == 'x86_64'",
@@ -256,7 +256,7 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7, < 5.0",
             "aiohttp_cors >= 0.5.0, < 1.0.0",
             "colorful >= 0.5.0, < 0.7.0",
-            "py-spy >= 0.2.0, < 0.5.0; python_version < '3.12'", # noqa:E501
+            "py-spy >= 0.2.0, < 0.5.0; python_version < '3.12'",  # noqa:E501
             "py-spy >= 0.4.0, < 0.5.0; python_version >= '3.12'",  # noqa:E501
             "requests >= 2.25.0, < 3.0.0",
             "grpcio >= 1.32.0, < 1.60.0; python_version < '3.10'",  # noqa:E501
@@ -277,7 +277,7 @@ if setup_spec.type == SetupType.RAY:
             "uvicorn[standard] >= 0.18.0, < 0.30.0",
             "requests >= 2.25.0, < 3.0.0",
             "starlette >= 0.14.0, < 1.0.0",
-            "fastapi >= 0.40, < 0.99",
+            "fastapi >= 0.40, < 0.130",
             "watchfiles >= 0.11.0, < 0.30.0",
         ],
         "tune": [

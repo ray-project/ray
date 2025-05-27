@@ -72,7 +72,6 @@ class ReportHead(SubprocessModule):
             self.gcs_address, self.temp_dir
         )
         self._state_api = None
-        self.log_dir = dashboard_head.log_dir
 
         import os
 
@@ -446,73 +445,6 @@ class ReportHead(SubprocessModule):
                 else SVG_STYLE + reply.output
             ),
             headers={"Content-Type": "text/html"},
-        )
-
-    @routes.get("/api/cluster_resource")
-    async def get_cluster_resources(self, req):
-        """Returns resources information(GPU) about the cluster.
-
-        These fields are both read from debug_state.txt
-        """
-        import re
-        import json
-
-        gpu_pattern = r"GPU: (\d+)/(\d+)"
-        cpu_pattern = r"CPU: (\d+)/(\d+)"
-
-        success = True
-        gpu_totals = 0
-        gpu_avas = 0
-        cpu_totals = 0
-        cpu_avas = 0
-        try:
-            with open(f"{self.log_dir}/debug_state.txt", "r") as f:
-                for line in f:
-                    if not line.startswith("Local id:"):
-                        continue
-                    gpu_matches = re.findall(gpu_pattern, line)
-                    if gpu_matches:
-                        for match in gpu_matches:
-                            gpu_total = match[1]
-                            gpu_ava = match[0]
-                            gpu_totals += int(gpu_total)
-                            gpu_avas += int(gpu_ava)
-
-                    cpu_matches = re.findall(cpu_pattern, line)
-                    if cpu_matches:
-                        for match in cpu_matches:
-                            cpu_total = match[1]
-                            cpu_ava = match[0]
-                            cpu_totals += int(cpu_total)
-                            cpu_avas += int(cpu_ava)
-
-        except Exception as e:
-            success = False
-            logger.error(f"get_cluster_resources fail: {e}")
-
-        gpu_useds = gpu_totals - gpu_avas
-        gpu_totals = gpu_totals / 10000
-        gpu_useds = gpu_useds / 10000
-        cpu_useds = cpu_totals - cpu_avas
-        cpu_totals = cpu_totals / 10000
-        cpu_useds = cpu_useds / 10000
-        logger.info(
-            f"total resources GPU: {gpu_useds}/{gpu_totals}, CPU: {cpu_useds}/{cpu_totals}"
-        )
-
-        resource_data = {
-            "GPU": {"used": gpu_useds, "total": gpu_totals},
-            "CPU": {"used": cpu_useds, "total": cpu_totals},
-        }
-
-        json_data = json.dumps(resource_data)
-
-        return dashboard_optional_utils.rest_response(
-            success=success,
-            message="Got cluster resource."
-            if success
-            else "get cluster resource fail.",
-            cluster_resource=json_data,
         )
 
     @routes.get("/worker/traceback")

@@ -723,7 +723,7 @@ cdef convert_get_all_actor_info(
 
 cdef convert_get_cluster_status_reply(
     CRayStatus status, optional[CGetClusterStatusReply] c_data
-) with gil: # -> Tuple[autoscaler_pb2.GetClusterStatusReply, Exception]
+) with gil:  # -> Tuple[autoscaler_pb2.GetClusterStatusReply, Exception]
     cdef c_string serialized_reply
     try:
         check_status_timeout_as_rpc_error(status)

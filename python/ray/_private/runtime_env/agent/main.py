@@ -7,9 +7,10 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
+from ray._private.utils import is_ipv6_address
+
 from ray._common.utils import (
     get_or_create_event_loop,
-    is_ipv6_address,
 )
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private import logging_utils

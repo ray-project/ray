@@ -8,6 +8,7 @@ set -euo pipefail
 BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="1.7.0"
+FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605"
 
 check_python_command_exist() {
     VERSION=""
@@ -94,14 +95,14 @@ else
     echo "WARNING: clang-format is not installed!"
 fi
 
-if command -v java >/dev/null; then
-  if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-    echo "Java code format tool google-java-format.jar is not installed, start to install it."
-    wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
-  fi
-else
-    echo "WARNING:java is not installed, skip format java files!"
-fi
+# if command -v java >/dev/null; then
+#   if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+#     echo "Java code format tool google-java-format.jar is not installed, start to install it."
+#     wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
+#   fi
+# else
+#     echo "WARNING:java is not installed, skip format java files!"
+# fi
 
 SHELLCHECK_FLAGS=(
   "--exclude=1090"  # "Can't follow non-constant source. Use a directive to specify location."
@@ -181,7 +182,7 @@ format_frontend() {
     folder="$(pwd)/python/ray/dashboard/client"
     local filenames
     # shellcheck disable=SC2207
-    filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
+    filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx" -or -name "*.js" -or -name "*.jsx" -or -name "*.json" -or -name "*.css" -or -name "*.scss"))
     "${folder}/"node_modules/.bin/eslint --fix --max-warnings 0 "${filenames[@]}"
     "${folder}/"node_modules/.bin/prettier -w "${filenames[@]}"
     "${folder}/"node_modules/.bin/prettier --check "${folder}/"public/index.html
@@ -243,14 +244,14 @@ format_all_scripts() {
     HAS_FLAKE8=$?
 
     # Run isort before black to fix imports and let black deal with file format.
-    echo "$(date)" "isort...."
-    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-      isort
-    #echo "$(date)" "Black...."
-    #git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs \
-    #  black "${BLACK_EXCLUDES[@]}"
-    #echo "$(date)" "MYPY...."
-    # mypy_on_each "${MYPY_FILES[@]}"
+    # echo "$(date)" "isort...."
+    # git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+    #   isort
+    echo "$(date)" "Black...."
+    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs \
+      black "${BLACK_EXCLUDES[@]}"
+    echo "$(date)" "MYPY...."
+    mypy_on_each "${MYPY_FILES[@]}"
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \

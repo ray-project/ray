@@ -51,6 +51,7 @@ from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
+import psutil
 
 logger = logging.getLogger(__name__)
 

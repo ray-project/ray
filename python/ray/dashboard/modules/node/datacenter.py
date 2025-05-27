@@ -176,10 +176,7 @@ class DataOrganizer:
                 if node_info["raylet"]["nodeName"].find("head") == -1:
                     node_info["raylet"]["is_head_node"] = False
 
-        if (
-            "hostname" in node_info
-            and node_info["raylet"]["state"] == "ALIVE"
-        ):
+        if "hostname" in node_info and node_info["raylet"]["state"] == "ALIVE":
             if cls.bytedance_cpu_metric != "":
                 node_info["metricCpu"] = cls.bytedance_cpu_metric % (
                     node_info["hostname"],

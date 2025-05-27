@@ -7,7 +7,26 @@ exclude =
   python/ray/_private/runtime_env/agent/thirdparty_files/
   python/build/
   python/.eggs/
+  doc/source/*
+  rllib/*
+  release/llm_tests/*
+  python/ray/train/examples/*
   python/ray/_private/thirdparty/*
+  python/ray/serve/tests/*
+  python/ray/data/tests/*
+  python/ray/tune/tests/*
+  python/ray/tests/*
+  python/ray/setup-dev.py
+  python/ray/llm/tests/*
+  python/ray/experimental/*
+  python/ray/tune/examples/*
+  python/ray/train/v1/tests/*
+  scripts/format.sh
+  python/ray/_raylet.pyx
+  python/ray/air/examples/custom_trainer.py
+  python/ray/llm/_internal/serve/config_generator/utils/overrides.py
+  python/ray/dashboard/modules/event/tests/*
+  python/ray/air/util/tensor_extensions/arrow.py
   python/ray/workflow/tests/mock_server.py
   python/ray/serve/tests/test_config_files/syntax_error.py
   python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc.py
@@ -18,6 +37,8 @@ ignore =
   F821
   C417
   F811
+  C420
+  C419
   C408
   C417
   E121
@@ -55,3 +76,4 @@ avoid-escape = no
 per-file-ignores =
     rllib/evaluation/worker_set.py:E731
     rllib/evaluation/sampler.py:E731
+    python/ray/_private/pydantic_compat.py:F401

@@ -26,7 +26,7 @@ if not PYDANTIC_INSTALLED:
     ValidationError = None
     root_validator = None
     validator = None
-    is_subclass_of_base_model = lambda obj: False
+    is_subclass_of_base_model = lambda obj: False  # noqa
 # In pydantic <1.9.0, __version__ attribute is missing, issue ref:
 # https://github.com/pydantic/pydantic/issues/2572, so we need to check
 # the existence prior to comparison.

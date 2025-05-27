@@ -423,11 +423,6 @@ class ActorDiedError(RayActorError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
-            if cause.preempted:
-                preempted = True
-                error_msg_lines.append(
-                    "\tThe actor's node was killed by a spot preemption."
-                )
             if (
                 cause.node_death_info
                 and cause.node_death_info.reason

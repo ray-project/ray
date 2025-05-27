@@ -22,11 +22,22 @@ from ray.dashboard.modules.job.common import (
     JOB_NAME_METADATA_KEY,
     JobInfoStorageClient,
 )
+from ray._private.gcs_pubsub import GcsAioPublisher
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+    parse_uri,
+    merge_runtime_env_from_git,
+)
+
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
 from ray._raylet import GcsClient
 
 import psutil
+
+logger = logging.getLogger(__name__)
+
 
 # asyncio python version compatibility
 try:
@@ -96,6 +107,15 @@ class JobSupervisor:
         self._logger = logging.getLogger(f"{__name__}.supervisor-{job_id}")
         self._configure_logger()
 
+        self.log_agent_link = os.environ.get("BYTED_RAY_LOGAGENT_LINK", None)
+        self.encrypt_key = os.environ.get("BYTED_RAY_LOGAGENT_KEY", None)
+        self.enable_driver_err_log_file = (
+            ray_constants.RAY_ENABLE_DRIVER_ERR_LOG_FILE_ENVIRONMENT_VARIABLE
+            in os.environ
+        )
+        self._git_based_replace_runtime_env = None
+        self.gcs_publisher = GcsAioPublisher(address=gcs_address)
+
     def _configure_logger(self) -> None:
         """
         Configure self._logger object to write logs to file based on job
@@ -135,6 +155,13 @@ class JobSupervisor:
         """
         # Get the runtime_env set for the supervisor actor.
         curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
+
+        # use runtime env parsed from git repo
+        if self._git_based_replace_runtime_env is not None:
+            curr_runtime_env = self._git_based_replace_runtime_env
+            logger.info("new runtime env after git based config parsed")
+            logger.info(curr_runtime_env)
+
         if resources_specified:
             return curr_runtime_env
         # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
@@ -142,6 +169,7 @@ class JobSupervisor:
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
+        env_vars["BYTED_SUBMISSION_ID"] = self._job_id
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
@@ -239,6 +267,76 @@ class JobSupervisor:
                 win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
 
             return child_process
+
+    async def _update_runtime_env_in_git_mode(self, runtime_env: dict):
+        base_directory = ray._private.worker._global_node.get_runtime_env_dir_path()
+
+        if "py_modules" in runtime_env:
+            base_py_modules_directory = os.path.join(base_directory, "py_modules_files")
+            hasChanged = False
+            for i, py_modules_path in enumerate(runtime_env["py_modules"]):
+                if not py_modules_path.startswith("git://"):
+                    continue
+                suf_path = ""
+                if py_modules_path.find("$") != -1:
+                    python_path_index = py_modules_path.find("$")
+                    suf_path = py_modules_path[python_path_index:]
+                    py_modules_path = py_modules_path[:python_path_index]
+                _, uri = parse_uri(py_modules_path)
+                uri += ("/" + suf_path[1:]) if len(suf_path) > 0 else ""
+                py_modules_git_dir = os.path.join(base_py_modules_directory, uri)
+                hashed_dir = get_uri_for_directory(py_modules_git_dir)
+
+                excludes = []
+                if "excludes" in runtime_env:
+                    excludes = runtime_env["excludes"]
+
+                # upload the py_modules repo to gcs and replace the working_dir
+                upload_package_if_needed(
+                    hashed_dir,
+                    base_py_modules_directory,
+                    py_modules_git_dir,
+                    include_parent_dir=False,
+                    excludes=excludes,
+                    logger=logger,
+                    runtime_env_expiration_s=1800,
+                )
+                runtime_env["py_modules"][i] = hashed_dir
+                hasChanged = True
+            if hasChanged:
+                self._git_based_replace_runtime_env = runtime_env
+
+        if "working_dir" in runtime_env and runtime_env["working_dir"].startswith(
+            "git://"
+        ):
+            _, uri = parse_uri(runtime_env["working_dir"])
+            base_runtime_env_directory = os.path.join(
+                base_directory, "working_dir_files"
+            )
+            git_dir = os.path.join(base_runtime_env_directory, uri)
+            hashed_dir = get_uri_for_directory(git_dir)
+
+            runtime_env = merge_runtime_env_from_git(
+                base_directory, runtime_env, logger
+            )
+
+            excludes = []
+            if "excludes" in runtime_env:
+                excludes = runtime_env["excludes"]
+
+            # upload the git repo to gcs and replace the working_dir
+            upload_package_if_needed(
+                hashed_dir,
+                base_runtime_env_directory,
+                git_dir,
+                include_parent_dir=False,
+                excludes=excludes,
+                logger=logger,
+                runtime_env_expiration_s=1800,
+            )
+            runtime_env["working_dir"] = hashed_dir
+
+            self._git_based_replace_runtime_env = runtime_env
 
     def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
@@ -352,6 +450,10 @@ class JobSupervisor:
         )
 
         try:
+            await self._update_runtime_env_in_git_mode(
+                dict(ray.get_runtime_context().runtime_env)
+            )
+            os.environ.update({"BYTED_SUBMISSION_ID": self._job_id})
             # Configure environment variables for the child process.
             env = os.environ.copy()
             # Remove internal Ray flags. They present because JobSuperVisor itself is

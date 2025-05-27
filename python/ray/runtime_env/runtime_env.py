@@ -418,8 +418,8 @@ class RuntimeEnv(dict):
                 self[option] = option_val
 
         if "_ray_commit" not in self:
-            # if self.get("pip") or self.get("conda"):
-            self["_ray_commit"] = ray.__commit__
+            if self.get("pip") or self.get("conda"):
+                self["_ray_commit"] = ray.__commit__
 
         # Used for testing wheels that have not yet been merged into master.
         # If this is set to True, then we do not inject Ray into the conda
