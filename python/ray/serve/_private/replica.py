@@ -682,35 +682,41 @@ class ReplicaBase(ABC):
         raise NotImplementedError
 
     async def initialize(self, deployment_config: DeploymentConfig):
-        logger.info(f"[SEIJI] Starting replica initialization for {self._replica_id}")
+        logger.critical(
+            f"[SEIJI] Starting replica initialization for {self._replica_id}"
+        )
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
-                logger.info("[SEIJI] Acquired user callable initialized lock")
+                logger.critical("[SEIJI] Acquired user callable initialized lock")
                 self._initialization_start_time = time.time()
                 if not self._user_callable_initialized:
-                    logger.info("[SEIJI] Initializing user callable for the first time")
+                    logger.critical(
+                        "[SEIJI] Initializing user callable for the first time"
+                    )
                     self._user_callable_asgi_app = await asyncio.wrap_future(
                         self._user_callable_wrapper.initialize_callable()
                     )
-                    logger.info(
+                    logger.critical(
                         f"[SEIJI] User callable initialized, ASGI app: {self._user_callable_asgi_app is not None}"
                     )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
                             self._user_callable_wrapper._callable.docs_path
                         )
-                        logger.info(f"[SEIJI] Set docs_path: {self._docs_path}")
+                        logger.critical(f"[SEIJI] Set docs_path: {self._docs_path}")
                     await self._on_initialized()
-                    logger.info("[SEIJI] Called _on_initialized()")
+                    logger.critical("[SEIJI] Called _on_initialized()")
                     self._user_callable_initialized = True
-                    logger.info("[SEIJI] Marked user callable as initialized")
+                    logger.critical("[SEIJI] Marked user callable as initialized")
                 else:
-                    logger.info("[SEIJI] User callable already initialized, skipping")
+                    logger.critical(
+                        "[SEIJI] User callable already initialized, skipping"
+                    )
 
                 if deployment_config:
-                    logger.info(
+                    logger.critical(
                         f"[SEIJI] Configuring deployment with max_ongoing_requests: {deployment_config.max_ongoing_requests}"
                     )
                     await asyncio.wrap_future(
@@ -718,24 +724,26 @@ class ReplicaBase(ABC):
                             deployment_config.max_ongoing_requests
                         )
                     )
-                    logger.info("[SEIJI] Set threadpool limit")
+                    logger.critical("[SEIJI] Set threadpool limit")
                     await asyncio.wrap_future(
                         self._user_callable_wrapper.call_reconfigure(
                             deployment_config.user_config
                         )
                     )
-                    logger.info(
+                    logger.critical(
                         f"[SEIJI] Called reconfigure with user_config: {deployment_config.user_config}"
                     )
                 else:
-                    logger.info("[SEIJI] No deployment config provided")
+                    logger.critical("[SEIJI] No deployment config provided")
 
             # A new replica should not be considered healthy until it passes
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
-            logger.info("[SEIJI] Starting health check")
+            logger.critical("[SEIJI] Starting health check")
             await self.check_health()
-            logger.info("[SEIJI] Health check passed, replica initialization complete")
+            logger.critical(
+                "[SEIJI] Health check passed, replica initialization complete"
+            )
         except Exception:
             logger.error(
                 f"[SEIJI] Replica initialization failed with exception: {traceback.format_exc()}"
@@ -962,7 +970,7 @@ class ReplicaActor:
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
 
-        logger.info("[SEIJI] calling create_replica_impl")
+        logger.critical("[SEIJI] calling create_replica_impl")
         self._replica_impl: ReplicaBase = create_replica_impl(
             replica_id=replica_id,
             deployment_def=deployment_def,
@@ -971,7 +979,7 @@ class ReplicaActor:
             deployment_config=deployment_config,
             version=version,
         )
-        logger.info(
+        logger.critical(
             f"[SEIJI] Created Replica {self._replica_impl=} with args {deployment_def=} {cloudpickle.loads(serialized_init_args)=} {cloudpickle.loads(serialized_init_kwargs)=} {deployment_config=} {version=}"
         )
 
@@ -1023,7 +1031,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        logger.info(f"[SEIJI] initialize_and_get_metadata: {deployment_config}")
+        logger.critical(f"[SEIJI] initialize_and_get_metadata: {deployment_config}")
         await self._replica_impl.initialize(deployment_config)
         return self._replica_impl.get_metadata()
 

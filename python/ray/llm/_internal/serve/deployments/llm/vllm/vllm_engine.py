@@ -527,7 +527,7 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
-        logger.info(
+        logger.critical(
             f"[SEIJI] About to create AsyncLLMEngine with vllm_config: {vllm_config}"
         )
         maybe_register_config_serialize_by_value()
@@ -537,7 +537,7 @@ class VLLMEngine(LLMEngine):
             log_stats=not engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
-        logger.info(f"[SEIJI] Successfully created AsyncLLMEngine: {engine}")
+        logger.critical(f"[SEIJI] Successfully created AsyncLLMEngine: {engine}")
 
         return engine
 
