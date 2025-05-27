@@ -5,7 +5,7 @@ from gymnasium.spaces import Box
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
@@ -21,7 +21,7 @@ class FlattenObservations(ConnectorV2):
     - Should be used only in env-to-module pipelines.
     - Works directly on the incoming episodes list and changes the last observation
     in-place (write the flattened observation back into the episode).
-    - This connector does NOT alter the incoming batch (`data`) when called.
+    - This connector does NOT alter the incoming batch (`batch`) when called.
     - This connector does NOT work in a `LearnerConnectorPipeline` because it requires
     the incoming episodes to still be ongoing (in progress) as it only alters the
     latest observation, not all observations in an episode.
@@ -94,6 +94,21 @@ class FlattenObservations(ConnectorV2):
             np.array([10.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
         )
     """
+
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
 
     @override(ConnectorV2)
     def recompute_output_observation_space(

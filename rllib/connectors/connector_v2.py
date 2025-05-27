@@ -1,5 +1,6 @@
 import abc
 from collections import defaultdict
+import enum
 import inspect
 from typing import (
     Any,
@@ -25,6 +26,48 @@ from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
+
+
+class ConnectorV2BatchFormats(enum.Enum):
+    """Defines the different formats a batch undergoes throughout a Connector pipeline.
+
+    - Every Connector pipeline starts with an empty batch (`{}`).
+
+    - It then adds individual items, for example observations from an episode, under
+    a nested dict structure mapping column names, for example "obs", to 3-tuples of the
+    form `([episode ID, agent ID, module ID])` to the individual items. Note that the
+    individual items may be a nested struct whose leafs are lists of individual items.
+    In this stage, the batch looks as follows, given a :
+
+    .. testcode::
+        :skipif: True
+
+        {
+            "obs": {
+                ("episode_0", "agent_0", "module_0"): [obs00, obs10, obs20],
+                ("episode_0", "agent_1", "module_1"): [obs01, obs11, obs21],
+                ...
+            },
+            "rewards": {
+                ("episode_0", "agent_0", "module_0"): [0.1, -2.0, 3.0],
+                ...
+            },
+            ...
+        }
+
+    - In the next stage, the mapping from column to 3-tuple to individual items is
+    flipped to a new mapping from module ID to column to individual items. By default,
+    the `AgentToModuleMapping` connector piece performs this task.
+    """
+    BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS = (
+        "column_to_episode_to_individual_items"
+    )
+    BATCH_FORMAT_MODULE_TO_COLUMN_TO_INDIVIDUAL_ITEMS = (
+        "batch_format_module_to_column_to_individual_items"
+    )
+    BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED = (
+        "batch_format_module_to_column_to_batched"
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -74,6 +117,14 @@ class ConnectorV2(Checkpointable, abc.ABC):
     pipelines between the EnvRunners (owning the env-to-module and module-to-env
     pipelines) and the Learners (owning the Learner pipelines).
     """
+
+    # Override these in your custom classes, if necessary.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
 
     def __init__(
         self,

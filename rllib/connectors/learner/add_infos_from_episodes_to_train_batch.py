@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -17,11 +17,26 @@ class AddInfosFromEpisodesToTrainBatch(ConnectorV2):
     an `infos` column.
 
     If the user wants to customize their own data under the given keys (e.g. obs,
-    actions, ...), they can extract from the episodes or recompute from `data`
-    their own data and store it in `data` under those keys. In this case, the default
+    actions, ...), they can extract from the episodes or recompute from `batch`
+    their own data and store it in `batch` under those keys. In this case, the default
     connector will not change the data under these keys and simply act as a
     pass-through.
     """
+
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
 
     @override(ConnectorV2)
     def __call__(

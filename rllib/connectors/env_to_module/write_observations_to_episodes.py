@@ -12,20 +12,6 @@ from ray.util.annotations import PublicAPI
 class WriteObservationsToEpisodes(ConnectorV2):
     """Writes the observations from the batch into the running episodes.
 
-    Note: This is one of the default env-to-module ConnectorV2 pieces that are added
-    automatically by RLlib into every env-to-module connector pipelines, unless
-    `config.add_default_connectors_to_env_to_module_pipeline` is set to False.
-
-    The default env-to-module connector pipeline is:
-    [
-        [0 or more user defined ConnectorV2 pieces],
-        AddObservationsFromEpisodesToBatch,
-        AddStatesFromEpisodesToBatch,
-        AgentToModuleMapping,  # only in multi-agent setups!
-        BatchIndividualItems,
-        NumpyToTensor,
-    ]
-
     This ConnectorV2:
     - Operates on a batch that already has observations in it and a list of Episode
     objects.
@@ -82,7 +68,7 @@ class WriteObservationsToEpisodes(ConnectorV2):
             shared_data={},
         )
 
-        # The connector does NOT change the data batch being passed through.
+        # The connector does NOT change the `batch` being passed through.
         check(output_batch, batch)
 
         # However, the connector has overwritten the last observations in the episodes.
@@ -113,7 +99,7 @@ class WriteObservationsToEpisodes(ConnectorV2):
         # single-agent episode, as long as the following conditions are met (these
         # will be validated by `self.single_agent_episode_iterator()`):
         # - Per single agent episode, one observation item is expected to exist in
-        # `data`, either in a list directly under the "obs" key OR for multi-agent:
+        # `batch`, either in a list directly under the "obs" key OR for multi-agent:
         # in a list sitting under a key `(agent_id, module_id)` of a dict sitting
         # under the "obs" key.
         for sa_episode, obs in self.single_agent_episode_iterator(

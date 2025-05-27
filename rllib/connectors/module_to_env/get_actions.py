@@ -1,7 +1,8 @@
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
@@ -35,12 +36,27 @@ class GetActions(ConnectorV2):
     If necessary, this connector samples actions, given action dist. inputs and a
     dist. class.
     The connector will only sample from the action distribution, if the
-    Columns.ACTIONS key cannot be found in `data`. Otherwise, it'll behave
-    as pass-through. If Columns.ACTIONS is NOT present in `data`, but
+    Columns.ACTIONS key cannot be found in `batch`. Otherwise, it'll behave
+    as pass-through. If Columns.ACTIONS is NOT present in `batch`, but
     Columns.ACTION_DIST_INPUTS is, this connector will create a new action
     distribution using the given RLModule and sample from its distribution class
     (deterministically, if we are not exploring, stochastically, if we are).
     """
+
+    # Incoming batches have the format:
+    # [moduleID] -> [column name] -> [tensors]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED
+    )
+    # Returned batches have the format:
+    # [moduleID] -> [column name] -> [tensors]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED
+    )
 
     @override(ConnectorV2)
     def __call__(
@@ -53,13 +69,11 @@ class GetActions(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
-
-        if is_multi_agent:
-            for module_id, module_data in batch.copy().items():
+        for module_id, module_data in batch.copy().items():
+            if isinstance(rl_module, MultiRLModule):
                 self._get_actions(module_data, rl_module[module_id], explore)
-        else:
-            self._get_actions(batch, rl_module, explore)
+            else:
+                self._get_actions(module_data, rl_module, explore)
 
         return batch
 

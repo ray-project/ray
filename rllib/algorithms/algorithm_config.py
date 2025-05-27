@@ -1014,6 +1014,7 @@ class AlgorithmConfig(_Config):
             AgentToModuleMapping,
             BatchIndividualItems,
             EnvToModulePipeline,
+            RemapModuleToColumns,
             NumpyToTensor,
         )
 
@@ -1103,6 +1104,8 @@ class AlgorithmConfig(_Config):
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
+            else:
+                pipeline.append(RemapModuleToColumns())
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
@@ -1195,9 +1198,9 @@ class AlgorithmConfig(_Config):
             # Remove extra time-rank, if applicable.
             pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
 
-            # If multi-agent -> Map from ModuleID-based data to AgentID based data.
-            if self.is_multi_agent:
-                pipeline.prepend(ModuleToAgentUnmapping())
+            # Re-map from [moduleID] -> [col] -> [data..] format to
+            # [col] -> [(episodeID, agentID, moduleID)-tuple] -> [data..].
+            pipeline.prepend(ModuleToAgentUnmapping())
 
             # Unbatch all data.
             pipeline.prepend(UnBatchToIndividualItems())
@@ -1238,6 +1241,7 @@ class AlgorithmConfig(_Config):
             BatchIndividualItems,
             LearnerConnectorPipeline,
             NumpyToTensor,
+            RemapModuleToColumns,
         )
 
         custom_connectors = []
@@ -1292,6 +1296,8 @@ class AlgorithmConfig(_Config):
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
+            else:
+                pipeline.append(RemapModuleToColumns())
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.

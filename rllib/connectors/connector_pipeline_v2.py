@@ -137,7 +137,7 @@ class ConnectorPipelineV2(ConnectorV2):
 
             if not isinstance(batch, dict):
                 raise ValueError(
-                    f"`data` returned by ConnectorV2 {connector} must be a dict! "
+                    f"`batch` returned by ConnectorV2 {connector} must be a dict! "
                     f"You returned {batch}. Check your (custom) connectors' "
                     f"`__call__()` method's return value and make sure you return "
                     f"the `batch` arg passed in (either altered or unchanged)."
@@ -163,7 +163,18 @@ class ConnectorPipelineV2(ConnectorV2):
                 idx = i
                 break
         if idx >= 0:
+            # Check, whether the connector piece before the to-be-removed one
+            # matches the succeeding one, if applicable.
+            if len(self) > 2:
+                self._check_batch_format_compatibility(
+                    self.connectors[idx - 1] if idx - 1 >= 0 else None,
+                    self.connectors[idx + 1],
+                )
+
             del self.connectors[idx]
+            if len(self) > 0:
+                self.INPUT_BATCH_FORMAT = self.connectors[0].INPUT_BATCH_FORMAT
+                self.OUTPUT_BATCH_FORMAT = self.connectors[-1].OUTPUT_BATCH_FORMAT
             self._fix_spaces(self.input_observation_space, self.input_action_space)
             logger.info(
                 f"Removed connector {name_or_class} from {self.__class__.__name__}."
@@ -200,7 +211,14 @@ class ConnectorPipelineV2(ConnectorV2):
             )
         next_connector = self.connectors[idx]
 
+        self._check_batch_format_compatibility(
+            self.connectors[idx - 1] if idx - 1 >= 0 else None,
+            connector,
+            next_connector,
+        )
+
         self.connectors.insert(idx, connector)
+        self.INPUT_BATCH_FORMAT = self.connectors[0].INPUT_BATCH_FORMAT
         self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
@@ -236,7 +254,14 @@ class ConnectorPipelineV2(ConnectorV2):
             )
         prev_connector = self.connectors[idx]
 
+        self._check_batch_format_compatibility(
+            prev_connector,
+            connector,
+            self.connectors[idx] if len(self) > idx else None
+        )
+
         self.connectors.insert(idx + 1, connector)
+        self.OUTPUT_BATCH_FORMAT = self.connectors[-1].OUTPUT_BATCH_FORMAT
         self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
@@ -252,7 +277,11 @@ class ConnectorPipelineV2(ConnectorV2):
         Args:
             connector: The new connector piece to be prepended to this pipeline.
         """
+        if len(self) > 0:
+            self._check_batch_format_compatibility(None, connector, self.connectors[0])
+
         self.connectors.insert(0, connector)
+        self.INPUT_BATCH_FORMAT = connector.INPUT_BATCH_FORMAT
         self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
@@ -266,7 +295,11 @@ class ConnectorPipelineV2(ConnectorV2):
         Args:
             connector: The new connector piece to be appended to this pipeline.
         """
+        if len(self) > 0:
+            self._check_batch_format_compatibility(self.connectors[-1], connector)
+
         self.connectors.append(connector)
+        self.OUTPUT_BATCH_FORMAT = connector.OUTPUT_BATCH_FORMAT
         self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
@@ -413,3 +446,28 @@ class ConnectorPipelineV2(ConnectorV2):
                 con.input_observation_space = obs_space
                 obs_space = con.observation_space
                 act_space = con.action_space
+
+    @staticmethod
+    def _check_batch_format_compatibility(
+        prev_piece: Optional[ConnectorV2],
+        piece: ConnectorV2,
+        next_piece: Optional[ConnectorV2] = None,
+    ):
+        if prev_piece and prev_piece.OUTPUT_BATCH_FORMAT != piece.INPUT_BATCH_FORMAT:
+            raise ValueError(
+                f"ConnectorV2 piece's ({piece}) batch input format "
+                f"({piece.INPUT_BATCH_FORMAT}) doesn't match previous piece's batch "
+                f"output format ({prev_piece.OUTPUT_BATCH_FORMAT})! Make sure, you set "
+                f"the `INPUT_BATCH_FORMAT` attribute of your custom class to the "
+                f"correct value of the `ray.rllib.connectors.connector_v2."
+                f"ConnectorV2BatchFormats` Enum."
+            )
+        elif next_piece and piece.OUTPUT_BATCH_FORMAT != next_piece.INPUT_BATCH_FORMAT:
+            raise ValueError(
+                f"ConnectorV2 piece's ({piece}) batch output format "
+                f"({piece.OUTPUT_BATCH_FORMAT}) doesn't match next piece's batch "
+                f"input format ({next_piece.INPUT_BATCH_FORMAT})! Make sure, you set "
+                f"the `OUTPUT_BATCH_FORMAT` attribute of your custom class to the "
+                f"correct value of the `ray.rllib.connectors.connector_v2."
+                f"ConnectorV2BatchFormats` Enum."
+            )
