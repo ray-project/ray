@@ -405,9 +405,9 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     if (is_infeasible) {
       TaskSpecification front_task = dispatch_queue.front()->task.GetTaskSpecification();
       RAY_LOG(ERROR)
-          << "An task got scheduled to a node even though it was infeasible. "
+          << "A task got scheduled to a node even though it was infeasible. "
              "Please report an issue on GitHub.\nTask placement resource requirements: "
-          << front_task.GetRequiredPlacementResources().GetResourceMap()
+          << debug_string(front_task.GetRequiredPlacementResources().GetResourceMap())
           << "\n Scheduling strategy: "
           << front_task.GetSchedulingStrategy().scheduling_strategy_case();
       for (const auto &work : dispatch_queue) {
