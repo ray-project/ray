@@ -185,11 +185,11 @@ class _DAGOperationGraphNode:
         # The synchronous nodes are all the nodes that belong to the same NCCL
         # operation. Each node is represented by a tuple of its task idx and type.
         self.sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
-        # The ready synchronous nodes are the nodes that are ready to be executed,
-        # i.e., their in-degrees are zero. When a synchronous node is ready, it
-        # will be added to the ready synchronous nodes of all the nodes in the
+        # The pending synchronous nodes are the nodes that are pending to be executed,
+        # i.e., their in-degrees are zero. When a synchronous node is pending, it
+        # will be added to the pending synchronous nodes of all the nodes in the
         # NCCL operation.
-        self.ready_sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
+        self.pending_sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
     def __repr__(self):
         return (
@@ -243,12 +243,12 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If a node is not a NCCL collective, it is ready when it has a zero
-        in-degree. If it is a NCCL collective, it is ready when all the nodes
-        in its collective operation have zero in-degrees.
+        If a node is not a NCCL operation, it is ready when it has a zero in-degree.
+        If it is a NCCL operation, it is ready when all the nodes in the operation
+        have zero in-degrees.
         """
         return self.in_degree == 0 and (
-            len(self.ready_sync_idxs) == len(self.sync_idxs)
+            len(self.pending_sync_idxs) == len(self.sync_idxs)
         )
 
     @property
@@ -482,20 +482,20 @@ def _add_edge_EXP(
     to_node.in_edges[from_node.task_idx] = (label, control_dependency)
 
 
-def _update_ready_sync_idxs(
+def _update_pending_sync_idxs(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
     """
-    Mark the node as ready for its synchronous nodes.
+    Update the node as pending for its synchronous nodes.
     """
     idx = (node.task_idx, node.operation.type)
     for task_idx, op_type in node.sync_idxs:
         sync_node = graph[task_idx][op_type]
-        sync_node.ready_sync_idxs.add(idx)
+        sync_node.pending_sync_idxs.add(idx)
 
 
-def _update_ready_sync_idxs_EXP(
+def _update_pending_sync_idxs_EXP(
     graph: Dict[int, _DAGOperationGraphNode_EXP],
     node: _DAGOperationGraphNode_EXP,
 ) -> None:
@@ -504,7 +504,7 @@ def _update_ready_sync_idxs_EXP(
     """
     for task_idx in node.sync_idxs:
         sync_node = graph[task_idx]
-        sync_node.ready_sync_idxs.add(node.task_idx)
+        sync_node.pending_sync_idxs.add(node.task_idx)
 
 
 def _push_candidate_node_if_ready(
@@ -513,22 +513,25 @@ def _push_candidate_node_if_ready(
     node: _DAGOperationGraphNode,
 ) -> None:
     """
-    Push the node to the candidates if ready. If it has synchronous nodes and they are
-    ready, push all of them to the candidates.
+    Push the node to the candidates if ready. If it has synchronous nodes, its NCCL
+    operation is not ready until all the nodes are pending, then all the nodes will be
+    pushed to the candidates.
     """
-    # For the NCCL write node, mark the downstream NCCL read nodes as ready. The NCCL
-    # operation becomes ready after both the write and read nodes are updated.
+    # For the NCCL write node, update the in-degrees of the downstream NCCL read nodes
+    # and update them as pending. This is necessary because the data dependency edges
+    # between NCCL write and read nodes are only updated here. The NCCL P2P operation
+    # becomes ready after both the write and read nodes are marked as pending.
     if node.is_nccl_write:
         for task_idx, op_type in node.out_edges:
             read_node = graph[task_idx][op_type]
             read_node.in_edges.pop((node.task_idx, node.operation.type))
             assert read_node.is_nccl_read and len(read_node.in_edges) == 0
-            _update_ready_sync_idxs(graph, read_node)
-    # For the NCCL operation, update the synchronous nodes.
+            _update_pending_sync_idxs(graph, read_node)
+    # For the NCCL operation node, update it as pending.
     if len(node.sync_idxs) != 0:
-        _update_ready_sync_idxs(graph, node)
+        _update_pending_sync_idxs(graph, node)
     # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
-    # node in the operation is ready, push all the nodes to the candidates.
+    # node in the operation is updated as pending, push all the nodes to the candidates.
     if node.is_ready:
         if len(node.sync_idxs) == 0:
             heapq.heappush(
@@ -550,8 +553,9 @@ def _push_candidate_node_if_ready_EXP(
     node: _DAGOperationGraphNode_EXP,
 ) -> None:
     """
-    Push the node to the candidates if ready. If it has synchronous nodes and they are
-    ready, push all of them to the candidates.
+    Push the node to the candidates if ready. If it has synchronous nodes, its NCCL
+    operation is not ready until all the nodes are pending, then all the nodes will be
+    pushed to the candidates.
     """
     # For the NCCL write node, mark the downstream NCCL read nodes as ready. The NCCL
     # operation becomes ready after both the write and read nodes are updated.
@@ -560,10 +564,10 @@ def _push_candidate_node_if_ready_EXP(
             read_node = graph[task_idx]
             read_node.in_edges.pop(node.task_idx)
             assert read_node.is_nccl_read and len(read_node.in_edges) == 0
-            _update_ready_sync_idxs_EXP(graph, read_node)
+            _update_pending_sync_idxs_EXP(graph, read_node)
     # For the NCCL operation, update the synchronous nodes.
     if len(node.sync_idxs) != 0:
-        _update_ready_sync_idxs_EXP(graph, node)
+        _update_pending_sync_idxs_EXP(graph, node)
     # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
     # node in the operation is ready, push all the nodes to the candidates.
     if node.is_ready:

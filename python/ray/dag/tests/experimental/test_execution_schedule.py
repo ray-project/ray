@@ -105,7 +105,7 @@ def set_sync_idxs_p2p(
     }
     for node in [write_node, read_node]:
         node.sync_idxs.update(p2p_idxs)
-        node.ready_sync_idxs.update(p2p_idxs)
+        node.pending_sync_idxs.update(p2p_idxs)
 
 
 def set_sync_idxs_p2p_EXP(
@@ -131,7 +131,7 @@ def set_sync_idxs_collective(
     for task_idx in task_idxs:
         node = graph[task_idx][_DAGNodeOperationType.COMPUTE]
         node.sync_idxs.update(collective_idxs)
-        node.ready_sync_idxs.update(collective_idxs)
+        node.pending_sync_idxs.update(collective_idxs)
 
 
 def set_sync_idxs_collective_EXP(
