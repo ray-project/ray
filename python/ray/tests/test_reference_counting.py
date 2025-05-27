@@ -241,7 +241,9 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared, check_refcounts_
 # and should be evicted after it returns.
 @pytest.mark.parametrize("use_ray_put", [False, True])
 @pytest.mark.parametrize("failure", [False, True])
-def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty):
+def test_basic_serialized_reference(
+    one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty
+):
     @ray.remote(max_retries=0)
     def pending(ref, dep):
         ray.get(ref[0])
@@ -277,7 +279,9 @@ def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure,
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty):
+def test_recursive_serialized_reference(
+    one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty
+):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
@@ -448,7 +452,9 @@ def test_basic_nested_ids(one_cpu_100MiB_shared, check_refcounts_empty):
 
 # Test that a reference borrowed by an actor constructor is freed if the actor is
 # cancelled before being scheduled.
-def test_actor_constructor_borrow_cancellation(one_cpu_100MiB_shared, check_refcounts_empty):
+def test_actor_constructor_borrow_cancellation(
+    one_cpu_100MiB_shared, check_refcounts_empty
+):
     # Schedule the actor with a non-existent resource so it's guaranteed to never be
     # scheduled.
     @ray.remote(resources={"nonexistent_resource": 1})
