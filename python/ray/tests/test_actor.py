@@ -1664,12 +1664,13 @@ def test_exit_immediately_after_creation(ray_start_regular_shared, exit_type: st
     b = A.remote()
     b_id = b._actor_id
 
-
     def _num_actors_alive() -> int:
-        still_alive = list(filter(
-            lambda a: True,
-            list_actors(filters=[("state", "=", "ALIVE")]),
-        ))
+        still_alive = list(
+            filter(
+                lambda a: True,
+                list_actors(filters=[("state", "=", "ALIVE")]),
+            )
+        )
         return len(still_alive)
 
     wait_for_condition(lambda: _num_actors_alive() == 2)
