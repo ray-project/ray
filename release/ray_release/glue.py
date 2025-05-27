@@ -426,6 +426,7 @@ def run_release_test(
             compute_config=kuberay_compute_config,
             timeout=command_timeout
         )
+        kuberay_job_manager.fetch_results()
         result.return_code = retcode
         result.runtime = duration
         return result

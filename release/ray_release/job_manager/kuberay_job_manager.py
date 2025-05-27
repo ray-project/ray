@@ -8,9 +8,12 @@ from ray_release.exception import (
     JobStartupTimeout,
     JobStartupFailed,
 )
+from google.cloud import logging_v2
+
 KUBERAY_SERVICE_SECRET_KEY_SECRET_NAME = "kuberay_service_secret_key"
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
 DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
+KUBERAY_PROJECT_ID = "dhyey-dev"
 
 job_status_to_return_code = {
     "SUCCEEDED": 0,
@@ -22,6 +25,7 @@ job_status_to_return_code = {
 class KuberayJobManager:
     def __init__(self):
         self.cluster_startup_timeout = 600
+        self.job_id = None
 
     def run_and_wait(self, job_name: str, image: str, cmd_to_run: str, timeout: int, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> Tuple[int, float]:
         self.job_name = job_name
@@ -64,7 +68,7 @@ class KuberayJobManager:
                 f"{e}"
             ) from e
 
-    def _wait_job(self, timeout: int = 1200) -> Tuple[int, float]:
+    def _wait_job(self, timeout: int = 7200) -> Tuple[int, float]:
         start_time = time.time()
         next_status = start_time + 10
         timeout_at = start_time + self.cluster_startup_timeout
@@ -79,7 +83,7 @@ class KuberayJobManager:
                         "Cluster did not start within "
                         f"{self.cluster_startup_timeout} seconds."
                     )
-                raise CommandTimeout(f"Job timed out after {timeout_at} seconds")
+                raise CommandTimeout(f"Job timed out after {timeout} seconds")
 
             if now >= next_status:
                 if job_running:
@@ -105,7 +109,7 @@ class KuberayJobManager:
         duration = time.time() - start_time
         return retcode, duration
 
-    def _get_job_status(self) -> str:
+    def _get_job(self) -> Dict[str, Any]:
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs?namespace={DEFAULT_KUBERAY_NAMESPACE}&name={self.job_name}"
         token = self._get_kuberay_server_token()
         headers = {
@@ -118,7 +122,16 @@ class KuberayJobManager:
             raise Exception(f"No jobs found for {self.job_name}")
         if len(response_json["jobs"]) > 1:
             raise Exception(f"Multiple jobs found for {self.job_name}")
-        return response_json["jobs"][0]["status"]
+        return response_json["jobs"][0]
+
+    def _get_job_id(self) -> str:
+        job = self._get_job()
+        self.job_id = job["id"]
+        return self.job_id
+
+    def _get_job_status(self) -> str:
+        job = self._get_job()
+        return job["status"]
 
     def _get_kuberay_server_token(self) -> str:
         session = boto3.session.Session()
@@ -140,8 +153,41 @@ class KuberayJobManager:
         return login_response.json()["token"]
 
     def fetch_results(self) -> Dict[str, Any]:
-        # TODO: implement this
-        return {}
+        client = logging_v2.services.logging_service_v2.LoggingServiceV2Client()
+        # Filter logs for k8s containers with specific ray_submission_id
+        job_id = self._get_job_id()
+        filter_query = f'resource.type="k8s_container" AND jsonPayload.ray_submission_id="{self.job_id}"'
+        result = client.list_log_entries(
+            request={
+                "resource_names": [f"projects/{KUBERAY_PROJECT_ID}"],
+                "filter": filter_query,
+                "order_by": "timestamp desc",
+                "page_size": 100,
+            },
+            timeout=300,
+        )
+        for entry in result.entries:
+            log_message = entry.json_payload["log"]
+            print(log_message)
+        
+        now = time.time()
+        twelve_hours_ago = now - (12 * 60 * 60)
+        
+        now_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now))
+        start_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(twelve_hours_ago))
+        
+        logs_url = (
+            f"https://console.cloud.google.com/logs/query;"
+            f"query=resource.type%3D%22k8s_container%22%20AND%20"
+            f"jsonPayload.ray_submission_id%3D%22{self.job_id}%22;"
+            f"cursorTimestamp={now_str};"
+            f"startTime={start_str};"
+            f"endTime={now_str}?"
+            f"referrer=search&cloudshell=true&inv=1&invt=Abyi5w&"
+            f"project={KUBERAY_PROJECT_ID}"
+        )
+        
+        return {"logs_url": logs_url}
     
     def _terminate_job(self) -> None:
         # TODO: implement this
