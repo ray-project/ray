@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export LUBAN_SPECFIC_VERSION="2.3.0.18"
+export LUBAN_SPECFIC_VERSION="2.46.0.1"
 
 source .codebase/patch/_codebase_prepare.sh
 if [[ -n "${CUSTOM_PYTHON_VERSION:-}" ]]; then
