@@ -374,6 +374,7 @@ class AsyncioRouter:
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
         replica_scheduler: Optional[ReplicaScheduler] = None,
+        _request_router_initialized_event: Optional[asyncio.Event] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -397,11 +398,11 @@ class AsyncioRouter:
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[ReplicaScheduler] = replica_scheduler
 
-        if self._event_loop.is_running():
+        if _request_router_initialized_event:
+            self._request_router_initialized = _request_router_initialized_event
+        else:
             future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
             self._request_router_initialized = future.result()
-        else:
-            self._request_router_initialized = asyncio.Event()
 
         if self._request_router:
             self._request_router_initialized.set()
