@@ -1650,5 +1650,35 @@ def test_get_local_actor_state(ray_start_regular_shared):
     )
 
 
+def _all_actors_dead():
+    return len(list_actors(filters=[("state", "=", "ALIVE")])) == 0
+
+
+def test_kill_actor_immediately_after_creation(ray_start_regular_shared):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    ray.kill(a)
+    ray.kill(b)
+    wait_for_condition(_all_actors_dead)
+
+
+def test_remove_actor_immediately_after_creation(ray_start_regular_shared):
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    b = A.remote()
+
+    del a
+    del b
+    wait_for_condition(_all_actors_dead)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

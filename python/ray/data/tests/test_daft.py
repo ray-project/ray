@@ -1,6 +1,12 @@
 import sys
+from unittest.mock import patch
 
+import daft
+import numpy as np
+import pandas as pd
+import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 
@@ -13,11 +19,22 @@ def ray_start(request):
         ray.shutdown()
 
 
-def test_daft_round_trip(ray_start):
-    import daft
-    import numpy as np
-    import pandas as pd
+def test_from_daft_raises_error_on_pyarrow_14(ray_start):
+    # This test assumes that `from_daft` calls `get_pyarrow_version` to get the
+    # PyArrow version. We can't mock `__version__` on the module directly because
+    # `get_pyarrow_version` caches the version.
+    with patch(
+        "ray.data.read_api.get_pyarrow_version", return_value=parse_version("14.0.0")
+    ):
+        with pytest.raises(RuntimeError):
+            ray.data.from_daft(daft.from_pydict({"col": [0]}))
 
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) >= parse_version("14.0.0"),
+    reason="https://github.com/ray-project/ray/issues/53278",
+)
+def test_daft_round_trip(ray_start):
     data = {
         "int_col": list(range(128)),
         "str_col": [str(i) for i in range(128)],
