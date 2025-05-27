@@ -72,6 +72,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
 
         # === Eviction policy ===
         self._do_eviction = do_eviction
+        self._eviction_loop_running = False
         self._eviction_threshold_chars = eviction_threshold_chars
         # Default eviction_target_chars to eviction_threshold_chars if not specified
         self._eviction_target_chars = (
@@ -360,12 +361,13 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             self._tree_actor.remove_tenants.remote(removed_strings)
 
         # === Start tasks (if enabled and not already running) ===
-        if self._do_eviction:
+        if self._do_eviction and not self._eviction_loop_running:
             self._tree_actor.start_eviction_loop.remote(
                 self._eviction_threshold_chars,
                 self._eviction_target_chars,
                 self._eviction_interval_secs,
             )
+            self._eviction_loop_running = True
 
         if self._do_track_metrics and self._track_metrics_task is None:
             self._track_metrics_task = self._event_loop.create_task(

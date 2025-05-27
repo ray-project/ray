@@ -7,8 +7,10 @@ from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
-
-logger = logging.getLogger(__name__)
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class Node:
@@ -136,7 +138,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                logger.warning(f"[_insert_node_into_linked_list] Tenant '{tenant}' does not exist. No action taken.")
                 return
 
             # Skip if node is the root
@@ -161,7 +163,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                logger.warning(f"[_remove_node_from_linked_list] Tenant '{tenant}' does not exist. No action taken.")
                 return
 
             # Skip if node is the root
@@ -199,11 +201,11 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(f"Tenant '{tenant}' does not exist. No action taken.")
+                logger.warning(f"[_remove_tenant_single_node] Tenant '{tenant}' does not exist. No action taken.")
                 return 0
             if tenant not in node.tenant_to_last_access_time:
                 logger.warning(
-                    f"Tenant '{tenant}' does not have node '{node.text}'. No action taken."
+                    f"[_remove_tenant_single_node] Tenant '{tenant}' does not have node '{node.text}'. No action taken."
                 )
                 return 0
 
@@ -235,7 +237,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant in self.tenant_to_char_count:
-                    logger.warning(f"Tenant '{tenant}' already exists. Skipping.")
+                    logger.warning(f"[_add_tenants] Tenant '{tenant}' already exists. Skipping.")
                     continue
 
                 self.tenant_to_char_count[tenant] = 0
@@ -272,7 +274,7 @@ class PrefixTree:
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.warning(
-                    f"Tenant '{tenant}' does not exist. Use add_tenants() first."
+                    f"[_insert] Tenant '{tenant}' does not exist. Use add_tenants() first."
                 )
                 return
 
@@ -457,7 +459,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant not in self.tenant_to_char_count:
-                    logger.warning(f"Tenant '{tenant}' does not exist. Skipping.")
+                    logger.warning(f"[_remove_tenants] Tenant '{tenant}' does not exist. Skipping.")
                     chars_removed[tenant] = 0
                     continue
 
@@ -500,13 +502,13 @@ class PrefixTree:
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.warning(
-                    f"Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
+                    f"[_evict_tenant_by_lru] Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
                 )
                 return 0
 
             if self.tenant_to_char_count[tenant] < min_remove_size:
                 logger.warning(
-                    f"Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
+                    f"[_evict_tenant_by_lru] Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
                     f"{self.tenant_to_char_count[tenant]} characters. Will remove all available characters."
                 )
                 min_remove_size = self.tenant_to_char_count[tenant]
@@ -578,7 +580,7 @@ class PrefixTree:
                 )
                 return True
             else:
-                logger.warning("Eviction loop already running")
+                logger.warning("[_start_eviction_loop] Eviction loop already running")
                 return False
 
     async def _run_eviction_loop(
