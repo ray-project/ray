@@ -2245,16 +2245,24 @@ def test_groupby_random_sample(
 
     # Test sampling with fraction
     sampled_ds = ds.groupby("A").random_sample(frac=0.3, random_state=42)
-    # Should get roughly 30% of items (9 out of 30)
-    assert 7 <= sampled_ds.count() <= 11  # Allow some variance due to random sampling
+    # With 30 items and frac=0.3, we expect around 7-11 items due to randomness
+    expected_min, expected_max = 7, 11
+    sampled_count = sampled_ds.count()
+    print(f"Sampled count: {sampled_count}")
+    assert (
+        expected_min <= sampled_count <= expected_max
+    ), f"Expected {expected_min}-{expected_max} items, got {sampled_count}"
 
     # Test reproducibility with same seed
     sampled_ds2 = ds.groupby("A").random_sample(frac=0.3, random_state=42)
-    assert sampled_ds.take_all() == sampled_ds2.take_all()
+    out1 = sampled_ds.take_all()
+    out2 = sampled_ds2.take_all()
+    assert out1 == out2, f"Mismatch in reproducible sampling:\n{out1}\nvs\n{out2}"
 
     # Test different seed gives different results
     sampled_ds3 = ds.groupby("A").random_sample(frac=0.3, random_state=43)
-    assert sampled_ds.take_all() != sampled_ds3.take_all()
+    out3 = sampled_ds3.take_all()
+    assert out1 != out3, "Different seeds should produce different results"
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -2271,33 +2279,47 @@ def test_groupby_random_sample_edge_cases(
         return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
 
     # Test empty dataset
-    ds = ray.data.from_items([]).repartition(num_parts)
-    ds = _to_batch_format(ds)
-    sampled_ds = ds.groupby("A").random_sample(frac=0.5)
+    empty_ds = ray.data.from_items([]).repartition(num_parts)
+    empty_ds = _to_batch_format(empty_ds)
+    sampled_ds = empty_ds.groupby("A").random_sample(frac=0.5)
     assert sampled_ds.count() == 0
 
     # Test dataset with single group
-    ds = ray.data.from_items([{"A": 1, "B": i} for i in range(5)]).repartition(
-        num_parts
-    )
-    ds = _to_batch_format(ds)
-    sampled_ds = ds.groupby("A").random_sample(frac=0.5)
-    assert 2 <= sampled_ds.count() <= 3  # Allow some variance due to random sampling
+    single_group_ds = ray.data.from_items(
+        [{"A": 1, "B": i} for i in range(5)]
+    ).repartition(num_parts)
+    single_group_ds = _to_batch_format(single_group_ds)
+    sampled_ds = single_group_ds.groupby("A").random_sample(frac=0.5)
+    # With 5 items and frac=0.5, we expect around 2-3 items due to randomness
+    expected_min, expected_max = 2, 3
+    sampled_count = sampled_ds.count()
+    print(f"Single group sampled count: {sampled_count}")
+    assert (
+        expected_min <= sampled_count <= expected_max
+    ), f"Expected {expected_min}-{expected_max} items, got {sampled_count}"
 
     # Test sampling with frac=0.0 (should return 0 items)
-    sampled_ds = ds.groupby("A").random_sample(frac=0.0)
+    zero_frac_ds = ray.data.from_items(
+        [{"A": 1, "B": i} for i in range(5)]
+    ).repartition(num_parts)
+    zero_frac_ds = _to_batch_format(zero_frac_ds)
+    sampled_ds = zero_frac_ds.groupby("A").random_sample(frac=0.0)
     assert sampled_ds.count() == 0
 
     # Test sampling with frac=1.0 (should return all items)
-    sampled_ds = ds.groupby("A").random_sample(frac=1.0)
-    assert sampled_ds.count() == ds.count()
+    full_frac_ds = ray.data.from_items(
+        [{"A": 1, "B": i} for i in range(5)]
+    ).repartition(num_parts)
+    full_frac_ds = _to_batch_format(full_frac_ds)
+    sampled_ds = full_frac_ds.groupby("A").random_sample(frac=1.0)
+    assert sampled_ds.count() == full_frac_ds.count()
 
     # Test sampling with invalid parameters
     with pytest.raises(ValueError):
-        ds.groupby("A").random_sample(frac=-0.5)  # Invalid frac < 0
+        full_frac_ds.groupby("A").random_sample(frac=-0.5)  # Invalid frac < 0
 
     with pytest.raises(ValueError):
-        ds.groupby("A").random_sample(frac=1.5)  # Invalid frac > 1
+        full_frac_ds.groupby("A").random_sample(frac=1.5)  # Invalid frac > 1
 
 
 if __name__ == "__main__":
