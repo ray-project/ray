@@ -422,11 +422,12 @@ class ActorPoolMapOperator(MapOperator):
         """Updates resources usage."""
         for actor in self._actor_pool.get_running_actor_refs():
             actor_state = actor._get_local_state()
-            if actor_state is None:
+            if (
+                actor_state is None
+                or actor_state == gcs_pb2.ActorTableData.ActorState.DEAD
+            ):
                 # actor._get_local_state can return None if the state is Unknown
-                continue
-            elif actor_state == gcs_pb2.ActorTableData.ActorState.DEAD:
-                # The actor is dead, so nothing to do.
+                # If actor_state is None or dead, there is nothing to do.
                 continue
             elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
