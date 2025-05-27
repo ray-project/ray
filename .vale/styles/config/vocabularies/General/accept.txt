@@ -84,4 +84,9 @@ VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs
+[Rr]esample
+[Rr]esampling
+[Ss]pectogram(s)?
+[Dd]etokenizer?s?
+[Dd]etokenization
 VS Code
