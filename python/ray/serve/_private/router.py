@@ -397,8 +397,11 @@ class AsyncioRouter:
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[ReplicaScheduler] = replica_scheduler
 
-        future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
-        self._request_router_initialized = future.result()
+        if self._event_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
+            self._request_router_initialized = future.result()
+        else:
+            self._request_router_initialized = asyncio.Event()
 
         if self._request_router:
             self._request_router_initialized.set()
