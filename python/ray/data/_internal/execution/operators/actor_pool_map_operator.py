@@ -1,6 +1,7 @@
 import logging
 import time
 import uuid
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -309,24 +310,22 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
+        if self._metrics.num_inputs_received < self._actor_pool.min_size():
+            warnings.warn(
+                f"The minimum number of concurrent actors for '{self.name}' is set to "
+                f"{self._actor_pool.min_size()}, but the operator only received "
+                f"{self._metrics.num_inputs_received} input(s). This means that the "
+                f"operator can launch at most {self._metrics.num_inputs_received} "
+                f"task(s), and won't fully utilize the available concurrency. "
+                "You might be able to increase the number of concurrent tasks by "
+                "configuring `override_num_blocks` earlier in the pipeline."
+            )
+
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
-
-        # Warn if the user specified a batch or block size that prevents full
-        # parallelization across the actor pool. We only know this information after
-        # execution has completed.
-        min_workers = self._actor_pool.min_size()
-        if len(self._output_blocks_stats) < min_workers:
-            # The user created a stream that has too few blocks to begin with.
-            logger.warning(
-                "To ensure full parallelization across an actor pool of size "
-                f"{min_workers}, the Dataset should consist of at least "
-                f"{min_workers} distinct blocks. Consider increasing "
-                "the parallelism when creating the Dataset."
-            )
 
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
