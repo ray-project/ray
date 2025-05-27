@@ -432,5 +432,4 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
 # The default request router class to use if none is specified.
 DEFAULT_REQUEST_ROUTER_PATH = (
     "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
-    "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
 )
