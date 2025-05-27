@@ -12,15 +12,11 @@ class GPUObjectManager:
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
-        # A dictionary that maps from an object ref to a tuple of (actor handle, object ref).
-        # The key of the dictionary is an object ref that points to data consisting of tensors.
-        # These tensors are stored in the GPU object store of the actor referenced by the ActorHandle.
-        # The object ref in the tuple is the object ref of a list of tuples, each containing the shape
+        # A dictionary that maps from owned object ref to a metadata tuple: (actor handle, object ref).
+        # The actual data of the object is stored at GPU object store of the actor referenced by the ActorHandle.
+        # The object ref in the tuple contains a list of tuples, each containing the shape
         # and dtype of a tensor.
-        #
-        # Note: The coordinator process (i.e., the driver process in most cases), which is responsible
-        # for managing out-of-band tensor transfers between actors, uses `gpu_object_refs` to
-        # determine whether `ObjectRef`s are stored in an actor's GPU object store or not.
+        # The entries in this dictionary are 1:1 with ObjectRefs created by this process with a tensor_transport hint and that are currently in scope.
         self.gpu_object_refs: Dict[ObjectRef, Tuple[ActorHandle, ObjectRef]] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
