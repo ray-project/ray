@@ -97,7 +97,7 @@ Additionally, you can also port-forward 8000 port from the Head application Serv
 Keep in mind this Kubernetes Service comes up only after Ray Serve applications are running and ready. This process takes a few minutes after all the pods in the Ray Cluster are up and running.
 
 ```sh
-curl --location 'https://ray-serve.models.gocommotion.com/v1/chat/completions' --header 'Content-Type: application/json' 
+curl --location 'http://localhost:8000/v1/chat/completions' --header 'Content-Type: application/json' 
   --data '{
       "model": "qwen2.5-7b-instruct",
       "messages": [
