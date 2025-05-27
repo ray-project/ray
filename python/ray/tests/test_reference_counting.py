@@ -27,7 +27,7 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def check_refcounts_empty():
     """Verify that all tests leave the ref counter empty."""
     yield
@@ -88,7 +88,7 @@ def check_refcounts(expected, timeout=10):
                 time.sleep(0.1)
 
 
-def test_local_refcounts(one_cpu_100MiB_shared, check_refcounts_empty):
+def test_local_refcounts(one_cpu_100MiB_shared):
     obj_ref1 = ray.put(None)
     check_refcounts({obj_ref1: (1, 0)})
     obj_ref1_copy = copy.copy(obj_ref1)
@@ -99,7 +99,7 @@ def test_local_refcounts(one_cpu_100MiB_shared, check_refcounts_empty):
     check_refcounts({})
 
 
-def test_dependency_refcounts(one_cpu_100MiB_shared, check_refcounts_empty):
+def test_dependency_refcounts(one_cpu_100MiB_shared):
     @ray.remote
     def one_dep(dep, signal=None, fail=False):
         if signal is not None:
@@ -186,7 +186,7 @@ def test_dependency_refcounts(one_cpu_100MiB_shared, check_refcounts_empty):
     check_refcounts({})
 
 
-def test_basic_pinning(one_cpu_100MiB_shared, check_refcounts_empty):
+def test_basic_pinning(one_cpu_100MiB_shared):
     @ray.remote
     def f(array):
         return np.sum(array)
@@ -216,7 +216,7 @@ def test_basic_pinning(one_cpu_100MiB_shared, check_refcounts_empty):
     ray.get(actor.get_large_object.remote())
 
 
-def test_pending_task_dependency_pinning(one_cpu_100MiB_shared, check_refcounts_empty):
+def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
     @ray.remote
     def pending(input1, input2):
         return
@@ -242,7 +242,7 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared, check_refcounts_
 @pytest.mark.parametrize("use_ray_put", [False, True])
 @pytest.mark.parametrize("failure", [False, True])
 def test_basic_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty
+    one_cpu_100MiB_shared, use_ray_put, failure
 ):
     @ray.remote(max_retries=0)
     def pending(ref, dep):
@@ -280,7 +280,7 @@ def test_basic_serialized_reference(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
 def test_recursive_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty
+    one_cpu_100MiB_shared, use_ray_put, failure
 ):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -334,7 +334,7 @@ def test_recursive_serialized_reference(
 )
 @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
 def test_actor_holding_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty
+    one_cpu_100MiB_shared, use_ray_put, failure
 ):
     @ray.remote
     class GreedyActor(object):
@@ -392,7 +392,7 @@ def test_actor_holding_serialized_reference(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
 def test_worker_holding_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure, check_refcounts_empty
+    one_cpu_100MiB_shared, use_ray_put, failure
 ):
     @ray.remote(max_retries=1)
     def child(dep1, dep2):
@@ -434,7 +434,7 @@ def test_worker_holding_serialized_reference(
 
 
 # Test that an object containing object refs within it pins the inner IDs.
-def test_basic_nested_ids(one_cpu_100MiB_shared, check_refcounts_empty):
+def test_basic_nested_ids(one_cpu_100MiB_shared):
     inner_oid = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
 
@@ -453,7 +453,7 @@ def test_basic_nested_ids(one_cpu_100MiB_shared, check_refcounts_empty):
 # Test that a reference borrowed by an actor constructor is freed if the actor is
 # cancelled before being scheduled.
 def test_actor_constructor_borrow_cancellation(
-    one_cpu_100MiB_shared, check_refcounts_empty
+    one_cpu_100MiB_shared
 ):
     # Schedule the actor with a non-existent resource so it's guaranteed to never be
     # scheduled.
