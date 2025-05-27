@@ -478,6 +478,7 @@ py_test_module_list(
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
         "test_task_metrics_reconstruction.py",
+        "test_thirdparty_isolation.py",
         "test_top_level_api.py",
         "test_tqdm.py",
         "test_unhandled_error.py",

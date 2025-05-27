@@ -17,7 +17,10 @@ from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
-import colorama
+
+
+from ray._private import colorama
+
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401

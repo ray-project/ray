@@ -17,7 +17,7 @@ import uuid
 from pdb import Pdb
 from typing import Callable
 
-import setproctitle
+from ray._private import setproctitle
 
 import ray
 from ray._private import ray_constants
