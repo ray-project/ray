@@ -170,6 +170,8 @@ def plan_filter_op(
 
         transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
+            None,
+            None,
             transform_fn,
             batch_size=None,
             batch_format="pyarrow",
@@ -188,6 +190,8 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        udf_fn_constructor_args=op._fn_constructor_args,
+        udf_fn_constructor_kwargs=op._fn_constructor_kwargs,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
@@ -536,7 +540,7 @@ def _generate_transform_fn_for_flat_map(
             rows: Iterable[Row], _: TaskContext, *udf_fn_args, **udf_fn_kwargs
         ) -> Iterable[Row]:
             for row in rows:
-                for out_row in fn(row):
+                for out_row in fn(row, *udf_fn_args, **udf_fn_kwargs):
                     _validate_row_output(out_row)
                     yield out_row
 
@@ -550,7 +554,7 @@ def _generate_transform_fn_for_filter(
         rows: Iterable[Row], _: TaskContext, *udf_fn_args, **udf_fn_kwargs
     ) -> Iterable[Row]:
         for row in rows:
-            if fn(row):
+            if fn(row, *udf_fn_args, **udf_fn_kwargs):
                 yield row
 
     return transform_fn

@@ -25,7 +25,7 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
-    UdfArgAdapter,
+    UdfArgSerde,
 )
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
@@ -148,11 +148,9 @@ class ActorPoolMapOperator(MapOperator):
         # Cached actor class.
         self._cls = None
         # constructor args/kwargs to pass to udf
-        udf_fn_constructor_args = udf_fn_constructor_args or []
-        udf_fn_constructor_kwargs = udf_fn_constructor_kwargs or {}
-        self._udf_fn_constructor_args_and_kwargs = UdfArgAdapter.parse_args(
-            [udf_fn_constructor_args], [udf_fn_constructor_kwargs]
-        )
+        self._udf_fn_constructor_args = udf_fn_constructor_args or []
+        self._udf_fn_constructor_kwargs = udf_fn_constructor_kwargs or {}
+
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
 
@@ -173,6 +171,11 @@ class ActorPoolMapOperator(MapOperator):
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
+
+        # Combine args and kwargs
+        self._udf_fn_constructor_args_and_kwargs = UdfArgSerde.combine_args(
+            [self._udf_fn_constructor_args], [self._udf_fn_constructor_kwargs]
+        )
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
@@ -477,7 +480,7 @@ class _MapWorker:
             udf_fn_constructor_args,
             udf_fn_constructor_kwargs,
             _,
-        ) = UdfArgAdapter.resolve_args(udf_contructor_args_and_kwargs, 1)
+        ) = UdfArgSerde.split_args(udf_contructor_args_and_kwargs, 1)
         assert len(udf_fn_constructor_args) == 1, udf_fn_constructor_args
         assert len(udf_fn_constructor_kwargs) == 1, udf_fn_constructor_kwargs
         self._map_transformer.init(

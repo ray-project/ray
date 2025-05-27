@@ -158,12 +158,15 @@ class MapTransformer:
             Used for the actor-based map operator.
         """
         self.set_transform_fns(transform_fns)
-        self._serialized_udf_fn_args = self.extract_args_from_transform_fns()
+        self._serialized_udf_fn_args = None
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option = None
         self._udf_time = 0
 
     def get_serialized_udf_fn_args(self) -> Dict[str, Any]:
+        # Cannot cache in init due to operator fusion
+        if self._serialized_udf_fn_args is None:
+            self._serialized_udf_fn_args = self.extract_args_from_transform_fns()
         return self._serialized_udf_fn_args
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
@@ -190,7 +193,7 @@ class MapTransformer:
         for transform_fn in self._transform_fns:
             udf_fn_args_list.append(transform_fn.udf_fn_args)
             udf_fn_kwargs_list.append(transform_fn.udf_fn_kwargs)
-        return UdfArgAdapter.parse_args(udf_fn_args_list, udf_fn_kwargs_list)
+        return UdfArgSerde.combine_args(udf_fn_args_list, udf_fn_kwargs_list)
 
     def get_transform_fns(self) -> List[MapTransformFn]:
         """Get the transform functions."""
@@ -299,9 +302,12 @@ class MapTransformer:
         self_init_fn = self._init_fn
         other_init_fn = other._init_fn
 
-        def fused_init_fn():
+        def fused_init_fn(*udf_fn_args, **udf_fn_kwargs):
+            # Currently, there are no fusion rules that involve a TaskPoolMapOperator
+            # in the upstream op(ie, self_init_fn). Therefore, it's safe to assume
+            # none exist for now
             self_init_fn()
-            other_init_fn()
+            other_init_fn(*udf_fn_args, **udf_fn_kwargs)
 
         fused_transform_fns = self._transform_fns + other._transform_fns
         transformer = MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
@@ -328,7 +334,7 @@ def create_map_transformer_from_block_fn(
     )
 
 
-class UdfArgAdapter:
+class UdfArgSerde:
     """FIXME"""
 
     KEY_NAME_POSITIONAL_PREFIX = "map_task_udf_arg_pos"
@@ -336,7 +342,7 @@ class UdfArgAdapter:
     DELIMITTER = "#"
 
     @classmethod
-    def parse_args(
+    def combine_args(
         cls,
         udf_fn_args_list: List[Iterable[Any]],
         udf_fn_kwargs_list: List[Dict[str, Any]],
@@ -361,11 +367,11 @@ class UdfArgAdapter:
         return serialized_udf_args
 
     @classmethod
-    def resolve_args(
+    def split_args(
         cls, arg_and_kwargs: Dict[str, Any], num_functions: int
     ) -> Tuple[List[Iterable[Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """FIXME"""
-        # print(f"RESOLVING ... {arg_and_kwargs}")
+        # print(f"RESOLVING ... {arg_and_kwargs}, num_functions={num_functions}")
         # 1) Partitions keys into args and kwargs.
         arg_keys = []
         kwarg_keys = []

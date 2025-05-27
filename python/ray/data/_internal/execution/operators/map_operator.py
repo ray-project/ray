@@ -45,7 +45,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
-    UdfArgAdapter,
+    UdfArgSerde,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
@@ -555,7 +555,7 @@ def _map_task(
     DataContext._set_current(data_context)
     # print(f"BEFORE MAP TASK: {kwargs}")
     num_functions = len(map_transformer._transform_fns)
-    udf_fn_args_list, udf_fn_kwargs_list, kwargs = UdfArgAdapter.resolve_args(
+    udf_fn_args_list, udf_fn_kwargs_list, kwargs = UdfArgSerde.split_args(
         kwargs, num_functions
     )
     # print(f'AFTER MAP TASK: {udf_fn_args_list} {udf_fn_kwargs_list} {kwargs}')
