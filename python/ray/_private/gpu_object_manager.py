@@ -1,9 +1,15 @@
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from ray.actor import ActorHandle
 from ray._raylet import ObjectRef
+from collections import namedtuple
 
 if TYPE_CHECKING:
     import torch
+
+# GPUObjectMeta is a named tuple containing the source actor and tensor metadata.
+# The tensor metadata is a list of tuples, each containing the shape and dtype
+# of a tensor in the GPU object store.
+GPUObjectMeta = namedtuple("GPUObjectMeta", ["src_actor", "tensor_meta"])
 
 
 class GPUObjectManager:
@@ -17,7 +23,7 @@ class GPUObjectManager:
         # The object ref in the tuple contains a list of tuples, each containing the shape
         # and dtype of a tensor.
         # The entries in this dictionary are 1:1 with ObjectRefs created by this process with a tensor_transport hint and that are currently in scope.
-        self.gpu_object_refs: Dict[ObjectRef, Tuple[ActorHandle, ObjectRef]] = {}
+        self.gpu_object_refs: Dict[ObjectRef, GPUObjectMeta] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -54,14 +60,14 @@ class GPUObjectManager:
         # adds the `obj_ref` to the `gpu_object_refs` dictionary so that the coordinator
         # process can determine whether the `obj_ref` is a GPU object reference or not.
         tensor_meta = self._get_tensor_meta(src_actor, obj_ref.hex())
-        self.gpu_object_refs[obj_ref] = (src_actor, tensor_meta)
+        self.gpu_object_refs[obj_ref] = GPUObjectMeta(
+            src_actor=src_actor, tensor_meta=tensor_meta
+        )
 
     def remove_gpu_object_ref(self, obj_ref: ObjectRef):
         del self.gpu_object_refs[obj_ref]
 
-    def _get_gpu_object_ref(
-        self, obj_ref: ObjectRef
-    ) -> Optional[Tuple[ActorHandle, ObjectRef]]:
+    def _get_gpu_object_ref(self, obj_ref: ObjectRef) -> Optional[GPUObjectMeta]:
         return self.gpu_object_refs[obj_ref]
 
     def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
@@ -153,9 +159,10 @@ class GPUObjectManager:
 
             if not self._is_gpu_object_ref(arg):
                 continue
-            tensor_meta = self._get_gpu_object_ref(arg)
+            gpu_object_meta = self._get_gpu_object_ref(arg)
 
-            src_actor, tensor_meta = tensor_meta
+            src_actor = gpu_object_meta.src_actor
+            tensor_meta = gpu_object_meta.tensor_meta
             if not actor_id_to_rank:
                 # TODO(kevin85421): Support multiple communicators.
                 if len(ctx.communicators) != 1:
