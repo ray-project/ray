@@ -942,7 +942,7 @@ class SamplingParams(BaseModelExtended):
     @classmethod
     def validate_stopping_sequences(cls, values):
         if not values:
-            return []
+            return values
 
         unique_val = sorted(set(values))
 
@@ -957,8 +957,8 @@ class SamplingParams(BaseModelExtended):
     @classmethod
     def validate_stop_tokens(cls, values):
         if not values:
-            return []
-        return sorted(set(values))
+            return values
+        return list(sorted(set(values)))
 
     @classmethod
     def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:

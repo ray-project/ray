@@ -84,8 +84,11 @@ class TestSamplingParams:
         )
 
         params = SamplingParams.from_prompt(prompt)
-        assert params.stop == sorted(set(stop or []))
-        assert params.stop_tokens == sorted(set(stop_tokens or []))
+
+        assert params.stop == (sorted(stop) if stop is not None else None)
+        assert params.stop_tokens == (
+            sorted(stop_tokens) if stop_tokens is not None else None
+        )
 
 
 if __name__ == "__main__":
