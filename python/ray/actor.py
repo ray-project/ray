@@ -129,6 +129,34 @@ class ActorMethod:
 
     Note: This class only keeps a weak ref to the actor, unless it has been
     passed to a remote function. This avoids delays in GC of the actor.
+
+    Attributes:
+        _actor_ref: A weakref handle to the actor.
+        _method_name: The name of the actor method.
+        _num_returns: The default number of return values that the method
+            invocation should return. If None is given, it uses
+            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
+            and "streaming" for a generator task (when `is_generator` is True).
+        _max_task_retries: Number of retries on method failure.
+        _retry_exceptions: Boolean of whether you want to retry all user-raised
+            exceptions, or a list of allowlist exceptions to retry.
+        _is_generator: True if a given method is a Python generator.
+        _generator_backpressure_num_objects: Generator-only config.
+            If a number of unconsumed objects reach this threshold,
+            a actor task stop pausing.
+        enable_task_events: True if task events is enabled, i.e., task events from
+            the actor should be reported. Defaults to True.
+        _signature: The signature of the actor method. It is None only when cross
+            language feature is used.
+        _decorator: An optional decorator that should be applied to the actor
+            method invocation (as opposed to the actor method execution) before
+            invoking the method. The decorator must return a function that
+            takes in two arguments ("args" and "kwargs"). In most cases, it
+            should call the function that was passed into the decorator and
+            return the resulting ObjectRefs. For an example, see
+            "test_decorated_method" in "python/ray/tests/test_actor.py".
+        _tensor_transport: The tensor transport protocol to use for the actor method.
+            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
     """
 
     def __init__(
