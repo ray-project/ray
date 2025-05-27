@@ -2,7 +2,7 @@
 
 This guide is the basic setting about how to build a custom image with uv as a package manager. For best practices, please reference https://github.com/astral-sh/uv-docker-example.
 
-The following example uses `kind` and `helm` to demostrate deploying to kubernetes.
+The following example uses `kind` and `helm` to demonstrate deploying to kubernetes.
 
 ## Prepare custom image
 Create `pyproject.toml`:
@@ -90,6 +90,66 @@ Prepare RayCluster yaml file `ray-cluster.uv.yaml` with the following steps:
 - replace the image under `headGroupSpec` and `workerGroupSpecs` with `image: ray-uv:demo` which is the image previously built.
 - change `rayVersion` to align with the version in the custom image.
 - (optional) add env `RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook` if you'd like to use `uv run --with` without dependencies pre-built on the image. reference [uv + Ray: Pain-Free Python Dependencies in Clusters](https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters) for the more detail.
+
+<details>
+  <summary>example: `ray-cluster.uv.yaml`</summary>
+
+```yaml
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-uv
+spec:
+  rayVersion: '2.46.0' # should match the Ray version in the image of the containers
+  # Ray head Pod template
+  headGroupSpec:
+    rayStartParams: {}
+    # Pod template
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: ray-uv:demo
+#          env:
+#            - name: RAY_RUNTIME_ENV_HOOK
+#              value: ray._private.runtime_env.uv_runtime_env_hook.hook
+          resources:
+            limits:
+              cpu: 1
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 2Gi
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+          - containerPort: 8265 # Ray dashboard
+            name: dashboard
+          - containerPort: 10001
+            name: client
+  workerGroupSpecs:
+  - replicas: 1
+    minReplicas: 0
+    maxReplicas: 10
+    groupName: small-group
+    rayStartParams: {}
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: ray-uv:demo
+#          env:
+#            - name: RAY_RUNTIME_ENV_HOOK
+#              value: ray._private.runtime_env.uv_runtime_env_hook.hook
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1G"
+            requests:
+              cpu: "500m"
+              memory: "1G"
+```
+</details>
 
 Apply RayCluster yaml modified from the previous step:
 ```bash
