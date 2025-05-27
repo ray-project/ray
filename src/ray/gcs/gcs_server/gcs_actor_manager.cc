@@ -436,18 +436,35 @@ void GcsActorManager::HandleRestartActor(rpc::RestartActorRequest request,
   };
   auto pending_restart_iter = actor_to_restart_callbacks_.find(actor_id);
   if (pending_restart_iter != actor_to_restart_callbacks_.end()) {
+    // This happens when the RestartActor rpc is received and being handled
+    // and then the connection is lost and the caller resends the same request.
     pending_restart_iter->second.emplace_back(std::move(success_callback));
     return;
   }
 
   auto actor = iter->second;
-  if (request.num_restarts() <= actor->GetActorTableData().num_restarts()) {
-    // This is a stale message.
+  if (request.num_restarts_due_to_lineage_reconstruction() <=
+      actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()) {
+    // This is a stale message. This can happen when the RestartActor rpc is replied
+    // but the reply is lost, and the caller resends the same request.
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Ignore stale actor restart request. Current "
+           "num_restarts_due_to_lineage_reconstruction: "
+        << actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()
+        << ", target num_restarts_due_to_lineage_reconstruction: "
+        << request.num_restarts_due_to_lineage_reconstruction();
     success_callback(actor);
     return;
   }
-  RAY_CHECK_EQ(request.num_restarts(), actor->GetActorTableData().num_restarts() + 1);
-  RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  RAY_CHECK_EQ(
+      request.num_restarts_due_to_lineage_reconstruction(),
+      actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction() + 1)
+      << "Current num_restarts_due_to_lineage_reconstruction: "
+      << actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()
+      << ", target num_restarts_due_to_lineage_reconstruction: "
+      << request.num_restarts_due_to_lineage_reconstruction();
+  RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::DEAD)
+      << rpc::ActorTableData::ActorState_Name(actor->GetState());
   RAY_CHECK(IsActorRestartable(actor->GetActorTableData()));
 
   actor_to_restart_callbacks_[actor_id].emplace_back(std::move(success_callback));

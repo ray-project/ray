@@ -152,7 +152,7 @@ class MockActorCreator : public ActorCreatorInterface {
   }
 
   Status AsyncRestartActor(const ActorID &actor_id,
-                           uint64_t num_restarts,
+                           uint64_t num_restarts_due_to_lineage_reconstructions,
                            gcs::StatusCallback callback) override {
     return Status::OK();
   }

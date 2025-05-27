@@ -42,7 +42,7 @@ class ActorCreatorInterface {
                                     gcs::StatusCallback callback) = 0;
 
   virtual Status AsyncRestartActor(const ActorID &actor_id,
-                                   uint64_t num_restarts,
+                                   uint64_t num_restarts_due_to_lineage_reconstructions,
                                    gcs::StatusCallback callback) = 0;
 
   virtual Status AsyncReportActorOutOfScope(
@@ -109,9 +109,10 @@ class DefaultActorCreator : public ActorCreatorInterface {
   }
 
   Status AsyncRestartActor(const ActorID &actor_id,
-                           uint64_t num_restarts,
+                           uint64_t num_restarts_due_to_lineage_reconstructions,
                            gcs::StatusCallback callback) override {
-    return gcs_client_->Actors().AsyncRestartActor(actor_id, num_restarts, callback);
+    return gcs_client_->Actors().AsyncRestartActor(
+        actor_id, num_restarts_due_to_lineage_reconstructions, callback);
   }
 
   Status AsyncReportActorOutOfScope(const ActorID &actor_id,

@@ -1,5 +1,7 @@
 import gc
+import os
 import sys
+import signal
 
 import pytest
 
@@ -9,13 +11,21 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import common_pb2
 
 
-def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_cluster):
+def test_actor_reconstruction_triggered_by_lineage_reconstruction(
+    monkeypatch, ray_start_cluster
+):
     # Test the sequence of events:
     # actor goes out of scope and killed
     # -> lineage reconstruction triggered by object lost
     # -> actor is restarted
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
+    # This test also injects network failure to make sure relevant rpcs are retried.
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "ray::rpc::ActorInfoGcsService.grpc_client.RestartActor=5:25:25,"
+        "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=5:25:25",
+    )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
@@ -28,10 +38,16 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
         def ping(self):
             return [1] * 1024 * 1024
 
+        def pid(self):
+            return os.getpid()
+
     actor = Actor.remote()
     actor_id = actor._actor_id
 
     obj1 = actor.ping.remote()
+    os.kill(ray.get(actor.pid.remote()), signal.SIGKILL)
+
+    # obj2 should be ready after actor is restarted
     obj2 = actor.ping.remote()
 
     # Make the actor out of scope
