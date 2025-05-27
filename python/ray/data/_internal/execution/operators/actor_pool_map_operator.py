@@ -427,7 +427,7 @@ class ActorPoolMapOperator(MapOperator):
                 # If actor_state is None or dead, there is nothing to do.
                 if actor_state == gcs_pb2.ActorTableData.ActorState.DEAD:
                     # Indefinite task retries have been disabled.
-                    assert self._ray_remote_args["max_task_retries"] != -1
+                    assert self._ray_remote_args["max_restarts"] != -1
                 continue
             elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
