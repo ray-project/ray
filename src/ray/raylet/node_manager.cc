@@ -184,7 +184,6 @@ NodeManager::NodeManager(
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
-      node_manager_service_(io_service, *this),
       local_object_manager_(
           self_node_id_,
           config.node_manager_address,
@@ -217,7 +216,6 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      ray_syncer_service_(ray_syncer_),
       worker_killing_policy_(
           CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
@@ -309,8 +307,10 @@ NodeManager::NodeManager(
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name));
   // Run the node manager rpc server.
-  node_manager_server_.RegisterService(node_manager_service_, false);
-  node_manager_server_.RegisterService(ray_syncer_service_);
+  node_manager_server_.RegisterService(
+      std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
+  node_manager_server_.RegisterService(
+      std::make_unique<syncer::RaySyncerService>(ray_syncer_));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.

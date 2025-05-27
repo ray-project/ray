@@ -1872,9 +1872,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Common rpc service for all worker modules.
-  rpc::CoreWorkerGrpcService grpc_service_;
-
   /// Used to notify the task receiver when the arguments of a queued
   /// actor task are ready.
   std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
