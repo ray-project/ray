@@ -2,7 +2,7 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any, Optional, Tuple, List, TYPE_CHECKING
+from typing import Any, Optional, Tuple, List, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     import torch
@@ -13,7 +13,6 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
-from ray._private.custom_types import TypeTensorTransport, TENSOR_TRANSPORT
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
@@ -582,38 +581,24 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(
+    def serialize_and_store_gpu_objects(
         self,
-        value,
-        obj_id: Optional[bytes] = None,
-        tensor_transport: TypeTensorTransport = "OBJECT_STORE",
-    ):
-        """Serialize an object.
+        value: Any,
+        obj_id: bytes,
+    ) -> MessagePackSerializedObject:
+        """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
 
         Args:
             value: The value to serialize.
-            obj_id: The object ID of the value. If `tensor_transport` is not `OBJECT_STORE`,
-                `obj_id` is required and the tensors in `value` will be stored in the in-actor object store
-                with the key `obj_id`.
-            tensor_transport: The tensor transport to use. The valid values are `OBJECT_STORE` (default),
-                `NCCL`, and `GLOO`.
+            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
+                will be stored in the GPU object store with the key `obj_id`.
+
+        Returns:
+            Serialized value.
         """
-        if isinstance(value, bytes):
-            # If the object is a byte array, skip serializing it and
-            # use a special metadata to indicate it's raw binary. So
-            # that this object can also be read by Java.
-            return RawSerializedObject(value)
-
-        assert (
-            tensor_transport in TENSOR_TRANSPORT
-        ), f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
-        if tensor_transport == "OBJECT_STORE":
-            return self._serialize_to_msgpack(value)
-
-        # Retrieve tensors from `value` and store them in the `in_actor_object_store`.
         assert (
             obj_id is not None
-        ), "obj_id is the key to retrieve corresponding tensors from the in-actor object store, and it should not be None."
+        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
         if tensors:
             obj_id = obj_id.decode("ascii")
@@ -622,6 +607,25 @@ class SerializationContext:
             gpu_object_manager.add_gpu_object(obj_id, tensors)
 
         return serialized_val
+
+    def serialize(
+        self, value: Any
+    ) -> Union[RawSerializedObject, MessagePackSerializedObject]:
+        """Serialize an object.
+
+        Args:
+            value: The value to serialize.
+
+        Returns:
+            Serialized value.
+        """
+        if isinstance(value, bytes):
+            # If the object is a byte array, skip serializing it and
+            # use a special metadata to indicate it's raw binary. So
+            # that this object can also be read by Java.
+            return RawSerializedObject(value)
+        else:
+            return self._serialize_to_msgpack(value)
 
     def _serialize_and_retrieve_tensors(
         self, value: Any

@@ -4387,7 +4387,15 @@ cdef class CoreWorker:
 
             context = worker.get_serialization_context()
 
-            serialized_object = context.serialize(output, return_id.Hex(), tensor_transport)
+            # TODO(kevin85421): We should consider unifying both serialization logic in the future
+            # when GPU objects are more stable. We currently separate the logic to ensure
+            # GPU object-related logic does not affect the normal object serialization logic.
+            if tensor_transport != "OBJECT_STORE":
+                # `output` contains tensors. We need to retrieve these tensors from `output`
+                # and store them in the GPUObjectManager.
+                serialized_object = context.serialize_and_store_gpu_objects(output, return_id.Hex())
+            else:
+                serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:
