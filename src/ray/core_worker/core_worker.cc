@@ -2143,10 +2143,16 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
         request.add_object_ids(obj_id.Binary());
       }
       request.set_local_only(local_only);
-      conn->DeleteObjects(request,
-                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
-                            RAY_LOG(INFO) << "Completed object delete request " << status;
-                          });
+      conn->DeleteObjects(
+          request,
+          [object_ids](const Status &status, const rpc::DeleteObjectsReply &reply) {
+            if (status.ok()) {
+              RAY_LOG(INFO) << "Completed object delete request " << status;
+            } else {
+              RAY_LOG(ERROR) << "Failed to delete objects, status: " << status
+                             << ", object IDs: " << debug_string(object_ids);
+            }
+          });
     }
   }
   // Also try to delete all objects locally.
