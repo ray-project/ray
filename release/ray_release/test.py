@@ -9,6 +9,7 @@ import time
 from itertools import chain
 from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import aioboto3
 import boto3
@@ -641,6 +642,7 @@ class Test(dict):
         refresh: bool = False,
         aws_bucket: str = None,
         use_async: bool = False,
+        newer_than_days: int = 100,
     ) -> List[TestResult]:
         """
         Get test result from test object, or s3
@@ -662,6 +664,12 @@ class Test(dict):
             key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
+        files = [
+            file
+            for file in files
+            if int(file["LastModified"].timestamp())
+            > (datetime.now() - timedelta(days=newer_than_days)).timestamp()
+        ]
         if use_async:
             self.test_results = _asyncio_thread_pool.submit(
                 lambda: asyncio.run(
