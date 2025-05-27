@@ -447,7 +447,7 @@ class Worker:
         self.actors = {}
         # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
         # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
-        self.gpu_object_manager = GPUObjectManager()
+        self._gpu_object_manager = GPUObjectManager()
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -497,8 +497,9 @@ class Worker:
         # It should be set to True in `connect` and False in `disconnect`.
         self._is_connected: bool = False
 
-    def get_gpu_object_manager(self) -> GPUObjectManager:
-        return self.gpu_object_manager
+    @property
+    def gpu_object_manager(self) -> GPUObjectManager:
+        return self._gpu_object_manager
 
     @property
     def connected(self):

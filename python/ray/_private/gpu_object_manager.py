@@ -39,7 +39,7 @@ class GPUObjectManager:
         def __ray_get_tensor_meta__(self, obj_id: str):
             from ray._private.worker import global_worker
 
-            gpu_object_manager = global_worker.get_gpu_object_manager()
+            gpu_object_manager = global_worker.gpu_object_manager
             assert gpu_object_manager.has_gpu_object(
                 obj_id
             ), f"obj_id={obj_id} not found in GPU object store"
@@ -74,7 +74,7 @@ class GPUObjectManager:
             import torch.distributed as dist
             from ray._private.worker import global_worker
 
-            gpu_object_manager = global_worker.get_gpu_object_manager()
+            gpu_object_manager = global_worker.gpu_object_manager
             assert gpu_object_manager.has_gpu_object(
                 obj_id
             ), f"obj_id={obj_id} not found in GPU object store"
@@ -107,7 +107,7 @@ class GPUObjectManager:
             import torch.distributed as dist
             from ray._private.worker import global_worker
 
-            gpu_object_manager = global_worker.get_gpu_object_manager()
+            gpu_object_manager = global_worker.gpu_object_manager
             tensors = []
             for meta in tensor_meta:
                 shape, dtype = meta

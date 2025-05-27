@@ -278,7 +278,7 @@ class SerializationContext:
         ctx = ChannelContext.get_current().serialization_context
         worker = ray._private.worker.global_worker
 
-        gpu_object_manager = worker.get_gpu_object_manager()
+        gpu_object_manager = worker.gpu_object_manager
         enable_gpu_objects = gpu_object_manager.has_gpu_object(object_id)
         if enable_gpu_objects:
             tensors = gpu_object_manager.get_gpu_object(object_id)
@@ -603,7 +603,7 @@ class SerializationContext:
         if tensors:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.get_gpu_object_manager()
+            gpu_object_manager = worker.gpu_object_manager
             gpu_object_manager.add_gpu_object(obj_id, tensors)
 
         return serialized_val
