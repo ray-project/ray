@@ -18,7 +18,7 @@ python-snappy
 Pillow==9.5.0
 uvicorn==0.22.0
 requests==2.26.0
-starlette==0.26.1
+starlette==0.37.2
 aiorwlock==1.3.0
 pydantic==2.9.2
 trustme==0.9.0
