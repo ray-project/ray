@@ -1,3 +1,4 @@
+(kuberay-uv)=
 # Run RayCluster with custom image using uv.
 
 This guide is the basic setting about how to build a custom image with uv as a package manager. For best practices, please reference https://github.com/astral-sh/uv-docker-example.
