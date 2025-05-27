@@ -1,5 +1,5 @@
 import logging
-from typing import Set, Callable, Optional
+from typing import Callable, Optional, Set
 
 default_logger = logging.getLogger(__name__)
 
