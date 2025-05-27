@@ -477,6 +477,25 @@
       python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
+- name: batch_inference_mock_image_pipeline
+  frequency: manual
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/batch_inference_mock_image_pipeline.py
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
+
 ##############
 # TPCH Queries
 ##############

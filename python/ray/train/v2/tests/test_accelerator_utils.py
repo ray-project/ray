@@ -16,6 +16,7 @@ from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerG
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
+from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 
@@ -116,7 +117,7 @@ def test_accelerator_setup_callback(mock_gpu_cluster):
 
     worker_group_context = WorkerGroupContext(
         run_attempt_id="attempt_1",
-        train_fn=lambda: None,
+        train_fn_ref=ObjectRefWrapper(lambda: None),
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config._resources_per_worker_not_none,
     )

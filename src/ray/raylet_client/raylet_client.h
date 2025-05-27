@@ -211,7 +211,8 @@ class MutableObjectReaderInterface {
   /// node.
   /// \param metadata_size The size of the metadata to write to the mutable object on this
   /// local node.
-  /// \param data The data and metadata to write. This is formatted as (data | metadata).
+  /// \param data The data to write to the mutable object on this local node.
+  /// \param metadata The metadata to write to the mutable object on this local node.
   /// \param callback This callback is executed to send a reply to the remote node once
   /// the mutable object is transferred.
   virtual void PushMutableObject(
@@ -219,6 +220,7 @@ class MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
 };
 
@@ -448,6 +450,7 @@ class RayletClient : public RayletClientInterface {
                          uint64_t data_size,
                          uint64_t metadata_size,
                          void *data,
+                         void *metadata,
                          const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
                              &callback) override;
 

@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
-from ray.util.annotations import PublicAPI
 
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2.api.context import TrainContext
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator

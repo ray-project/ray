@@ -132,6 +132,7 @@ class SubprocessModuleHandle:
             name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
+        child_conn.close()
 
     def wait_for_module_ready(self):
         """

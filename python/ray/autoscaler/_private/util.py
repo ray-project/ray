@@ -940,11 +940,11 @@ Pending:
 
 Resources
 {separator}
-{"Total " if verbose else ""}Usage:
+Total Usage:
 {usage_report}
-{"Total " if verbose else ""}Constraints:
+Total Constraints:
 {constraints_report}
-{"Total " if verbose else ""}Demands:
+Total Demands:
 {demand_report}"""
 
     if verbose:

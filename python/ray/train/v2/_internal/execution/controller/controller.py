@@ -3,7 +3,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 import pandas as pd
 
@@ -60,7 +60,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2._internal.logging.logging import configure_controller_logger
-from ray.train.v2._internal.util import time_monotonic
+from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
@@ -103,7 +103,7 @@ class TrainController:
 
     def __init__(
         self,
-        train_fn: Callable[[Dict[str, Any]], None],
+        train_fn_ref: ObjectRefWrapper[Callable[[], None]],
         train_run_context: TrainRunContext,
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
@@ -111,7 +111,7 @@ class TrainController:
     ):
         self._train_run_context = train_run_context
         configure_controller_logger(self._train_run_context)
-        self._train_fn = train_fn
+        self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
@@ -270,7 +270,7 @@ class TrainController:
 
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
-            train_fn=self._train_fn,
+            train_fn_ref=self._train_fn_ref,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,

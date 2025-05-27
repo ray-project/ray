@@ -1,7 +1,7 @@
 import importlib
+import sys
 
 import pytest
-import sys
 
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
@@ -58,9 +58,9 @@ def test_trainer_restore():
 def test_serialized_imports(ray_start_4_cpus):
     """Check that captured imports are deserialized properly without circular imports."""
 
+    from ray.train.lightgbm import LightGBMTrainer
     from ray.train.torch import TorchTrainer
     from ray.train.xgboost import XGBoostTrainer
-    from ray.train.lightgbm import LightGBMTrainer
 
     if sys.version_info < (3, 12):
         from ray.train.tensorflow import TensorflowTrainer

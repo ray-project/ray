@@ -73,9 +73,12 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
     assert ds.input_files() == [csv_path]
 
 
-def test_flaky_datasource(ray_start_regular_shared):
-
-    from ray.data._internal.datasource.csv_datasource import CSVDatasource
+def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
+    """Test that flaky read tasks are retried for both the
+    default set of retried errors and a custom set of retried errors."""
+    csv_path = os.path.join(tmp_path, "file.csv")
+    with open(csv_path, "w") as file:
+        file.write("spam")
 
     class Counter:
         def __init__(self):
@@ -85,23 +88,70 @@ def test_flaky_datasource(ray_start_regular_shared):
             self.value += 1
             return self.value
 
-    class FlakyCSVDatasource(CSVDatasource):
-        def __init__(self, paths, **csv_datasource_kwargs):
-            super().__init__(paths, **csv_datasource_kwargs)
+    default_retried_error = ray.data.context.DEFAULT_RETRIED_IO_ERRORS[0]
+    custom_retried_error = "AWS Error ACCESS_DENIED"
+
+    class FlakyFileBasedDatasource(MockFileBasedDatasource):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
             CounterActor = ray.remote(Counter)
+            # This actor ref is shared across all read tasks.
             self.counter = CounterActor.remote()
 
         def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise RuntimeError("AWS Error INTERNAL_FAILURE")
+            count = ray.get(self.counter.increment.remote())
+            if count == 1:
+                raise RuntimeError(default_retried_error)
+            elif count == 2:
+                raise RuntimeError(custom_retried_error)
             else:
-                for block in CSVDatasource._read_stream(self, f, path):
-                    yield block
+                yield from super()._read_stream(f, path)
 
-    datasource = FlakyCSVDatasource(["example://iris.csv"])
+    ray.data.DataContext.get_current().retried_io_errors.append(custom_retried_error)
+
+    datasource = FlakyFileBasedDatasource([csv_path])
     ds = ray.data.read_datasource(datasource)
-    assert len(ds.take()) == 20
+    assert len(ds.take()) == 1
+
+
+@pytest.mark.parametrize(
+    "fs",
+    [pyarrow.fs.S3FileSystem(), pyarrow.fs.LocalFileSystem()],
+)
+@pytest.mark.parametrize(
+    "wrap_with_retries",
+    [True, False],
+)
+def test_s3_filesystem_serialization(fs, wrap_with_retries):
+    """Tests that the S3FileSystem can be serialized and deserialized with
+    the serialization workaround (_S3FileSystemWrapper).
+
+    Also checks that filesystems wrapped with RetryingPyFileSystem are
+    properly unwrapped.
+    """
+    from ray.data.datasource.file_based_datasource import (
+        _wrap_s3_serialization_workaround,
+        _unwrap_s3_serialization_workaround,
+    )
+    from ray.data._internal.util import RetryingPyFileSystem
+    import ray.cloudpickle as ray_pickle
+
+    orig_fs = fs
+
+    if wrap_with_retries:
+        fs = RetryingPyFileSystem.wrap(fs, retryable_errors=["DUMMY ERROR"])
+
+    wrapped_fs = _wrap_s3_serialization_workaround(fs)
+    unpickled_fs = ray_pickle.loads(ray_pickle.dumps(wrapped_fs))
+    unwrapped_fs = _unwrap_s3_serialization_workaround(unpickled_fs)
+
+    if wrap_with_retries:
+        assert isinstance(unwrapped_fs, RetryingPyFileSystem)
+        assert isinstance(unwrapped_fs.unwrap(), orig_fs.__class__)
+        assert unwrapped_fs.retryable_errors == ["DUMMY ERROR"]
+    else:
+        assert isinstance(unwrapped_fs, orig_fs.__class__)
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])

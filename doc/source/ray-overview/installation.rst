@@ -5,7 +5,7 @@ Installing Ray
 
 .. raw:: html
 
-    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
+    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
       <img src="../_static/img/run-on-anyscale.svg" alt="Run Quickstart on Anyscale" />
       <br/><br/>
     </a>
@@ -435,7 +435,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`8ee3f00 <https://github.com/ray-project/ray/commit/8ee3f0017f9036a262675821cef3c67f89d0c0e6>`_)
+        Ray version: nightly (`f8534a5 <https://github.com/ray-project/ray/commit/f8534a51011a21effb0cbe7462c82454f495653c>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 

@@ -37,8 +37,8 @@ class AbstractMap(AbstractOneToOne):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
+            min_rows_per_bundled_input: Min number of rows a single bundle of blocks
+                passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -177,7 +177,6 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -210,7 +209,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -249,7 +247,6 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -285,7 +282,6 @@ class Project(AbstractMap):
     def cols_rename(self) -> Optional[Dict[str, str]]:
         return self._cols_rename
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -318,7 +314,6 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -342,6 +337,5 @@ class StreamingRepartition(AbstractMap):
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False

@@ -44,14 +44,14 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
-from ray.data._internal.util import MemoryProfiler
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import MemoryProfiler
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockMetadata,
     BlockExecStats,
+    BlockMetadata,
     BlockStats,
     to_stats,
 )
@@ -489,8 +489,10 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def base_resource_usage(self) -> ExecutionResources:
-        raise NotImplementedError
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        ...
 
     @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -564,6 +566,10 @@ class _BlockRefBundler:
                 bundle up to this target, but only exceed it if not doing so would
                 result in an empty bundle.
         """
+        assert (
+            min_rows_per_bundle is None or min_rows_per_bundle >= 0
+        ), "Min rows per bundle has to be non-negative"
+
         self._min_rows_per_bundle = min_rows_per_bundle
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0
@@ -735,6 +741,8 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     """
     ray_remote_args = ray_remote_args.copy()
 
+    # TODO: Might be better to log this warning at composition-time rather than at
+    # execution. Validating inputs early is a good practice.
     if ray_remote_args.get("num_cpus") and ray_remote_args.get("num_gpus"):
         logger.warning(
             "Specifying both num_cpus and num_gpus for map tasks is experimental, "

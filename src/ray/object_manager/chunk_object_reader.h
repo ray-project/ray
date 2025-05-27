@@ -17,7 +17,7 @@
 #include <memory>
 #include <string>
 
-#include "ray/object_manager/spilled_object_reader.h"
+#include "ray/object_manager/object_reader.h"
 
 namespace ray {
 

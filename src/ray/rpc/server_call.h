@@ -296,6 +296,7 @@ class ServerCallImpl : public ServerCall {
   void OnReplySent() override {
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
+      ray::stats::STATS_grpc_server_req_succeeded.Record(1.0, call_name_);
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
@@ -307,6 +308,7 @@ class ServerCallImpl : public ServerCall {
   void OnReplyFailed() override {
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
+      ray::stats::STATS_grpc_server_req_failed.Record(1.0, call_name_);
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);

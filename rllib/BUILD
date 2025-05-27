@@ -562,6 +562,29 @@ py_test(
     ],
 )
 
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # CQL
 # Pendulum
 py_test(
@@ -2633,6 +2656,34 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_offline_evaluation_runner",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_offline_evaluation_runner_group",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
     ],
     tags = [
         "offline",

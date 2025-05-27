@@ -3159,16 +3159,16 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Constraints:
+Total Constraints:
  {'CPU': 16}: 100 from request_resources()
-Demands:
+Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3217,16 +3217,16 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  530.0/544.0 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Constraints:
+Total Constraints:
  {'CPU': 16}: 100 from request_resources()
  {'CPU': 1, 'GPU': 16}: 10 from request_resources()
-Demands:
+Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3610,16 +3610,16 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Constraints:
+Total Constraints:
  {'CPU': 16}: 100 from request_resources()
-Demands:
+Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3792,16 +3792,16 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Constraints:
+Total Constraints:
  {'CPU': 16}: 100 from request_resources()
-Demands:
+Total Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
  {'GPU': 0.5}: 100+ pending tasks/actors (100+ using placement groups)
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups

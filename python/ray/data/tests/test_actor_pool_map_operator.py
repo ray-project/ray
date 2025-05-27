@@ -3,6 +3,7 @@ import collections
 import threading
 import unittest
 from typing import Any, Optional, Tuple
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -11,7 +12,11 @@ from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+    _ActorPool,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
@@ -450,7 +455,33 @@ class TestActorPool(unittest.TestCase):
         assert res3 is None
 
 
-def test_start_actor_timeout(ray_start_regular, restore_data_context):
+def test_min_max_resource_requirements(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        target_max_block_size=None,
+        compute_strategy=ray.data.ActorPoolStrategy(
+            min_size=1,
+            max_size=2,
+        ),
+        ray_remote_args={"num_cpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    assert (
+        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+        and max_resource_usage_bound == ExecutionResources.for_limits()
+    )
+
+
+def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
     """Tests that ActorPoolMapOperator raises an exception on
     timeout while waiting for actors."""
 
@@ -482,6 +513,8 @@ def test_start_actor_timeout(ray_start_regular, restore_data_context):
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
+    ray.shutdown()
+
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()

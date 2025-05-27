@@ -10,12 +10,12 @@ Recent failures:
 
 Resources
 ---------------------------------------------------------------
-Usage:
+Total Usage:
  0.0/3.0 CPU
  0.+
  0.+
 
-Constraints:
+Total Constraints:
  \(no request_resources\(\) constraints\)
-Demands:
+Total Demands:
  \(no resource demands\)

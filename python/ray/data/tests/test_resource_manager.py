@@ -1,6 +1,6 @@
 import math
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -290,7 +290,7 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         o2.metrics.on_output_dequeued(input)
-        topo[o2].outqueue.append(input)
+        topo[o2].output_queue.append(input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -298,7 +298,7 @@ class TestResourceManager:
 
         # Objects in the current operator's internal inqueue count towards the previous
         # operator's object store memory usage.
-        o3.metrics.on_input_queued(topo[o2].outqueue.pop())
+        o3.metrics.on_input_queued(topo[o2].output_queue.pop())
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -514,21 +514,23 @@ class TestReservationOpResourceAllocator:
         for op in [o2, o3, o4]:
             assert allocator._reserved_for_op_outputs[op] == 50
 
-    def test_reserve_min_resources_for_gpu_ops(self, restore_data_context):
+    @patch(
+        "ray.data._internal.execution.interfaces.op_runtime_metrics.OpRuntimeMetrics."
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock(return_value=100),
+    )
+    def test_reserve_min_resources_for_gpu_ops(
+        self, mock_property, restore_data_context
+    ):
         """Test that we'll reserve enough resources for ActorPoolMapOperator
         that uses GPU."""
-        DataContext.get_current().op_resource_reservation_enabled = True
-        DataContext.get_current().op_resource_reservation_ratio = 0.5
-
         global_limits = ExecutionResources(cpu=6, gpu=0, object_store_memory=1600)
-        incremental_usage = ExecutionResources(cpu=0, gpu=0, object_store_memory=100)
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(
             o1,
             ray_remote_args={"num_cpus": 0, "num_gpus": 1},
             compute_strategy=ray.data.ActorPoolStrategy(size=8),
-            incremental_resource_usage=incremental_usage,
         )
         topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
@@ -544,7 +546,42 @@ class TestReservationOpResourceAllocator:
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
         allocator.update_usages()
+
         assert allocator._op_reserved[o2].object_store_memory == 800
+
+    def test_does_not_reserve_more_than_max_resource_usage(self):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = MapOperator.create(
+            MagicMock(),
+            o1,
+            DataContext.get_current(),
+        )
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=0, object_store_memory=0),
+                ExecutionResources(cpu=1, object_store_memory=1),
+            )
+        )
+        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        # Mock an extremely large cluster.
+        resource_manager.get_global_limits = MagicMock(
+            return_value=ExecutionResources(cpu=1024, object_store_memory=1024**4)
+        )
+        allocator = resource_manager._op_resource_allocator
+
+        allocator.update_usages()
+
+        # The operator's max resource usage is 1 CPU and 1 byte object store memory, so
+        # we'll reserve that despite the large global limits.
+        assert allocator._op_reserved[o2] == ExecutionResources(
+            cpu=1, object_store_memory=1
+        )
 
     def test_only_handle_eligible_ops(self, restore_data_context):
         """Test that we only handle non-completed map ops."""

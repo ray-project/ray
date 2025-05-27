@@ -5,6 +5,7 @@ import torch
 import ray.train
 from ray.data import Dataset
 
+from constants import DatasetKey
 from config import BenchmarkConfig, RayDataConfig
 from dataloader_factory import BaseDataLoaderFactory
 
@@ -14,13 +15,17 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         super().__init__(benchmark_config)
         self._ray_ds_iterators = {}
 
-        assert isinstance(self.get_dataloader_config(), RayDataConfig), type(
-            self.get_dataloader_config()
-        )
+        dataloader_config = self.get_dataloader_config()
+        assert isinstance(dataloader_config, RayDataConfig), type(dataloader_config)
 
         # Configure Ray Data settings.
         data_context = ray.data.DataContext.get_current()
-        data_context.enable_operator_progress_bars = False
+        data_context.enable_operator_progress_bars = (
+            dataloader_config.enable_operator_progress_bars
+        )
+        # Retry ACCESS_DENIED errors that sometimes show up
+        # due to throttling during read operations.
+        data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
@@ -41,9 +46,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         pass
 
     def get_train_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard(
-            "train"
-        )
+        ds_iterator = ray.train.get_dataset_shard(DatasetKey.TRAIN)
+        self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
+
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
@@ -54,18 +59,22 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     else None
                 ),
                 collate_fn=self.collate_fn,
-                prefetch_batches=dataloader_config.prefetch_batches,
+                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
+                drop_last=True,
             )
         )
 
     def get_val_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
+        ds_iterator = ray.train.get_dataset_shard(DatasetKey.VALID)
+        self._ray_ds_iterators[DatasetKey.VALID] = ds_iterator
+
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.validation_batch_size,
                 collate_fn=self.collate_fn,
-                prefetch_batches=dataloader_config.prefetch_batches,
+                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
+                drop_last=True,
             )
         )
 

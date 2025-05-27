@@ -121,6 +121,7 @@ class TestInterface : public MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {
     absl::MutexLock guard(&lock_);
     pushed_objects_.push_back(object_id);

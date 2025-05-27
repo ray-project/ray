@@ -155,7 +155,7 @@ with 4 workers, and use it to run the new training function.
 To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
 
 <div class="anyscale-cta">
-    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-torch">
+    <a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-torch">
         <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
     </a>
 </div>
@@ -227,7 +227,7 @@ with 4 workers, and use it to run the new training function.
 To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
 
 <div class="anyscale-cta">
-    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-tf">
+    <a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-tf">
         <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
     </a>
 </div>
@@ -353,7 +353,7 @@ Learn more about Ray RLlib
 
 ## Ray Core Quickstart
 
-<a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
+<a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
     <img src="../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
 </a>
 <br></br>
@@ -647,7 +647,7 @@ Learn more about launching Ray Clusters on Kubernetes
 
 Anyscale is the company behind Ray. The Anyscale platform provides an enterprise-grade Ray deployment on top of your AWS, GCP, Azure, or on-prem Kubernetes clusters.
 
-```{button-link} https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-launch-ray-cluster
+```{button-link} https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-launch-ray-cluster
 :color: primary
 :outline:
 :expand:

@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import logging
 import math
 import os
 import threading
@@ -27,6 +28,20 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
+
+
+def test_specifying_num_cpus_and_num_gpus_logs_warning(
+    shutdown_only, propagate_logs, caplog
+):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    with caplog.at_level(logging.WARNING):
+        ray.data.range(1).map(lambda x: x, num_cpus=1, num_gpus=1).take(1)
+
+        assert (
+            "Specifying both num_cpus and num_gpus for map tasks is experimental"
+            in caplog.text
+        ), caplog.text
 
 
 def test_basic_actors(shutdown_only):

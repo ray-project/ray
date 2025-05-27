@@ -117,7 +117,6 @@ aiosignal==1.3.1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   aiohttp
-    #   ray
 airportsdata==20241001 \
     --hash=sha256:67d71cf2c5378cc17ff66b62b1e11aa2444043949c894543ac8fd8dafce192fd \
     --hash=sha256:fa0bd143b4f4be3557cb892fa0612ef210fd91a92bd720b4d8221de576a4fa00
@@ -785,7 +784,6 @@ frozenlist==1.4.1 \
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   aiohttp
     #   aiosignal
-    #   ray
 fsspec==2023.5.0 \
     --hash=sha256:51a4ad01a5bb66fcc58036e288c0d53d3975a0df2a5dc59a93b59bade0391f2a \
     --hash=sha256:b3b56e00fb93ea321bc9e5d9cf6f8522a0198b20eb24e02774d329e9c6fb84ce

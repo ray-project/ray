@@ -1,19 +1,22 @@
 import uuid
 
 import pytest
+
+from ray.core.generated.export_train_state_pb2 import (
+    ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+)
 from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunEventData as ProtoTrainRun,
-    ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+)
+from ray.train._internal.state.export import (
+    train_run_info_to_proto_attempt,
+    train_run_info_to_proto_run,
 )
 from ray.train._internal.state.schema import (
     ActorStatusEnum,
     RunStatusEnum,
     TrainRunInfo,
     TrainWorkerInfo,
-)
-from ray.train._internal.state.export import (
-    train_run_info_to_proto_run,
-    train_run_info_to_proto_attempt,
 )
 
 

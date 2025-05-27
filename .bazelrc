@@ -73,7 +73,8 @@ build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR
 build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
 build --verbose_failures
-build:iwyu --experimental_action_listener=//:iwyu_cpp
+build:iwyu --aspects @com_github_storypku_bazel_iwyu//bazel/iwyu:iwyu.bzl%iwyu_aspect
+build:iwyu --output_groups=report
 
 # Print relative paths when possible
 build:windows --attempt_to_print_relative_paths

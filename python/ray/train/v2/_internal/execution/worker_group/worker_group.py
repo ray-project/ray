@@ -38,7 +38,6 @@ from ray.train.v2._internal.execution.context import (
     StorageContext,
     TrainRunContext,
 )
-from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -52,7 +51,9 @@ from ray.train.v2._internal.execution.worker_group.worker import (
     Worker,
     WorkerStatus,
 )
+from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.util import (
+    ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
     ray_get_safe,
@@ -82,7 +83,7 @@ class WorkerGroupContext:
 
     Attributes:
         run_attempt_id: The ID of the run attempt.
-        train_fn: The training function to execute.
+        train_fn_ref: An object store reference to the training function to execute.
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
@@ -90,7 +91,7 @@ class WorkerGroupContext:
     """
 
     run_attempt_id: str
-    train_fn: Callable[[], None]
+    train_fn_ref: ObjectRefWrapper[Callable[[], None]]
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
@@ -320,7 +321,7 @@ class WorkerGroup:
         # This task should start a worker thread and return immediately.
         ray_get_safe(
             [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn)
+                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
             ]
         )

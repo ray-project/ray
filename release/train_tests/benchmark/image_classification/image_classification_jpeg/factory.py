@@ -13,6 +13,7 @@ import ray.train
 from ray.data.datasource.partitioning import Partitioning
 
 # Local imports
+from constants import DatasetKey
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
@@ -86,7 +87,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
         s3fs = self.get_s3fs_with_boto_creds()
 
         # Create training dataset with class-based partitioning
-        train_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
+        train_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
         train_partitioning = Partitioning(
             "dir", base_dir=train_pattern, field_names=["class"]
         )
@@ -94,7 +95,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
             ray.data.read_images(
                 train_pattern,
                 mode="RGB",
-                include_paths=True,
+                include_paths=False,
                 partitioning=train_partitioning,
                 filesystem=s3fs,
             )
@@ -103,7 +104,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
         )
 
         # Create validation dataset with same partitioning
-        val_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
+        val_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
         val_partitioning = Partitioning(
             "dir", base_dir=val_pattern, field_names=["class"]
         )
@@ -111,7 +112,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
             ray.data.read_images(
                 val_pattern,
                 mode="RGB",
-                include_paths=True,
+                include_paths=False,
                 partitioning=val_partitioning,
                 filesystem=s3fs,
             )
@@ -119,7 +120,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
             .map(get_preprocess_map_fn(random_transforms=False))
         )
 
-        return {"train": train_ds, "val": val_ds}
+        return {
+            DatasetKey.TRAIN: train_ds,
+            DatasetKey.VALID: val_ds,
+        }
 
 
 class ImageClassificationJpegTorchDataLoaderFactory(
@@ -137,7 +141,7 @@ class ImageClassificationJpegTorchDataLoaderFactory(
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
         S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
-        self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
+        self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
         self._cached_datasets = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
@@ -166,14 +170,18 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             limit_rows_per_worker=limit_training_rows_per_worker,
         )
 
-        # TODO: IMAGENET_JPEG_SPLIT_S3_DIRS["val"] does not have partitioning as "train" does. So we use "train" for validation.
+        # TODO: IMAGENET_JPEG_SPLIT_S3_DIRS["val"] does not have the label
+        # partitioning like "train" does. So we use "train" for validation.
         val_ds = S3JpegImageIterableDataset(
             file_urls=val_file_urls,
             random_transforms=False,
             limit_rows_per_worker=limit_validation_rows_per_worker,
         )
 
-        self._cached_datasets = {"train": train_ds, "val": val_ds}
+        self._cached_datasets = {
+            DatasetKey.TRAIN: train_ds,
+            DatasetKey.VALID: val_ds,
+        }
         return self._cached_datasets
 
 

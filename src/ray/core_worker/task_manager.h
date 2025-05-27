@@ -734,11 +734,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status new status.
-  /// \param error_info Optional error info for task execution.
+  /// \param state_update The state update for the task status change event.
+  /// \param include_task_info Whether to include task info in the task status change
+  /// event.
+  /// \param attempt_number The attempt number to record the task status change
+  /// event. If not specified, the attempt number will be the current attempt number of
+  /// the task.
   void SetTaskStatus(
       TaskEntry &task_entry,
       rpc::TaskStatus status,
-      const std::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
+      std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt,
+      bool include_task_info = false,
+      std::optional<int32_t> attempt_number = std::nullopt);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
