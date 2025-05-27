@@ -23,7 +23,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     # This test also injects network failure to make sure relevant rpcs are retried.
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::ActorInfoGcsService.grpc_client.RestartActor=5:25:25,"
+        "ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=5:25:25,"
         "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=5:25:25",
     )
     cluster = ray_start_cluster

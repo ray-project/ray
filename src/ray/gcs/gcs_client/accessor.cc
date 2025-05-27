@@ -307,18 +307,19 @@ Status ActorInfoAccessor::SyncListNamedActors(
   return status;
 }
 
-Status ActorInfoAccessor::AsyncRestartActor(
+Status ActorInfoAccessor::AsyncRestartActorForLineageReconstruction(
     const ray::ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstruction,
     const ray::gcs::StatusCallback &callback,
     int64_t timeout_ms) {
-  rpc::RestartActorRequest request;
+  rpc::RestartActorForLineageReconstructionRequest request;
   request.set_actor_id(actor_id.Binary());
   request.set_num_restarts_due_to_lineage_reconstruction(
       num_restarts_due_to_lineage_reconstruction);
-  client_impl_->GetGcsRpcClient().RestartActor(
+  client_impl_->GetGcsRpcClient().RestartActorForLineageReconstruction(
       request,
-      [callback](const Status &status, rpc::RestartActorReply &&reply) {
+      [callback](const Status &status,
+                 rpc::RestartActorForLineageReconstructionReply &&reply) {
         callback(status);
       },
       timeout_ms);
