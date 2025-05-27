@@ -44,7 +44,7 @@ from ray.util.tracing.tracing_helper import (
 from ray._private.custom_types import TENSOR_TRANSPORT, TypeTensorTransport
 
 if TYPE_CHECKING:
-    import torch
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -1836,49 +1836,6 @@ def _modify_class(cls):
             worker = ray._private.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
-
-        def __ray_send__(self, obj_id: str, dst_rank: int):
-            """
-            Send tensors stored in the in-actor object store to the
-            destination rank.
-            """
-            import torch.distributed as dist
-
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.get_gpu_object_manager()
-            assert gpu_object_manager.has_gpu_object(
-                obj_id
-            ), f"obj_id={obj_id} not found in GPU object store"
-            tensors = gpu_object_manager.get_gpu_object(obj_id)
-            for tensor in tensors:
-                dist.send(tensor, dst_rank)
-            # TODO(kevin85421): The current garbage collection implementation for the
-            # in-actor object store is naive. We garbage collect each object after it
-            # is consumed once.
-            gpu_object_manager.remove_gpu_object(obj_id)
-
-        def __ray_recv__(
-            self,
-            obj_id: str,
-            src_rank: int,
-            tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-        ):
-            """
-            Receive tensors from the source rank and store them in the
-            in-actor object store.
-            """
-            import torch
-            import torch.distributed as dist
-
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.get_gpu_object_manager()
-            tensors = []
-            for meta in tensor_meta:
-                shape, dtype = meta
-                tensor = torch.zeros(shape, dtype=dtype)
-                dist.recv(tensor, src_rank)
-                tensors.append(tensor)
-            gpu_object_manager.add_gpu_object(obj_id, tensors)
 
         def __ray_get_tensor_meta__(self, obj_id: str):
             # Gets the tensor metadata from `in_actor_object_store` and

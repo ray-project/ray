@@ -51,6 +51,63 @@ class GPUObjectManager:
     def is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
         return obj_ref in self.gpu_object_refs
 
+    def _send_gpu_object(self, src_actor: ActorHandle, obj_id: str, dst_rank: int):
+        """
+        Send tensors stored in the `src_actor`'s GPU object store to the
+        destination rank `dst_rank`.
+        """
+
+        def __ray_send__(self, obj_id: str, dst_rank: int):
+            import torch.distributed as dist
+            from ray._private.worker import global_worker
+
+            gpu_object_manager = global_worker.get_gpu_object_manager()
+            assert gpu_object_manager.has_gpu_object(
+                obj_id
+            ), f"obj_id={obj_id} not found in GPU object store"
+            tensors = gpu_object_manager.get_gpu_object(obj_id)
+            for tensor in tensors:
+                dist.send(tensor, dst_rank)
+            # TODO(kevin85421): The current garbage collection implementation for the
+            # in-actor object store is naive. We garbage collect each object after it
+            # is consumed once.
+            gpu_object_manager.remove_gpu_object(obj_id)
+
+        src_actor.__ray_call__.remote(__ray_send__, obj_id, dst_rank)
+
+    def _recv_gpu_object(
+        self,
+        dst_actor: ActorHandle,
+        obj_id: str,
+        src_rank: int,
+        tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+    ):
+        """
+        Receive tensors from the source rank and store them in the
+        `dst_actor`'s GPU object store.
+        """
+
+        def __ray_recv__(
+            self,
+            obj_id: str,
+            src_rank: int,
+            tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        ):
+            import torch
+            import torch.distributed as dist
+            from ray._private.worker import global_worker
+
+            gpu_object_manager = global_worker.get_gpu_object_manager()
+            tensors = []
+            for meta in tensor_meta:
+                shape, dtype = meta
+                tensor = torch.zeros(shape, dtype=dtype)
+                dist.recv(tensor, src_rank)
+                tensors.append(tensor)
+            gpu_object_manager.add_gpu_object(obj_id, tensors)
+
+        dst_actor.__ray_call__.remote(__ray_recv__, obj_id, src_rank, tensor_meta)
+
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
     ):
@@ -116,5 +173,5 @@ class GPUObjectManager:
                 raise ValueError(
                     f"src_rank: {src_rank} and dst_rank: {dst_rank} are the same. This may cause deadlock for transports like NCCL."
                 )
-            src_actor.__ray_send__.remote(arg.hex(), dst_rank)
-            dst_actor.__ray_recv__.remote(arg.hex(), src_rank, tensor_meta)
+            self._send_gpu_object(src_actor, arg.hex(), dst_rank)
+            self._recv_gpu_object(dst_actor, arg.hex(), src_rank, tensor_meta)
