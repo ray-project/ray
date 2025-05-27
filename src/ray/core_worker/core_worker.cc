@@ -2145,12 +2145,12 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
           request,
           [object_ids](const Status &status, const rpc::DeleteObjectsReply &reply) {
             if (status.ok()) {
-                            RAY_LOG(INFO) << "Completed object delete request " << status;
+              RAY_LOG(INFO) << "Completed object delete request " << status;
             } else {
               RAY_LOG(ERROR) << "Failed to delete objects, status: " << status
                              << ", object IDs: " << debug_string(object_ids);
             }
-                          });
+          });
     }
   }
   // Also try to delete all objects locally.
