@@ -72,7 +72,7 @@ def lambda_handler(event, context):
         [print(i) for i in results]
         total_results.extend(results)
 
-    # Retag images without a python version specified (defaults to py38)
+    # Retag images without a python version specified (defaults to py39)
     results = []
     for repo in ["ray", "ray-ml", "ray-deps", "base-deps"]:
         # For example tag ray:1.X-cu112 to ray:latest-cu112

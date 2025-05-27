@@ -24,7 +24,7 @@ class ResultGrid:
     .. testcode::
 
         import random
-        from ray import train, tune
+        from ray import tune
         def random_error_trainable(config):
             if random.random() < 0.5:
                 return {"loss": 0.0}
@@ -32,7 +32,7 @@ class ResultGrid:
                 raise ValueError("This is an error")
         tuner = tune.Tuner(
             random_error_trainable,
-            run_config=train.RunConfig(name="example-experiment"),
+            run_config=tune.RunConfig(name="example-experiment"),
             tune_config=tune.TuneConfig(num_samples=10),
         )
         try:
@@ -182,16 +182,14 @@ class ResultGrid:
 
             .. testcode::
 
-                from ray import train
-                from ray.train import RunConfig
-                from ray.tune import Tuner
+                import ray.tune
 
                 def training_loop_per_worker(config):
-                    train.report({"accuracy": 0.8})
+                    ray.tune.report({"accuracy": 0.8})
 
-                result_grid = Tuner(
+                result_grid = ray.tune.Tuner(
                     trainable=training_loop_per_worker,
-                    run_config=RunConfig(name="my_tune_run")
+                    run_config=ray.tune.RunConfig(name="my_tune_run")
                 ).fit()
 
                 # Get last reported results per trial

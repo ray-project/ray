@@ -8,15 +8,17 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 import requests
 import yaml
 
 import ray
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
     chdir,
     format_web_url,
     get_current_unused_port,
@@ -24,7 +26,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -65,8 +66,16 @@ def get_node_ip_by_id(node_id: str) -> str:
     return node.node_ip
 
 
-@pytest.fixture
-def job_sdk_client(make_sure_dashboard_http_port_unused):
+class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._session.headers[
+            "User-Agent"
+        ] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"  # noqa: E501
+
+
+@pytest_asyncio.fixture
+async def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         ip, _ = ctx.address_info["webui_url"].split(":")
         agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
@@ -274,6 +283,34 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     # There is only one node, so there is no need to replace the client of the JobAgent
     resp = await agent_client.get_job_logs_internal(job_id)
     assert runtime_env_option["expected_logs"] in resp.logs
+
+
+@pytest.mark.asyncio
+async def test_submit_job_rejects_browsers(
+    job_sdk_client, runtime_env_option, monkeypatch
+):
+    # This flag allows for local testing of runtime env conda functionality
+    # without needing a built Ray wheel.  Rather than insert the link to the
+    # wheel into the conda spec, it links to the current Python site.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
+    agent_client, head_client = job_sdk_client
+    agent_address = agent_client._agent_address
+    agent_client = JobAgentSubmissionBrowserClient(agent_address)
+
+    runtime_env = runtime_env_option["runtime_env"]
+    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
+        JobSubmitRequest,
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        _ = await agent_client.submit_job_internal(request)
+
+    assert "status code 405" in str(exc.value)
 
 
 @pytest.mark.asyncio
@@ -606,7 +643,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
 
             return True
 
-        await async_wait_for_condition_async_predicate(verify, retry_interval_ms=2000)
+        await async_wait_for_condition(verify, retry_interval_ms=2000)
     finally:
         subprocess.check_output("ray stop --force", shell=True)
 

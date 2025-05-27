@@ -6,7 +6,8 @@ import logging
 
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.test_utils import safe_write_to_results_json
+
+# from ray._private.test_utils import safe_write_to_results_json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ class InstanceKillerActor:
                 "terminated_succesfully": terminated_succesfully,
             }
         )
-        safe_write_to_results_json(self.history)
+        # safe_write_to_results_json(self.history)
 
 
 def create_instance_killer(

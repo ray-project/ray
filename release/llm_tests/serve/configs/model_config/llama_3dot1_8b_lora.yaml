@@ -1,0 +1,13 @@
+model_loading_config:
+  model_id: meta-llama/Meta-Llama-3.1-8B-Instruct-Fine-Tuned
+  model_source: meta-llama/Llama-3.1-8B-Instruct
+
+accelerator_type: A10G
+
+engine_kwargs:
+  max_model_len: 2048
+  enable_lora: true
+
+lora_config:
+  dynamic_lora_loading_path: "s3://anyscale-production-data-cld-wy5a6nhazplvu32526ams61d98/org_7c1Kalm9WcX2bNIjW53GUT/cld_wy5a6nhazplvu32526ams61d98/artifact_storage/rayllm_release_test/lora_fine_tuning"
+  max_num_adapters_per_replica: 2

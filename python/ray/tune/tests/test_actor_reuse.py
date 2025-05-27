@@ -9,8 +9,8 @@ from typing import Callable
 import pytest
 
 import ray
-from ray import logger, train, tune
-from ray.train import CheckpointConfig
+from ray import logger, tune
+from ray.tune import CheckpointConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import Trainable, register_trainable, run_experiments
 from ray.tune.error import TuneError
@@ -108,7 +108,7 @@ def train_fn(config):
     if marker.exists():
         num_resets = int(marker.read_text()) + 1
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     it = load_dict_checkpoint(checkpoint)["iter"] if checkpoint else 0
 
     msg = config.get("message", None)
@@ -139,9 +139,9 @@ def train_fn(config):
         }
         if config.get("save_checkpoint", True):
             with create_dict_checkpoint({"iter": it}) as checkpoint:
-                train.report(metrics, checkpoint=checkpoint)
+                tune.report(metrics, checkpoint=checkpoint)
         else:
-            train.report(metrics, checkpoint=checkpoint)
+            tune.report(metrics, checkpoint=checkpoint)
 
 
 @pytest.fixture(params=["function", "class"])
@@ -473,8 +473,6 @@ def test_detect_reuse_mixins():
     def dummy_mixin(func: Callable):
         func.__mixins__ = (DummyMixin,)
         return func
-
-    assert not _check_mixin("PPO")
 
     def train_fn(config):
         pass

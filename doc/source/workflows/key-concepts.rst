@@ -1,6 +1,11 @@
 Key Concepts
 ------------
 
+.. warning::
+
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
+
 .. note::
   Workflows is a library that provides strong durability for Ray task graphs.
   If you’re brand new to Ray, we recommend starting with the :ref:`core walkthrough <core-walkthrough>` instead.

@@ -28,23 +28,24 @@ def main(ray_checkout_dir: str) -> None:
     logger.info("Building ray doc.")
     _build(ray_checkout_dir)
 
+    dry_run = False
     if (
         os.environ.get("BUILDKITE_PIPELINE_ID")
         not in get_global_config()["ci_pipeline_postmerge"]
     ):
+        dry_run = True
         logger.info(
             "Not uploading build artifacts because this is not a postmerge pipeline."
         )
-        return
 
     if os.environ.get("BUILDKITE_BRANCH") != "master":
+        dry_run = True
         logger.info(
             "Not uploading build artifacts because this is not the master branch."
         )
-        return
 
     logger.info("Uploading build artifacts to S3.")
-    BuildCache(os.path.join(ray_checkout_dir, "doc")).upload()
+    BuildCache(os.path.join(ray_checkout_dir, "doc")).upload(dry_run=dry_run)
 
     return
 

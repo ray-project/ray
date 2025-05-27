@@ -3,7 +3,7 @@
 # with 32 workers and 10 envs per worker. This is more efficient than the non-vectorized
 # configuration which requires 128 workers to achieve the same performance.
 pong-impala-vectorized:
-    env: ALE/Pong-v5
+    env: ale_py:ALE/Pong-v5
     run: IMPALA
     config:
         # Make analogous to old v4 + NoFrameskip.

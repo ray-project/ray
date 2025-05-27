@@ -37,4 +37,3 @@ Number of trials: 24 (24 TERMINATED)
 | DQN_BreakoutNoFrameskip-v4_00022    | TERMINATED |       |     27 |          3669.77 |  270000 |    15.45 |
 | DQN_BreakoutNoFrameskip-v4_00023    | TERMINATED |       |     27 |          3688.08 |  270000 |    12.25 |
 +-------------------------------------+------------+-------+--------+------------------+---------+----------+
-

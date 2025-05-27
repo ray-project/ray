@@ -41,7 +41,6 @@ FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT = 18076
 FAKE_DOCKER_DEFAULT_CLIENT_PORT = 10002
 
 DOCKER_COMPOSE_SKELETON = {
-    "version": "3.9",
     "services": {},
     "networks": {"ray_local": {}},
 }
@@ -345,6 +344,9 @@ class FakeMultiNodeProvider(NodeProvider):
     def _create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
+        # This function calls `pop`. To avoid side effects, we make a
+        # copy of `resources`.
+        resources = copy.deepcopy(resources)
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -468,7 +470,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         if not self.in_docker_container:
             # Create private key
             if not os.path.exists(self._private_key_path):
-                subprocess.check_output(
+                subprocess.check_call(
                     f'ssh-keygen -b 2048 -t rsa -q -N "" '
                     f"-f {self._private_key_path}",
                     shell=True,
@@ -476,7 +478,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
             # Create public key
             if not os.path.exists(self._public_key_path):
-                subprocess.check_output(
+                subprocess.check_call(
                     f"ssh-keygen -y "
                     f"-f {self._private_key_path} "
                     f"> {self._public_key_path}",

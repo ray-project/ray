@@ -12,10 +12,11 @@ import pyarrow.fs
 
 import ray
 from ray import logger
-from ray._private.storage import _load_class
-from ray.air import session
+from ray._private.utils import load_class
 from ray.air._internal import usage as air_usage
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
+from ray.train._internal.session import get_session
 from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
@@ -118,20 +119,22 @@ def setup_wandb(
             "Wandb was not found - please install with `pip install wandb`"
         )
 
-    try:
-        # Do a try-catch here if we are not in a train session
-        _session = session._get_session(warn=False)
-        if _session and rank_zero_only and session.get_world_rank() != 0:
+    default_trial_id = None
+    default_trial_name = None
+    default_experiment_name = None
+
+    # Do a try-catch here if we are not in a train session
+    session = get_session()
+
+    if rank_zero_only:
+        # Check if we are in a train session and if we are not the rank 0 worker
+        if session and session.world_rank is not None and session.world_rank != 0:
             return RunDisabled()
 
-        default_trial_id = session.get_trial_id()
-        default_trial_name = session.get_trial_name()
-        default_experiment_name = session.get_experiment_name()
-
-    except RuntimeError:
-        default_trial_id = None
-        default_trial_name = None
-        default_experiment_name = None
+    if session:
+        default_trial_id = session.trial_id
+        default_trial_name = session.trial_name
+        default_experiment_name = session.experiment_name
 
     # Default init kwargs
     wandb_init_kwargs = {
@@ -166,7 +169,7 @@ def _setup_wandb(
     project = _get_wandb_project(kwargs.pop("project", None))
     group = kwargs.pop("group", os.environ.get(WANDB_GROUP_ENV_VAR))
 
-    # remove unpickleable items
+    # Remove unpickleable items.
     _config = _clean_log(_config)
 
     wandb_init_kwargs = dict(
@@ -277,7 +280,7 @@ def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
         # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
         # from external hook
         try:
-            _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
+            load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
         except Exception as e:
             logger.exception(
                 f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
@@ -322,7 +325,7 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
         # Try to get API key from external hook
         if WANDB_SETUP_API_KEY_HOOK in os.environ:
             try:
-                api_key = _load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
+                api_key = load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
             except Exception as e:
                 logger.exception(
                     f"Error executing {WANDB_SETUP_API_KEY_HOOK} to setup API key: {e}",
@@ -343,7 +346,7 @@ def _run_wandb_process_run_info_hook(run: Any) -> None:
     """Run external hook to process information about wandb run"""
     if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
         try:
-            _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
+            load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
         except Exception as e:
             logger.exception(
                 f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
@@ -415,11 +418,11 @@ class _WandbLoggingActor:
             log, config_update = self._handle_result(item_content)
             try:
                 self._wandb.config.update(config_update, allow_val_change=True)
-                self._wandb.log(log)
+                self._wandb.log(log, step=log.get(TRAINING_ITERATION))
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
-                logger.warn("Failed to log result to w&b: {}".format(str(e)))
+                logger.warning("Failed to log result to w&b: {}".format(str(e)))
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
@@ -463,8 +466,7 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import train, tune
-            from ray.train import RunConfig
+            from ray import tune
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -482,7 +484,7 @@ class WandbLoggerCallback(LoggerCallback):
                     "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
                     "epochs": 10,
                 },
-                run_config=RunConfig(
+                run_config=tune.RunConfig(
                     callbacks=[WandbLoggerCallback(project="Optimization_Project")]
                 ),
             )
@@ -641,6 +643,11 @@ class WandbLoggerCallback(LoggerCallback):
     def _start_logging_actor(
         self, trial: "Trial", exclude_results: List[str], **wandb_init_kwargs
     ):
+        # Reuse actor if one already exists.
+        # This can happen if the trial is restarted.
+        if trial in self._trial_logging_futures:
+            return
+
         if not self._remote_logger_class:
             env_vars = {}
             # API key env variable is not set if authenticating through `wandb login`

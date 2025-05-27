@@ -1,9 +1,9 @@
 import pytest
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRAINING_ITERATION
 
 
 @pytest.mark.parametrize("algorithm", ["PPO", "IMPALA"])
@@ -32,7 +32,7 @@ def test_custom_resource(algorithm):
     tune.Tuner(
         algorithm,
         param_space=config,
-        run_config=air.RunConfig(stop=stop, verbose=0),
+        run_config=tune.RunConfig(stop=stop, verbose=0),
         tune_config=tune.TuneConfig(num_samples=1),
     ).fit()
 

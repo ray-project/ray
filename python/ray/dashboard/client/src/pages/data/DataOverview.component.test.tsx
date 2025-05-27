@@ -36,6 +36,7 @@ describe("DataOverview", () => {
         operators: [
           {
             operator: "test_ds1_op1",
+            name: "test_ds1_op",
             state: "RUNNING",
             progress: 99,
             total: 101,
@@ -104,11 +105,11 @@ describe("DataOverview", () => {
     expect(screen.getByText("70/80")).toBeVisible();
 
     // Operator dropdown
-    expect(screen.queryByText("test_ds1_op1")).toBeNull();
+    expect(screen.queryByText("test_ds1_op")).toBeNull();
     await user.click(screen.getByTitle("Expand Dataset test_ds1"));
-    expect(screen.getByText("test_ds1_op1")).toBeVisible();
+    expect(screen.getByText("test_ds1_op")).toBeVisible();
     await user.click(screen.getByTitle("Collapse Dataset test_ds1"));
-    expect(screen.queryByText("test_ds1_op1")).toBeNull();
+    expect(screen.queryByText("test_ds1_op")).toBeNull();
 
     // Second Dataset
     expect(screen.getByText("test_ds2")).toBeVisible();

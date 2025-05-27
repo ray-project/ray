@@ -22,7 +22,7 @@ Beginner
   * - :doc:`A Gentle Introduction to Ray Core by Example <gentle_walkthrough>`
   * - :doc:`Using Ray for Highly Parallelizable Tasks <highly_parallel>`
   * - :doc:`Monte Carlo Estimation of π <monte_carlo_pi>`
-  
+
 
 Intermediate
 ------------
@@ -37,7 +37,7 @@ Advanced
 --------
 
 .. list-table::
-    
+
   * - :doc:`Build Simple AutoML for Time Series Using Ray <automl_for_time_series>`
   * - :doc:`Build Batch Prediction Using Ray <batch_prediction>`
   * - :doc:`Build a Simple Parameter Server Using Ray <plot_parameter_server>`

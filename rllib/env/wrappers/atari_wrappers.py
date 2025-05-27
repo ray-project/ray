@@ -13,7 +13,8 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
     """Returns, whether a given env object or env descriptor (str) is an Atari env.
 
     Args:
-        env: The gym.Env object or a string descriptor of the env (e.g. "ALE/Pong-v5").
+        env: The gym.Env object or a string descriptor of the env (for example,
+        "ale_py:ALE/Pong-v5").
 
     Returns:
         Whether `env` is an Atari environment.
@@ -28,9 +29,9 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
         ):
             return False
         return "AtariEnv<ALE" in str(env)
-    # If string, check for "ALE/" prefix.
+    # If string, check for "ale_py:ALE/" prefix.
     else:
-        return env.startswith("ALE/")
+        return env.startswith("ALE/") or env.startswith("ale_py:")
 
 
 @PublicAPI

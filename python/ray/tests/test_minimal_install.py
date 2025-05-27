@@ -35,6 +35,8 @@ def test_correct_python_version():
 
 
 class MockBaseModel:
+    model_fields = {}
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -99,7 +101,4 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

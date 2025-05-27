@@ -133,7 +133,7 @@ Note that actual parallelism can be less than `max_concurrent_trials` and will b
 can fit in the cluster at once (i.e., if you have a trial that requires 16 GPUs, your cluster has 32 GPUs,
 and `max_concurrent_trials=10`, the `Tuner` can only run 2 trials concurrently).
 
-.. code-block:: python 
+.. code-block:: python
 
     from ray.tune import TuneConfig
 

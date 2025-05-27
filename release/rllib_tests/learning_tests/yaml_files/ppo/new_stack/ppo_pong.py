@@ -20,7 +20,7 @@ def _make_learner_connector(input_observation_space, input_action_space):
 # We would like our frame stacking connector to do this job.
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
-        gym.make("ALE/Pong-v5", **cfg, **{"render_mode": "rgb_array"}),
+        gym.make("ale_py:ALE/Pong-v5", **cfg, **{"render_mode": "rgb_array"}),
         # Perform through ConnectorV2 API.
         framestack=None,
     )

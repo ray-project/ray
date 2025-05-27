@@ -12,8 +12,13 @@ except ImportError as exc:
     ) from exc
 # isort: on
 
+from ray.tune.trainable.trainable_fn_utils import Checkpoint, get_checkpoint, report
+from ray.tune.impl.config import CheckpointConfig, FailureConfig, RunConfig
+from ray.tune.syncer import SyncConfig
+from ray.air.result import Result
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
+from ray.tune.context import TuneContext, get_context
 from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Experiment
@@ -41,7 +46,6 @@ from ray.tune.search.sample import (
     uniform,
 )
 from ray.tune.stopper import Stopper
-from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.trainable.util import with_parameters, with_resources
 from ray.tune.tune import run, run_experiments
@@ -84,6 +88,27 @@ __all__ = [
     "Tuner",
     "TuneConfig",
     "ResumeConfig",
-    # TODO(justinvyu): [Deprecated]
+    "RunConfig",
+    "CheckpointConfig",
+    "FailureConfig",
+    "Result",
+    "Checkpoint",
+    "get_checkpoint",
+    "report",
+    "get_context",
+    "TuneContext",
     "SyncConfig",
 ]
+
+report.__module__ = "ray.tune"
+get_checkpoint.__module__ = "ray.tune"
+get_context.__module__ = "ray.tune"
+TuneContext.__module__ = "ray.tune"
+Checkpoint.__module__ = "ray.tune"
+Result.__module__ = "ray.tune"
+RunConfig.__module__ = "ray.tune"
+CheckpointConfig.__module__ = "ray.tune"
+FailureConfig.__module__ = "ray.tune"
+
+
+# DO NOT ADD ANYTHING AFTER THIS LINE.

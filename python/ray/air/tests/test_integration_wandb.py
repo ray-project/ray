@@ -53,6 +53,8 @@ from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _QueueItem,
     _WandbLoggingActor,
+    RunDisabled,
+    setup_wandb,
 )
 from ray.air.tests.mocked_wandb_integration import (
     Trial,
@@ -98,6 +100,17 @@ def wandb_env():
     yield
     if WANDB_ENV_VAR in os.environ:
         del os.environ[WANDB_ENV_VAR]
+
+
+def fake_wandb_populate_run_location_hook():
+    """Fake user-provided hook to populate W&B environment variables."""
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH = (
+    "ray.air.tests.test_integration_wandb.fake_wandb_populate_run_location_hook"
+)
 
 
 class TestWandbLogger:
@@ -211,7 +224,7 @@ class TestWandbLogger:
             # Project and group env vars from external hook
             monkeypatch.setenv(
                 WANDB_POPULATE_RUN_LOCATION_HOOK,
-                "ray._private.test_utils.wandb_populate_run_location_hook",
+                FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH,
             )
             logger = WandbTestExperimentLogger(api_key="1234")
             logger.setup()
@@ -335,7 +348,7 @@ class TestWandbLogger:
             "framework": "torch",
             "num_gpus": 1,
             "num_workers": 20,
-            "num_envs_per_worker": 1,
+            "num_envs_per_env_runner": 1,
             "compress_observations": True,
             "lambda": 0.99,
             "train_batch_size": 512,
@@ -483,6 +496,26 @@ class TestWandbLogger:
             state = ray.get(actor.get_state.remote())
             assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
 
+    def test_wandb_restart(self, trial):
+        """Test that the WandbLoggerCallback reuses actors for trial restarts."""
+
+        logger = WandbLoggerCallback(project="test_project", api_key="1234")
+        logger._logger_actor_cls = _MockWandbLoggingActor
+        logger.setup()
+
+        assert len(logger._trial_logging_futures) == 0
+        assert len(logger._logging_future_to_trial) == 0
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
+
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
@@ -495,7 +528,7 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
         "WANDB_PROCESS_RUN_INFO_HOOK", "mock_wandb_process_run_info_hook"
     )
 
-    with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
+    with patch.object(ray.air.integrations.wandb, "load_class") as mock_load_class:
         logging_process = _WandbLoggingActor(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )
@@ -508,6 +541,43 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
     external_hook = mock_load_class.return_value
     external_hook.assert_called_once_with(run)
     logging_process._wandb.finish.assert_called_once()
+
+
+def test_wandb_logger_rank_zero_only(trial, monkeypatch):
+    """Test that logging is disabled for non-rank-0 workers when rank_zero_only is True."""
+
+    monkeypatch.setenv(
+        WANDB_ENV_VAR,
+        "abcde",
+    )
+
+    mock_session = Mock()
+    mock_session.experiment_name = "test_project"
+    mock_session.trial_name = "trial_0"
+    mock_session.trial_id = "trial_0"
+
+    # Test case 1: rank_zero_only=True, rank 0
+    mock_session.world_rank = 0
+    with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
+        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
+        assert not isinstance(run, RunDisabled)
+
+    # Test case 2: rank_zero_only=True, non-rank-0
+    mock_session.world_rank = 1
+    with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
+        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
+        assert isinstance(run, RunDisabled)
+
+    # Test case 3: rank_zero_only=False, any rank
+    mock_session.world_rank = 1
+    with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
+        run = setup_wandb(project="test_project", rank_zero_only=False, _wandb=Mock())
+        assert not isinstance(run, RunDisabled)
+
+    # Test case 4: rank_zero_only=True, no session
+    with patch("ray.air.integrations.wandb.get_session", return_value=None):
+        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
+        assert not isinstance(run, RunDisabled)
 
 
 if __name__ == "__main__":

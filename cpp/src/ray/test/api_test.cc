@@ -110,15 +110,18 @@ RAY_REMOTE(Counter::FactoryCreate,
            &Counter::GetList);
 
 TEST(RayApiTest, LogTest) {
-  auto log_path = std::filesystem::current_path().string() + "/tmp/";
-  ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
+  const std::string app_name = "cpp_worker";
+  const std::string log_dir = std::filesystem::current_path().string() + "/tmp/";
+  ray::RayLog::StartRayLog(app_name,
+                           ray::RayLogLevel::DEBUG,
+                           ray::RayLog::GetLogFilepathFromDirectory(log_dir, app_name));
   std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
   RAYLOG(DEBUG) << str_arr[0];
   RAYLOG(INFO) << str_arr[1];
   RAYLOG(WARNING) << str_arr[2];
   RAY_CHECK(true);
 
-  for (auto &it : std::filesystem::directory_iterator(log_path)) {
+  for (auto &it : std::filesystem::directory_iterator(log_dir)) {
     if (!std::filesystem::is_directory(it)) {
       std::ifstream in(it.path().string(), std::ios::binary);
       std::string line;
@@ -129,7 +132,7 @@ TEST(RayApiTest, LogTest) {
     }
   }
 
-  std::filesystem::remove_all(log_path);
+  std::filesystem::remove_all(log_dir);
 }
 
 TEST(RayApiTest, TaskOptionsCheckTest) {

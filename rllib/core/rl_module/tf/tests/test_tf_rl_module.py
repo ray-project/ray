@@ -5,22 +5,19 @@ import gymnasium as gym
 import tensorflow as tf
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.utils.test_utils import check
 
 
-class TestRLModule(unittest.TestCase):
+class TestTfRLModule(unittest.TestCase):
     def test_compilation(self):
 
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
 
         self.assertIsInstance(module, TfRLModule)
@@ -30,11 +27,9 @@ class TestRLModule(unittest.TestCase):
         bsize = 1024
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
         obs_shape = env.observation_space.shape
         obs = tf.random.uniform((bsize,) + obs_shape)
@@ -65,11 +60,9 @@ class TestRLModule(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
 
         obs_shape = env.observation_space.shape
@@ -83,22 +76,18 @@ class TestRLModule(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
 
         module2 = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
         state2 = module2.get_state()
         check(state["policy"][0], state2["policy"][0], false=True)
@@ -110,11 +99,9 @@ class TestRLModule(unittest.TestCase):
     def test_checkpointing(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             module.save_to_path(tmpdir)

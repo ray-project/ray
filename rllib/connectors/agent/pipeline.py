@@ -56,7 +56,7 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (
-            type(params) == list
+            type(params) is list
         ), "AgentConnectorPipeline takes a list of connector params."
         connectors = []
         for state in params:

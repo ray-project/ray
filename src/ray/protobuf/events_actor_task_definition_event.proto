@@ -1,0 +1,38 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/common.proto";
+
+package ray.rpc.events;
+
+// Message containing the definition information of an actor task.
+// The message is expected to be emitted once per task attempt.
+message ActorTaskDefinitionEvent {
+  // task_id and task_attempt forms the unique identifier for a task.
+  bytes task_id = 1;
+  int32 task_attempt = 2;
+
+  // The actor task definition information.
+  FunctionDescriptor actor_func = 3;
+  map<string, string> required_resources = 5;
+  RuntimeEnvInfo runtime_env_info = 6;
+
+  // The correlation ids of the task that can be used to correlate the task with
+  // other events.
+  bytes job_id = 7;
+  map<string, bytes> ref_ids = 8;
+}

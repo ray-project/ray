@@ -70,7 +70,7 @@ Named actors are only accessible within their namespaces.
                 Ray.init();
                 // This fails because "orange" was defined in the "colors" namespace.
                 Ray.getActor("orange").isPresent(); // return false
-                // This succceeds because the name "orange" is unused in this namespace.
+                // This succeeds because the name "orange" is unused in this namespace.
                 Ray.actor(Actor::new).setName("orange").remote();
                 Ray.actor(Actor::new).setName("watermelon").remote();
             } finally {

@@ -77,8 +77,13 @@ export const ServeMetricsSection = ({
   metricsConfig,
   sx,
 }: ServeMetricsSectionProps) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+    currentTimeZone,
+  } = useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
     RefreshOptions.FIVE_SECONDS,
@@ -196,7 +201,7 @@ export const ServeMetricsSection = ({
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
               <Paper
                 key={pathParams}

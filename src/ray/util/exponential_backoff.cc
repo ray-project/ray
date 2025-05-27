@@ -14,9 +14,8 @@
 
 #include "ray/util/exponential_backoff.h"
 
-#include <math.h>
-
-#include "ray/util/logging.h"
+#include <algorithm>
+#include <cmath>
 
 namespace ray {
 

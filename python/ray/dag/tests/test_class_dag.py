@@ -1,7 +1,12 @@
 import pytest
 
 import ray
-from ray.dag import PARENT_CLASS_NODE_KEY, PREV_CLASS_METHOD_CALL_KEY
+from ray.dag import (
+    PARENT_CLASS_NODE_KEY,
+    PREV_CLASS_METHOD_CALL_KEY,
+    InputNode,
+    MultiOutputNode,
+)
 
 
 @ray.remote
@@ -26,6 +31,26 @@ class Actor:
 
     def get(self):
         return self.i
+
+    def echo(self, x):
+        return x
+
+    @ray.method(num_returns=2)
+    def return_two(self, x):
+        return x, x + 1
+
+    @ray.method(num_returns=2)
+    def inc_and_return_two(self, x):
+        self.i += x
+        return self.i, self.i + 1
+
+    @ray.method(num_returns=1)
+    def return_two_as_one(self, x):
+        return x, x + 1
+
+    @ray.method(num_returns=2)
+    def return_two_from_three(self, x):
+        return x, x + 1, x + 2
 
 
 def test_basic_actor_dag(shared_ray_instance):
@@ -267,6 +292,68 @@ def test_unsupported_remote():
 
     with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
         _ = func.bind().remote()
+
+
+def test_two_returns_first():
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        dag = o1
+
+    for _ in range(3):
+        res = ray.get(dag.execute(1))
+        assert res == 1
+
+
+def test_two_returns_second():
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        dag = o2
+
+    for _ in range(3):
+        res = ray.get(dag.execute(1))
+        assert res == 2
+
+
+def test_two_returns_one_reader_multi_times():
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = b.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
+
+    for _ in range(3):
+        res = ray.get(dag.execute(1))
+        assert res == [1, 2]
+
+
+def test_two_returns_two_readers():
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    c = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = c.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
+
+    for _ in range(3):
+        res = ray.get(dag.execute(1))
+        assert res == [1, 2]
+
+
+def test_inc_two_returns():
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.inc_and_return_two.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    for i in range(3):
+        res = ray.get(dag.execute(1))
+        assert res == [i + 1, i + 2]
 
 
 if __name__ == "__main__":

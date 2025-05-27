@@ -61,6 +61,7 @@ export const CodeDialogButton = ({
                 padding: 2,
                 overflow: "scroll",
                 maxHeight: 600,
+                textWrap: "wrap",
               }}
             >
               {typeof code === "string" ? code : yaml.dump(code, { indent: 2 })}

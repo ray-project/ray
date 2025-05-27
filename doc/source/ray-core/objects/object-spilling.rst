@@ -2,205 +2,36 @@ Object Spilling
 ===============
 .. _object-spilling:
 
-Ray 1.3+ spills objects to external storage once the object store is full. By default, objects are spilled to Ray's temporary directory in the local filesystem.
+Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray 
+spills objects to the temporary directory (for example, ``/tmp/ray/session_2025-03-28_00-05-20_204810_2814690``). 
 
-Single node
------------
+Spilling to a custom directory
+-------------------------------
 
-Ray uses object spilling by default. Without any setting, objects are spilled to `[temp_folder]/spill`. On Linux and MacOS, the `temp_folder` is `/tmp` by default.
+You can specify a custom directory for spilling objects by setting the 
+``object_spilling_directory`` parameter in the ``ray.init`` function or the 
+``--object-spilling-directory`` command line option in the ``ray start`` command.
 
-To configure the directory where objects are spilled to, use:
+.. tab-set::
 
-.. testcode::
-  :hide:
+    .. tab-item:: Python
 
-  import ray
-  ray.shutdown()
+        .. doctest::
 
-.. testcode::
+            ray.init(object_spilling_directory="/path/to/spill/dir")
 
-    import json
-    import ray
+    .. tab-item:: CLI
 
-    ray.init(
-        _system_config={
-            "object_spilling_config": json.dumps(
-                {"type": "filesystem", "params": {"directory_path": "/tmp/spill"}},
-            )
-        },
-    )
+        .. doctest::
 
-You can also specify multiple directories for spilling to spread the IO load and disk space
-usage across multiple physical devices if needed (e.g., SSD devices):
+            ray start --object-spilling-directory=/path/to/spill/dir
 
-.. testcode::
-  :hide:
-
-  ray.shutdown()
-
-.. testcode::
-
-    import json
-    import ray
-
-    ray.init(
-        _system_config={
-            "max_io_workers": 4,  # More IO workers for parallelism.
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "filesystem",
-                  "params": {
-                    # Multiple directories can be specified to distribute
-                    # IO across multiple mounted physical devices.
-                    "directory_path": [
-                      "/tmp/spill",
-                      "/tmp/spill_1",
-                      "/tmp/spill_2",
-                    ]
-                  },
-                }
-            )
-        },
-    )
-
-
-.. note::
-
-    To optimize the performance, it is recommended to use an SSD instead of an HDD when using object spilling for memory-intensive workloads.
-
-If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
-
-.. testcode::
-  :hide:
-
-  ray.shutdown()
-
-.. testcode::
-
-    import json
-    import ray
-
-    ray.init(
-        _system_config={
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "filesystem",
-                  "params": {
-                    "directory_path": "/tmp/spill",
-                    "buffer_size": 1_000_000,
-                  }
-                },
-            )
-        },
-    )
-
-To prevent running out of disk space, local object spilling will throw ``OutOfDiskError`` if the disk utilization exceeds the predefined threshold.
-If multiple physical devices are used, any physical device's over-usage will trigger the ``OutOfDiskError``.
-The default threshold is 0.95 (95%). You can adjust the threshold by setting ``local_fs_capacity_threshold``, or set it to 1 to disable the protection.
-
-.. testcode::
-  :hide:
-
-  ray.shutdown()
-
-.. testcode::
-
-    import json
-    import ray
-
-    ray.init(
-        _system_config={
-            # Allow spilling until the local disk is 99% utilized.
-            # This only affects spilling to the local file system.
-            "local_fs_capacity_threshold": 0.99,
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "filesystem",
-                  "params": {
-                    "directory_path": "/tmp/spill",
-                  }
-                },
-            )
-        },
-    )
-
-
-To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
-
-.. testcode::
-  :hide:
-
-  ray.shutdown()
-
-.. testcode::
-  :skipif: True
-
-    import json
-    import ray
-
-    ray.init(
-        _system_config={
-            "max_io_workers": 4,  # More IO workers for remote storage.
-            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "smart_open",
-                  "params": {
-                    "uri": "s3://bucket/path"
-                  },
-                  "buffer_size": 100 * 1024 * 1024,  # Use a 100MB buffer for writes
-                },
-            )
-        },
-    )
-
-It is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
-
-Spilling to multiple remote storages is also supported.
-
-.. testcode::
-  :hide:
-
-  ray.shutdown()
-
-.. testcode::
-  :skipif: True
-
-    import json
-    import ray
-
-    ray.init(
-        _system_config={
-            "max_io_workers": 4,  # More IO workers for remote storage.
-            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "smart_open",
-                  "params": {
-                    "uri": ["s3://bucket/path1", "s3://bucket/path2", "s3://bucket/path3"],
-                  },
-                  "buffer_size": 100 * 1024 * 1024, # Use a 100MB buffer for writes
-                },
-            )
-        },
-    )
-
-Remote storage support is still experimental.
-
-Cluster mode
-------------
-To enable object spilling in multi node clusters:
-
-.. code-block:: bash
-
-  # Note that `object_spilling_config`'s value should be json format.
-  # You only need to specify the config when starting the head node, all the worker nodes will get the same config from the head node.
-  ray start --head --system-config='{"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}"}'
+For advanced usage and customizations, reach out to the `Ray team <https://www.ray.io/community>`_.
 
 Stats
 -----
 
-When spilling is happening, the following INFO level messages will be printed to the raylet logs (e.g., ``/tmp/ray/session_latest/logs/raylet.out``)::
+When spilling is happening, the following INFO level messages are printed to the Raylet logs-for example, ``/tmp/ray/session_latest/logs/raylet.out``::
 
   local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
   local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s

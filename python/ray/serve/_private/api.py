@@ -5,63 +5,22 @@ from typing import Any, Dict, Union
 
 import ray
 from ray._private.pydantic_compat import is_subclass_of_base_model
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
-    RAY_SERVE_ENABLE_TASK_EVENTS,
-    SERVE_CONTROLLER_NAME,
+    SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.controller import ServeController
+from ray.serve._private.default_impl import get_controller_impl
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
-from ray.serve.deployment import Application, Deployment
+from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
-logger = logging.getLogger(__file__)
-
-
-def get_deployment(name: str, app_name: str = ""):
-    """Dynamically fetch a handle to a Deployment object.
-
-    Args:
-        name: name of the deployment. This must have already been
-        deployed.
-
-    Returns:
-        Deployment
-    """
-    try:
-        (
-            deployment_info,
-            route_prefix,
-        ) = _get_global_client().get_deployment_info(name, app_name)
-    except KeyError:
-        if len(app_name) == 0:
-            msg = (
-                f"Deployment {name} was not found. Did you call Deployment.deploy()? "
-                "Note that `serve.get_deployment()` can only be used to fetch a "
-                "deployment that was deployed using the 1.x API `Deployment.deploy()`. "
-                "If you want to fetch a handle to an application deployed through "
-                "`serve.run` or through a Serve config, please use "
-                "`serve.get_app_handle()` instead."
-            )
-        else:
-            msg = f"Deployment {name} in application {app_name} was not found."
-        raise KeyError(msg)
-    return Deployment(
-        name,
-        deployment_info.deployment_config,
-        deployment_info.replica_config,
-        version=deployment_info.version,
-        route_prefix=route_prefix,
-        _internal=True,
-    )
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _check_http_options(
@@ -131,18 +90,9 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller = ServeController.options(
-        num_cpus=0,
-        name=SERVE_CONTROLLER_NAME,
-        lifetime="detached",
-        max_restarts=-1,
-        max_task_retries=-1,
-        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-        namespace=SERVE_NAMESPACE,
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    ).remote(
-        http_config=http_options,
+    controller_impl = get_controller_impl()
+    controller = controller_impl.remote(
+        http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
     )
@@ -277,16 +227,16 @@ def serve_start(
     return client
 
 
-def call_app_builder_with_args_if_necessary(
+def call_user_app_builder_with_args_if_necessary(
     builder: Union[Application, FunctionType],
     args: Dict[str, Any],
 ) -> Application:
-    """Builds a Serve application from an application builder function.
+    """Calls a user-provided function that returns Serve application.
 
-    If a pre-built application is passed, this is a no-op.
+    If an Application object is passed, this is a no-op.
 
-    Else, we validate the signature of the builder, convert the args dictionary to
-    the user-annotated Pydantic model if provided, and call the builder function.
+    Else, we validate the signature of the function, convert the args dictionary to
+    the user-annotated Pydantic model if provided, and call the function.
 
     The output of the function is returned (must be an Application).
     """

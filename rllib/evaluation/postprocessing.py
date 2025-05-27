@@ -2,12 +2,10 @@ import numpy as np
 import scipy.signal
 from typing import Dict, Optional
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import AgentID
 from ray.rllib.utils.typing import TensorType
 
@@ -158,7 +156,7 @@ def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
     other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode: Optional[Episode] = None,
+    episode=None,
 ) -> SampleBatch:
     """Adds GAE (generalized advantage estimations) to a trajectory.
 
@@ -269,33 +267,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
         input_dict = sample_batch.get_single_step_input_dict(
             policy.view_requirements, index="last"
         )
-        if policy.config.get("enable_rl_module_and_learner"):
-            # Note: During sampling you are using the parameters at the beginning of
-            # the sampling process. If I'll be using this advantages during training
-            # should it not be the latest parameters during training for this to be
-            # correct? Does this mean that I need to preserve the trajectory
-            # information during training and compute the advantages inside the loss
-            # function?
-            # TODO (Kourosh): Another thing we need to figure out is which end point
-            #  to call here (why forward_exploration)? What if this method is getting
-            #  called inside the learner loop or via another abstraction like
-            #  RLSampler.postprocess_trajectory() which is non-batched cpu/gpu task
-            #  running across different processes for different trajectories?
-            #  This implementation right now will compute even the action_dist which
-            #  will not be needed but takes time to compute.
-            if policy.framework == "torch":
-                input_dict = convert_to_torch_tensor(input_dict, device=policy.device)
-
-            # For recurrent models, we need to add a time dimension.
-            input_dict = policy.maybe_add_time_dimension(
-                input_dict, seq_lens=input_dict[SampleBatch.SEQ_LENS]
-            )
-            fwd_out = policy.model.forward_exploration(input_dict)
-            # For recurrent models, we need to remove the time dimension.
-            fwd_out = policy.maybe_remove_time_dimension(fwd_out)
-            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
-        else:
-            last_r = policy._value(**input_dict)
+        last_r = policy._value(**input_dict)
 
     vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
     # We need to squeeze out the time dimension if there is one

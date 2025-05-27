@@ -73,14 +73,14 @@ class EuclidianDistanceBasedCuriosity(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         if self._test > 10:
-            return data
+            return batch
         self._test += 1
         # Loop through all episodes and change the reward to
         # [reward + intrinsic reward]
@@ -119,4 +119,4 @@ class EuclidianDistanceBasedCuriosity(ConnectorV2):
             if max_dist_obs is not None:
                 self.obs_buffer.append(max_dist_obs)
 
-        return data
+        return batch

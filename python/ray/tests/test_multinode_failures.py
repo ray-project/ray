@@ -122,7 +122,7 @@ def _test_component_failed(cluster, component_type):
         time.sleep(1)
         process.kill()
         process.wait()
-        assert not process.poll() is None
+        assert process.poll() is not None
 
         # Make sure that we can still get the objects after the
         # executing tasks died.
@@ -154,7 +154,7 @@ def check_components_alive(cluster, component_type, check_component_alive):
                 + str(process.pid)
                 + "to terminate"
             )
-            assert not process.poll() is None
+            assert process.poll() is not None
 
 
 @pytest.mark.parametrize(
@@ -179,9 +179,4 @@ def test_raylet_failed(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

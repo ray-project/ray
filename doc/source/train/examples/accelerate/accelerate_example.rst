@@ -3,6 +3,13 @@
 Distributed Training with Hugging Face Accelerate
 =================================================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-accelerate_example" target="_blank" href="https://https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=accelerate_example">
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
+
 This example does distributed data parallel training
 with Hugging Face Accelerate, Ray Train, and Ray Data.
 It fine-tunes a BERT model and is adapted from

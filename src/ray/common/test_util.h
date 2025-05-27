@@ -19,10 +19,10 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/common.pb.h"
-
 namespace ray {
 
 static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
@@ -129,5 +129,40 @@ class TestSetupUtil {
   static void ShutDownRedisServer(int port);
   static void FlushRedisServer(int port);
 };
+
+template <size_t k, typename T>
+struct SaveArgToUniquePtrAction {
+  std::unique_ptr<T> *pointer;
+
+  template <typename... Args>
+  void operator()(const Args &...args) const {
+    *pointer = std::make_unique<T>(std::get<k>(std::tie(args...)));
+  }
+};
+
+// Copies the k-th arg with make_unique(arg<k>) into ptr.
+template <size_t k, typename T>
+SaveArgToUniquePtrAction<k, T> SaveArgToUniquePtr(std::unique_ptr<T> *ptr) {
+  return {ptr};
+}
+
+template <typename Lambda>
+auto SyncPostAndWait(instrumented_io_context &io_context,
+                     const std::string &name,
+                     Lambda f) {
+  using ReturnType = std::invoke_result_t<Lambda>;
+  std::promise<ReturnType> promise;
+  io_context.post(
+      [&]() {
+        if constexpr (std::is_void_v<ReturnType>) {
+          f();
+          promise.set_value();
+        } else {
+          promise.set_value(f());
+        }
+      },
+      name);
+  return promise.get_future().get();
+}
 
 }  // namespace ray

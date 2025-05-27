@@ -46,6 +46,8 @@ class MockWorkerInterface : public WorkerInterface {
               (),
               (const, override));
   MOCK_METHOD(const JobID &, GetAssignedJobId, (), (const, override));
+  MOCK_METHOD(std::optional<bool>, GetIsGpu, (), (const, override));
+  MOCK_METHOD(std::optional<bool>, GetIsActorWorker, (), (const, override));
   MOCK_METHOD(int, GetRuntimeEnvHash, (), (const, override));
   MOCK_METHOD(void, AssignActorId, (const ActorID &actor_id), (override));
   MOCK_METHOD(const ActorID &, GetActorId, (), (const, override));
@@ -54,7 +56,7 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(const std::shared_ptr<ClientConnection>, Connection, (), (const, override));
   MOCK_METHOD(void, SetOwnerAddress, (const rpc::Address &address), (override));
   MOCK_METHOD(const rpc::Address &, GetOwnerAddress, (), (const, override));
-  MOCK_METHOD(void, DirectActorCallArgWaitComplete, (int64_t tag), (override));
+  MOCK_METHOD(void, ActorCallArgWaitComplete, (int64_t tag), (override));
   MOCK_METHOD(const BundleID &, GetBundleId, (), (const, override));
   MOCK_METHOD(void, SetBundleId, (const BundleID &bundle_id), (override));
   MOCK_METHOD(void,

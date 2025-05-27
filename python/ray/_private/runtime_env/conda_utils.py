@@ -116,7 +116,7 @@ def create_conda_env_if_needed(
         )
 
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
-    envs = json.loads(stdout)["envs"]
+    envs = json.loads(stdout[stdout.index("{") :])["envs"]
 
     if prefix in envs:
         logger.info(f"Conda environment {prefix} already exists.")

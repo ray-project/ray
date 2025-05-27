@@ -14,23 +14,26 @@
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
 
-GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &io_context,
-    ClusterResourceManager &cluster_resource_manager,
-    GcsNodeManager &gcs_node_manager,
-    NodeID local_node_id,
-    std::shared_ptr<ClusterTaskManager> cluster_task_manager)
+GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
+                                       ClusterResourceManager &cluster_resource_manager,
+                                       GcsNodeManager &gcs_node_manager,
+                                       NodeID local_node_id,
+                                       ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
-      cluster_task_manager_(std::move(cluster_task_manager)) {}
+      cluster_task_manager_(cluster_task_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
@@ -152,7 +155,7 @@ void GcsResourceManager::UpdateFromResourceView(
     return;
   }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    // TODO (jjyao) This is currently an no-op and is broken.
+    // TODO(jjyao) This is currently an no-op and is broken.
     // UpdateNodeNormalTaskResources(node_id, data);
   } else {
     // We will only update the node's resources if it's from resource view reports.
@@ -188,7 +191,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+    absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
         aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
@@ -197,7 +200,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       batch.add_batch()->CopyFrom(usage.second);
     }
 
-    if (cluster_task_manager_) {
+    if (cluster_task_manager_ != nullptr) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
@@ -305,8 +308,8 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
           scheduling_node_id, scheduling::ResourceID(entry.first), entry.second);
     }
   } else {
-    RAY_LOG(WARNING) << "The registered node " << node_id
-                     << " doesn't set the total resources.";
+    RAY_LOG(WARNING).WithField(node_id)
+        << "The registered node doesn't set the total resources.";
   }
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
@@ -335,9 +338,9 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- GetAllTotalResources request count"
+         << "\n- GetAllTotalResources request count: "
          << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];

@@ -361,7 +361,7 @@ class Worker:
         from being replayed on the server side in the event that the client
         must retry a requsest.
         Args:
-            metadata - the gRPC metadata to append the IDs to
+            metadata: the gRPC metadata to append the IDs to
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
@@ -724,7 +724,7 @@ class Worker:
         resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
-            output_dict = {k: v for k, v in resp.resource_table.table.items()}
+            output_dict = dict(resp.resource_table.table)
             return output_dict
         elif resp.WhichOneof("response_type") == "runtime_context":
             return resp.runtime_context
@@ -899,7 +899,7 @@ def make_client_id() -> str:
 def decode_exception(e: grpc.RpcError) -> Exception:
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
-        # error is serialized into the the exception details. If the code
+        # error is serialized into the exception details. If the code
         # isn't ABORTED, then return the original error since there's no
         # serialized error to decode.
         # See server.py::return_exception_in_context for details

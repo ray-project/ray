@@ -54,6 +54,10 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("pistonball", env_config={"local_ratio": 0.5})
             .multi_agent(
                 # Set of policy IDs (by default, will use Algorithms's
@@ -82,6 +86,10 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("simple_spread")
             .env_runners(num_env_runners=0, rollout_fragment_length=30)
             .debugging(log_level="DEBUG")

@@ -116,9 +116,14 @@ class GlueTest(unittest.TestCase):
                 project_id: str,
                 sdk=None,
                 smoke_test: bool = False,
+                log_streaming_limit: int = 100,
             ):
                 super(MockClusterManager, self).__init__(
-                    test_name, project_id, this_sdk, smoke_test=smoke_test
+                    test_name,
+                    project_id,
+                    this_sdk,
+                    smoke_test=smoke_test,
+                    log_streaming_limit=log_streaming_limit,
                 )
                 self.return_dict = this_cluster_manager_return
                 this_instances["cluster_manager"] = self
@@ -237,6 +242,7 @@ class GlueTest(unittest.TestCase):
             test=self.test,
             anyscale_project=self.anyscale_project,
             result=result,
+            log_streaming_limit=1000,
             **kwargs
         )
 
@@ -473,6 +479,7 @@ class GlueTest(unittest.TestCase):
 
         self.assertEqual(result.return_code, ExitCode.COMMAND_ALERT.value)
         self.assertEqual(result.status, "error")
+        self.assertEqual(self.instances["cluster_manager"].log_streaming_limit, 1000)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)

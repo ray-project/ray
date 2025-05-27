@@ -15,7 +15,7 @@ class Stopper(abc.ABC):
     Examples:
 
         >>> import time
-        >>> from ray import train, tune
+        >>> from ray import tune
         >>> from ray.tune import Stopper
         >>>
         >>> class TimeStopper(Stopper):
@@ -32,12 +32,12 @@ class Stopper(abc.ABC):
         >>> def train_fn(config):
         ...     for i in range(100):
         ...         time.sleep(1)
-        ...         train.report({"iter": i})
+        ...         tune.report({"iter": i})
         ...
         >>> tuner = tune.Tuner(
         ...     train_fn,
         ...     tune_config=tune.TuneConfig(num_samples=2),
-        ...     run_config=train.RunConfig(stop=TimeStopper()),
+        ...     run_config=tune.RunConfig(stop=TimeStopper()),
         ... )
         >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
         [ignore]...
@@ -63,7 +63,7 @@ class CombinedStopper(Stopper):
     Examples:
 
         >>> import numpy as np
-        >>> from ray import train, tune
+        >>> from ray import tune
         >>> from ray.tune.stopper import (
         ...     CombinedStopper,
         ...     MaximumIterationStopper,
@@ -76,11 +76,11 @@ class CombinedStopper(Stopper):
         ... )
         >>> def train_fn(config):
         ...     for i in range(15):
-        ...         train.report({"my_metric": np.random.normal(0, 1 - i / 15)})
+        ...         tune.report({"my_metric": np.random.normal(0, 1 - i / 15)})
         ...
         >>> tuner = tune.Tuner(
         ...     train_fn,
-        ...     run_config=train.RunConfig(stop=stopper),
+        ...     run_config=tune.RunConfig(stop=stopper),
         ... )
         >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
         [ignore]...

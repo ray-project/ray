@@ -126,7 +126,7 @@ def test_create_node_cap_at_max(
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",
@@ -149,7 +149,7 @@ def test_create_node_cap_at_max(
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",
@@ -217,7 +217,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",

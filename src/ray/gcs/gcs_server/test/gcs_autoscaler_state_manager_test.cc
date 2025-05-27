@@ -14,6 +14,12 @@
 
 // clang-format off
 #include <memory>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <map>
+#include <string>
+#include <limits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -22,7 +28,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
@@ -45,6 +51,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   GcsAutoscalerStateManagerTest() {}
 
  protected:
+  static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
   instrumented_io_context io_service_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
@@ -60,13 +67,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
-        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()));
-    function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
+        kRayletConfig,
+        io_service_);
+    function_manager_ =
+        std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
     gcs_actor_manager_ =
@@ -84,7 +94,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_node_manager_,
                                       *gcs_actor_manager_,
                                       *gcs_placement_group_manager_,
-                                      client_pool_));
+                                      *client_pool_,
+                                      kv_manager_->GetInstance(),
+                                      io_service_,
+                                      /*gcs_publisher=*/nullptr));
   }
 
  public:
@@ -634,9 +647,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
         Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
-                         {{"CPU", 2}, {"GPU", 1}});
+    ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
+    CheckResourceRequest(
+        state.cluster_resource_constraints(0).resource_requests(0).request(),
+        {{"CPU", 2}, {"GPU", 1}});
   }
 
   // Override it
@@ -645,9 +659,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
         {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
-                         {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
+    ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
+    CheckResourceRequest(
+        state.cluster_resource_constraints(0).resource_requests(0).request(),
+        {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }
 
@@ -831,10 +846,153 @@ TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   }
 }
 
+TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
+  // This is really a test for GcsKvManager. However gcs_kv_manager_test.cc is a larger
+  // misnomer - it does not test that class at all; it only tests StoreClientInternalKV.
+  // We temporarily put this test here.
+  rpc::GetInternalConfigRequest request;
+  rpc::GetInternalConfigReply reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  kv_manager_->HandleGetInternalConfig(request, &reply, send_reply_callback);
+  EXPECT_EQ(reply.config(), kRayletConfig);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests) {
+  // Prepare
+  auto node_1 = Mocker::GenNodeInfo();
+  auto node_2 = Mocker::GenNodeInfo();
+
+  // Add nodes
+  {
+    node_1->mutable_resources_total()->insert({"CPU", 2});
+    node_1->set_instance_id("instance_1");
+    AddNode(node_1);
+    node_2->mutable_resources_total()->insert({"CPU", 1});
+    node_2->set_instance_id("instance_2");
+    AddNode(node_2);
+  }
+
+  // Update resource usages
+  {
+    UpdateResourceLoads(node_1->node_id(),
+                        {Mocker::GenResourceDemand({{"GPU", 1}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 1,
+                                                   /* num_backlog */ 0),
+                         Mocker::GenResourceDemand({{"CPU", 1}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 0,
+                                                   /* num_backlog */ 1),
+                         Mocker::GenResourceDemand({{"CPU", 3}},
+                                                   /* num_ready_queued */ 0,
+                                                   /* num_infeasible */ 1,
+                                                   /* num_backlog */ 1)});
+    UpdateResourceLoads(node_2->node_id(),
+                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 0,
+                                                   /* num_backlog */ 1)});
+  }
+
+  // Update autoscaling state
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    ReportAutoscalingState(actual_state);
+  }
+
+  // Execute
+  const auto per_node_infeasible_requests =
+      gcs_autoscaler_state_manager_->GetPerNodeInfeasibleResourceRequests();
+
+  // Verify
+  { ASSERT_TRUE(per_node_infeasible_requests.empty()); }
+
+  // Reset
+  {
+    RemoveNode(node_1);
+    RemoveNode(node_2);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests) {
+  // Prepare
+  auto node_1 = Mocker::GenNodeInfo();
+  auto node_2 = Mocker::GenNodeInfo();
+
+  // Add nodes
+  {
+    node_1->mutable_resources_total()->insert({"CPU", 2});
+    node_1->set_instance_id("instance_1");
+    AddNode(node_1);
+    node_2->mutable_resources_total()->insert({"CPU", 1});
+    node_2->set_instance_id("instance_2");
+    AddNode(node_2);
+  }
+
+  // Update resource usages
+  {
+    UpdateResourceLoads(node_1->node_id(),
+                        {Mocker::GenResourceDemand({{"GPU", 1}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 1,
+                                                   /* num_backlog */ 0),
+                         Mocker::GenResourceDemand({{"CPU", 1}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 0,
+                                                   /* num_backlog */ 1),
+                         Mocker::GenResourceDemand({{"CPU", 3}},
+                                                   /* num_ready_queued */ 0,
+                                                   /* num_infeasible */ 1,
+                                                   /* num_backlog */ 1)});
+    UpdateResourceLoads(node_2->node_id(),
+                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 0,
+                                                   /* num_backlog */ 1)});
+  }
+
+  // Update autoscaling state
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    auto infeasible_resource_request_1 = actual_state.add_infeasible_resource_requests();
+    auto infeasible_resource_request_2 = actual_state.add_infeasible_resource_requests();
+    infeasible_resource_request_1->mutable_resources_bundle()->insert({"CPU", 3});
+    infeasible_resource_request_2->mutable_resources_bundle()->insert({"GPU", 2});
+    ReportAutoscalingState(actual_state);
+  }
+
+  // Execute
+  const auto per_node_infeasible_requests =
+      gcs_autoscaler_state_manager_->GetPerNodeInfeasibleResourceRequests();
+
+  // Verify
+  {
+    ASSERT_EQ(per_node_infeasible_requests.size(), 1);
+    ASSERT_NE(per_node_infeasible_requests.find(NodeID::FromBinary(node_1->node_id())),
+              per_node_infeasible_requests.end());
+    ASSERT_EQ(
+        per_node_infeasible_requests.at(NodeID::FromBinary(node_1->node_id())).size(), 1);
+    ASSERT_EQ(per_node_infeasible_requests.at(NodeID::FromBinary(node_1->node_id()))
+                  .at(0)
+                  .size(),
+              1);
+    ASSERT_EQ(per_node_infeasible_requests.at(NodeID::FromBinary(node_1->node_id()))
+                  .at(0)
+                  .at("CPU"),
+              3);
+  }
+
+  // Reset
+  {
+    RemoveNode(node_1);
+    RemoveNode(node_2);
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

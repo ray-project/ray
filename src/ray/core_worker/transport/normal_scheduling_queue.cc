@@ -14,6 +14,9 @@
 
 #include "ray/core_worker/transport/normal_scheduling_queue.h"
 
+#include <deque>
+#include <utility>
+
 namespace ray {
 namespace core {
 
@@ -38,13 +41,11 @@ size_t NormalSchedulingQueue::Size() const {
 void NormalSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(rpc::SendReplyCallback)> accept_request,
-    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_request,
     rpc::SendReplyCallback send_reply_callback,
-    const std::string &concurrency_group_name,
-    const FunctionDescriptor &function_descriptor,
-    TaskID task_id,
-    const std::vector<rpc::ObjectReference> &dependencies) {
+    TaskSpecification task_spec) {
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
@@ -53,10 +54,7 @@ void NormalSchedulingQueue::Add(
   pending_normal_tasks_.push_back(InboundRequest(std::move(accept_request),
                                                  std::move(reject_request),
                                                  std::move(send_reply_callback),
-                                                 task_id,
-                                                 dependencies.size() > 0,
-                                                 /*concurrency_group_name=*/"",
-                                                 function_descriptor));
+                                                 std::move(task_spec)));
 }
 
 // Search for an InboundRequest associated with the task that we are trying to cancel.
@@ -83,7 +81,7 @@ void NormalSchedulingQueue::ScheduleRequests() {
     {
       absl::MutexLock lock(&mu_);
       if (!pending_normal_tasks_.empty()) {
-        head = pending_normal_tasks_.front();
+        head = std::move(pending_normal_tasks_.front());
         pending_normal_tasks_.pop_front();
       } else {
         return;

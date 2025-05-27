@@ -5,3 +5,4 @@
 # constraint file
 
 idna>=3.7
+certifi>=2025.1.31

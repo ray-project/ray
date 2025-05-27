@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import patch
@@ -7,8 +8,8 @@ from unittest.mock import patch
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
 from ray import train
+from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray.air._internal.util import StartTraceback
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -28,7 +29,6 @@ from ray.train.constants import (
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -311,7 +311,12 @@ def test_single_worker_actor_failure(ray_start_2_cpus):
         e.get_next_results()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not supported in python 3.12+"
+)
 def test_tensorflow_start(ray_start_2_cpus):
+    from ray.train.tensorflow import TensorflowConfig
+
     num_workers = 2
     tensorflow_config = TensorflowConfig()
     e = BackendExecutor(tensorflow_config, num_workers=num_workers)
@@ -488,7 +493,7 @@ def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
     config = TestConfig()
 
     def get_resources():
-        neuron_resource_ids = os.environ[ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR]
+        neuron_resource_ids = os.environ[NEURON_RT_VISIBLE_CORES_ENV_VAR]
         # Sort the runtime ids to have exact match with expected result.
         sorted_devices = [
             int(device) for device in sorted(neuron_resource_ids.split(","))
@@ -525,7 +530,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
     config = TestConfig()
 
     def get_resources():
-        neuron_resource_ids = os.environ[ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR]
+        neuron_resource_ids = os.environ[NEURON_RT_VISIBLE_CORES_ENV_VAR]
         # Sort the runtime ids to have exact match with expected result.
         sorted_devices = [
             int(device) for device in sorted(neuron_resource_ids.split(","))

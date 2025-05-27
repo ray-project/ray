@@ -6,6 +6,10 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 import ray
 from ray._private import ray_constants
 from ray._private.utils import get_ray_doc_version
+from ray._private.label_utils import (
+    validate_label_key,
+    validate_label_selector_value,
+)
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -119,7 +123,24 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
+def _validate_label_selector(label_selector: Optional[Dict[str, str]]) -> Optional[str]:
+    if label_selector is None:
+        return None
+
+    for key, value in label_selector.items():
+        possible_error_message = validate_label_key(key)
+        if possible_error_message:
+            return possible_error_message
+        if value is not None:
+            possible_error_message = validate_label_selector_value(value)
+            if possible_error_message:
+                return possible_error_message
+
+    return None
+
+
 _common_options = {
+    "label_selector": Option((dict, type(None)), lambda x: _validate_label_selector(x)),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
@@ -147,6 +168,7 @@ _common_options = {
     ),
     "_metadata": Option((dict, type(None))),
     "enable_task_events": Option(bool, default_value=True),
+    "_labels": Option((dict, type(None))),
 }
 
 

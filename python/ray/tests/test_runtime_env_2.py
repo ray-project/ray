@@ -1,10 +1,11 @@
-import conda
-import pytest
-import time
-import sys
 import fnmatch
 import os
+import time
+import sys
 from typing import List
+
+import conda
+import pytest
 
 import ray
 from ray.dashboard.modules.job.common import JobStatus
@@ -240,14 +241,10 @@ class TestNoUserInfoInLogs:
         with pytest.raises(AssertionError):
             assert_no_user_info_in_logs(USER_SECRET)
 
-        assert_no_user_info_in_logs(USER_SECRET, file_whitelist=["runtime_env*.log"])
+        assert_no_user_info_in_logs(
+            USER_SECRET, file_whitelist=["runtime_env*.log", "event_EXPORT*.log"]
+        )
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

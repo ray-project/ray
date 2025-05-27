@@ -530,6 +530,20 @@ class TestDelete:
             mock_client_instance.delete_job.assert_called_with("job_id")
 
 
+class TestStatus:
+    def test_address(self, mock_sdk_client):
+        _job_cli_group_test_address(mock_sdk_client, "status", "fake_job_id")
+
+    def test_status(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["status", "job_id"])
+            check_exit_code(result, 0)
+            mock_client_instance.get_job_info.assert_called_with("job_id")
+
+
 if __name__ == "__main__":
     import sys
 

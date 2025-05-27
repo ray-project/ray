@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Iterator, List, Union
 
-from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.util import _check_import
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -31,7 +31,10 @@ class AvroDatasource(FileBasedDatasource):
         reader = fastavro.reader(f)
 
         ctx = DataContext.get_current()
-        output_buffer = BlockOutputBuffer(ctx.target_max_block_size)
+        output_block_size_option = OutputBlockSizeOption(
+            target_max_block_size=ctx.target_max_block_size
+        )
+        output_buffer = BlockOutputBuffer(output_block_size_option)
         for record in reader:
             output_buffer.add(record)
             while output_buffer.has_next():

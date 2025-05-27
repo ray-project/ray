@@ -1,0 +1,13 @@
+model_loading_config:
+  model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+
+accelerator_type: A10G
+
+# Test V1 at the same time
+runtime_env:
+  env_vars:
+    VLLM_USE_V1: "1"
+
+engine_kwargs:
+  max_model_len: 8192
+  tensor_parallel_size: 1

@@ -3,7 +3,9 @@ from ray.rllib.core.columns import Columns
 
 DEFAULT_AGENT_ID = "default_agent"
 DEFAULT_POLICY_ID = "default_policy"
-DEFAULT_MODULE_ID = DEFAULT_POLICY_ID  # TODO (sven): Change this to "default_module"
+# TODO (sven): Change this to "default_module"
+DEFAULT_MODULE_ID = DEFAULT_POLICY_ID
+ALL_MODULES = "__all_modules__"
 
 COMPONENT_ENV_RUNNER = "env_runner"
 COMPONENT_ENV_TO_MODULE_CONNECTOR = "env_to_module_connector"

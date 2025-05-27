@@ -267,7 +267,7 @@ export const ProfilerButton = ({
                 `${profilerUrl}&format=${format}&duration=${duration}` +
                 `&leaks=${leaks ? "1" : "0"}` +
                 `&native=${native ? "1" : "0"}` +
-                `&trace_python_alocators=${allocator ? "1" : "0"}`
+                `&trace_python_allocators=${allocator ? "1" : "0"}`
               }
               rel="noreferrer"
               target="_blank"

@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 
+#include <string>
+
 namespace ray {
 namespace gcs {
 

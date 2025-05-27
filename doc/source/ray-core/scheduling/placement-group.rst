@@ -577,15 +577,27 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
   :start-after: __child_capture_disable_pg_start__
   :end-before: __child_capture_disable_pg_end__
 
+.. warning::
+  The value of ``placement_group_capture_child_tasks`` for a given actor isn't inherited from its parent. If you're creating nested actors of depth greater than 1
+  and should all use the same placement group, you should explicitly set ``placement_group_capture_child_tasks`` explicitly set for each actor.
+
+
 [Advanced] Named Placement Group
 --------------------------------
 
-A placement group can be given a globally unique name.
-This allows you to retrieve the placement group from any job in the Ray cluster.
-This can be useful if you cannot directly pass the placement group handle to
+Within a :ref:`namespace <namespaces-guide>`, you can *name* a placement group.
+You can use the name of a placement group to retrieve the placement group from any job 
+in the Ray cluster, as long as the job is within the same namespace.
+This is useful if you can't directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
-access a placement group launched by another driver.
-Note that the placement group is still destroyed if its lifetime isn't `detached`.
+access a placement group launched by another driver. 
+
+The placement group is destroyed when the original creation job completes if its 
+lifetime isn't `detached`. You can avoid this by using a :ref:`detached placement group <placement-group-detached>`
+
+Note that this feature requires that you specify a 
+:ref:`namespace <namespaces-guide>` associated with it, or else you can't retrieve the 
+placement group across jobs.
 
 .. tab-set::
 

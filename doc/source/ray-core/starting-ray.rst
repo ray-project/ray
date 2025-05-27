@@ -1,3 +1,5 @@
+.. _start-ray:
+
 Starting Ray
 ============
 

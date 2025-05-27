@@ -69,9 +69,9 @@ constexpr char kRayVersion[] = "3.0.0.dev0";
 /*****************************/
 /* ENV labels for autoscaler */
 /*****************************/
-// Sync with python/ray/_private/ray_constants.py
 constexpr char kGcsAutoscalerStateNamespace[] = "__autoscaler";
 constexpr char kGcsAutoscalerV2EnabledKey[] = "__autoscaler_v2_enabled";
+constexpr char kGcsAutoscalerClusterConfigKey[] = "__autoscaler_cluster_config";
 
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
@@ -107,3 +107,6 @@ constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
 /// can be shared but protobuf doesn't support defining string constants.
 /// https://docs.google.com/document/d/151T4VnknX_5EtPy6E-LbpL-r1T4ZSO0UBvSgWdSjx4Q/edit#heading=h.2ews5m5fmz
 constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
+
+/// PID of GCS process to record metrics.
+constexpr char kGcsPidKey[] = "gcs_pid";

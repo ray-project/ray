@@ -110,8 +110,10 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
 
     channel = grpc.insecure_channel("localhost:9000")
 
+    serve.run(g)
+
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, [])
+    ping_grpc_list_applications(channel, ["default"])
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
@@ -352,15 +354,6 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ping_grpc_healthz(worker_node_channel, test_draining=True)
 
 
-@pytest.mark.parametrize(
-    "ray_instance",
-    [
-        {
-            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-        },
-    ],
-    indirect=True,
-)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request timed out.
@@ -373,11 +366,13 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
         "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
+    grpc_request_timeout_s = 0.1
 
     serve.start(
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            request_timeout_s=grpc_request_timeout_s,
         ),
     )
 
@@ -418,7 +413,7 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     assert timeout_response in rpc_error.details()
 
     # Unblock the handlers to avoid graceful shutdown time.
-    ray.get(signal_actor.send.remote())
+    ray.get(signal_actor.send.remote(clear=True))
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -493,8 +488,8 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
     @serve.deployment
     class Downstream:
         async def wait_for_singal(self):
-            await running_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await running_signal_actor.send.remote()
 
         async def __call__(self, *args):
             await self.wait_for_singal()
@@ -524,6 +519,9 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
 
     with pytest.raises(grpc.FutureCancelledError):
         r.result()
+
+    ray.get(running_signal_actor.send.remote(clear=True))
+    ray.get(cancelled_signal_actor.send.remote(clear=True))
 
 
 @pytest.mark.parametrize("streaming", [False, True])

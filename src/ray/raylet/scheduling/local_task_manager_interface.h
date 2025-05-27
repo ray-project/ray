@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
@@ -55,6 +58,12 @@ class ILocalTaskManager {
   virtual const absl::flat_hash_map<SchedulingClass,
                                     absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const = 0;
+
+  virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
+                                const WorkerID &worker_id,
+                                int64_t backlog_size) = 0;
+
+  virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
   virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                                      bool *any_pending,
@@ -107,6 +116,12 @@ class NoopLocalTaskManager : public ILocalTaskManager {
         backlog_tracker;
     return backlog_tracker;
   }
+
+  void SetWorkerBacklog(SchedulingClass scheduling_class,
+                        const WorkerID &worker_id,
+                        int64_t backlog_size) override {}
+
+  void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
   bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                              bool *any_pending,

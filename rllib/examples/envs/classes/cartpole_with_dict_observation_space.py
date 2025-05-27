@@ -8,8 +8,7 @@ class CartPoleWithDictObservationSpace(CartPoleEnv):
 
     However, otherwise, the information content in each observation remains the same.
 
-    https://github.com/openai/gym/blob/master/gym/envs/classic_control/
-    cartpole.py
+    https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/cartpole.py  # noqa
 
     The new observation space looks as follows (a little quirky, but this is
     for testing purposes only):
@@ -65,7 +64,7 @@ class CartPoleWithDictObservationSpace(CartPoleEnv):
         return {
             "x-pos": np.array([original_cartpole_obs[0]], np.float32),
             "angular-pos": {
-                "value": original_cartpole_obs[2],
+                "value": np.array(original_cartpole_obs[2]),
                 "some_random_stuff": np.random.randint(3),
             },
             "velocs": (

@@ -56,7 +56,39 @@ pip install -r requirements-doc.txt
 Don't use `-U` in this step. You don't want to upgrade dependencies because `requirements-doc.txt` pins exact versions you need to build the docs.
 
 ### Build documentation
-Build the documentation by running the following command:
+Before building, clean your environment first by running:
+```shell
+make clean
+```
+
+Choose from the following 2 options to build documentation locally:
+
+- Incremental build
+- Full build
+
+#### 1. Incremental build with global cache and live rendering
+
+To use this option, you can run:
+```shell
+make local
+```
+
+This option is recommended if you need to make frequent uncomplicated and small changes like editing text, adding things within existing files, etc. 
+
+In this approach, Sphinx only builds the changes you made in your branch compared to your last pull from upstream master. The rest of doc is cached with pre-built doc pages from your last commit from upstream (for every new commit pushed to Ray, CI builds all the documentation pages from that commit and store them on S3 as cache).
+
+The build first traces your commit tree to find the latest commit that CI already cached on S3. 
+Once the build finds the commit, it fetches the corresponding cache from S3 and extracts it into the `doc/` directory. Simultaneously, CI tracks all the files that have changed from that commit to current `HEAD`, including any un-staged changes.
+
+Sphinx then rebuilds only the pages that your changes affect, leaving the rest untouched from the cache.
+
+When build finishes, the doc page would automatically pop up on your browser. If any change is made in the `doc/` directory, Sphinx would automatically rebuild and reload your doc page. You can stop it by interrupting with `Ctrl+C`.
+
+For more complicated changes that involve adding or removing files, always use `make develop` first, then you can start using `make local` afterwards to iterate on the cache that `make develop` produces.
+
+#### 2. Full build from scratch
+In the full build option, Sphinx rebuilds all files in `doc/` directory, ignoring all cache and saved environment.
+Because of this behavior, you get a really clean build but it's much slower.
 
 ```shell
 make develop
@@ -130,8 +162,7 @@ comes down to _two types_ of documents:
   [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or
   [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in
-  the browser like `.md` or `.rst` files, but have the added benefit of adding launch buttons to the top of the
-  document, so that users can run the code themselves in either Binder or Google Colab.
+  the browser like `.md` or `.rst` files, but have the added benefit that users can easily run the code themselves.
 
 ## Fixing typos and improving explanations
 
@@ -226,7 +257,7 @@ top of this page to get the `.ipynb` file) and start modifying it.
 All the example notebooks in Ray Tune get automatically tested by our CI system, provided you place them in the
 [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples).
 If you have questions about how to test your notebook when contributing to other Ray sub-projects, please make
-sure to ask a question in [the Ray community Slack](https://forms.gle/9TSdDYUgxYs8SA9e8) or directly on GitHub,
+sure to ask a question in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub,
 when opening your pull request.
 
 To work off of an existing example, you could also have a look at the
@@ -313,6 +344,21 @@ Apart from `hide-cell`, you also have `hide-input` and `hide-output` tags that h
 Also, if you need code that gets executed in the notebook, but you don't want to show it in the documentation,
 you can use the `remove-cell`, `remove-input`, and `remove-output` tags in the same way.
 
+### Reference section labels
+
+[Reference sections labels](https://jupyterbook.org/en/stable/content/references.html#reference-section-labels) are a way to link to specific parts of the documentation from within a notebook. Creating one inside a markdown cell is simple:
+
+```markdown
+(my-label)=
+# The thing to label
+```
+
+Then, you can link it in .rst files with the following syntax:
+
+```rst
+See {ref}`the thing that I labeled <my-label>` for more information.
+```
+
 ### Testing notebooks
 
 Removing cells can be particularly interesting for compute-intensive notebooks.
@@ -372,7 +418,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules like
 
 ### How do you run Vale?
 
-#### How to use the VSCode extension
+#### How to use the VS Code extension
 
 1. Install Vale. If you use macOS, use Homebrew.
 
@@ -388,10 +434,10 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules like
 
     For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
 
-2. Install the Vale VSCode extension by following these
+2. Install the Vale VS Code extension by following these
 [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
-3. VSCode should show warnings in your code editor and in the “Problems” panel.
+3. VS Code should show warnings in your code editor and in the “Problems” panel.
 
     ![Vale](../images/vale.png)
 
@@ -469,6 +515,7 @@ If you run into a problem building the docs, following these steps can help isol
 2. **Check your environment.** Use `pip list` to check the installed dependencies. Compare them to `doc/requirements-doc.txt`. The documentation build system doesn't have the same dependency requirements as Ray. You don't need to run ML models or execute code on distributed systems in order to build the docs. In fact, it's best to use a completely separate docs build environment from the environment you use to run Ray to avoid dependency conflicts.  When installing requirements, do `pip install -r doc/requirements-doc.txt`. Don't use `-U` because you don't want to upgrade any dependencies during the installation.
 3. **Ensure a modern version of Python.** The docs build system doesn't keep the same dependency and Python version requirements as Ray. Use a modern version of Python when building docs. Newer versions of Python can be substantially faster than preceding versions. Consult <https://endoflife.date/python> for the latest version support information.
 4. **Enable breakpoints in Sphinx**. Add -P to the `SPHINXOPTS` in `doc/Makefile` to tell `sphinx` to stop when it encounters a breakpoint, and remove `-j auto` to disable parallel builds. Now you can put breakpoints in the modules you're trying to import, or in `sphinx` code itself, which can help isolate build stubborn build issues.
+5. **[Incremental build] Side navigation bar doesn't reflect new pages** If you are adding new pages, they should always show up in the side navigation bar on index pages. However, incremental builds with `make local` skips rebuilding many other pages, so Sphinx doesn't update the side navigation bar on those pages. To build docs with correct side navigation bar on all pages, consider using `make develop`.
 
 ## Where to go from here?
 

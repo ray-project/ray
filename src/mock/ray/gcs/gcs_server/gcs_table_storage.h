@@ -123,16 +123,6 @@ class MockGcsWorkerTable : public GcsWorkerTable {
 namespace ray {
 namespace gcs {
 
-class MockGcsInternalConfigTable : public GcsInternalConfigTable {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsTableStorage : public GcsTableStorage {
  public:
   MockGcsTableStorage() : GcsTableStorage(nullptr) {}

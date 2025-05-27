@@ -17,6 +17,8 @@
 
 #include "ray/object_manager/plasma/plasma.h"
 
+#include <utility>
+
 #include "ray/object_manager/plasma/common.h"
 
 namespace plasma {

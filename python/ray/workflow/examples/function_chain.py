@@ -25,7 +25,7 @@ def function_chain(steps: List[Callable]) -> Callable:
     return chain_func
 
 
-"""
+r"""
 Multiply semantics of each steps:
   [[s_1_1, s_1_2],
    [s_2_1, s_2_2]]

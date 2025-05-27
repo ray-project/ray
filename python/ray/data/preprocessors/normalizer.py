@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -65,11 +65,24 @@ class Normalizer(Preprocessor):
         0  1.0  1.0   0
         1  1.0  0.0   1
 
+        :class:`Normalizer` can also be used in append mode by providing the
+        name of the output_columns that should hold the normalized values.
+
+        >>> preprocessor = Normalizer(columns=["X1", "X2"], output_columns=["X1_normalized", "X2_normalized"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_normalized  X2_normalized
+        0   1   1   0       0.707107       0.707107
+        1   1   0   1       1.000000       0.000000
+
     Args:
         columns: The columns to scale. For each row, these colmumns are scaled to
             unit-norm.
         norm: The norm to use. The supported values are ``"l1"``, ``"l2"``, or
             ``"max"``. Defaults to ``"l2"``.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     Raises:
         ValueError: if ``norm`` is not ``"l1"``, ``"l2"``, or ``"max"``.
@@ -83,7 +96,13 @@ class Normalizer(Preprocessor):
 
     _is_fittable = False
 
-    def __init__(self, columns: List[str], norm="l2"):
+    def __init__(
+        self,
+        columns: List[str],
+        norm="l2",
+        *,
+        output_columns: Optional[List[str]] = None,
+    ):
         self.columns = columns
         self.norm = norm
 
@@ -93,14 +112,20 @@ class Normalizer(Preprocessor):
                 f"Supported values are: {self._norm_fns.keys()}"
             )
 
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
+
     def _transform_pandas(self, df: pd.DataFrame):
         columns = df.loc[:, self.columns]
         column_norms = self._norm_fns[self.norm](columns)
 
-        df.loc[:, self.columns] = columns.div(column_norms, axis=0)
+        df[self.output_columns] = columns.div(column_norms, axis=0)
         return df
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, norm={self.norm!r})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"norm={self.norm!r}, "
+            f"output_columns={self.output_columns!r})"
         )

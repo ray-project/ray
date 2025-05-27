@@ -5,11 +5,9 @@
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="1.7.0"
-ISORT_VERSION_REQUIRED="5.10.1"
 
 check_python_command_exist() {
     VERSION=""
@@ -17,14 +15,8 @@ check_python_command_exist() {
         black)
             VERSION=$BLACK_VERSION_REQUIRED
             ;;
-        flake8)
-            VERSION=$FLAKE8_VERSION_REQUIRED
-            ;;
         mypy)
             VERSION=$MYPY_VERSION_REQUIRED
-            ;;
-        isort)
-            VERSION=$ISORT_VERSION_REQUIRED
             ;;
         *)
             echo "$1 is not a required dependency"
@@ -53,9 +45,7 @@ check_docstyle() {
 
 # TODO(can): add shellcheck, clang-format, and google-java-format to this check
 check_python_command_exist black
-check_python_command_exist flake8
 check_python_command_exist mypy
-check_python_command_exist isort
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -77,9 +67,7 @@ then
 else
     BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $3}')
 fi
-FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
-ISORT_VERSION=$(isort --version | grep VERSION | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
 # params: tool name, tool version, required version
@@ -89,10 +77,8 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
-tool_version_check "isort" "$ISORT_VERSION" "$ISORT_VERSION_REQUIRED"
 
 if command -v shellcheck >/dev/null; then
     SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
@@ -115,14 +101,6 @@ if command -v java >/dev/null; then
   fi
 else
     echo "WARNING:java is not installed, skip format java files!"
-fi
-
-if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
-    echo "WARNING: Ray uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
-fi
-
-if [[ $(flake8 --version) != *"flake8-bugbear"* ]]; then
-    echo "WARNING: Ray uses flake8 with flake8-bugbear. Might error without it. Install with: pip install flake8-bugbear"
 fi
 
 SHELLCHECK_FLAGS=(
@@ -179,11 +157,6 @@ for f in "${JAVA_EXCLUDES[@]}"; do
   JAVA_EXCLUDES_REGEX="$JAVA_EXCLUDES_REGEX|(${f//\//\/})"
 done
 JAVA_EXCLUDES_REGEX=${JAVA_EXCLUDES_REGEX#|}
-
-# TODO(barakmich): This should be cleaned up. I've at least excised the copies
-# of these arguments to this location, but the long-term answer is to actually
-# make a flake8 config file
-FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605"
 
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
@@ -247,7 +220,6 @@ format_files() {
     done
 
     if [ 0 -lt "${#python_files[@]}" ]; then
-      isort "${python_files[@]}"
       black "${python_files[@]}"
     fi
 
@@ -266,26 +238,11 @@ format_files() {
 }
 
 format_all_scripts() {
-    command -v flake8 &> /dev/null;
-    HAS_FLAKE8=$?
-
-    # Run isort before black to fix imports and let black deal with file format.
-    echo "$(date)" "isort...."
-    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-      isort
     echo "$(date)" "Black...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
     mypy_on_each "${MYPY_FILES[@]}"
-    if [ $HAS_FLAKE8 ]; then
-      echo "$(date)" "Flake8...."
-      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --config=.flake8
-
-      git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-    fi
 
     if command -v shellcheck >/dev/null; then
       local shell_files bin_like_files
@@ -332,23 +289,7 @@ format_changed() {
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-            isort
-    fi
-
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
             black "${BLACK_EXCLUDES[@]}"
-        if command -v flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --config=.flake8
-        fi
-    fi
-
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
-        if command -v flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-        fi
     fi
 
     if command -v clang-format >/dev/null; then

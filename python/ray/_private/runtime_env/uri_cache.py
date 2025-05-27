@@ -7,11 +7,9 @@ DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**3) * 10  # 10 GB
 
 
 class URICache:
-    """
-    Caches URIs up to a specified total size limit.
+    """Caches URIs up to a specified total size limit.
 
-    URIs are represented by strings.  Each URI has an associated size on disk.
-
+    URIs are represented by strings. Each URI has an associated size on disk.
     When a URI is added to the URICache, it is marked as "in use".
     When a URI is no longer in use, the user of this class should call
     `mark_unused` to signal that the URI is safe for deletion.
@@ -61,7 +59,7 @@ class URICache:
         self._check_valid()
 
     def mark_used(self, uri: str, logger: logging.Logger = default_logger):
-        """Mark a URI as in use.  URIs in use will not be deleted."""
+        """Mark a URI as in use. URIs in use will not be deleted."""
         if uri in self._used_uris:
             return
         elif uri in self._unused_uris:

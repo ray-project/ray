@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
+from ray.serve._private.utils import generate_request_id
 
 
 def test_request_id_header_by_default(serve_instance):
@@ -19,7 +20,7 @@ def test_request_id_header_by_default(serve_instance):
     @serve.deployment
     class Model:
         def __call__(self):
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._get_serve_request_context().request_id
             return request_id
 
     serve.run(Model.bind())
@@ -51,7 +52,7 @@ class TestUserProvidedRequestIDHeader:
         @serve.deployment
         class Model:
             def __call__(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context._get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return 1
 
@@ -66,7 +67,7 @@ class TestUserProvidedRequestIDHeader:
         class Model:
             @app.get("/")
             def say_hi(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context._get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return 1
 
@@ -77,7 +78,7 @@ class TestUserProvidedRequestIDHeader:
         @serve.deployment
         class Model:
             def __call__(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context._get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return starlette.responses.Response("1", media_type="application/json")
 
@@ -93,7 +94,7 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     @serve.deployment
     class Model:
         def __call__(self):
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._get_serve_request_context().request_id
             return request_id
 
     serve.run(Model.bind())
@@ -127,7 +128,7 @@ def test_reuse_request_id(serve_instance):
     class MyFastAPIDeployment:
         @app.post("/hello")
         def root(self, user_input: Dict[str, str]) -> Dict[str, str]:
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._get_serve_request_context().request_id
             return {
                 "app_name": user_input["app_name"],
                 "serve_context_request_id": request_id,
@@ -154,10 +155,10 @@ def test_reuse_request_id(serve_instance):
         """Sending 20 requests in parallel all with the same request id, but with
         different request body.
         """
-        bodies = [{"app_name": f"an_{uuid.uuid4()}"} for _ in range(20)]
+        bodies = [{"app_name": f"an_{generate_request_id()}"} for _ in range(20)]
         connector = TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector) as session:
-            request_id = f"rid_{uuid.uuid4()}"
+            request_id = f"rid_{generate_request_id()}"
             tasks = [
                 send_request(session, body, request_id=request_id) for body in bodies
             ]

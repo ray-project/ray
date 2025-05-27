@@ -17,7 +17,7 @@ namespace ray {
 class MockRayletClientInterface : public RayletClientInterface {
  public:
   MOCK_METHOD(ray::Status,
-              WaitForDirectActorCallArgs,
+              WaitForActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
@@ -47,6 +47,11 @@ class MockRayletClientInterface : public RayletClientInterface {
               GetTaskFailureCause,
               (const TaskID &task_id,
                const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              PrestartWorkers,
+              (const rpc::PrestartWorkersRequest &request,
+               const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback),
               (override));
   MOCK_METHOD(void,
               ReleaseUnusedActorWorkers,
@@ -105,6 +110,7 @@ class MockRayletClientInterface : public RayletClientInterface {
                uint64_t data_size,
                uint64_t metadata_size,
                void *data,
+               void *metadata,
                const rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -127,6 +133,17 @@ class MockRayletClientInterface : public RayletClientInterface {
                const std::string &reason_message,
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
+              (override));
+  MOCK_METHOD(
+      void,
+      CancelTasksWithResourceShapes,
+      ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
+       const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback),
+      (override));
+  MOCK_METHOD(void,
+              IsLocalWorkerDead,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
               (override));
 };
 

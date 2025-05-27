@@ -1,18 +1,19 @@
 import asyncio
-from typing import Optional, List, Dict, Generic, TypeVar
+import queue
 from collections.abc import Iterable
+from typing import Any, Dict, Generic, Optional, TypeVar
 
 import ray
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
-class Empty(Exception):
+class Empty(queue.Empty):
     pass
 
 
 @PublicAPI(stability="beta")
-class Full(Exception):
+class Full(queue.Full):
     pass
 
 

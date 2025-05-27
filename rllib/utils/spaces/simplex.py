@@ -29,8 +29,8 @@ class Simplex(gym.Space):
 
         if concentration is not None:
             assert (
-                concentration.shape == shape[:-1]
-            ), f"{concentration.shape} vs {shape[:-1]}"
+                concentration.shape[0] == shape[-1]
+            ), f"{concentration.shape[0]} vs {shape[-1]}"
             self.concentration = concentration
         else:
             self.concentration = np.array([1] * self.dim)

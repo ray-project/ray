@@ -33,28 +33,37 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
-# V61.0 has CUDA 11.2
-DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
+# V71.0 has CUDA 11.2
+DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V71.0"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 6/10/2022.
+# Obtained with:
+# for region in $(aws ec2 describe-regions --query "Regions[].RegionName" --output text); do
+#   echo "Region: $region";
+#   aws ec2 describe-images \
+#     --region $region \
+#     --filters "Name=name,Values=Deep Learning AMI (Ubuntu 18.04) Version 71.0*" \
+#     --query "Images[].[ImageId, Name]" \
+#     --output text;
+#   echo "--------------------------";
+# done
 # TODO(alex) : write a unit test to make sure we update AMI version used in
 # ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
-    "us-east-1": "ami-0dd6adfad4ad37eec",  # US East (N. Virginia)
-    "us-east-2": "ami-0c77cd5ca05bf1281",  # US East (Ohio)
-    "us-west-1": "ami-020ab1b368a5ed1db",  # US West (N. California)
-    "us-west-2": "ami-0387d929287ab193e",  # US West (Oregon)
-    "ca-central-1": "ami-07dbafdbd38f18d98",  # Canada (Central)
-    "eu-central-1": "ami-0383bd0c1fc4c63ec",  # EU (Frankfurt)
-    "eu-west-1": "ami-0a074b0a311a837ac",  # EU (Ireland)
-    "eu-west-2": "ami-094ba2b4651f761ca",  # EU (London)
-    "eu-west-3": "ami-031da10fbf225bf5f",  # EU (Paris)
-    "sa-east-1": "ami-0be7c1f1dd96d7337",  # SA (Sao Paulo)
-    "ap-northeast-1": "ami-0d69b2fd9641af433",  # Asia Pacific (Tokyo)
-    "ap-northeast-2": "ami-0d6d00bd58046ff91",  # Asia Pacific (Seoul)
-    "ap-northeast-3": "ami-068feab7122f7558d",  # Asia Pacific (Osaka)
-    "ap-southeast-1": "ami-05006b266c1be4e8f",  # Asia Pacific (Singapore)
-    "ap-southeast-2": "ami-066aa744514f9f95c",  # Asia Pacific (Sydney)
+    "us-east-1": "ami-0271ce88f6c03e149",  # US East (N. Virginia)
+    "us-east-2": "ami-0ce21b0ce8e0f5a37",  # US East (Ohio)
+    "us-west-1": "ami-030896954b2b72361",  # US West (N. California)
+    "us-west-2": "ami-0a2b85e15b7c0ac34",  # US West (Oregon)
+    "ca-central-1": "ami-044b98bea12677052",  # Canada (Central)
+    "eu-central-1": "ami-004d285ecf53fb335",  # EU (Frankfurt)
+    "eu-west-1": "ami-0e17ed40febe794a6",  # EU (Ireland)
+    "eu-west-2": "ami-0ad9e6b9d4e22df1a",  # EU (London)
+    "eu-west-3": "ami-05698775025146698",  # EU (Paris)
+    "sa-east-1": "ami-004b19c7ed8d790bc",  # SA (Sao Paulo)
+    "ap-northeast-1": "ami-03e45b1f18378ea97",  # Asia Pacific (Tokyo)
+    "ap-northeast-2": "ami-095bae3e623e2ff99",  # Asia Pacific (Seoul)
+    "ap-northeast-3": "ami-02fd0ba69c1ef37ad",  # Asia Pacific (Osaka)
+    "ap-southeast-1": "ami-03ef1223872072e95",  # Asia Pacific (Singapore)
+    "ap-southeast-2": "ami-0bcf4f75e44e0a866",  # Asia Pacific (Sydney)
 }
 
 # todo: cli_logger should handle this assert properly
@@ -950,8 +959,7 @@ def _get_key(key_name, config):
 
 
 def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merges any launch template data referenced by the node config of all
+    """Merges any launch template data referenced by the node config of all
     available node type's into their parent node config. Any parameters
     specified in node config override the same parameters in the launch
     template, in compliance with the behavior of the ec2.create_instances
@@ -959,15 +967,16 @@ def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
 
     Args:
         config (Dict[str, Any]): config to bootstrap
+
     Returns:
         config (Dict[str, Any]): The input config with all launch template
         data merged into the node config of all available node types. If no
         launch template data is found, then the config is returned
         unchanged.
+
     Raises:
-        ValueError: If no launch template is found for any launch
-        template [name|id] and version, or more than one launch template is
-        found.
+        ValueError: When no launch template is found for the given launch template
+            [name|id] and version, or more than one launch template is found.
     """
     # create a copy of the input config to modify
     config = copy.deepcopy(config)
@@ -982,23 +991,23 @@ def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
 def _configure_node_type_from_launch_template(
     config: Dict[str, Any], node_type: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Merges any launch template data referenced by the given node type's
+    """Merges any launch template data referenced by the given node type's
     node config into the parent node config. Any parameters specified in
     node config override the same parameters in the launch template.
 
     Args:
         config (Dict[str, Any]): config to bootstrap
         node_type (Dict[str, Any]): node type config to bootstrap
+
     Returns:
         node_type (Dict[str, Any]): The input config with all launch template
         data merged into the node config of the input node type. If no
         launch template data is found, then the config is returned
         unchanged.
+
     Raises:
-        ValueError: If no launch template is found for the given launch
-        template [name|id] and version, or more than one launch template is
-        found.
+        ValueError: When no launch template is found for the given launch template
+            [name|id] and version, or more than one launch template is found.
     """
     # create a copy of the input config to modify
     node_type = copy.deepcopy(node_type)
@@ -1014,8 +1023,7 @@ def _configure_node_type_from_launch_template(
 def _configure_node_cfg_from_launch_template(
     config: Dict[str, Any], node_cfg: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Merges any launch template data referenced by the given node type's
+    """Merges any launch template data referenced by the given node type's
     node config into the parent node config. Any parameters specified in
     node config override the same parameters in the launch template.
 
@@ -1032,14 +1040,15 @@ def _configure_node_cfg_from_launch_template(
     Args:
         config (Dict[str, Any]): config to bootstrap
         node_cfg (Dict[str, Any]): node config to bootstrap
+
     Returns:
         node_cfg (Dict[str, Any]): The input node config merged with all launch
         template data. If no launch template data is found, then the node
         config is returned unchanged.
+
     Raises:
-        ValueError: If no launch template is found for the given launch
-        template [name|id] and version, or more than one launch template is
-        found.
+        ValueError: When no launch template is found for the given launch template
+            [name|id] and version, or more than one launch template is found.
     """
     # create a copy of the input config to modify
     node_cfg = copy.deepcopy(node_cfg)
@@ -1069,22 +1078,23 @@ def _configure_node_cfg_from_launch_template(
 
 
 def _configure_from_network_interfaces(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Copies all network interface subnet and security group IDs up to their
+    """Copies all network interface subnet and security group IDs up to their
     parent node config for each available node type.
 
     Args:
         config (Dict[str, Any]): config to bootstrap
+
     Returns:
         config (Dict[str, Any]): The input config with all network interface
         subnet and security group IDs copied into the node config of all
         available node types. If no network interfaces are found, then the
         config is returned unchanged.
+
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
-        node config and network interface levels, [2] any network interface
-        doesn't have a subnet defined, or [3] any network interface doesn't
-        have a security group defined.
+            node config and network interface levels, [2] any network interface
+            doesn't have a subnet defined, or [3] any network interface doesn't
+            have a security group defined.
     """
     # create a copy of the input config to modify
     config = copy.deepcopy(config)
@@ -1098,22 +1108,23 @@ def _configure_from_network_interfaces(config: Dict[str, Any]) -> Dict[str, Any]
 def _configure_node_type_from_network_interface(
     node_type: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Copies all network interface subnet and security group IDs up to the
+    """Copies all network interface subnet and security group IDs up to the
     parent node config for the given node type.
 
     Args:
         node_type (Dict[str, Any]): node type config to bootstrap
+
     Returns:
         node_type (Dict[str, Any]): The input config with all network interface
         subnet and security group IDs copied into the node config of the
         given node type. If no network interfaces are found, then the
         config is returned unchanged.
+
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
-        node config and network interface levels, [2] any network interface
-        doesn't have a subnet defined, or [3] any network interface doesn't
-        have a security group defined.
+            node config and network interface levels, [2] any network interface
+            doesn't have a subnet defined, or [3] any network interface doesn't
+            have a security group defined.
     """
     # create a copy of the input config to modify
     node_type = copy.deepcopy(node_type)
@@ -1129,20 +1140,21 @@ def _configure_node_type_from_network_interface(
 def _configure_subnets_and_groups_from_network_interfaces(
     node_cfg: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Copies all network interface subnet and security group IDs into their
+    """Copies all network interface subnet and security group IDs into their
     parent node config.
 
     Args:
         node_cfg (Dict[str, Any]): node config to bootstrap
+
     Returns:
         node_cfg (Dict[str, Any]): node config with all copied network
         interface subnet and security group IDs
+
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
-        node config and network interface levels, [2] any network interface
-        doesn't have a subnet defined, or [3] any network interface doesn't
-        have a security group defined.
+            node config and network interface levels, [2] any network interface
+            doesn't have a subnet defined, or [3] any network interface doesn't
+            have a security group defined.
     """
     # create a copy of the input config to modify
     node_cfg = copy.deepcopy(node_cfg)

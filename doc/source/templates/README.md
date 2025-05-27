@@ -32,7 +32,7 @@ To add a template:
     Your template does not need to be a Jupyter notebook. It can also be presented as a
     Python script with `README` instructions of how to run.
 
-2. Add a release test for the template in `release/release_tests.yaml` (for both AWS and GCE).
+2. Add a release test for the template in `release/release_tests.yaml` (for both AWS and GCE). For Data tests, use `release/release_data_tests.yaml` instead.
 
     See the section on workspace templates for an example. Note that the cluster env and
     compute config are a little different for release tests. Use the files in the

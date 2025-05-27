@@ -32,6 +32,9 @@ class MockTest(dict):
     ) -> List[TestResult]:
         return self.get("test_results", [])
 
+    def update_from_s3(self) -> None:
+        pass
+
     def persist_to_s3(self) -> None:
         DB[self["name"]] = json.dumps(self)
 

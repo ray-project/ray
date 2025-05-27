@@ -1,7 +1,7 @@
-cluster_name: default 
+cluster_name: default
 max_workers: 0
 provider:
-    type: readonly 
+    type: readonly
     # This must be true since the nodes share the same ip!
     use_node_id_as_ip: True
     disable_node_updaters: True

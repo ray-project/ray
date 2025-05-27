@@ -71,7 +71,7 @@ cdef class ObjectRef(BaseID):
                 pass
 
     cdef CObjectID native(self):
-        return self.data
+        return <CObjectID>self.data
 
     def binary(self):
         return self.data.Binary()

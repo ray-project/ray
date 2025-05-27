@@ -186,7 +186,7 @@ if __name__ == "__main__":
     )
     print(
         "Avg placement group removing time: "
-        f"{total_removing_time / total_trial* 1000} ms"
+        f"{total_removing_time / total_trial * 1000} ms"
     )
     print("PASSED.")
 

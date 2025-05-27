@@ -14,7 +14,10 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import read_and_validate_release_test_collection
+from ray_release.config import (
+    read_and_validate_release_test_collection,
+    RELEASE_TEST_CONFIG_FILES,
+)
 from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
 from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
@@ -241,7 +244,7 @@ def _obtain_test_result(
 
 def _get_test(test_name: str, test_collection_file: Tuple[str]) -> Test:
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"],
+        test_collection_file or RELEASE_TEST_CONFIG_FILES,
     )
     return [test for test in test_collection if test["name"] == test_name][0]
 

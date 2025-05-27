@@ -6,6 +6,8 @@ export enum TypeTaskStatus {
   PENDING_OBJ_STORE_MEM_AVAIL = "PENDING_OBJ_STORE_MEM_AVAIL",
   PENDING_ARGS_FETCH = "PENDING_ARGS_FETCH",
   SUBMITTED_TO_WORKER = "SUBMITTED_TO_WORKER",
+  PENDING_ACTOR_TASK_ARGS_FETCH = "PENDING_ACTOR_TASK_ARGS_FETCH",
+  PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY = "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
   RUNNING = "RUNNING",
   RUNNING_IN_RAY_GET = "RUNNING_IN_RAY_GET",
   RUNNING_IN_RAY_WAIT = "RUNNING_IN_RAY_WAIT",
@@ -43,6 +45,7 @@ export type Task = {
   error_type: string | null;
   error_message: string | null;
   task_log_info: { [key: string]: string | null | number };
+  call_site: string | null;
 };
 
 export type ProfilingData = {

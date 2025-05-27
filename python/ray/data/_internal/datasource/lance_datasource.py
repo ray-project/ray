@@ -1,10 +1,11 @@
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
 
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
@@ -17,22 +18,43 @@ logger = logging.getLogger(__name__)
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 
+    # Errors to retry when reading Lance fragments.
+    READ_FRAGMENTS_ERRORS_TO_RETRY = ["LanceError(IO)"]
+    # Maximum number of attempts to read Lance fragments.
+    READ_FRAGMENTS_MAX_ATTEMPTS = 10
+    # Maximum backoff seconds between attempts to read Lance fragments.
+    READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS = 32
+
     def __init__(
         self,
         uri: str,
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
         storage_options: Optional[Dict[str, str]] = None,
+        scanner_options: Optional[Dict[str, Any]] = None,
     ):
         _check_import(self, module="lance", package="pylance")
 
         import lance
 
         self.uri = uri
-        self.columns = columns
-        self.filter = filter
+        self.scanner_options = scanner_options or {}
+        if columns is not None:
+            self.scanner_options["columns"] = columns
+        if filter is not None:
+            self.scanner_options["filter"] = filter
         self.storage_options = storage_options
         self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
+
+        match = []
+        match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
+        match.extend(DataContext.get_current().retried_io_errors)
+        self._retry_params = {
+            "description": "read lance fragments",
+            "match": match,
+            "max_attempts": self.READ_FRAGMENTS_MAX_ATTEMPTS,
+            "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
+        }
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
@@ -54,13 +76,16 @@ class LanceDatasource(Datasource):
                 size_bytes=None,
                 exec_stats=None,
             )
-            columns = self.columns
-            row_filter = self.filter
+            scanner_options = self.scanner_options
             lance_ds = self.lance_ds
+            retry_params = self._retry_params
 
             read_task = ReadTask(
-                lambda f=fragment_ids: _read_fragments(
-                    f, lance_ds, columns, row_filter
+                lambda f=fragment_ids: _read_fragments_with_retry(
+                    f,
+                    lance_ds,
+                    scanner_options,
+                    retry_params,
                 ),
                 metadata,
             )
@@ -73,8 +98,22 @@ class LanceDatasource(Datasource):
         return None
 
 
+def _read_fragments_with_retry(
+    fragment_ids,
+    lance_ds,
+    scanner_options,
+    retry_params,
+) -> Iterator["pyarrow.Table"]:
+    return call_with_retry(
+        lambda: _read_fragments(fragment_ids, lance_ds, scanner_options),
+        **retry_params,
+    )
+
+
 def _read_fragments(
-    fragment_ids, lance_ds, columns, row_filter
+    fragment_ids,
+    lance_ds,
+    scanner_options,
 ) -> Iterator["pyarrow.Table"]:
     """Read Lance fragments in batches.
 
@@ -84,6 +123,7 @@ def _read_fragments(
     import pyarrow
 
     fragments = [lance_ds.get_fragment(id) for id in fragment_ids]
-    scanner = lance_ds.scanner(columns, filter=row_filter, fragments=fragments)
+    scanner_options["fragments"] = fragments
+    scanner = lance_ds.scanner(**scanner_options)
     for batch in scanner.to_reader():
         yield pyarrow.Table.from_batches([batch])

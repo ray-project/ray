@@ -1,4 +1,4 @@
-# This is a RayCluster configuration for PyTorch image training benchmark with a 1Gi training set. 
+# This is a RayCluster configuration for PyTorch image training benchmark with a 1Gi training set.
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
 metadata:
@@ -12,7 +12,7 @@ spec:
   ######################headGroupSpec#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
   headGroupSpec:
-    # logical group name, for this called head-group, also can be functional
+    # logical group name, for this called headgroup, also can be functional
     # pod type head or worker
     # rayNodeType: head # Not needed since it is under the headgroup
     # the following params are used to complete the ray start: ray start --head --block ...

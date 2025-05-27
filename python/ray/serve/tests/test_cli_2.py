@@ -83,7 +83,7 @@ def test_status_multi_app(ray_start_stop):
     print("All deployments are live.")
 
     status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:52365/"]
+        ["serve", "status", "-a", "http://localhost:8265/"]
     )
     statuses = yaml.safe_load(status_response)["applications"]
 
@@ -529,8 +529,8 @@ TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
-TestApp1Node = global_f.options(route_prefix="/app1").bind()
-TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
+TestApp1Node = global_f.options(name="app1").bind()
+TestApp2Node = NoArgDriver.options(name="app2").bind(global_f.bind())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -747,10 +747,9 @@ def test_run_config_request_timeout():
     )
     subprocess.check_output(
         ["ray", "start", "--head"],
-        env=dict(os.environ, RAY_SERVE_HTTP_REQUEST_MAX_RETRIES="1"),
     )
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )
@@ -946,39 +945,6 @@ def test_grpc_proxy_model_composition(ray_start_stop):
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app)
-
-
-@serve.deployment(route_prefix="/foo")
-async def deployment_with_route_prefix(args):
-    return "bar..."
-
-
-route_prefix_app = deployment_with_route_prefix.bind()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_serve_run_mount_to_correct_deployment_route_prefix(ray_start_stop):
-    """Test running serve run with deployment with route_prefix should mount the
-    deployment to the correct route."""
-
-    import_path = "ray.serve.tests.test_cli_2.route_prefix_app"
-    subprocess.Popen(["serve", "run", import_path])
-
-    # /-/routes should show the app having the correct route.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/-/routes").text
-        == '{"/foo":"default"}'
-    )
-
-    # Ping root path directly should 404.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/").status_code == 404
-    )
-
-    # Ping the mounting route should return 200.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/foo").status_code == 200
-    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

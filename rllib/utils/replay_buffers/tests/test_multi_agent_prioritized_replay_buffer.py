@@ -186,7 +186,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Fetch records, their indices and weights.
         mabatch = buffer.sample(3)
-        assert type(mabatch) == MultiAgentBatch
+        assert type(mabatch) is MultiAgentBatch
         samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
 
         weights = samplebatch["weights"]
@@ -211,9 +211,9 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # (which still has a weight of 1.0).
         for _ in range(10):
             mabatch = buffer.sample(1000)
-            assert type(mabatch) == MultiAgentBatch
+            assert type(mabatch) is MultiAgentBatch
             samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
-            assert type(mabatch) == MultiAgentBatch
+            assert type(mabatch) is MultiAgentBatch
             indices = samplebatch["batch_indexes"]
             self.assertTrue(1900 < np.sum(indices) < 2200)
         # Test get_state/set_state.

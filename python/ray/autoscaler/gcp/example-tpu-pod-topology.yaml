@@ -2,7 +2,7 @@
 # a combination of the chip and underlying topology.
 # See https://cloud.google.com/tpu/docs/supported-tpu-configurations for more details.
 # A unique identifier for the head node and workers of this cluster.
-cluster_name: tputopology 
+cluster_name: tputopology
 
 max_workers: 2
 

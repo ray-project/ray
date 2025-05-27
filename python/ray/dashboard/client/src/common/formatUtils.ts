@@ -1,4 +1,9 @@
 import dayjs from "dayjs";
+import timezone from "dayjs/plugin/timezone";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export const formatByteAmount = (
   amount: number,
@@ -60,5 +65,10 @@ export const formatValue = (rawFloat: number) => {
   }
 };
 
-export const formatDateFromTimeMs = (time: number) =>
-  dayjs(time).format("YYYY/MM/DD HH:mm:ss");
+export const formatTimeZone = (UTC: string) => {
+  dayjs.tz.setDefault(UTC);
+};
+
+export const formatDateFromTimeMs = (time: number) => {
+  return dayjs.utc(time).tz().format("YYYY/MM/DD HH:mm:ss");
+};

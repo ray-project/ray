@@ -63,7 +63,7 @@ def test_object_reconstruction(ray_start_cluster):
         time.sleep(1)
         process.kill()
         process.wait()
-        assert not process.poll() is None
+        assert process.poll() is not None
 
         # Make sure that we can still get the objects after the
         # executing tasks died.
@@ -123,10 +123,4 @@ def test_actor_creation_node_failure(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

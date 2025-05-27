@@ -13,7 +13,7 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 
 def train_fn(config):
     for i in range(100):
-        ray.train.report(dict(timesteps_total=i))
+        ray.tune.report(dict(timesteps_total=i))
 
 
 class RemoteTest(unittest.TestCase):

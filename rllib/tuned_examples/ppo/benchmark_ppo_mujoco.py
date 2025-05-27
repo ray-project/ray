@@ -5,7 +5,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -85,11 +85,6 @@ class BenchmarkStopper(Stopper):
 config = (
     PPOConfig()
     .environment(env=tune.grid_search(list(benchmark_envs.keys())))
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Following the paper.
         num_env_runners=32,
@@ -104,12 +99,11 @@ config = (
     # TODO (simon): Adjust to new model_config_dict.
     .training(
         # Following the paper.
-        gamma=0.99,
         lambda_=0.95,
         lr=0.0003,
-        num_sgd_iter=15,
+        num_epochs=15,
         train_batch_size=32 * 512,
-        sgd_minibatch_size=4096,
+        minibatch_size=4096,
         vf_loss_coeff=0.01,
         model={
             "fcnet_hiddens": [64, 64],
@@ -135,7 +129,7 @@ config = (
 tuner = tune.Tuner(
     "PPO",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_ppo_mujoco",
     ),

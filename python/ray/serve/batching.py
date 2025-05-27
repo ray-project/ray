@@ -24,8 +24,8 @@ from typing import (
 )
 
 from ray import serve
+from ray._common.utils import get_or_create_event_loop
 from ray._private.signature import extract_signature, flatten_args, recover_args
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
@@ -290,7 +290,13 @@ class _BatchQueue:
         """Processes queued request batch."""
 
         batch: List[_SingleRequest] = await self.wait_for_batch()
-        assert len(batch) > 0
+        # Remove requests that have been cancelled from the batch. If
+        # all requests have been cancelled, simply return and wait for
+        # the next batch.
+        batch = [req for req in batch if not req.future.cancelled()]
+        if len(batch) == 0:
+            return
+
         futures = [item.future for item in batch]
 
         # Most of the logic in the function should be wrapped in this try-

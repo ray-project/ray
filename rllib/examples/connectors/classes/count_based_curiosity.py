@@ -62,7 +62,7 @@ class CountBasedCuriosity(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -89,4 +89,4 @@ class CountBasedCuriosity(ConnectorV2):
                 # timestep/index).
                 sa_episode.set_rewards(new_data=rew, at_indices=i)
 
-        return data
+        return batch

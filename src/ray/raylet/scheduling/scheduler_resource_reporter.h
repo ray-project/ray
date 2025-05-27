@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <deque>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"

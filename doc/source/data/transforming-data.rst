@@ -14,8 +14,10 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Stateful transforms <stateful_transforms>`
-* :ref:`Groupby and transform groups <transforming_groupby>`
+* :ref:`Order rows <ordering_of_rows>`
+* :ref:`Perform stateful transformations <stateful_transforms>`
+* :ref:`Perform Aggregations <aggregations>`
+* :ref:`Transform groups <transforming_groupby>`
 
 .. _transforming_rows:
 
@@ -194,7 +196,7 @@ pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For
         batch = ...
 
         # return batch
-        return output
+        return batch
 
 The user defined function can also be a Python generator that yields batches, so the function can also
 be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
@@ -217,6 +219,26 @@ Increasing ``batch_size`` improves the performance of vectorized transformations
 NumPy functions and model inference. However, if your batch size is too large, your
 program might run out of memory. If you encounter an out-of-memory error, decrease your
 ``batch_size``.
+
+.. _ordering_of_rows:
+
+Ordering of rows
+================
+
+When transforming data, the order of :ref:`blocks <data_key_concepts>` isn't preserved by default.
+
+If the order of blocks needs to be preserved/deterministic,
+you can use :meth:`~ray.data.Dataset.sort` method, or set :attr:`ray.data.ExecutionOptions.preserve_order` to `True`.
+Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
+
+.. testcode::
+
+   import ray
+   
+   ctx = ray.data.DataContext().get_current()
+   
+   # By default, this is set to False.
+   ctx.execution_options.preserve_order = True
 
 .. _stateful_transforms:
 
@@ -312,13 +334,92 @@ To transform data with a Python class, complete these steps:
 
             ds.materialize()
 
+Avoiding out-of-memory errors
+=============================
+
+If your user defined function uses lots of memory, you might encounter out-of-memory 
+errors. To avoid these errors, configure the ``memory`` parameter. It tells Ray how much 
+memory your function uses, and prevents Ray from scheduling too many tasks on a node.
+
+.. testcode::
+    :hide:
+
+    import ray
+    
+    ds = ray.data.range(1)
+
+.. testcode::
+
+    def uses_lots_of_memory(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        ...
+
+    # Tell Ray that the function uses 1 GiB of memory
+    ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
+
+
+.. _aggregations:
+
+Aggregations
+============
+
+Ray Data offers out-of-the-box methods for performing aggregations on your data.
+
+These methods include :meth:`~ray.data.Dataset.sum`, :meth:`~ray.data.Dataset.min`, :meth:`~ray.data.Dataset.max`, :meth:`~ray.data.Dataset.mean`, and more
+(see :ref:`API Reference <dataset-api>` for the full list).
+
+You can use these methods as follows:
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    # Schema: {"id": int64}
+    ds.sum(on="id")
+    # 45
+
+
+You can also perform aggregations on grouped data.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    # Schema: {"id": int64}
+    ds = ds.add_column("label", lambda x: x % 3)
+    # Schema: {"id": int64, "label": int64}
+    ds.groupby("label").sum(on="id").take_all()
+    # [{'label': 0, 'sum(id)': 18},
+    #  {'label': 1, 'sum(id)': 12},
+    #  {'label': 2, 'sum(id)': 15}]
+
+Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in
+:meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
+
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10)
+    # Schema: {"id": int64}
+    ds = ds.add_column("label", lambda x: x % 3)
+    # Schema: {"id": int64, "label": int64}
+    ds.aggregate(
+        ray.data.aggregate.Sum(on="id"), 
+        ray.data.aggregate.Count(on="label")
+    )
+    # {'sum(id)': 45, 'count(label)': 10}
+
+
 .. _transforming_groupby:
 
-Groupby and transforming groups
-===============================
+Group-by and transforming groups
+================================
 
-To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then, call
-:meth:`~ray.data.grouped_data.GroupedData.map_groups` to transform the groups.
+To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values.
+Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
 
 .. tab-set::
 

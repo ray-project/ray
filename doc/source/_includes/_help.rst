@@ -7,5 +7,5 @@ You can post questions or issues or feedback through the following channels:
 
 .. _`Discussion Board`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
-.. _`Ray Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+.. _`Ray Slack`: https://www.ray.io/join-slack
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray

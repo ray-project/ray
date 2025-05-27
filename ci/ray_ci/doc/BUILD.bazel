@@ -30,6 +30,7 @@ py_library(
         ci_require("myst_parser"),
         ci_require("myst-nb"),
         ci_require("jupytext"),
+        ci_require("appnope"),
     ],
 )
 

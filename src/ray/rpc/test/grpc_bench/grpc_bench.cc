@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/rpc/test/grpc_bench/helloworld.grpc.pb.h"
 #include "src/ray/rpc/test/grpc_bench/helloworld.pb.h"
 
-using namespace ray;
-using namespace ray::rpc;
-using namespace helloworld;
+using namespace ray;         // NOLINT
+using namespace ray::rpc;    // NOLINT
+using namespace helloworld;  // NOLINT
 
 class GreeterHandler {
  public:
@@ -70,7 +74,8 @@ int main() {
   GrpcServer server("grpc_bench", 50051, false, parallelism);
   instrumented_io_context main_service;
   std::thread t([&main_service] {
-    boost::asio::io_service::work work(main_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        main_service.get_executor());
     main_service.run();
   });
   GreeterServiceHandler handler;

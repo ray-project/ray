@@ -30,13 +30,13 @@ unity3d-soccer-strikers-vs-goalie-ppo:
         lr: 0.0003
         lambda: 0.95
         gamma: 0.99
-        sgd_minibatch_size: 256
+        minibatch_size: 256
         train_batch_size: 4000
         clip_param: 0.2
         # For running in editor, just use one Worker (we only have
         # one Unity running)!
         num_env_runners: 10
-        num_sgd_iter: 20
+        num_epochs: 20
         rollout_fragment_length: 200
         model:
           fcnet_hiddens: [512, 512]

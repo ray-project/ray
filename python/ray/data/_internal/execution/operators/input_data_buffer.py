@@ -6,6 +6,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 
 class InputDataBuffer(PhysicalOperator):
@@ -17,6 +18,7 @@ class InputDataBuffer(PhysicalOperator):
 
     def __init__(
         self,
+        data_context: DataContext,
         input_data: Optional[List[RefBundle]] = None,
         input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
         num_output_blocks: Optional[int] = None,
@@ -29,7 +31,7 @@ class InputDataBuffer(PhysicalOperator):
             num_output_blocks: The number of output blocks. If not specified, progress
                 bars total will be set based on num output bundles instead.
         """
-        super().__init__("Input", [], target_max_block_size=None)
+        super().__init__("Input", [], data_context, target_max_block_size=None)
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.
@@ -42,6 +44,7 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         self._input_data_index = 0
+        self.mark_execution_finished()
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
@@ -77,8 +80,17 @@ class InputDataBuffer(PhysicalOperator):
         self._estimated_num_output_bundles = len(self._input_data)
 
         block_metadata = []
+        total_rows = 0
         for bundle in self._input_data:
             block_metadata.extend(bundle.metadata)
+            bundle_num_rows = bundle.num_rows()
+            if total_rows is not None and bundle_num_rows is not None:
+                total_rows += bundle_num_rows
+            else:
+                # total row is unknown
+                total_rows = None
+        if total_rows:
+            self._estimated_num_output_rows = total_rows
         self._stats = {
             "input": block_metadata,
         }

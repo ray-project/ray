@@ -14,14 +14,14 @@ import pytest
 
 import ray
 import ray.tune.search.sample
-from ray import train, tune
+from ray import tune
 from ray.tune import Experiment
 from ray.tune.search.util import logger
 from ray.tune.search.variant_generator import generate_variants
 
 
 def _mock_objective(config):
-    train.report(config)
+    tune.report(config)
 
 
 def assertDictAlmostEqual(a, b):
@@ -29,7 +29,7 @@ def assertDictAlmostEqual(a, b):
         assert k in b, f"Key {k} not found in {b}"
         w = b[k]
 
-        assert type(v) == type(w), f"Type {type(v)} is not {type(w)}"
+        assert type(v) is type(w), f"Type {type(v)} is not {type(w)}"
 
         if isinstance(v, dict):
             assert assertDictAlmostEqual(v, w), f"Subdict {v} != {w}"
@@ -689,6 +689,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testConvertBOHB(self):
         import ConfigSpace
 
@@ -750,6 +754,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testSampleBoundsBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -1529,6 +1536,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB not yet supported for python 3.12+"
+    )
     def testPointsToEvaluateBOHB(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1846,6 +1856,10 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
     @patch.object(logger, "warning")
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="TODO(justinvyu): not working for python 3.12 yet",
+    )
     def testSetSearchPropertiesBackwardsCompatibility(self, mocked_warning_method):
         from ray.tune.search import Searcher
 

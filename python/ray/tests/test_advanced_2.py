@@ -9,7 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.util.placement_group import placement_group
 from ray.util.accelerators import AWS_NEURON_CORE
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -55,9 +55,7 @@ def test_gpu_ids(shutdown_only):
         if num_workers_started == num_gpus:
             break
         if time.time() > start_time + 10:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start up."
-            )
+            raise TimeoutError("Timed out while waiting for workers to start up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -476,7 +474,7 @@ def test_many_custom_resources(shutdown_only):
     # This eventually turns into a command line argument which on windows is
     # limited to 32,767 characters.
     if sys.platform == "win32":
-        num_custom_resources = 4000
+        num_custom_resources = 1000
     else:
         num_custom_resources = 10000
     total_resources = {
@@ -542,9 +540,7 @@ def test_neuron_core_ids(shutdown_only):
         if num_workers_started == num_nc:
             break
         if time.time() > start_time + 10:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start up."
-            )
+            raise TimeoutError("Timed out while waiting for workers to start up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -747,7 +743,4 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
