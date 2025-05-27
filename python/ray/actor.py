@@ -413,13 +413,10 @@ class ActorMethod:
                     "Please make sure the actor method returns a single object."
                 )
 
-            actor = self._actor_hard_ref or self._actor_ref()
-            tensor_meta = actor.__ray_get_tensor_meta__.remote(obj_ref.hex())
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.get_gpu_object_manager()
-            gpu_object_manager.add_gpu_object_ref(
-                obj_ref, self._actor_ref(), tensor_meta
+            gpu_object_manager = (
+                ray._private.worker.global_worker.get_gpu_object_manager()
             )
+            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor_ref())
 
         return obj_ref
 
@@ -1836,18 +1833,6 @@ def _modify_class(cls):
             worker = ray._private.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
-
-        def __ray_get_tensor_meta__(self, obj_id: str):
-            # Gets the tensor metadata from `in_actor_object_store` and
-            # returns a list of tuples, each containing the shape and dtype
-            # of a tensor in the object store.
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.get_gpu_object_manager()
-            assert gpu_object_manager.has_gpu_object(
-                obj_id
-            ), f"obj_id={obj_id} not found in GPU object store"
-            tensors = gpu_object_manager.get_gpu_object(obj_id)
-            return [(t.shape, t.dtype) for t in tensors]
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

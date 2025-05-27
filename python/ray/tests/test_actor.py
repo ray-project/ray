@@ -1298,7 +1298,6 @@ def test_actor_autocomplete(ray_start_regular_shared):
         "__ray_ready__",
         "__ray_call__",
         "__ray_terminate__",
-        "__ray_get_tensor_meta__",
     }
 
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
