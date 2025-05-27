@@ -160,6 +160,8 @@ RayTask CreateTask(
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
+  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_worker_id(WorkerID::FromRandom().Binary());
   spec_builder.SetCommonTaskSpec(id,
                                  "dummy_task",
                                  Language::PYTHON,
@@ -254,15 +256,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(
             id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
-        is_owner_alive_(true),
         dependency_manager_(missing_objects_),
         local_task_manager_(std::make_unique<LocalTaskManager>(
             id_,
             *scheduler_,
-            dependency_manager_, /* is_owner_alive= */
-            [this](const WorkerID &worker_id, const NodeID &node_id) {
-              return is_owner_alive_;
-            },
+            dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
@@ -386,7 +384,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
-  bool is_owner_alive_ = false;
   int default_arg_size_ = 10;
 
   int node_info_calls_ = 0;
@@ -1621,10 +1618,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
-  /*
-    Test the race condition in which the owner of a task dies while the task is pending.
-    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
-   */
+  // Test the case when the task owner (worker or node) dies, the task is cancelled.
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
@@ -1634,25 +1628,22 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
     *callback_occurred_ptr = true;
   };
 
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-
-  is_owner_alive_ = false;
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
 
-  is_owner_alive_ = true;
-  task_manager_.ScheduleAndDispatchTasks();
+  task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerWorkerId());
+
+  AssertNoLeaks();
+
+  callback_occurred = false;
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
+
+  task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerNodeId());
 
   AssertNoLeaks();
 }
@@ -2217,8 +2208,8 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsSameMemoryTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   RayTask finished_task;
-  for (auto &worker : leased_workers_) {
-    local_task_manager_->TaskFinished(worker.second, &finished_task);
+  for (auto &cur_worker : leased_workers_) {
+    local_task_manager_->TaskFinished(cur_worker.second, &finished_task);
   }
   AssertNoLeaks();
 }

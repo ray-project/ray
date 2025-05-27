@@ -1,22 +1,24 @@
 import os
 import types
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
-from ray._private.arrow_utils import get_pyarrow_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     concat,
+    hash_partition,
+    shuffle,
     try_combine_chunked_columns,
     unify_schemas,
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    shuffle,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -45,6 +47,60 @@ def test_try_defragment_table():
 
     assert len(dt["id"].chunks) == 1
     assert dt == t
+
+
+def test_hash_partitioning():
+    # Test hash-partitioning of the empty table
+    empty_table = pa.Table.from_pydict({"idx": []})
+
+    assert {} == hash_partition(empty_table, hash_cols=["idx"], num_partitions=5)
+
+    # Test hash-partitioning of table into 1 partition (returns table itself)
+    t = pa.Table.from_pydict({"idx": list(range(10))})
+
+    assert {0: t} == hash_partition(t, hash_cols=["idx"], num_partitions=1)
+
+    # Test hash-partitioning of proper table
+    idx = list(range(100))
+
+    t = pa.Table.from_pydict(
+        {
+            "idx": pa.array(idx),
+            "ints": pa.array(idx),
+            "floats": pa.array([float(i) for i in idx]),
+            "strings": pa.array([str(i) for i in idx]),
+            "structs": pa.array(
+                [
+                    {
+                        "value": i,
+                    }
+                    for i in idx
+                ]
+            ),
+        }
+    )
+
+    single_partition_dict = hash_partition(t, hash_cols=["idx"], num_partitions=1)
+
+    # There's just 1 partition
+    assert len(single_partition_dict) == 1
+    assert t == single_partition_dict.get(0)
+
+    def _concat_and_sort_partitions(parts: Iterable[pa.Table]) -> pa.Table:
+        return pa.concat_tables(parts).sort_by("idx")
+
+    _5_partition_dict = hash_partition(t, hash_cols=["strings"], num_partitions=5)
+
+    assert len(_5_partition_dict) == 5
+    assert t == _concat_and_sort_partitions(_5_partition_dict.values())
+
+    # There could be no more partitions than elements
+    _structs_partition_dict = hash_partition(
+        t, hash_cols=["structs"], num_partitions=101
+    )
+
+    assert len(_structs_partition_dict) == 34
+    assert t == _concat_and_sort_partitions(_structs_partition_dict.values())
 
 
 def test_shuffle():

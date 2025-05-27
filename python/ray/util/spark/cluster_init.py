@@ -1204,7 +1204,7 @@ def _setup_ray_cluster_internal(
                 shutdown_ray_cluster()
             except Exception:
                 pass
-            raise RuntimeError("Launch Ray-on-Saprk cluster failed") from e
+            raise RuntimeError("Launch Ray-on-Spark cluster failed") from e
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"

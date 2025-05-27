@@ -573,7 +573,7 @@ def test_actor_max_concurrency(ray_start_regular_shared):
 
         def call(self):
             # Record the current thread that runs this function.
-            self.threads.add(threading.current_thread())
+            self.threads.add(threading.get_ident())
 
         def get_num_threads(self):
             return len(self.threads)
@@ -784,7 +784,4 @@ if __name__ == "__main__":
     import pytest
 
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

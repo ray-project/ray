@@ -246,6 +246,7 @@ def ray_deps_setup():
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-zlib.patch",
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
         ],
     )
 
@@ -256,6 +257,7 @@ def ray_deps_setup():
         sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
         ],
     )
 

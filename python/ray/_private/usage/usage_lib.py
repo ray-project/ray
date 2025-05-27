@@ -4,7 +4,7 @@ NOTE: Ray's usage report is currently "on by default".
       One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
-https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
+https://docs.ray.io/en/master/cluster/usage-stats.html#usage-stats-collection  # noqa
 
 # Module
 
@@ -522,7 +522,7 @@ def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
         ray_init_cluster: Whether the cluster is started by ray.init()
 
     Raises:
-        gRPC exceptions if PUT fails.
+        gRPC exceptions: If PUT fails.
     """
     metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
     gcs_client.internal_kv_put(
@@ -798,7 +798,7 @@ def get_cluster_metadata(gcs_client) -> dict:
         The cluster metadata in a dictinoary.
 
     Raises:
-        RuntimeError if it fails to obtain cluster metadata from GCS.
+        RuntimeError: If it fails to obtain cluster metadata from GCS.
     """
     return json.loads(
         gcs_client.internal_kv_get(
@@ -949,7 +949,7 @@ class UsageReportClient:
             data: Data to report.
 
         Raises:
-            requests.HTTPError if requests fails.
+            requests.HTTPError: If requests fails.
         """
         r = requests.request(
             "POST",

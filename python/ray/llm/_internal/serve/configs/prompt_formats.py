@@ -24,7 +24,6 @@ transformers = try_import("transformers")
 
 
 class Text(BaseModel):
-    field: str = "text"
     type: str = "text"
     text: str
 
@@ -35,18 +34,23 @@ class Text(BaseModel):
 # This is to support the "content" content type in the prompt format, as opposite of
 # the "text" content from the above which most other model uses.
 class Content(BaseModel):
-    field: str = "text"
     type: str = "text"
     content: str
 
 
 class Image(BaseModel):
-    field: str = "image_url"
+    type: str = "image_url"
     image_url: Dict
 
     @field_validator("image_url")
     @classmethod
     def check_image_url(cls, value):
+        """Checks if the image_url is a dict with a 'url' key.
+        Example:
+            image_url = {
+                "url": "https://example.com/image.png"
+            }
+        """
         if "url" not in value or not value["url"] or not isinstance(value["url"], str):
             raise ValueError(
                 # TODO(xwjiang): Link to doc.
@@ -120,6 +124,7 @@ class EngineInput(BaseModel):
     image: Optional[List[ImageInput]] = None
 
 
+# TODO (Kourosh): We can delete this abstraction.
 class AbstractPromptFormat(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

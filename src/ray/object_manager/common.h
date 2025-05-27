@@ -19,7 +19,6 @@
 #endif
 
 #include <atomic>
-#include <boost/asio.hpp>
 #include <functional>
 #include <string>
 

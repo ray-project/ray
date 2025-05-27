@@ -6,7 +6,10 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import download_hf_model
+from ray.llm._internal.common.utils.download_utils import (
+    download_model_files,
+    NodeModelDownloadable,
+)
 
 
 class ChatTemplateUDF(StatefulStageUDF):
@@ -25,8 +28,8 @@ class ChatTemplateUDF(StatefulStageUDF):
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
             chat_template: The chat template in Jinja template format. This is
-            usually not needed if the model checkpoint already contains the
-            chat template.
+                           usually not needed if the model checkpoint already contains the
+                           chat template.
         """
         from transformers import AutoProcessor
 
@@ -36,7 +39,12 @@ class ChatTemplateUDF(StatefulStageUDF):
         # because tokenizers of VLM models may not have chat template attribute.
         # However, this may not be a reliable solution, because processors and
         # tokenizers are not standardized across different models.
-        model_path = download_hf_model(model, tokenizer_only=True)
+        model_path = download_model_files(
+            model_id=model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_extra_files=False,
+        )
         self.processor = AutoProcessor.from_pretrained(
             model_path, trust_remote_code=True
         )

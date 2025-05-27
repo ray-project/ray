@@ -45,9 +45,6 @@
 namespace ray {
 namespace core {
 
-/// In direct actor call task submitter and receiver, a task is directly submitted
-/// to the actor that will execute it.
-
 // Interface for testing.
 class ActorTaskSubmitterInterface {
  public:
@@ -162,7 +159,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Check timeout tasks that are waiting for Death info.
   void CheckTimeoutTasks();
 
-  /// If the the number of tasks in requests is greater than or equal to
+  /// If the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
   ///
   /// \param[in] actor_id Actor id.
@@ -340,9 +337,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// case we hard code an error info.
     std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
-    /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
-    /// without replies.
-    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    /// Stores all callbacks of inflight tasks. An actor task is inflight
+    /// if the PushTask RPC is sent but the reply is not received yet.
+    absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -400,24 +397,12 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \return Void.
   void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Resend all previously-received, out-of-order, received tasks for an actor.
-  /// When sending these tasks, the tasks will have the flag skip_execution=true.
-  ///
-  /// This is useful because we want the replies to be in-order. For the out of order
-  /// completed tasks we resend them to the new restarted actor with skip_execution=True
-  /// and expect those tasks replies to fill the seqno.
-  ///
-  /// \param[in] actor_id Actor ID.
-  /// \return Void.
-  void ResendOutOfOrderCompletedTasks(const ActorID &actor_id)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
@@ -436,7 +421,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
 
-  /// Resolve direct call object dependencies.
+  /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.

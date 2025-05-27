@@ -42,7 +42,7 @@ namespace core {
 class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
  public:
   OutOfOrderActorSchedulingQueue(
-      instrumented_io_context &main_io_service,
+      instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -86,7 +86,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
 
-  instrumented_io_context &io_service_;
+  instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.

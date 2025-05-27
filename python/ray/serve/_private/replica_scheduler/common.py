@@ -13,6 +13,16 @@ from ray.serve._private.constants import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@dataclass()
+class RequestSchedulingContext:
+    multiplexed_start_matching_time: Optional[float] = None
+    tried_fewest_multiplexed_models: bool = False
+    tried_first_multiplexed_models: bool = False
+    tried_same_node: bool = False
+    tried_same_az: bool = False
+    should_backoff: bool = False
+
+
 @dataclass
 class PendingRequest:
     args: List[Any]
@@ -20,6 +30,9 @@ class PendingRequest:
     metadata: RequestMetadata
     created_at: float = field(default_factory=time.time)
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
+    scheduling_context: RequestSchedulingContext = field(
+        default_factory=RequestSchedulingContext
+    )
 
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""

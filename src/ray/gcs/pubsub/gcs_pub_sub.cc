@@ -221,74 +221,6 @@ std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch) 
   return std::vector<std::string>(log_batch.lines().begin(), log_batch.lines().end());
 }
 
-PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
-  std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
-  RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
-  RAY_CHECK(address.size() == 2);
-  gcs_address_ = address[0];
-  gcs_port_ = std::stoi(address[1]);
-}
-
-Status PythonGcsPublisher::Connect() {
-  channel_ = rpc::GcsRpcClient::CreateGcsChannel(gcs_address_, gcs_port_);
-  pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
-  return Status::OK();
-}
-
-constexpr int MAX_GCS_PUBLISH_RETRIES = 60;
-
-Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request,
-                                                int64_t num_retries,
-                                                int64_t timeout_ms) {
-  int count = num_retries == -1 ? MAX_GCS_PUBLISH_RETRIES : num_retries;
-  rpc::GcsPublishReply reply;
-  grpc::Status status;
-  while (count > 0) {
-    grpc::ClientContext context;
-    if (timeout_ms != -1) {
-      context.set_deadline(std::chrono::system_clock::now() +
-                           std::chrono::milliseconds(timeout_ms));
-    }
-    status = pubsub_stub_->GcsPublish(&context, request, &reply);
-    if (status.error_code() == grpc::StatusCode::OK) {
-      if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-        return Status::Invalid(reply.status().message());
-      }
-      return Status::OK();
-    } else if (status.error_code() == grpc::StatusCode::UNAVAILABLE ||
-               status.error_code() == grpc::StatusCode::UNKNOWN) {
-      // This is the case in which we will retry
-      count -= 1;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      continue;
-    } else {
-      return Status::Invalid(status.error_message());
-    }
-  }
-  return Status::TimedOut("Failed to publish after retries: " + status.error_message());
-}
-
-Status PythonGcsPublisher::PublishError(const std::string &key_id,
-                                        const rpc::ErrorTableData &error_info,
-                                        int64_t num_retries) {
-  rpc::GcsPublishRequest request;
-  auto *message = request.add_pub_messages();
-  message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
-  message->set_key_id(key_id);
-  message->mutable_error_info_message()->MergeFrom(error_info);
-  return DoPublishWithRetries(request, num_retries, 1000);
-}
-
-Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
-                                       const rpc::LogBatch &log_batch) {
-  rpc::GcsPublishRequest request;
-  auto *message = request.add_pub_messages();
-  message->set_channel_type(rpc::RAY_LOG_CHANNEL);
-  message->set_key_id(key_id);
-  message->mutable_log_batch_message()->MergeFrom(log_batch);
-  return DoPublishWithRetries(request, -1, -1);
-}
-
 PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
                                          int gcs_port,
                                          rpc::ChannelType channel_type,
@@ -358,10 +290,12 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
         status.error_code() == grpc::StatusCode::UNAVAILABLE) {
       return Status::OK();
-    } else if (status.error_code() == grpc::StatusCode::CANCELLED) {
+    }
+    if (status.error_code() == grpc::StatusCode::CANCELLED) {
       // This channel was shut down via Close()
       return Status::OK();
-    } else if (status.error_code() != grpc::StatusCode::OK) {
+    }
+    if (status.error_code() != grpc::StatusCode::OK) {
       return Status::Invalid(status.error_message());
     }
 
@@ -376,18 +310,18 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       max_processed_sequence_id_ = 0;
     }
     last_batch_size_ = reply.pub_messages().size();
-    for (auto &message : reply.pub_messages()) {
-      if (message.sequence_id() <= max_processed_sequence_id_) {
-        RAY_LOG(WARNING) << "Ignoring out of order message " << message.sequence_id();
+    for (auto &cur_pub_msg : reply.pub_messages()) {
+      if (cur_pub_msg.sequence_id() <= max_processed_sequence_id_) {
+        RAY_LOG(WARNING) << "Ignoring out of order message " << cur_pub_msg.sequence_id();
         continue;
       }
-      max_processed_sequence_id_ = message.sequence_id();
-      if (message.channel_type() != channel_type_) {
+      max_processed_sequence_id_ = cur_pub_msg.sequence_id();
+      if (cur_pub_msg.channel_type() != channel_type_) {
         RAY_LOG(WARNING) << "Ignoring message from unsubscribed channel "
-                         << message.channel_type();
+                         << cur_pub_msg.channel_type();
         continue;
       }
-      queue_.emplace_back(std::move(message));
+      queue_.emplace_back(std::move(cur_pub_msg));
     }
   }
 

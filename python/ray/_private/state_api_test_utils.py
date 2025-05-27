@@ -17,7 +17,7 @@ from ray.actor import ActorHandle
 from ray.util.state import list_workers
 import psutil
 
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsChannel
 from ray.util.state.state_manager import StateDataSourceClient
 from ray.dashboard.state_aggregator import (
     StateAPIManager,
@@ -29,6 +29,8 @@ from ray.util.state.common import (
     PredicateType,
     SupportedFilterType,
 )
+import ray._private.test_utils as test_utils
+from ray._raylet import GcsClient
 
 
 @dataclass
@@ -111,6 +113,16 @@ def invoke_state_api(
         state_stats.pending_calls -= 1
 
     return res
+
+
+def invoke_state_api_n(*args, **kwargs):
+    def verify():
+        NUM_API_CALL_SAMPLES = 10
+        for _ in range(NUM_API_CALL_SAMPLES):
+            invoke_state_api(*args, **kwargs)
+        return True
+
+    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
@@ -327,11 +339,11 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
 
 
 def get_state_api_manager(gcs_address: str) -> StateAPIManager:
-    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_client = GcsClient(address=gcs_address)
     gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
     gcs_channel.connect()
     state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_aio_client
+        gcs_channel.channel(), gcs_client
     )
     return StateAPIManager(
         state_api_data_source_client,
