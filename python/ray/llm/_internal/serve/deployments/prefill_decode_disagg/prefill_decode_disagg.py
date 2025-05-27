@@ -130,7 +130,7 @@ class PDProxyServer(LLMServer):
             # _predict returns generator, we have to set stream=True
             stream=True
         )._predict.remote(
-            request_id=request_id + "-prefill", prompt=prefill_prompt, stream=False
+            request_id=request_id, prompt=prefill_prompt, stream=False
         )
 
         prefill_response = await ResponsePostprocessor.merge_stream(
@@ -146,7 +146,7 @@ class PDProxyServer(LLMServer):
         ]
 
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
-            request_id=request_id + "-decode", prompt=prompt, stream=stream
+            request_id=request_id, prompt=prompt, stream=stream
         ):
             yield chunk
 
