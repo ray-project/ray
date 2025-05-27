@@ -584,3 +584,10 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 # Recommended: report only the node level metrics to prometheus. This means that the
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
+
+# Whether enable OpenTelemetry as the metrics collection backend on the driver
+# component. This flag is only used during the migration of the  metric collection
+# backend from OpenCensus to OpenTelemetry. It will be removed in the future.
+RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
+    "RAY_experimental_enable_open_telemetry_on_agent", True
+)

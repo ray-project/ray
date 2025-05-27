@@ -244,6 +244,10 @@ def setup_router(request) -> Tuple[AsyncioRouter, FakeReplicaScheduler]:
             "enable_strict_max_ongoing_requests", False
         ),
         replica_scheduler=fake_replica_scheduler,
+        node_id="test-node-id",
+        availability_zone="test-az",
+        prefer_local_node_routing=False,
+        _request_router_initialized_event=asyncio.Event(),
     )
     return router, fake_replica_scheduler
 
@@ -327,7 +331,7 @@ class TestAssignRequest:
         assert replica_result._is_generator_object
         assert replica_result._replica_id == r1_id
 
-        if router._replica_scheduler._use_queue_len_cache:
+        if router._request_router._use_queue_len_cache:
             assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
 
     @pytest.mark.parametrize(
@@ -383,7 +387,7 @@ class TestAssignRequest:
         assert replica_result._is_generator_object
         assert replica_result._replica_id == r2_id
 
-        if router._replica_scheduler._use_queue_len_cache:
+        if router._request_router._use_queue_len_cache:
             assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
             assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 20
 
@@ -1050,6 +1054,9 @@ class TestSingletonThreadRouter:
             replica_scheduler=fake_replica_scheduler,
             enable_strict_max_ongoing_requests=False,
             resolve_request_arg_func=Mock(),
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
         )
         router._asyncio_router = asyncio_router
         return router

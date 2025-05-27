@@ -1650,34 +1650,42 @@ def test_get_local_actor_state(ray_start_regular_shared):
     )
 
 
-def _all_actors_dead():
-    return len(list_actors(filters=[("state", "=", "ALIVE")])) == 0
+@pytest.mark.parametrize("exit_type", ["ray.kill", "out_of_scope"])
+def test_exit_immediately_after_creation(ray_start_regular_shared, exit_type: str):
+    if client_test_enabled() and exit_type == "out_of_scope":
+        pytest.skip("out_of_scope actor cleanup doesn't work with Ray client.")
 
-
-def test_kill_actor_immediately_after_creation(ray_start_regular_shared):
     @ray.remote
     class A:
         pass
 
     a = A.remote()
+    a_id = a._actor_id.hex()
     b = A.remote()
+    b_id = b._actor_id.hex()
 
-    ray.kill(a)
-    ray.kill(b)
-    wait_for_condition(_all_actors_dead)
+    def _num_actors_alive() -> int:
+        still_alive = list(
+            filter(
+                lambda a: a.actor_id in {a_id, b_id},
+                list_actors(filters=[("state", "=", "ALIVE")]),
+            )
+        )
+        print(still_alive)
+        return len(still_alive)
 
+    wait_for_condition(lambda: _num_actors_alive() == 2)
 
-def test_remove_actor_immediately_after_creation(ray_start_regular_shared):
-    @ray.remote
-    class A:
-        pass
+    if exit_type == "ray.kill":
+        ray.kill(a)
+        ray.kill(b)
+    elif exit_type == "out_of_scope":
+        del a
+        del b
+    else:
+        pytest.fail(f"Unrecognized exit_type: '{exit_type}'.")
 
-    a = A.remote()
-    b = A.remote()
-
-    del a
-    del b
-    wait_for_condition(_all_actors_dead)
+    wait_for_condition(lambda: _num_actors_alive() == 0)
 
 
 if __name__ == "__main__":
