@@ -13,7 +13,6 @@ pip install flake8-bugbear==21.9.2
 echo "Linting changes as part of pre-push hook"
 echo "ci/lint/format.sh:"
 scripts/format.sh --all
-export FLAKE8_PYX_IGNORES=""
 
 lint_exit_status=$?
 

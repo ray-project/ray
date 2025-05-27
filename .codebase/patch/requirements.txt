@@ -10,7 +10,7 @@ pytest-timeout==2.1.0
 mypy==1.7.0
 asyncmock==0.4.2
 joblib==1.2.0
-fastapi==0.95.1
+fastapi==0.115.0
 pandas==2.0.1
 pyarrow==11.0.0
 psutil==5.9.5

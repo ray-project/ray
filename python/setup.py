@@ -277,7 +277,7 @@ if setup_spec.type == SetupType.RAY:
             "uvicorn[standard] >= 0.18.0, < 0.30.0",
             "requests >= 2.25.0, < 3.0.0",
             "starlette >= 0.14.0, < 1.0.0",
-            "fastapi >= 0.40, < 0.130",
+            "fastapi >= 0.40, < 0.200",
             "watchfiles >= 0.11.0, < 0.30.0",
         ],
         "tune": [
