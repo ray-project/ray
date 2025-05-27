@@ -15,7 +15,6 @@ from ray.util.collective.types import (
     ReduceScatterOptions,
     SendOptions,
     RecvOptions,
-    torch_available,
 )
 
 
