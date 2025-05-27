@@ -489,10 +489,10 @@ class LLMConfig(BaseModelExtended):
 
         # Set the name of the deployment config to map to the model ID.
         if "name" not in deployment_config:
-            if name_prefix:
-                deployment_config["name"] = name_prefix + self._get_deployment_name()
-            else:
-                deployment_config["name"] = self._get_deployment_name()
+            deployment_config["name"] = self._get_deployment_name()
+        if name_prefix:
+            deployment_config["name"] = name_prefix + deployment_config["name"]
+
         return deployment_config
 
 
