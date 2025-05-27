@@ -1,7 +1,7 @@
 # Global release test configuration file.
 # All your release test configuration should go here. Adding release tests here
 # will automatically enable them in the Buildkite release testing schedules
-# (except they have frequency: manual).
+# (unless they have frequency: manual).
 # Here is an example configuration for reference:
 #- name: example_test
 #  # Tests with the same group will be grouped in the Buildkite UI
@@ -3471,6 +3471,29 @@
       cluster:
         cluster_compute: object_store_gce.yaml
 
+- name: small_objects
+  group: core-scalability-test
+  working_dir: benchmarks
+
+  frequency: nightly
+  team: core
+  env: aws_perf
+  cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+    cluster_compute: object_store/small_objects.yaml
+
+  run:
+    timeout: 3600
+    script: python object_store/test_small_objects.py
+    wait_for_nodes:
+      num_nodes: 5
+
+  variations:
+    - __suffix__: aws
+
 - name: many_actors
   group: core-scalability-test
   working_dir: benchmarks
@@ -4277,9 +4300,32 @@
     script: >
       pytest -sv test_batch_sglang.py
 
+
 #######################
 # Ray examples tests
 #######################
+
+
+- name: e2e_xgboost  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/e2e-xgboost # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
+      post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
+    cluster_compute: config/aws.yaml  # <working_dir>/
+
+  run:
+    timeout: 3600
+    script: PYTHONPATH=. python dist_xgboost/train.py  # <working_dir>/
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
   frequency: weekly
@@ -4297,6 +4343,7 @@
   run:
     timeout: 3600
     script: bash ci/tests.sh  # relative to working_dir
+
 
   variations:
     - __suffix__: aws  # uses default specs above

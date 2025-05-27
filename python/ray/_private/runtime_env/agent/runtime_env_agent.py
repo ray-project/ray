@@ -30,10 +30,7 @@ from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.mpi import MPIPlugin
-from ray.core.generated import (
-    runtime_env_agent_pb2,
-    agent_manager_pb2,
-)
+from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
@@ -435,7 +432,7 @@ class RuntimeEnvAgent:
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
                 ),
@@ -462,7 +459,7 @@ class RuntimeEnvAgent:
                         f"context: {context}"
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+                        status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
                 else:
@@ -477,7 +474,7 @@ class RuntimeEnvAgent:
                         runtime_env, serialized_env, request.source_process
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                        status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
                     )
 
@@ -519,9 +516,9 @@ class RuntimeEnvAgent:
             )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
                 if successful
-                else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
                 error_message=error_message,
             )
@@ -541,7 +538,7 @@ class RuntimeEnvAgent:
                 f"{request.serialized_runtime_env}"
             )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
                 ),
@@ -553,12 +550,12 @@ class RuntimeEnvAgent:
             )
         except Exception as e:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=f"Fails to decrement reference for runtime env for {str(e)}",
             )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+            status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
         )
 
     async def GetRuntimeEnvsInfo(self, request):
