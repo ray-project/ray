@@ -24,7 +24,7 @@ autoscales
 breakpoint
 BTS
 CLI
-CPU(s)
+CPU(s)?
 [Aa]sync
 g[Rr][Pp][Cc]
 http
