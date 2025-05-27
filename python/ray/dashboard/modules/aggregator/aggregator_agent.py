@@ -54,7 +54,7 @@ METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
 
 # Metrics
 if prometheus_client:
-    metrics_prefix = "aggregator_agent"
+    metrics_prefix = "event_aggregator_agent"
     events_received = Counter(
         f"{metrics_prefix}_events_received",
         "Total number of events received.",
@@ -67,8 +67,8 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_dropped_at_receiver = Counter(
-        f"{metrics_prefix}_events_dropped_at_receiver",
+    events_dropped_at_event_buffer = Counter(
+        f"{metrics_prefix}_events_dropped_at_event_buffer",
         "Total number of events dropped at receiver.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
@@ -92,13 +92,13 @@ class AggregatorAgent(
         self._event_buffer = queue.Queue(maxsize=MAX_EVENT_BUFFER_SIZE)
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
-            thread_name_prefix="aggregator_agent_grpc_executor",
+            thread_name_prefix="event_aggregator_agent_grpc_executor",
         )
 
         self._lock = threading.Lock()
         self._events_received_since_last_metrics_update = 0
         self._events_dropped_at_core_worker_since_last_metrics_update = 0
-        self._events_dropped_at_receiver_since_last_metrics_update = 0
+        self._events_dropped_at_event_buffer_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
         self._event_batch = []  # list of event json objects
 
@@ -127,7 +127,8 @@ class AggregatorAgent(
                     self._events_received_since_last_metrics_update += 1
             except queue.Full:
                 with self._lock:
-                    self._events_dropped_at_receiver_since_last_metrics_update += 1
+                    self._events_dropped_at_event_buffer_since_last_metrics_update += 1
+                # The status code is defined in `src/ray/common/status.h`
                 status_code_io_error = 5
                 status = events_event_aggregator_service_pb2.AddEventStatus(
                     status_code=status_code_io_error,
@@ -140,7 +141,8 @@ class AggregatorAgent(
                     e,
                 )
                 with self._lock:
-                    self._events_dropped_at_receiver_since_last_metrics_update += 1
+                    self._events_dropped_at_event_buffer_since_last_metrics_update += 1
+                # The status code is defined in `src/ray/common/status.h`
                 status_code_unknown_error = 9
                 status = events_event_aggregator_service_pb2.AddEventStatus(
                     status_code=status_code_unknown_error,
@@ -148,6 +150,7 @@ class AggregatorAgent(
                 )
                 return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
+        # The status code is defined in `src/ray/common/status.h`
         status_code_ok = 0
         status = events_event_aggregator_service_pb2.AddEventStatus(
             status_code=status_code_ok, status_message="received"
@@ -196,28 +199,30 @@ class AggregatorAgent(
             _events_dropped_at_core_worker = (
                 self._events_dropped_at_core_worker_since_last_metrics_update
             )
-            _events_dropped_at_receiver = (
-                self._events_dropped_at_receiver_since_last_metrics_update
+            _events_dropped_at_event_buffer = (
+                self._events_dropped_at_event_buffer_since_last_metrics_update
             )
             _events_published = self._events_published_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
             self._events_dropped_at_core_worker_since_last_metrics_update = 0
-            self._events_dropped_at_receiver_since_last_metrics_update = 0
+            self._events_dropped_at_event_buffer_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
 
         labels = {
             "ip": self._ip,
             "pid": self._pid,
             "Version": ray.__version__,
-            "Component": "aggregator_agent",
+            "Component": "event_aggregator_agent",
             "SessionName": self.session_name,
         }
         events_received.labels(**labels).inc(_events_received)
         events_dropped_at_core_worker.labels(**labels).inc(
             _events_dropped_at_core_worker
         )
-        events_dropped_at_receiver.labels(**labels).inc(_events_dropped_at_receiver)
+        events_dropped_at_event_buffer.labels(**labels).inc(
+            _events_dropped_at_event_buffer
+        )
         events_published.labels(**labels).inc(_events_published)
 
     def _cleanup(self):
