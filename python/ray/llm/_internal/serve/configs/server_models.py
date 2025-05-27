@@ -462,8 +462,8 @@ class LLMConfig(BaseModelExtended):
                 llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
                 serve.run(llm_app)
 
-        Keyword Args:
-            name_prefix (Optional[str]): Optional prefix to be used for the deployment name.
+        Args:
+            name_prefix: Optional prefix to be used for the deployment name.
 
         Returns:
             The dictionary to use in .options() when creating the deployment.

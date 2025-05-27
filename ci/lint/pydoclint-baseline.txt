@@ -1669,10 +1669,6 @@ python/ray/llm/_internal/serve/configs/prompt_formats.py
     DOC103: Method `Image.check_image_url`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [value: ].
     DOC201: Method `Image.check_image_url` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/configs/server_models.py
-    DOC101: Method `LLMConfig.get_serve_options`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LLMConfig.get_serve_options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [name_prefix: str].
---------------------
 python/ray/llm/_internal/serve/deployments/llm/llm_server.py
     DOC101: Method `LLMServer.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `LLMServer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [engine_cls: Optional[Type[LLMEngine]], image_retriever_cls: Optional[Type[ImageRetriever]], model_downloader: Optional[LoraModelLoader]].
@@ -1916,9 +1912,6 @@ python/ray/serve/tests/test_callback.py
     DOC107: Function `ray_instance`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC402: Function `ray_instance` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `ray_instance` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
---------------------
-python/ray/serve/tests/test_config_files/syntax_error.py
-    DOC002: Syntax errors; cannot parse this Python file. Error message: '(' was never closed (<unknown>, line 1)
 --------------------
 python/ray/serve/tests/test_metrics.py
     DOC106: Method `TestRequestContextMetrics._generate_metrics_summary`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
