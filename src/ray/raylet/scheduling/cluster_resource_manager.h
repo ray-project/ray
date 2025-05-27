@@ -130,7 +130,10 @@ class ClusterResourceManager {
     return node.GetLocalView().is_draining;
   }
 
-  std::string DebugString() const;
+  /// @param max_num_nodes_to_include Max number of nodes to include in the debug string.
+  ///   If not specified, all nodes will be included.
+  std::string DebugString(
+      std::optional<size_t> max_num_nodes_to_include = std::nullopt) const;
 
   BundleLocationIndex &GetBundleLocationIndex();
 
@@ -199,6 +202,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

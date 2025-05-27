@@ -43,7 +43,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchRayDataIterator,
 )
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     ModuleID,
     NamedParamDict,
@@ -124,7 +123,7 @@ class DifferentiableLearner(Checkpointable):
 
         # TODO (simon): Move the `build_learner_connector` to the
         # `DifferentiableLearnerConfig`.
-        self._learner_connector = self.config.build_learner_connector(
+        self._learner_connector = self.learner_config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
             device=None,
@@ -324,6 +323,8 @@ class DifferentiableLearner(Checkpointable):
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
 
+        self.metrics.activate_tensor_mode()
+
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -339,15 +340,11 @@ class DifferentiableLearner(Checkpointable):
 
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, params, tensor_metrics = self._update(
+            fwd_out, loss_per_module, params, _ = self._update(
                 # TODO (simon): Maybe filter ParamDict by module keys in batch.
                 tensor_minibatch.policy_batches,
                 params,
             )
-
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
@@ -373,7 +370,7 @@ class DifferentiableLearner(Checkpointable):
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
         # window is only 1 anyways.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
+        for mid, loss in loss_per_module.items():
             self.metrics.log_value(
                 key=(mid, self.TOTAL_LOSS_KEY),
                 value=loss,
@@ -386,12 +383,13 @@ class DifferentiableLearner(Checkpointable):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         # self.after_gradient_based_update(timesteps=timesteps or {})
+        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
             return params, loss_per_module, self.metrics.reduce()
         else:
-            return params, loss_per_module, None
+            return params, loss_per_module, {}
 
     def _create_iterator_if_necessary(
         self,
@@ -679,6 +677,26 @@ class DifferentiableLearner(Checkpointable):
                 )
             return False
         return True
+
+    @abc.abstractmethod
+    def _get_tensor_variable(
+        self,
+        value: Any,
+        dtype: Any = None,
+        trainable: bool = False,
+    ) -> TensorType:
+        """Returns a framework-specific tensor variable with the initial given value.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-classes.
+
+        Args:
+            value: The initial value for the tensor variable variable.
+
+        Returns:
+            The framework specific tensor variable of the given initial value,
+            dtype and trainable/requires_grad property.
+        """
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _reset(self):

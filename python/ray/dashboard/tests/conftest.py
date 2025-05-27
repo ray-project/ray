@@ -1,4 +1,5 @@
 import os
+import pathlib
 
 import pytest
 
@@ -9,8 +10,13 @@ from ray.tests.conftest import *  # noqa
 @pytest.fixture
 def enable_test_module():
     os.environ["RAY_DASHBOARD_MODULE_TEST"] = "true"
+    import ray.dashboard.tests
+
+    p = pathlib.Path(ray.dashboard.modules.__path__[0]) / "tests" / "__init__.py"
+    p.touch()
     yield
     os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
+    p.unlink()
 
 
 @pytest.fixture

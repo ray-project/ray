@@ -4,8 +4,8 @@ import time
 import uuid
 
 import pytest
-import ray
 
+import ray
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
     RunAttemptStatus,

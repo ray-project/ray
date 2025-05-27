@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
 
 namespace ray {
 namespace core {

@@ -109,8 +109,8 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 
   // IO Service for main loop.
   SetThreadName("gcs_server");

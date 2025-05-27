@@ -187,7 +187,7 @@ class OneHotEncoder(Preprocessor):
         4  [1, 0, 0]
         5  [0, 1, 0]
 
-        :class:`MultiHotEncoder` can also be used in append mode by providing the
+        OneHotEncoder can also be used in append mode by providing the
         name of the output_columns that should hold the encoded values.
 
         >>> encoder = OneHotEncoder(columns=["color"], output_columns=["color_encoded"])
@@ -206,21 +206,21 @@ class OneHotEncoder(Preprocessor):
         >>> df = pd.DataFrame({"color": ["yellow"]})
         >>> batch = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> encoder.transform(batch).to_pandas()  # doctest: +SKIP
-           color_blue  color_green  color_red
-        0           0            0          0
+            color color_encoded
+        0  yellow     [0, 0, 0]
 
         Likewise, if you one-hot encode an infrequent value, then the value is encoded
         with zeros.
 
         >>> encoder = OneHotEncoder(columns=["color"], max_categories={"color": 2})
         >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
-           color_red  color_green
-        0          1            0
-        1          0            1
-        2          1            0
-        3          1            0
-        4          0            0
-        5          0            1
+            color
+        0  [1, 0]
+        1  [0, 1]
+        2  [1, 0]
+        3  [1, 0]
+        4  [0, 0]
+        5  [0, 1]
 
     Args:
         columns: The columns to separately encode.

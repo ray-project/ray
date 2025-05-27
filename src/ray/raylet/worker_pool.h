@@ -443,7 +443,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
-  /// We aim to prestart 1 worker per CPU, up to the the backlog size.
+  /// We aim to prestart 1 worker per CPU, up to the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
   void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
@@ -793,7 +793,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
 
-  // If this worker can serve the task.
+  /// Returns if the worker can be used to satisfy the request.
+  ///
+  /// \param[in] worker The worker.
+  /// \param[in] pop_worker_request The pop worker request.
+  /// \return WorkerUnfitForTaskReason::NONE if the worker can be used, else a
+  ///         status indicating why it cannot.
   WorkerUnfitForTaskReason WorkerFitsForTask(
       const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
 

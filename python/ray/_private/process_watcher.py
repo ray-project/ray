@@ -1,20 +1,19 @@
 import asyncio
 import io
 import logging
-import sys
 import os
-
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
-from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 from ray._common.utils import run_background_task
-import ray._private.ray_constants as ray_constants
+from ray._raylet import GcsClient
+from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ def get_raylet_pid():
     return raylet_pid
 
 
-def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
+def create_check_raylet_task(log_dir, gcs_client, parent_dead_callback, loop):
     """
     Creates an asyncio task to periodically check if the raylet process is still
     running. If raylet is dead for _PARENT_DEATH_THREASHOLD (5) times, prepare to exit
@@ -55,7 +54,7 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
 
     - Write logs about whether the raylet exit is graceful, by looking into the raylet
     log and search for term "SIGTERM",
-    - Flush the logs via GcsPublisher,
+    - Flush the logs via GcsClient,
     - Exit.
     """
     if sys.platform in ["win32", "cygwin"]:
@@ -65,18 +64,18 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
     if dashboard_consts.PARENT_HEALTH_CHECK_BY_PIPE:
         logger.info("check_parent_via_pipe")
         check_parent_task = _check_parent_via_pipe(
-            log_dir, gcs_address, loop, parent_dead_callback
+            log_dir, gcs_client, loop, parent_dead_callback
         )
     else:
         logger.info("_check_parent")
         check_parent_task = _check_parent(
-            raylet_pid, log_dir, gcs_address, parent_dead_callback
+            raylet_pid, log_dir, gcs_client, parent_dead_callback
         )
 
     return run_background_task(check_parent_task)
 
 
-def report_raylet_error_logs(log_dir: str, gcs_address: str):
+def report_raylet_error_logs(log_dir: str, gcs_client: GcsClient):
     log_path = os.path.join(log_dir, "raylet.out")
     error = False
     msg = "Raylet is terminated. "
@@ -118,14 +117,14 @@ def report_raylet_error_logs(log_dir: str, gcs_address: str):
         ray._private.utils.publish_error_to_driver(
             ray_constants.RAYLET_DIED_ERROR,
             msg,
-            gcs_publisher=ray._raylet.GcsPublisher(address=gcs_address),
+            gcs_client=gcs_client,
         )
     else:
         logger.info(msg)
 
 
 async def _check_parent_via_pipe(
-    log_dir: str, gcs_address: str, loop, parent_dead_callback
+    log_dir: str, gcs_client: GcsClient, loop, parent_dead_callback
 ):
     while True:
         try:
@@ -140,7 +139,7 @@ async def _check_parent_via_pipe(
             if len(input_data) == 0:
                 # cannot read bytes from parent == parent is dead.
                 parent_dead_callback("_check_parent_via_pipe: The parent is dead.")
-                report_raylet_error_logs(log_dir, gcs_address)
+                report_raylet_error_logs(log_dir, gcs_client)
                 sys.exit(0)
         except Exception as e:
             logger.exception(
@@ -149,7 +148,7 @@ async def _check_parent_via_pipe(
             )
 
 
-async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
+async def _check_parent(raylet_pid, log_dir, gcs_client, parent_dead_callback):
     """Check if raylet is dead and fate-share if it is."""
     try:
         curr_proc = psutil.Process()
@@ -186,7 +185,7 @@ async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
                     continue
 
                 parent_dead_callback("_check_parent: The parent is dead.")
-                report_raylet_error_logs(log_dir, gcs_address)
+                report_raylet_error_logs(log_dir, gcs_client)
                 sys.exit(0)
             else:
                 parent_death_cnt = 0

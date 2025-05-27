@@ -24,9 +24,7 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/lease_policy.h"

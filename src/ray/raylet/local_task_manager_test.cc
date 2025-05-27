@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
@@ -175,24 +176,6 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
   return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
 
-class MockObjectManager : public ObjectManagerInterface {
- public:
-  MockObjectManager() {}
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                BundlePriority priority,
-                const TaskMetricsKey &metrics_key) override {
-    return 0;
-  }
-  void CancelPull(uint64_t request_id) override {}
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const override {
-    return false;
-  }
-  int64_t PullManagerNumInactivePullsByTaskName(
-      const TaskMetricsKey &metrics_key) const override {
-    return 0;
-  }
-};
-
 class LocalTaskManagerTest : public ::testing::Test {
  public:
   explicit LocalTaskManagerTest(double num_cpus = 3.0)
@@ -204,8 +187,7 @@ class LocalTaskManagerTest : public ::testing::Test {
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
             *scheduler_,
-            dependency_manager_, /* is_owner_alive= */
-            [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
+            dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {

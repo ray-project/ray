@@ -48,15 +48,18 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "task_type": "generate",
         "max_pending_requests": 111,
         "dynamic_lora_loading_path": None,
+        "max_concurrent_batches": 8,
+        "batch_size": 64,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
     assert "env_vars" in runtime_env
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 4,
-        "max_concurrency": 4,
+        "max_concurrency": 8,
         "accelerator_type": gpu_type,
         "num_gpus": 1,
     }

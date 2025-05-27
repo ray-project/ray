@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pyarrow as pa
@@ -8,6 +8,11 @@ from typing_extensions import Hashable
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.util import (
+    _op_name_white_list,
+    _recorded_operators,
+    _recorded_operators_lock,
+)
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
@@ -22,6 +27,22 @@ from ray.data._internal.util import (
     iterate_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+
+def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
+    """Check if operators with given names in `op_names` have been used.
+    If `clear_after_check` is True, we clear the list of recorded operators
+    (so that subsequent checks do not use existing records of operator usage)."""
+    for op_name in op_names:
+        assert op_name in _op_name_white_list
+        with _recorded_operators_lock:
+            assert _recorded_operators.get(op_name, 0) > 0, (
+                op_name,
+                _recorded_operators,
+            )
+    if clear_after_check:
+        with _recorded_operators_lock:
+            _recorded_operators.clear()
 
 
 def test_cached_remote_fn():

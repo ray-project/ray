@@ -1,8 +1,8 @@
 import inspect
 import logging
+import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-import warnings
 
 from ray.serve._private.config import (
     DeploymentConfig,

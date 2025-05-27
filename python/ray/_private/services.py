@@ -7,7 +7,6 @@ import logging
 import mmap
 import multiprocessing
 import os
-import random
 import shutil
 import signal
 import socket
@@ -27,6 +26,7 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 resource = None
 if sys.platform != "win32":
@@ -264,24 +264,6 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
-    if not denylist:
-        denylist = set()
-    port = random.randint(lower_bound, upper_bound)
-    retry = 0
-    while port in denylist:
-        if retry > 100:
-            break
-        port = random.randint(lower_bound, upper_bound)
-        retry += 1
-    if retry > 100:
-        raise ValueError(
-            "Failed to find a new port from the range "
-            f"{lower_bound}-{upper_bound}. Denylist: {denylist}"
-        )
-    return port
-
-
 def _find_address_from_flag(flag: str):
     """
     Attempts to find all valid Ray addresses on this node, specified by the
@@ -328,7 +310,7 @@ def _find_address_from_flag(flag: str):
     # Indeed, we had to pull --redis-address to the front of each call to make
     # this readable.
     # As you can see, this is very long and complex, which is why we can't
-    # simply extract all the the arguments using regular expressions and
+    # simply extract all the arguments using regular expressions and
     # present a dict as if we never lost track of these arguments, for
     # example. Picking out --redis-address below looks like it might grab the
     # wrong thing, but double-checking that we're finding the correct process
@@ -780,11 +762,22 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
                 json.dump(cached_node_ip_address, f)
 
 
+def get_node_instance_id():
+    """Get the specified node instance id of the current node.
+
+    Returns:
+        The node instance id of the current node.
+    """
+    return os.getenv("RAY_CLOUD_INSTANCE_ID", "")
+
+
 def create_redis_client(redis_address, password=None, username=None):
     """Create a Redis client.
 
     Args:
-        The IP address, port, username, and password of the Redis server.
+        redis_address: The IP address and port of the Redis server.
+        password: The password for Redis authentication.
+        username: The username for Redis authentication.
 
     Returns:
         A Redis client.
@@ -1556,6 +1549,7 @@ def start_raylet(
     object_store_memory: int,
     session_name: str,
     is_head_node: bool,
+    resource_isolation_config: ResourceIsolationConfig,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1584,7 +1578,6 @@ def start_raylet(
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
     labels: Optional[dict] = None,
-    enable_physical_mode: bool = False,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1614,6 +1607,8 @@ def start_raylet(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         session_name: The session name (cluster id) of this cluster.
+        resource_isolation_config: Resource isolation configuration for reserving
+            memory and cpu resources for ray system processes through cgroupv2
         is_head_node: whether this node is the head node.
         min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
@@ -1661,9 +1656,6 @@ def start_raylet(
         node_name: The name of the node.
         webui: The url of the UI.
         labels: The key-value labels of the node.
-        enable_physical_mode: Whether physical mode is enabled, which applies
-            constraint to tasks' resource consumption. As of now only memory
-            resource is supported.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1757,6 +1749,18 @@ def start_raylet(
             f"--cluster-id={cluster_id}",
         ]
     )
+
+    if resource_isolation_config.is_enabled():
+        # TODO(irabbani): enable passing args to raylet once the raylet has been modified
+        logging.info(
+            f"Resource isolation enabled with cgroup_path={resource_isolation_config.cgroup_path}, "
+            f"system_reserved_cpu={resource_isolation_config.system_reserved_cpu_weight} "
+            f"system_reserved_memory={resource_isolation_config.system_reserved_memory}"
+        )
+        # start_worker_command.append("--enable-resource-isolation")
+        # start_worker_command.append(f"--cgroup-path={resource_isolation_config.cgroup_path}")
+        # start_worker_command.append(f"--system-reserved-cpu={resource_isolation_config.system_reserved_cpu_weight}")
+        # start_worker_command.append(f"--system-reserved-memory={resource_isolation_config.system_reserved_memory}")
 
     if storage is not None:
         start_worker_command.append(f"--storage={storage}")

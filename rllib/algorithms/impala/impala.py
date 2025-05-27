@@ -614,7 +614,7 @@ class IMPALA(Algorithm):
                 env_runner_indices_to_update,
             ) = self._sample_and_get_connector_states()
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(
+            self.metrics.aggregate(
                 env_runner_metrics,
                 key=ENV_RUNNER_RESULTS,
             )
@@ -757,7 +757,7 @@ class IMPALA(Algorithm):
                     rl_module_state = result_from_1_learner.pop(
                         "_rl_module_state_after_update", rl_module_state
                     )
-                self.metrics.merge_and_log_n_dicts(
+                self.metrics.aggregate(
                     stats_dicts=learner_results,
                     key=LEARNER_RESULTS,
                 )
@@ -786,6 +786,8 @@ class IMPALA(Algorithm):
                     config=self.config,
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
 
     def _sample_and_get_connector_states(self):
@@ -929,7 +931,7 @@ class IMPALA(Algorithm):
 
         # With a training step done, try to bring any aggregators back to life
         # if necessary.
-        # Aggregation workers are stateless, so we do not need to restore any
+        # AggregatorActor are stateless, so we do not need to restore any
         # state here.
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
@@ -963,7 +965,7 @@ class IMPALA(Algorithm):
             # worker (either because they have all died, or because there was none to
             # begin) check if the local_worker exists. If the local worker has an
             # env_instance (either because there are no remote workers or
-            # self.config.create_env_on_local_worker == True), then sample from the
+            # self.config.create_local_env_runner == True), then sample from the
             # local worker. Otherwise just return an empty list.
             if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.

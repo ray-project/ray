@@ -447,11 +447,4 @@ def test_can_create_task_in_multiple_sessions(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

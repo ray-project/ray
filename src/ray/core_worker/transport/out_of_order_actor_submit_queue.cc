@@ -97,20 +97,5 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
 }
 
-std::map<uint64_t, TaskSpecification>
-OutofOrderActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
-  return {};
-}
-
-void OutofOrderActorSubmitQueue::OnClientConnected() {}
-
-uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
-    const TaskSpecification &task_spec) const {
-  return task_spec.ActorCounter();
-}
-
-void OutofOrderActorSubmitQueue::MarkSeqnoCompleted(uint64_t position,
-                                                    const TaskSpecification &task_spec) {}
-
 }  // namespace core
 }  // namespace ray

@@ -15,7 +15,7 @@ config = (
     .env_runners(
         num_env_runners=2,
         num_envs_per_env_runner=20,
-        env_to_module_connector=lambda env: MeanStdFilter(),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     )
     .training(
         train_batch_size_per_learner=1024,

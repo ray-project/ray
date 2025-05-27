@@ -24,9 +24,7 @@ class DataIteratorImpl(DataIterator):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
-        ds = self._base_dataset
-        ref_bundles_iterator, stats, executor = ds._plan.execute_to_iterator()
-        ds._current_executor = executor
+        ref_bundles_iterator, stats = self._base_dataset._execute_to_iterator()
         return ref_bundles_iterator, stats, False
 
     def stats(self) -> str:
