@@ -5,7 +5,7 @@ import math
 import os
 import threading
 import time
-from typing import Iterator
+from typing import Iterator, Literal
 
 import numpy as np
 import pandas as pd
@@ -1648,8 +1648,11 @@ def test_random_sample_fixed_seed_0002(
     assert set(ds.to_pandas()["item"].to_list()) == set(expected.tolist())
 
 
-def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
+def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path, restore_data_context):
     """Test that for the actor map operator, the UDF object is deleted properly."""
+    ctx = DataContext.get_current()
+    ctx._enable_actor_pool_on_exit_hook = True
+
     test_file = tmp_path / "test.txt"
 
     # Simulate the case that the UDF depends on some external resources that
@@ -1870,6 +1873,29 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     # Because all tasks are submitted almost simultaneously,
     # the output order may be different compared to the original input.
     assert len(output) == len(expected_output), (len(output), len(expected_output))
+
+
+@pytest.mark.parametrize("fn_type", ["func", "class"])
+def test_map_operator_warns_on_few_inputs(
+    fn_type: Literal["func", "class"], shutdown_only
+):
+    if fn_type == "func":
+
+        def fn(row):
+            return row
+
+    else:
+
+        class fn:
+            def __call__(self, row):
+                return row
+
+    with pytest.warns(UserWarning, match="can launch at most 1 task"):
+        # The user specified `concurrency=2` for the map operator, but the pipeline
+        # can only launch one task because there's only one input block. So, Ray Data
+        # should emit a warning instructing the user to increase the number of input
+        # blocks.
+        ray.data.range(2, override_num_blocks=1).map(fn, concurrency=2).materialize()
 
 
 def test_map_op_backpressure_configured_properly():

@@ -91,6 +91,7 @@ run_ray_cpp_and_java() {
   # clang-format is needed by java/test.sh
   # 42 is the universal rayci exit code for test failures
   pip install clang-format==12.0.1
+  export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   ./java/test.sh || exit 42
   ./ci/ci.sh test_cpp || exit 42
 }
