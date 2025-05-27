@@ -17,6 +17,7 @@ steps:
       - oss
       - python
       - core_cpp
+      - release_wheels
     job_env: WINDOWS
     instance_type: windows
     commands:
