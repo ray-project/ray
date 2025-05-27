@@ -124,7 +124,7 @@ def build_llm_deployment(
         llm_config: The llm config to build vllm deployment.
 
     Keyword Args:
-        name_prefix: Optional prefix to be used for the deployment name.
+        name_prefix (Optional[str]): Optional prefix to be used for the deployment name.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
