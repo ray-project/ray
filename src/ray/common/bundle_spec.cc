@@ -30,8 +30,7 @@ void BundleSpecification::ComputeResources() {
 
     // Set LabelSelector required for scheduling this bundle if specified.
     // Parses string map from proto to LabelSelector data type.
-    LabelSelector selector(message_->label_selector());
-    unit_resource_->SetLabelSelector(selector);
+    unit_resource_->SetLabelSelector(LabelSelector(message_->label_selector()));
   }
 
   // Generate placement group bundle labels.
