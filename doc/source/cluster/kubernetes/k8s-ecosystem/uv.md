@@ -129,8 +129,8 @@ spec:
             name: client
   workerGroupSpecs:
   - replicas: 1
-    minReplicas: 0
-    maxReplicas: 10
+    minReplicas: 1
+    maxReplicas: 5
     groupName: small-group
     rayStartParams: {}
     template:
