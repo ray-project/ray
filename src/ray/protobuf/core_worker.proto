@@ -494,13 +494,15 @@ service CoreWorkerService {
 
   // The RPC to report the intermediate task return from the executor worker to the owner
   // worker.
-  // Failure: Handles failures, TODO: Failure behavior needs tests.
+  // Failure: Handles failures, TODO: Failure behavior needs more tests.
   rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
       returns (ReportGeneratorItemReturnsReply);
 
   // The pubsub command batch request used by the subscriber.
+  // Subscribe / unsubscribe commands to the publisher worker.
   // Failure: TODO: Does not handle failures.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+
   // Update the batched object location information to the ownership-based object
   // directory.
   // Failure: Retries, it's idempotent. TODO: Add idempotency unit tests to assure it
