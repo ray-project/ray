@@ -57,7 +57,7 @@ jobs:
 
           # Pull Requests with these labels will never be considered stale
           exempt-pr-labels: >
-            triage,
+            weekly-release-blocker,
             release-blocker
 
           # Set to true to ignore PRs in a milestone (defaults to false)
