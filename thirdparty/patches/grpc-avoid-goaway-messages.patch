@@ -1,0 +1,19 @@
+diff --git a/src/core/ext/transport/chttp2/transport/chttp2_transport.cc b/src/core/ext/transport/chttp2/transport/chttp2_transport.cc
+index d3c5d994c1..1edc7ae29d 100644
+--- src/core/ext/transport/chttp2/transport/chttp2_transport.cc
++++ src/core/ext/transport/chttp2/transport/chttp2_transport.cc
+@@ -1176,13 +1176,6 @@ void grpc_chttp2_add_incoming_goaway(grpc_chttp2_transport* t,
+   GRPC_TRACE_LOG(http, INFO)
+       << "transport " << t << " got goaway with last stream id "
+       << last_stream_id;
+-  // We want to log this irrespective of whether http tracing is enabled if we
+-  // received a GOAWAY with a non NO_ERROR code.
+-  if (goaway_error != GRPC_HTTP2_NO_ERROR) {
+-    LOG(INFO) << t->peer_string.as_string_view() << ": Got goaway ["
+-              << goaway_error
+-              << "] err=" << grpc_core::StatusToString(t->goaway_error);
+-  }
+   if (t->is_client) {
+     cancel_unstarted_streams(t, t->goaway_error, false);
+     // Cancel all unseen streams
+
