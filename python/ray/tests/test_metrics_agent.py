@@ -166,8 +166,14 @@ _METRICS.append("ray_health_check_rpc_latency_ms_sum")
 
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
-    enable_metrics_collection = request.param
+    (
+        enable_metrics_collection,
+        experimental_enable_open_telemetry_on_agent,
+    ) = request.param
     NUM_NODES = 2
+    os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = (
+        "1" if experimental_enable_open_telemetry_on_agent else "0"
+    )
     cluster = ray_start_cluster
     # Add a head node.
     cluster.add_node(
@@ -176,6 +182,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
+            "experimental_enable_open_telemetry_on_agent": experimental_enable_open_telemetry_on_agent,
         }
     )
     # Add worker nodes.
@@ -247,7 +254,9 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
-@pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
+@pytest.mark.parametrize(
+    "_setup_cluster_for_test", [(True, True), (True, False)], indirect=True
+)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
     (
@@ -1011,7 +1020,7 @@ def test_custom_metrics_validation(shutdown_only):
         metric.inc(1.0, {"a": 1})
 
 
-@pytest.mark.parametrize("_setup_cluster_for_test", [False], indirect=True)
+@pytest.mark.parametrize("_setup_cluster_for_test", [(False, False)], indirect=True)
 def test_metrics_disablement(_setup_cluster_for_test):
     """Make sure the metrics are not exported when it is disabled."""
     prom_addresses, autoscaler_export_addr, _ = _setup_cluster_for_test
