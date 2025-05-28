@@ -256,6 +256,7 @@ def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
         node_id="test-node-id",
         availability_zone="test-az",
         prefer_local_node_routing=False,
+        _request_router_initialized_event=asyncio.Event(),
     )
     return router, fake_request_router
 
