@@ -2,7 +2,6 @@ import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
 from ray.experimental.util.types import Device
-from ray.experimental.channel.accelerator_context import AcceleratorContext
 
 if TYPE_CHECKING:
     import numpy as np
@@ -174,7 +173,7 @@ class _SerializationContext:
         if target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
         elif target_device in [Device.GPU, Device.CUDA]:
-            target_device_type = AcceleratorContext.get().module_name
+            target_device_type = "cuda"
         else:
             target_device_type = target_device.value
 

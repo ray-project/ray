@@ -166,7 +166,7 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-            self._torch_device = AcceleratorContext.get().get_default_device()
+            self._torch_device = AcceleratorContext.get().get_accelerator_devices()[0]
 
         return self._torch_device
 

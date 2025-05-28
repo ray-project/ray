@@ -40,7 +40,7 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 @ray.remote
 class TorchTensorWorker:
     def __init__(self):
-        self.device = AcceleratorContext.get().get_default_device()
+        self.device = AcceleratorContext.get().get_accelerator_devices()[0]
 
     def init_distributed(self, world_size, rank):
         torch.distributed.init_process_group(
@@ -631,7 +631,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = AcceleratorContext.get().get_default_device()
+            self._device = AcceleratorContext.get().get_accelerator_devices()[0]
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -775,7 +775,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = AcceleratorContext.get().get_default_device()
+            self._device = AcceleratorContext.get().get_accelerator_devices()[0]
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -932,7 +932,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = AcceleratorContext.get().get_default_device()
+            self._device = AcceleratorContext.get().get_accelerator_devices()[0]
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]

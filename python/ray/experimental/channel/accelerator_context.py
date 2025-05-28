@@ -1,9 +1,10 @@
 import threading
 import importlib
 import ray
-from typing import TYPE_CHECKING, Optional, Type, ContextManager
+from typing import TYPE_CHECKING, Optional, Type, ContextManager, List
 from contextlib import nullcontext
 from ray.experimental.channel.communicator import Communicator
+from ray._private.accelerators import get_accelerator_manager_for_resource
 
 if TYPE_CHECKING:
     import torch
@@ -91,22 +92,64 @@ class AcceleratorContext:
         # Accelerator context is registered.
         _global_custom_context = accelerator_context
 
-    def get_default_device(self) -> "torch.device":
+    def get_accelerator_devices(self) -> List["torch.device"]:
         """
-        Returns the default device used by the compiled graph.
-
-        Currently, the default device for the compiled graph is the first visible
-        device. By default, it returns the device with logical ID 0.
+        Gets the torch device list configured for this process.
 
         Returns:
-            torch.device: The default device.
+            List[torch.device]: The torch device list.
         """
         import torch
 
         if self._torch_module_name == "cpu":
-            return torch.device("cpu")
+            return [torch.device("cpu")]
 
-        return torch.device(f"{self._torch_module_name}:0")
+        if self._torch_module_name == "cuda":
+            accelerator_ids = [str(id) for id in ray.get_gpu_ids()]
+            accelerator_manager = get_accelerator_manager_for_resource("GPU")
+        else:
+            accelerator_ids = [
+                str(id)
+                for id in ray.get_runtime_context().get_accelerator_ids()[
+                    self._torch_module_name.upper()
+                ]
+            ]
+            accelerator_manager = get_accelerator_manager_for_resource(
+                self._torch_module_name.upper()
+            )
+
+        device_ids = []
+
+        if len(accelerator_ids) > 0:
+            accelerator_visible_list = (
+                accelerator_manager.get_current_process_visible_accelerator_ids()
+            )
+            if accelerator_visible_list is None:
+                accelerator_visible_list = []
+
+            # If there are multiple Accelerators, return a list of devices.
+            # If using fractional Accelerators, these IDs are not guaranteed
+            # to be unique across different processes.
+            for accelerator_id in accelerator_ids:
+                try:
+                    device_ids.append(accelerator_visible_list.index(accelerator_id))
+                except IndexError:
+                    raise RuntimeError(
+                        f"{accelerator_manager.get_visible_accelerator_ids_env_var()} set incorrectly. "
+                        f"expected to include {accelerator_id}. "
+                        "Did you override this environment"
+                        " variable? If not, please help file an issue on Github."
+                    )
+
+        else:
+            # If called on the driver or outside of Ray Train, return the
+            # 0th device.
+            device_ids.append(0)
+
+        return [
+            torch.device(f"{self._torch_module_name}:{device_id}")
+            for device_id in device_ids
+        ]
 
     def get_device_context(self, device: "torch.device") -> ContextManager:
         """

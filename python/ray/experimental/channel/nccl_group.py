@@ -103,7 +103,7 @@ class _NcclGroup(Communicator):
                 import torch
 
                 # TODO(swang): Allow default device to be overridden.
-                device = AcceleratorContext.get().get_default_device()
+                device = AcceleratorContext.get().get_accelerator_devices()[0]
 
                 self._send_stream = torch.cuda.Stream(device=device)
                 self._recv_stream = torch.cuda.Stream(device=device)
