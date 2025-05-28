@@ -70,14 +70,6 @@ New feature developments, discussions, and upcoming priorities are tracked on th
 API Stability
 =============
 
-New API stack vs Old API stack
-------------------------------
-
-Starting in Ray 2.10, you can opt-in to the alpha version of a "new API stack", a fundamental overhaul from the ground up with respect to architecture,
-design principles, code base, and user facing APIs.
-
-:ref:`See here for more details <rllib-new-api-stack-guide>` on this effort and how to activate the new API stack through your config.
-
 
 API Decorators in the Codebase
 ------------------------------
@@ -112,7 +104,7 @@ Finding Memory Leaks In Workers
 
 Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
 
-.. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
+.. autoclass:: ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks
 
 The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
 

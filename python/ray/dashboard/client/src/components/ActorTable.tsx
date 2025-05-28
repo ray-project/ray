@@ -35,6 +35,7 @@ import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
 import { useFilter, useSorter } from "../util/hook";
+import OverflowCollapsibleCell from "./OverflowCollapsibleCell";
 import PercentageBar from "./PercentageBar";
 import { SearchSelect } from "./SearchComponent";
 import StateCounter from "./StatesCounter";
@@ -268,7 +269,7 @@ const ActorTable = ({
           <br />
           1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
           and try again. <br />
-          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
+          2. Non NVIDIA GPUs are being used. Non NVIDIA GPUs' utilizations are
           not currently supported.
           <br />
           3. pynvml module raises an exception.
@@ -711,17 +712,16 @@ const ActorTable = ({
                       )}
                       arrow
                     >
-                      <Box sx={rowStyles.OverflowCol}>
-                        {Object.entries(requiredResources || {})
+                      <OverflowCollapsibleCell
+                        text={Object.entries(requiredResources || {})
                           .map(([key, val]) => `${key}: ${val}`)
                           .join(", ")}
-                      </Box>
+                        wordBreak="break-all"
+                      />
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip title={exitDetail} arrow>
-                      <Box sx={rowStyles.OverflowCol}>{exitDetail}</Box>
-                    </Tooltip>
+                    <OverflowCollapsibleCell text={exitDetail} />
                   </TableCell>
                 </ExpandableTableRow>
               ),

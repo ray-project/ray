@@ -193,6 +193,7 @@ class Cluster:
             namespace=namespace,
             ignore_reinit_error=True,
             address=self.address,
+            _redis_username=self.redis_username,
             _redis_password=self.redis_password,
         )
         logger.info(output_info)
@@ -220,7 +221,6 @@ class Cluster:
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,
-            "dashboard_port": None,
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
@@ -234,6 +234,9 @@ class Cluster:
                 )
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
+                self.redis_username = node_args.get(
+                    "redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+                )
                 self.redis_password = node_args.get(
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
                 )
@@ -257,6 +260,10 @@ class Cluster:
                 ray_params.update_if_absent(include_log_monitor=False)
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
+                if "dashboard_agent_listen_port" not in node_args:
+                    # Pick a random one to not conflict
+                    # with the head node dashboard agent
+                    ray_params.dashboard_agent_listen_port = None
 
                 node = ray._private.node.Node(
                     ray_params,

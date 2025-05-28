@@ -1,6 +1,5 @@
 """Common pre-checks for all RLlib experiments."""
 import logging
-from copy import copy
 from typing import TYPE_CHECKING, Set
 
 import gymnasium as gym
@@ -33,8 +32,6 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         hasattr(env, "observation_space")
         and hasattr(env, "action_space")
         and hasattr(env, "_agent_ids")
-        and hasattr(env, "_obs_space_in_preferred_format")
-        and hasattr(env, "_action_space_in_preferred_format")
     ):
         if log_once("ma_env_super_ctor_called"):
             logger.warning(
@@ -55,48 +52,14 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         ) from e
     reset_obs, reset_infos = obs_and_infos
 
-    sampled_obs = env.observation_space_sample()
     _check_if_element_multi_agent_dict(env, reset_obs, "reset()")
+
+    sampled_action = {
+        aid: env.get_action_space(aid).sample() for aid in reset_obs.keys()
+    }
     _check_if_element_multi_agent_dict(
-        env, sampled_obs, "env.observation_space_sample()"
+        env, sampled_action, "get_action_space(agent_id=..).sample()"
     )
-
-    try:
-        env.observation_space_contains(reset_obs)
-    except Exception as e:
-        raise ValueError(
-            "Your observation_space_contains function has some error "
-        ) from e
-
-    if not env.observation_space_contains(reset_obs):
-        error = (
-            _not_contained_error("env.reset", "observation")
-            + f"\n\n reset_obs: {reset_obs}\n\n env.observation_space_sample():"
-            f" {sampled_obs}\n\n "
-        )
-        raise ValueError(error)
-
-    if not env.observation_space_contains(sampled_obs):
-        error = (
-            _not_contained_error("observation_space_sample", "observation")
-            + f"\n\n env.observation_space_sample():"
-            f" {sampled_obs}\n\n "
-        )
-        raise ValueError(error)
-
-    sampled_action = env.action_space_sample(list(reset_obs.keys()))
-    _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
-    try:
-        env.action_space_contains(sampled_action)
-    except Exception as e:
-        raise ValueError("Your action_space_contains function has some error ") from e
-
-    if not env.action_space_contains(sampled_action):
-        error = (
-            _not_contained_error("action_space_sample", "action")
-            + f"\n\n sampled_action {sampled_action}\n\n"
-        )
-        raise ValueError(error)
 
     try:
         results = env.step(sampled_action)
@@ -113,22 +76,14 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     _check_if_element_multi_agent_dict(env, done, "step, done")
     _check_if_element_multi_agent_dict(env, truncated, "step, truncated")
     _check_if_element_multi_agent_dict(env, info, "step, info", allow_common=True)
-    _check_reward(
-        {"dummy_env_id": reward}, base_env=True, agent_ids=env.get_agent_ids()
-    )
+    _check_reward({"dummy_env_id": reward}, base_env=True, agent_ids=env.agents)
     _check_done_and_truncated(
         {"dummy_env_id": done},
         {"dummy_env_id": truncated},
         base_env=True,
-        agent_ids=env.get_agent_ids(),
+        agent_ids=env.agents,
     )
-    _check_info({"dummy_env_id": info}, base_env=True, agent_ids=env.get_agent_ids())
-    if not env.observation_space_contains(next_obs):
-        error = (
-            _not_contained_error("env.step(sampled_action)", "observation")
-            + f":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
-        )
-        raise ValueError(error)
+    _check_info({"dummy_env_id": info}, base_env=True, agent_ids=env.agents)
 
 
 def _check_reward(reward, base_env=False, agent_ids=None):
@@ -152,8 +107,8 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                 if not (agent_id in agent_ids or agent_id == "__all__"):
                     error = (
                         f"Your reward dictionary must have agent ids that belong to "
-                        f"the environment. Agent_ids recieved from "
-                        f"env.get_agent_ids() are: {agent_ids}"
+                        f"the environment. AgentIDs received from "
+                        f"env.agents are: {agent_ids}"
                     )
                     raise ValueError(error)
     elif not (
@@ -185,8 +140,8 @@ def _check_done_and_truncated(done, truncated, base_env=False, agent_ids=None):
                     if not (agent_id in agent_ids or agent_id == "__all__"):
                         error = (
                             f"Your `{what}s` dictionary must have agent ids that "
-                            f"belong to the environment. Agent_ids recieved from "
-                            f"env.get_agent_ids() are: {agent_ids}"
+                            f"belong to the environment. AgentIDs received from "
+                            f"env.agents are: {agent_ids}"
                         )
                         raise ValueError(error)
         elif not isinstance(data, (bool, np.bool_)):
@@ -213,8 +168,8 @@ def _check_info(info, base_env=False, agent_ids=None):
                 ):
                     error = (
                         f"Your dones dictionary must have agent ids that belong to "
-                        f"the environment. Agent_ids received from "
-                        f"env.get_agent_ids() are: {agent_ids}"
+                        f"the environment. AgentIDs received from "
+                        f"env.agents are: {agent_ids}"
                     )
                     raise ValueError(error)
     elif not isinstance(info, dict):
@@ -257,7 +212,7 @@ def _check_if_element_multi_agent_dict(
                 f" {type(element)}"
             )
         raise ValueError(error)
-    agent_ids: Set = copy(env.get_agent_ids())
+    agent_ids: Set = set(env.agents)
     agent_ids.add("__all__")
     if allow_common:
         agent_ids.add("__common__")
@@ -268,18 +223,19 @@ def _check_if_element_multi_agent_dict(
                 f"The element returned by {function_string} has agent_ids"
                 f" that are not the names of the agents in the env."
                 f"agent_ids in this\nMultiEnvDict:"
-                f" {list(element.keys())}\nAgent_ids in this env:"
-                f"{list(env.get_agent_ids())}"
+                f" {list(element.keys())}\nAgentIDs in this env: "
+                f"{env.agents}"
             )
         else:
             error = (
                 f"The element returned by {function_string} has agent_ids"
                 f" that are not the names of the agents in the env. "
-                f"\nAgent_ids in this MultiAgentDict: "
-                f"{list(element.keys())}\nAgent_ids in this env:"
-                f"{list(env.get_agent_ids())}. You likely need to add the private "
-                f"attribute `_agent_ids` to your env, which is a set containing the "
-                f"ids of agents supported by your env."
+                f"\nAgentIDs in this MultiAgentDict: "
+                f"{list(element.keys())}\nAgentIDs in this env: "
+                f"{env.agents}. You likely need to add the attribute `agents` to your "
+                f"env, which is a list containing the IDs of agents currently in your "
+                f"env/episode, as well as, `possible_agents`, which is a list of all "
+                f"possible agents that could ever show up in your env."
             )
         raise ValueError(error)
 

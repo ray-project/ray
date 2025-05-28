@@ -14,6 +14,8 @@
 
 #include "ray/gcs/store_client/observable_store_client.h"
 
+#include <memory>
+
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
@@ -24,8 +26,8 @@ namespace gcs {
 class ObservableStoreClientTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
-    store_client_ = std::make_shared<ObservableStoreClient>(
-        std::make_unique<InMemoryStoreClient>(*(io_service_pool_->Get())));
+    store_client_ =
+        std::make_shared<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
   }
 
   void DisconnectStoreClient() override {}

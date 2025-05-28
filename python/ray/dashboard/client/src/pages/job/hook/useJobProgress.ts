@@ -33,6 +33,10 @@ const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<TypeTaskStatus, TaskStatus> = {
     TaskStatus.PENDING_NODE_ASSIGNMENT,
   [TypeTaskStatus.PENDING_ARGS_FETCH]: TaskStatus.PENDING_NODE_ASSIGNMENT,
   [TypeTaskStatus.SUBMITTED_TO_WORKER]: TaskStatus.SUBMITTED_TO_WORKER,
+  [TypeTaskStatus.PENDING_ACTOR_TASK_ARGS_FETCH]:
+    TaskStatus.SUBMITTED_TO_WORKER,
+  [TypeTaskStatus.PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY]:
+    TaskStatus.SUBMITTED_TO_WORKER,
   [TypeTaskStatus.RUNNING]: TaskStatus.RUNNING,
   [TypeTaskStatus.RUNNING_IN_RAY_GET]: TaskStatus.RUNNING,
   [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: TaskStatus.RUNNING,

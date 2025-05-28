@@ -103,8 +103,11 @@ class TaskSpecBuilder {
  public:
   TaskSpecBuilder() : message_(std::make_shared<rpc::TaskSpec>()) {}
 
-  /// Build the `TaskSpecification` object.
-  TaskSpecification Build() { return TaskSpecification(message_); }
+  /// Consume the `message_` data member and construct `TaskSpecification`.
+  /// NOTICE: Builder is invalidated after this function.
+  TaskSpecification ConsumeAndBuild() && {
+    return TaskSpecification(std::move(message_));
+  }
 
   /// Get a reference to the internal protobuf message object.
   const rpc::TaskSpec &GetMessage() const { return *message_; }
@@ -133,9 +136,12 @@ class TaskSpecBuilder {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const TaskID &submitter_task_id,
+      const std::string &call_site,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "",
-      bool enable_task_events = true) {
+      bool enable_task_events = true,
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const std::unordered_map<std::string, std::string> &label_selector = {}) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -160,11 +166,15 @@ class TaskSpecBuilder {
         required_placement_resources.begin(), required_placement_resources.end());
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
+    message_->set_call_site(call_site);
     if (runtime_env_info) {
       message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
+    message_->mutable_labels()->insert(labels.begin(), labels.end());
+    message_->mutable_label_selector()->insert(label_selector.begin(),
+                                               label_selector.end());
     return *this;
   }
 
@@ -279,7 +289,7 @@ class TaskSpecBuilder {
       int max_retries,
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
-      uint64_t actor_counter) {
+      uint64_t sequence_number) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
@@ -289,7 +299,7 @@ class TaskSpecBuilder {
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
-    actor_spec->set_actor_counter(actor_counter);
+    actor_spec->set_sequence_number(sequence_number);
     return *this;
   }
 

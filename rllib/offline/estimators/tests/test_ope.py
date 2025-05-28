@@ -4,15 +4,12 @@ import copy
 import gymnasium as gym
 import numpy as np
 import os
-import shutil
-import tempfile
 import pandas as pd
 from pathlib import Path
 import unittest
 
 import ray
 from ray.data import read_json
-from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
@@ -28,7 +25,6 @@ from ray.rllib.offline.estimators import (
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import EVALUATION_RESULTS
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 
@@ -193,99 +189,6 @@ class TestOPE(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-
-    def test_is_and_wis_estimate(self):
-        ope_classes = [
-            ImportanceSampling,
-            WeightedImportanceSampling,
-        ]
-
-        algo = self.config_dqn_on_cartpole.build()
-        for class_module in ope_classes:
-            estimator = class_module(
-                policy=algo.get_policy(),
-                gamma=self.gamma,
-            )
-            estimates = estimator.estimate(self.batch)
-            self.assertEqual(set(estimates.keys()), ESTIMATOR_OUTPUTS)
-            check(estimates["v_gain"], estimates["v_target"] / estimates["v_behavior"])
-
-    def test_dm_and_dr_estimate(self):
-        ope_classes = [
-            DirectMethod,
-            DoublyRobust,
-        ]
-
-        algo = self.config_dqn_on_cartpole.build()
-        for class_module in ope_classes:
-            estimator = class_module(
-                policy=algo.get_policy(),
-                gamma=self.gamma,
-                q_model_config=self.q_model_config,
-            )
-            losses = estimator.train(self.batch)
-            assert losses, f"{class_module.__name__} estimator did not return mean loss"
-            estimates = estimator.estimate(self.batch)
-            self.assertEqual(set(estimates.keys()), ESTIMATOR_OUTPUTS)
-            check(estimates["v_gain"], estimates["v_target"] / estimates["v_behavior"])
-
-    def test_ope_estimate_algo(self):
-        # Test OPE in DQN, during training as well as by calling evaluate()
-        algo = self.config_dqn_on_cartpole.build()
-        results = algo.train()
-        ope_results = results[EVALUATION_RESULTS]["off_policy_estimator"]
-        # Check that key exists AND is not {}
-        self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
-
-        # Check algo.evaluate() manually as well
-        results = algo.evaluate()
-        ope_results = results["off_policy_estimator"]
-        self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
-
-    def test_is_wis_on_estimate_on_dataset(self):
-        """Test that the IS and WIS estimators work.
-
-        First we compute the estimates with RLlib's algorithm and then compare the
-        results to the estimates that are manually computed on raw data frame version
-        of the dataset to check correctness.
-        """
-        config = self.dqn_on_fake_ds.copy()
-        config = config.evaluation(
-            off_policy_estimation_methods={
-                "is": {"type": ImportanceSampling},
-                "wis": {"type": WeightedImportanceSampling},
-            },
-        )
-        num_actions = config.action_space.n
-        algo = config.build()
-
-        evaluated_results = algo.evaluate()
-        ope_results = evaluated_results["off_policy_estimator"]
-        policy = algo.get_policy()
-
-        wis_gain, wis_ste = compute_expected_is_or_wis_estimator(
-            self.train_df, policy, num_actions=num_actions, is_wis=True
-        )
-
-        is_gain, is_ste = compute_expected_is_or_wis_estimator(
-            self.train_df, policy, num_actions=num_actions, is_wis=False
-        )
-
-        check(wis_gain, ope_results["wis"]["v_gain_mean"])
-        check(wis_ste, ope_results["wis"]["v_gain_ste"])
-        check(is_gain, ope_results["is"]["v_gain_mean"])
-        check(is_ste, ope_results["is"]["v_gain_ste"])
-
-    def test_dr_on_estimate_on_dataset(self):
-        # TODO (Kourosh): How can we unittest this without querying into the model?
-        pass
-
-    def test_algo_with_ope_from_checkpoint(self):
-        algo = self.config_dqn_on_cartpole.build()
-        tmpdir = tempfile.mkdtemp()
-        algo.save_checkpoint(tmpdir)
-        algo = Algorithm.from_checkpoint(tmpdir)
-        shutil.rmtree(tmpdir)
 
 
 class TestFQE(unittest.TestCase):

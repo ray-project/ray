@@ -1,5 +1,3 @@
-# For MAML on PyTorch.
-higher==0.2.1
 # For auto-generating an env-rendering Window.
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5
@@ -9,4 +7,5 @@ tf2onnx==1.15.1; sys_platform != 'darwin' or platform_machine != 'arm64'
 rich==13.3.2
 # Msgpack checkpoint stuff.
 msgpack
-msgpack_numpy
+msgpack-numpy
+ormsgpack

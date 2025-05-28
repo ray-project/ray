@@ -8,7 +8,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Might need `gymnasium[atari, other]` to be installed.
 
@@ -295,11 +295,6 @@ config = (
         },
         clip_rewards=True,
     )
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
@@ -315,7 +310,6 @@ config = (
         # Note, the paper uses also an Adam epsilon of 0.00015.
         lr=0.0000625,
         n_step=1,
-        gamma=0.99,
         tau=1.0,
         # TODO (simon): Activate when new model_config_dict is available.
         # epsilon=0.01,
@@ -363,7 +357,7 @@ config = (
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_dqn_atari_rllib_preprocessing",
     ),

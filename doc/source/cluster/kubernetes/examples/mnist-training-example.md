@@ -26,8 +26,9 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operat
 ```
 
 You might need to adjust some fields in the RayJob description YAML file so that it can run in your environment:
-* `replicas` under `workerGroupSpecs` in `rayClusterSpec`: This field specifies the number of worker Pods that KubeRay schedules to the Kubernetes cluster. Each worker Pod and the head Pod, as described in the `template` field, requires 2 CPUs. A RayJob submitter Pod requires 1 CPU. For example, if your machine has 8 CPUs, the maximum `replicas` value is 2 to allow all Pods to reach the `Running` status.
+* `replicas` under `workerGroupSpecs` in `rayClusterSpec`: This field specifies the number of worker Pods that KubeRay schedules to the Kubernetes cluster. Each worker Pod requires 3 CPUs, and the head Pod requires 1 CPU, as described in the `template` field. A RayJob submitter Pod requires 1 CPU. For example, if your machine has 8 CPUs, the maximum `replicas` value is 2 to allow all Pods to reach the `Running` status.
 * `NUM_WORKERS` under `runtimeEnvYAML` in `spec`: This field indicates the number of Ray actors to launch (see `ScalingConfig` in this [Document](ray-train-configs-api) for more information). Each Ray actor must be served by a worker Pod in the Kubernetes cluster. Therefore, `NUM_WORKERS` must be less than or equal to `replicas`.
+* `CPUS_PER_WORKER`: This must be set to less than or equal to `(CPU resource request per worker Pod) - 1`. For example, in the sample YAML file, the CPU resource request per worker Pod is 3 CPUs, so `CPUS_PER_WORKER` must be set to 2 or less.
 
 ```sh
 # `replicas` and `NUM_WORKERS` set to 2.
@@ -37,12 +38,12 @@ kubectl apply -f ray-job.pytorch-mnist.yaml
 # Check existing Pods: According to `replicas`, there should be 2 worker Pods.
 # Make sure all the Pods are in the `Running` status.
 kubectl get pods
-# NAME                                                      READY   STATUS    RESTARTS   AGE
-# kuberay-operator-6dddd689fb-ksmcs                         1/1     Running   0          6m8s
-# pytorch-mnist-raycluster-rkdmq-worker-small-group-c8bwx   1/1     Running   0          5m32s
-# pytorch-mnist-raycluster-rkdmq-worker-small-group-s7wvm   1/1     Running   0          5m32s
-# rayjob-pytorch-mnist-nxmj2                                1/1     Running   0          4m17s
-# rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl          1/1     Running   0          5m32s
+# NAME                                                             READY   STATUS    RESTARTS   AGE
+# kuberay-operator-6dddd689fb-ksmcs                                1/1     Running   0          6m8s
+# rayjob-pytorch-mnist-raycluster-rkdmq-small-group-worker-c8bwx   1/1     Running   0          5m32s
+# rayjob-pytorch-mnist-raycluster-rkdmq-small-group-worker-s7wvm   1/1     Running   0          5m32s
+# rayjob-pytorch-mnist-nxmj2                                       1/1     Running   0          4m17s
+# rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl                 1/1     Running   0          5m32s
 ```
 
 Check that the RayJob is in the `RUNNING` status:
@@ -68,12 +69,12 @@ After seeing `JOB_STATUS` marked as `SUCCEEDED`, you can check the training logs
 ```sh
 # Check Pods name.
 kubectl get pods
-# NAME                                                      READY   STATUS      RESTARTS   AGE
-# kuberay-operator-6dddd689fb-ksmcs                         1/1     Running     0          113m
-# pytorch-mnist-raycluster-rkdmq-worker-small-group-c8bwx   1/1     Running     0          38m
-# pytorch-mnist-raycluster-rkdmq-worker-small-group-s7wvm   1/1     Running     0          38m
-# rayjob-pytorch-mnist-nxmj2                                0/1     Completed   0          38m
-# rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl          1/1     Running     0          38m
+# NAME                                                             READY   STATUS      RESTARTS   AGE
+# kuberay-operator-6dddd689fb-ksmcs                                1/1     Running     0          113m
+# rayjob-pytorch-mnist-raycluster-rkdmq-small-group-worker-c8bwx   1/1     Running     0          38m
+# rayjob-pytorch-mnist-raycluster-rkdmq-small-group-worker-s7wvm   1/1     Running     0          38m
+# rayjob-pytorch-mnist-nxmj2                                       0/1     Completed   0          38m
+# rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl                 1/1     Running     0          38m
 
 # Check training logs.
 kubectl logs -f rayjob-pytorch-mnist-nxmj2
@@ -83,9 +84,9 @@ kubectl logs -f rayjob-pytorch-mnist-nxmj2
 # 2024-06-16 22:23:01,844 SUCC cli.py:61 -- Job 'rayjob-pytorch-mnist-l6ccc' submitted successfully
 # 2024-06-16 22:23:01,844 SUCC cli.py:62 -- -------------------------------------------------------
 # ...
-# (RayTrainWorker pid=1138, ip=10.244.0.18) 
+# (RayTrainWorker pid=1138, ip=10.244.0.18)
 #   0%|          | 0/26421880 [00:00<?, ?it/s]
-# (RayTrainWorker pid=1138, ip=10.244.0.18) 
+# (RayTrainWorker pid=1138, ip=10.244.0.18)
 #   0%|          | 32768/26421880 [00:00<01:27, 301113.97it/s]
 # ...
 # Training finished iteration 10 at 2024-06-16 22:33:05. Total running time: 7min 9s

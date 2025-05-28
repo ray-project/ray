@@ -18,7 +18,7 @@ spec:
     serviceType: ClusterIP
     # the pod replicas in this group typed head (assuming there could be more than 1 in the future)
     replicas: 1
-    # logical group name, for this called head-group, also can be functional
+    # logical group name, for this called headgroup, also can be functional
     # pod type head or worker
     # rayNodeType: head # Not needed since it is under the headgroup
     # the following params are used to complete the ray start: ray start --head --block --port=6379 ...
@@ -108,7 +108,7 @@ spec:
   workerGroupSpecs:
   # the pod replicas in this group typed worker
   - replicas: 1
-    minReplicas: 1
+    minReplicas: 0
     maxReplicas: 300
     # logical group name, for this called small-group, also can be functional
     groupName: small-group
@@ -120,7 +120,7 @@ spec:
     #  workersToDelete:
     #  - raycluster-complete-worker-small-group-bdtwh
     #  - raycluster-complete-worker-small-group-hv457
-    #  - raycluster-complete-worker-small-group-k8tj7 
+    #  - raycluster-complete-worker-small-group-k8tj7
     # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
     rayStartParams:
       node-ip-address: $MY_POD_IP
@@ -144,7 +144,7 @@ spec:
         # the env var $RAY_IP is set by the operator if missing, with the value of the head service name
         - name: init-myservice
           image: busybox:1.28
-          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]   
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
         containers:
         - name: ray-worker # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
           # All Ray pods in the RayCluster should use the same version of Ray.

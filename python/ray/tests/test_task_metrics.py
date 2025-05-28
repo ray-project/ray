@@ -1,12 +1,11 @@
-from collections import defaultdict
-import sys
-import os
 import copy
+import multiprocessing
+import sys
+from collections import defaultdict
 
 import pytest
 
 import ray
-
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
     raw_metrics,
@@ -200,6 +199,53 @@ ray.get(w)
         ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
     proc.kill()
+
+
+def driver_for_test_task_fetch_args(head_info):
+    ray.init("auto")
+
+    @ray.remote(resources={"worker": 1})
+    def task1():
+        return [1] * 1024 * 1024
+
+    @ray.remote(resources={"head": 1})
+    def task2(obj):
+        pass
+
+    o1 = task1.remote()
+    o2 = task2.remote(o1)
+
+    wait_for_condition(
+        lambda: tasks_by_state(head_info).get("PENDING_ARGS_FETCH", 0.0) == 1.0
+    )
+
+    ray.cancel(o2)
+
+    wait_for_condition(
+        lambda: tasks_by_state(head_info).get("PENDING_ARGS_FETCH", 0.0) == 0.0
+    )
+
+
+def test_task_fetch_args(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"head": 1},
+        _system_config={
+            "metrics_report_interval_ms": 100,
+            "testing_asio_delay_us": "ObjectManagerService.grpc_server.Pull=5000000000:5000000000",  # noqa: E501
+        },
+    )
+    head_info = ray.init(address=cluster.address)
+    cluster.add_node(resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    multiprocessing.set_start_method("spawn")
+    p = multiprocessing.Process(
+        target=driver_for_test_task_fetch_args, args=(head_info,)
+    )
+    p.start()
+    p.join()
+    assert p.exitcode == 0
 
 
 def test_task_wait_on_deps(shutdown_only):
@@ -657,9 +703,4 @@ time.sleep(999)
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

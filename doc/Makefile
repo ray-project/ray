@@ -8,6 +8,7 @@ SPHINXOPTS    = -a -E -W -j auto
 LOCALSPHINXOPTS = -W -j auto
 LINKCHECKOPTS = -a -E -j auto
 SPHINXBUILD   = sphinx-build
+SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
 BUILDDIR      = _build
 
@@ -60,6 +61,7 @@ clean:
 	rm -rf ./source/__pycache__/
 	rm -rf ./source/_ext/__pycache__/
 	rm -rf ./source/*/api/doc/*
+	rm -rf ./source/ray-core/compiled-graph/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running_applications/doc/*
 	rm -rf ./source/cluster/running_applications/job-submission/doc/*
@@ -82,9 +84,9 @@ develop: html
 RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
 
 local:
-	bazel run //ci/ray_ci/doc:cmd_load_doc_cache -- --ray-dir=$(RAY_DIR)
-	bazel run //ci/ray_ci/doc:cmd_update_cache_env -- --ray-dir=$(RAY_DIR)
-	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	python update_cache_env.py --ray-dir=$(RAY_DIR)
+	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml

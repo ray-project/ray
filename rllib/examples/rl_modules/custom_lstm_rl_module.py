@@ -57,14 +57,11 @@ parser = add_rllib_example_script_args(
     default_reward=300.0,
     default_timesteps=2000000,
 )
+parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     if args.num_agents == 0:
         register_env("env", lambda cfg: StatelessCartPole())
@@ -80,7 +77,7 @@ if __name__ == "__main__":
         )
         .training(
             train_batch_size_per_learner=1024,
-            num_sgd_iter=6,
+            num_epochs=6,
             lr=0.0009,
             vf_loss_coeff=0.001,
             entropy_coeff=0.0,
@@ -89,13 +86,14 @@ if __name__ == "__main__":
             # Plug-in our custom RLModule class.
             rl_module_spec=RLModuleSpec(
                 module_class=LSTMContainingRLModule,
-                # Feel free to specify your own `model_config_dict` settings below.
-                # The `model_config_dict` defined here will be available inside your
-                # custom RLModule class through the `self.config.model_config_dict`
+                # Feel free to specify your own `model_config` settings below.
+                # The `model_config` defined here will be available inside your
+                # custom RLModule class through the `self.model_config`
                 # property.
-                model_config_dict={
+                model_config={
                     "lstm_cell_size": 256,
                     "dense_layers": [256, 256],
+                    "max_seq_len": 20,
                 },
             ),
         )

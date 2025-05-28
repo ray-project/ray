@@ -7,14 +7,21 @@ import requests
 
 import ray
 from ray import serve
+from ray._common.utils import get_or_create_event_loop
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+
+
+def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
+    # TODO(edoakes): we shouldn't be reaching into private fields, but better
+    # to isolate it to one place (this function).
+    return handle._router._asyncio_router._request_router
 
 
 @pytest.fixture()
@@ -315,8 +322,11 @@ def test_multiplexed_replica_info(serve_instance):
     def check_replica_information(
         model_ids: List[str],
     ):
-        replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
-        for replica in replica_scheduler.curr_replicas.values():
+        if not handle.is_initialized:
+            handle._init()
+
+        request_router = _get_request_router(handle)
+        for replica in request_router.curr_replicas.values():
             if (
                 replica.replica_id != replica_id
                 or model_ids != replica.multiplexed_model_ids
@@ -353,10 +363,13 @@ def test_multiplexed_replica_info(serve_instance):
 
 
 def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
-    replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+    if not handle.is_initialized:
+        handle._init()
+
+    request_router = _get_request_router(handle)
     replica_to_model_ids = {
         tag: replica.multiplexed_model_ids
-        for tag, replica in replica_scheduler.curr_replicas.items()
+        for tag, replica in request_router.curr_replicas.items()
     }
     msg = (
         f"Model ID '{model_id}' not found in replica_to_model_ids: "

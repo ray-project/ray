@@ -282,36 +282,6 @@ class BaseEnv:
         """
         raise NotImplementedError
 
-    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        """Returns a random action for each environment, and potentially each
-            agent in that environment.
-
-        Args:
-            agent_id: List of agent ids to sample actions for. If None or empty
-                list, sample actions for all agents in the environment.
-
-        Returns:
-            A random action for each environment.
-        """
-        logger.warning("action_space_sample() has not been implemented")
-        del agent_id
-        return {}
-
-    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        """Returns a random observation for each environment, and potentially
-            each agent in that environment.
-
-        Args:
-            agent_id: List of agent ids to sample actions for. If None or empty
-                list, sample actions for all agents in the environment.
-
-        Returns:
-            A random action for each environment.
-        """
-        logger.warning("observation_space_sample() has not been implemented")
-        del agent_id
-        return {}
-
     def last(
         self,
     ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
@@ -325,55 +295,6 @@ class BaseEnv:
         """
         logger.warning("last has not been implemented for this environment.")
         return {}, {}, {}, {}, {}
-
-    def observation_space_contains(self, x: MultiEnvDict) -> bool:
-        """Checks if the given observation is valid for each environment.
-
-        Args:
-            x: Observations to check.
-
-        Returns:
-            True if the observations are contained within their respective
-                spaces. False otherwise.
-        """
-        return self._space_contains(self.observation_space, x)
-
-    def action_space_contains(self, x: MultiEnvDict) -> bool:
-        """Checks if the given actions is valid for each environment.
-
-        Args:
-            x: Actions to check.
-
-        Returns:
-            True if the actions are contained within their respective
-                spaces. False otherwise.
-        """
-        return self._space_contains(self.action_space, x)
-
-    def _space_contains(self, space: gym.Space, x: MultiEnvDict) -> bool:
-        """Check if the given space contains the observations of x.
-
-        Args:
-            space: The space to if x's observations are contained in.
-            x: The observations to check.
-
-        Returns:
-            True if the observations of x are contained in space.
-        """
-        agents = set(self.get_agent_ids())
-        for multi_agent_dict in x.values():
-            for agent_id, obs in multi_agent_dict.items():
-                # this is for the case where we have a single agent
-                # and we're checking a Vector env thats been converted to
-                # a BaseEnv
-                if agent_id == _DUMMY_AGENT_ID:
-                    if not space.contains(obs):
-                        return False
-                # for the MultiAgent env case
-                elif (agent_id not in agents) or (not space[agent_id].contains(obs)):
-                    return False
-
-        return True
 
 
 # Fixed agent identifier when there is only the single agent in the env

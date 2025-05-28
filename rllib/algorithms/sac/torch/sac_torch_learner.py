@@ -1,9 +1,7 @@
 from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
-    DQNRainbowTorchLearner,
-)
+from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
@@ -30,7 +28,7 @@ from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 
-class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
+class SACTorchLearner(DQNTorchLearner, SACLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
@@ -38,8 +36,16 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     the target networks of the RLModule(s).
     """
 
+    def build(self) -> None:
+        super().build()
+
+        # Store loss tensors here temporarily inside the loss function for (exact)
+        # consumption later by the compute gradients function.
+        # Keys=(module_id, optimizer_name), values=loss tensors (in-graph).
+        self._temp_losses = {}
+
     # TODO (simon): Set different learning rates for optimizers.
-    @override(DQNRainbowTorchLearner)
+    @override(DQNTorchLearner)
     def configure_optimizers_for_module(
         self, module_id: ModuleID, config: AlgorithmConfig = None
     ) -> None:
@@ -100,7 +106,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             lr_or_lr_schedule=config.alpha_lr,
         )
 
-    @override(DQNRainbowTorchLearner)
+    @override(DQNTorchLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -169,6 +175,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Hence, we can't do `fwd_out[q_curr].detach()`!
         # Note further, we minimize here, while the original equation in Haarnoja et
         # al. (2018) considers maximization.
+        # TODO (simon): Rename to `resampled` to `current`.
         actor_loss = torch.mean(
             alpha.detach() * fwd_out["logp_resampled"] - fwd_out["q_curr"]
         )
@@ -204,8 +211,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 POLICY_LOSS_KEY: actor_loss,
                 QF_LOSS_KEY: critic_loss,
                 "alpha_loss": alpha_loss,
-                "alpha_value": alpha,
-                "log_alpha_value": torch.log(alpha),
+                "alpha_value": alpha[0],
+                "log_alpha_value": torch.log(alpha)[0],
                 "target_entropy": self.target_entropy[module_id],
                 LOGPS_KEY: torch.mean(fwd_out["logp_resampled"]),
                 QF_MEAN_KEY: torch.mean(fwd_out["q_curr"]),
@@ -216,20 +223,24 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
+
+        self._temp_losses[(module_id, POLICY_LOSS_KEY)] = actor_loss
+        self._temp_losses[(module_id, QF_LOSS_KEY)] = critic_loss
+        self._temp_losses[(module_id, "alpha_loss")] = alpha_loss
+
         # If twin Q networks should be used add a critic loss for the twin Q network.
         # Note, we need this in the `self.compute_gradients()` to optimize.
         if config.twin_q:
-            self.metrics.log_dict(
-                {
-                    QF_TWIN_LOSS_KEY: critic_twin_loss,
-                },
-                key=module_id,
+            self.metrics.log_value(
+                key=(module_id, QF_TWIN_LOSS_KEY),
+                value=critic_twin_loss,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
+            self._temp_losses[(module_id, QF_TWIN_LOSS_KEY)] = critic_twin_loss
 
         return total_loss
 
-    @override(DQNRainbowTorchLearner)
+    @override(DQNTorchLearner)
     def compute_gradients(
         self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
@@ -242,9 +253,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 optim.zero_grad(set_to_none=True)
 
                 # Compute the gradients for the component and module.
-                self.metrics.peek((module_id, optim_name + "_loss")).backward(
-                    retain_graph=True
-                )
+                loss_tensor = self._temp_losses.pop((module_id, optim_name + "_loss"))
+                loss_tensor.backward(retain_graph=True)
                 # Store the gradients for the component and module.
                 grads.update(
                     {
@@ -255,4 +265,5 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                     }
                 )
 
+        assert not self._temp_losses
         return grads

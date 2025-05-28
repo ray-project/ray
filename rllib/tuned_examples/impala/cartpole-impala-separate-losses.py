@@ -14,6 +14,10 @@ stop = {
 
 config = (
     IMPALAConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment("CartPole-v1")
     # Switch on >1 loss/optimizer API for TFPolicy and EagerTFPolicy.
     .experimental(_tf_policy_handles_more_than_one_loss=True)
@@ -23,7 +27,7 @@ config = (
         _separate_vf_optimizer=True,
         # Separate learning rate for the value function branch.
         _lr_vf=0.00075,
-        num_sgd_iter=6,
+        num_epochs=6,
         # `vf_loss_coeff` will be ignored anyways as we use separate loss terms.
         vf_loss_coeff=0.01,
         vtrace=True,

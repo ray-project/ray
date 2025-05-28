@@ -1,10 +1,10 @@
+import hashlib
+import json
 import logging
 import os
 import shutil
 import subprocess
-import hashlib
-import json
-from typing import Optional, List, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
@@ -116,7 +116,7 @@ def create_conda_env_if_needed(
         )
 
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
-    envs = json.loads(stdout)["envs"]
+    envs = json.loads(stdout[stdout.index("{") :])["envs"]
 
     if prefix in envs:
         logger.info(f"Conda environment {prefix} already exists.")

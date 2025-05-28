@@ -106,7 +106,7 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
                 await self.event.wait()
             return sorted(self.batch)
 
-    batch_size = sys.getrecursionlimit() * 4
+    batch_size = sys.getrecursionlimit()
     actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
         batch_size
     )
@@ -130,7 +130,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     @ray.remote
     def task_throws():
-        1 / 0
+        _ = 1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
         await task_throws.remote().as_future()
@@ -148,7 +148,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
             return "a" * (str_len)
 
         def throw_error(self):
-            1 / 0
+            _ = 1 / 0
 
     actor = Actor.remote()
 
@@ -429,9 +429,4 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -505,6 +505,21 @@ def split_input_files_per_worker(args):
     ]
 
 
+def get_s3fs_with_boto_creds():
+    import boto3
+    from pyarrow import fs
+
+    credentials = boto3.Session().get_credentials()
+
+    s3fs = fs.S3FileSystem(
+        access_key=credentials.access_key,
+        secret_key=credentials.secret_key,
+        session_token=credentials.token,
+        region="us-west-2",
+    )
+    return s3fs
+
+
 def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
     """Get PyTorch DataLoader for the specified training worker.
 
@@ -614,8 +629,14 @@ def benchmark_code(
                     field_names=["class"],
                     base_dir=args.data_root,
                 )
+                # Note: We explicitly define a filesystem using boto credentials
+                # due to `AWS Error ACCESS_DENIED` issues with pyarrow.fs.
+                # See for more details and potential downsides:
+                # https://github.com/ray-project/ray/issues/47230#issuecomment-2313645254 # noqa: E501
+                fs = get_s3fs_with_boto_creds()
                 ray_dataset = ray.data.read_images(
                     input_paths,
+                    filesystem=fs,
                     mode="RGB",
                     shuffle="files",
                     partitioning=partitioning,
@@ -747,6 +768,6 @@ if __name__ == "__main__":
     else:
         case_name = "cache-none"
 
-    benchmark = Benchmark(benchmark_name)
+    benchmark = Benchmark()
     benchmark.run_fn(case_name, benchmark_code, args=args)
-    benchmark.write_result("/tmp/multi_node_train_benchmark.json")
+    benchmark.write_result()

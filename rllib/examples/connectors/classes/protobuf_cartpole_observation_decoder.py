@@ -18,7 +18,9 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
     Add this connector piece to your env-to-module pipeline, through your algo config:
     ```
     config.env_runners(
-        env_to_module_connector=lambda env: ProtobufCartPoleObservationDecoder()
+        env_to_module_connector=(
+            lambda env, spaces, device: ProtobufCartPoleObservationDecoder()
+        )
     )
     ```
 
@@ -28,12 +30,16 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self) -> gym.Space:
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         # Make sure the incoming observation space is a protobuf (binary string).
         assert (
-            isinstance(self.input_observation_space, gym.spaces.Box)
-            and len(self.input_observation_space.shape) == 1
-            and self.input_observation_space.dtype.name == "uint8"
+            isinstance(input_observation_space, gym.spaces.Box)
+            and len(input_observation_space.shape) == 1
+            and input_observation_space.dtype.name == "uint8"
         )
         # Return CartPole-v1's natural observation space.
         return gym.spaces.Box(float("-inf"), float("inf"), (4,), np.float32)
@@ -42,7 +48,7 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -73,4 +79,4 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
             sa_episode.set_observations(new_data=new_obs, at_indices=-1)
 
         # Return `data` as-is.
-        return data
+        return batch

@@ -7,6 +7,7 @@ from typing import List
 import ray
 from ray._private.internal_api import node_stats
 from ray._raylet import ActorID, JobID, TaskID
+from ray.dashboard.utils import node_stats_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +98,7 @@ class MemoryTableEntry:
         self.task_status = object_ref.get("taskStatus", "?")
         if self.task_status == "NIL":
             self.task_status = "-"
-        self.attempt_number = int(object_ref.get("attemptNumber", 0))
-        if self.attempt_number > 0:
-            self.task_status = f"Attempt #{self.attempt_number + 1}: {self.task_status}"
+        self.attempt_number = int(object_ref.get("attemptNumber", 0)) + 1
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
         if len(self.call_site) == 0:
@@ -185,6 +184,7 @@ class MemoryTableEntry:
             "reference_type": self.reference_type,
             "call_site": self.call_site,
             "task_status": self.task_status,
+            "attempt_number": self.attempt_number,
             "local_ref_count": self.local_ref_count,
             "pinned_in_memory": self.pinned_in_memory,
             "submitted_task_ref_count": self.submitted_task_ref_count,
@@ -382,8 +382,6 @@ def memory_summary(
     # Get terminal size
     import shutil
 
-    from ray.dashboard.modules.node.node_head import node_stats_to_dict
-
     size = shutil.get_terminal_size((80, 20)).columns
     line_wrap_threshold = 137
 
@@ -432,16 +430,17 @@ def memory_summary(
         "Type",
         "Call Site",
         "Status",
+        "Attampt",
         "Size",
         "Reference Type",
         "Object Ref",
     ]
     object_ref_string = "{:<13} | {:<8} | {:<7} | {:<9} \
-| {:<9} | {:<8} | {:<14} | {:<10}\n"
+| {:<9} | {:<8} | {:<8} | {:<14} | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
-        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<6}  {:<18}  \
-{:<56}\n"
+        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<8}  {:<6}  \
+{:<18}  {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
         Sorting by {sort_by}...\
@@ -499,6 +498,7 @@ entries per group...\n\n\n"
                 entry["type"],
                 entry["call_site"],
                 entry["task_status"],
+                entry["attempt_number"],
                 entry["object_size"],
                 entry["reference_type"],
                 entry["object_ref"],

@@ -40,8 +40,11 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
     def output_data(self) -> Optional[List[RefBundle]]:
         return self._input_data
 
-    @functools.cache
     def aggregate_output_metadata(self) -> BlockMetadata:
+        return self._cached_output_metadata
+
+    @functools.cached_property
+    def _cached_output_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=self._num_rows(),
             size_bytes=self._size_bytes(),

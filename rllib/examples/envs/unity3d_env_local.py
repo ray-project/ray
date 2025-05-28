@@ -27,8 +27,8 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.utils.metrics import (
@@ -145,9 +145,9 @@ if __name__ == "__main__":
             lr=0.0003,
             lambda_=0.95,
             gamma=0.99,
-            sgd_minibatch_size=256,
+            minibatch_size=256,
             train_batch_size=4000,
-            num_sgd_iter=20,
+            num_epochs=20,
             clip_param=0.2,
             model={"fcnet_hiddens": [512, 512]},
         )
@@ -196,10 +196,10 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=5,
                 checkpoint_at_end=True,
             ),

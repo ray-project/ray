@@ -26,7 +26,7 @@ from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopEr
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
-from ray.autoscaler.v2.sdk import is_head_node
+from ray.autoscaler.v2.utils import is_head_node
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -768,12 +768,13 @@ class Reconciler:
         # Transition the instances to REQUESTED for instance launcher to
         # launch them.
         updates = {}
+        new_launch_request_id = str(uuid.uuid4())
         for instance_type, instances in to_launch.items():
             for instance in instances:
                 # Reuse launch request id for any QUEUED instances that have been
                 # requested before due to retry.
                 launch_request_id = (
-                    str(uuid.uuid4())
+                    new_launch_request_id
                     if len(instance.launch_request_id) == 0
                     else instance.launch_request_id
                 )
@@ -1139,34 +1140,20 @@ class Reconciler:
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
         updates = {}
-        instances_by_id = {i.instance_id: i for i in im_instances}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            instance = instances_by_id[instance_id]
-
-            if autoscaling_config.worker_rpc_drain():
-                # If we would need to stop/drain ray.
-                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                    instance_id=instance_id,
-                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
-                    termination_request=terminate_request,
-                    details=f"draining ray: {terminate_request.details}",
-                )
-            else:
-                # If we would just terminate the cloud instance.
-                assert (
-                    instance.cloud_instance_id
-                ), f"Cloud instance id is not set on {instance.instance_id}."
-                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                    instance_id=instance_id,
-                    new_instance_status=IMInstance.TERMINATING,
-                    cloud_instance_id=instance.cloud_instance_id,
-                    details=(
-                        "terminating cloud instance without draining ray -"
-                        f"{terminate_request.details}"
-                    ),
-                )
+            new_instance_status = IMInstance.RAY_STOP_REQUESTED
+            if terminate_request.instance_status == IMInstance.ALLOCATED:
+                # The instance is not yet running, so we can't request to stop/drain Ray.
+                # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
+                new_instance_status = IMInstance.TERMINATING
+            updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance_id,
+                new_instance_status=new_instance_status,
+                termination_request=terminate_request,
+                details=f"draining ray: {terminate_request.details}",
+            )
 
         # Add new instances.
         for launch_request in to_launch:

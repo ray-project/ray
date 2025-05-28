@@ -21,7 +21,6 @@ import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.numpy import one_hot
-from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 
 
@@ -64,7 +63,7 @@ class TestDreamerV3(unittest.TestCase):
         for env in [
             "FrozenLake-v1",
             "CartPole-v1",
-            "ALE/MsPacman-v5",
+            "ale_py:ALE/MsPacman-v5",
             "Pendulum-v1",
         ]:
             print("Env={}".format(env))
@@ -186,57 +185,54 @@ class TestDreamerV3(unittest.TestCase):
             symlog_obs=True,
         )
 
-        for _ in framework_iterator(config, frameworks="tf2"):
-            # Check all model_sizes described in the paper ([1]) on matching the number
-            # of parameters to RLlib's implementation.
-            for model_size in ["XS", "S", "M", "L", "XL"]:
-                config.model_size = model_size
+        # Check all model_sizes described in the paper ([1]) on matching the number
+        # of parameters to RLlib's implementation.
+        for model_size in ["XS", "S", "M", "L", "XL"]:
+            config.model_size = model_size
 
-                # Atari and CartPole spaces.
-                for obs_space, num_actions, env_name in [
-                    (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
-                    (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
-                ]:
-                    print(f"Testing model_size={model_size} on env-type: {env_name} ..")
-                    config.environment(
-                        observation_space=obs_space,
-                        action_space=gym.spaces.Discrete(num_actions),
-                    )
+            # Atari and CartPole spaces.
+            for obs_space, num_actions, env_name in [
+                (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
+                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+            ]:
+                print(f"Testing model_size={model_size} on env-type: {env_name} ..")
+                config.environment(
+                    observation_space=obs_space,
+                    action_space=gym.spaces.Discrete(num_actions),
+                )
 
-                    # Create our RLModule to compute actions with.
-                    policy_dict, _ = config.get_multi_agent_setup()
-                    module_spec = config.get_multi_rl_module_spec(
-                        policy_dict=policy_dict
-                    )
-                    rl_module = module_spec.build()[DEFAULT_MODULE_ID]
+                # Create our RLModule to compute actions with.
+                policy_dict, _ = config.get_multi_agent_setup()
+                module_spec = config.get_multi_rl_module_spec(policy_dict=policy_dict)
+                rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
-                    # Count the generated RLModule's parameters and compare to the
-                    # paper's reported numbers ([1] and [3]).
-                    num_params_world_model = sum(
-                        np.prod(v.shape.as_list())
-                        for v in rl_module.world_model.trainable_variables
-                    )
-                    self.assertEqual(
-                        num_params_world_model,
-                        expected_num_params_world_model[f"{model_size}_{env_name}"],
-                    )
-                    num_params_actor = sum(
-                        np.prod(v.shape.as_list())
-                        for v in rl_module.actor.trainable_variables
-                    )
-                    self.assertEqual(
-                        num_params_actor,
-                        expected_num_params_actor[f"{model_size}_{env_name}"],
-                    )
-                    num_params_critic = sum(
-                        np.prod(v.shape.as_list())
-                        for v in rl_module.critic.trainable_variables
-                    )
-                    self.assertEqual(
-                        num_params_critic,
-                        expected_num_params_critic[f"{model_size}_{env_name}"],
-                    )
-                    print("\tok")
+                # Count the generated RLModule's parameters and compare to the
+                # paper's reported numbers ([1] and [3]).
+                num_params_world_model = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.world_model.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_world_model,
+                    expected_num_params_world_model[f"{model_size}_{env_name}"],
+                )
+                num_params_actor = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.actor.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_actor,
+                    expected_num_params_actor[f"{model_size}_{env_name}"],
+                )
+                num_params_critic = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.critic.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_critic,
+                    expected_num_params_critic[f"{model_size}_{env_name}"],
+                )
+                print("\tok")
 
 
 if __name__ == "__main__":

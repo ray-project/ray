@@ -17,10 +17,19 @@
 #include <google/protobuf/struct.pb.h>
 #include <google/protobuf/util/json_util.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"
+#include "ray/util/random.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/timestamp_utils.h"
+
+using json = nlohmann::json;
 
 namespace ray {
 ///
@@ -69,7 +78,7 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
   log_sink_ = spdlog::get(log_sink_key);
   // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
   // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
-  // We alow to rotate for {rotate_max_file_num_} times.
+  // We allow to rotate for {rotate_max_file_num_} times.
   if (log_sink_ == nullptr) {
     log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
                                            log_dir_ + file_name_,
@@ -130,9 +139,23 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
+  // Required so enum with value 0 is not omitted
+  options.always_print_primitive_fields = true;
   if (export_event.has_task_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.task_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else if (export_event.has_node_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.node_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else if (export_event.has_actor_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.actor_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else if (export_event.has_driver_job_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.driver_job_event_data(), &event_data_as_string, options)
                   .ok());
   } else {
     RAY_LOG(FATAL)
@@ -180,7 +203,9 @@ EventManager &EventManager::Instance() {
   return instance_;
 }
 
-bool EventManager::IsEmpty() { return reporter_map_.empty(); }
+bool EventManager::IsEmpty() {
+  return reporter_map_.empty() && export_log_reporter_map_.empty();
+}
 
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
@@ -226,7 +251,7 @@ std::atomic<bool> RayEventContext::global_context_finished_setting_(false);
 
 RayEventContext &RayEventContext::Instance() {
   if (context_ == nullptr) {
-    context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
+    context_ = std::make_unique<RayEventContext>();
   }
   return *context_;
 }
@@ -430,6 +455,13 @@ void RayExportEvent::SendEvent() {
     export_event.mutable_actor_event_data()->CopyFrom(*(*ptr_to_actor_event_data_ptr));
     export_event.set_source_type(
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
+  } else if (auto ptr_to_driver_job_event_data_ptr =
+                 std::get_if<std::shared_ptr<rpc::ExportDriverJobEventData>>(
+                     &event_data_ptr_)) {
+    export_event.mutable_driver_job_event_data()->CopyFrom(
+        *(*ptr_to_driver_job_event_data_ptr));
+    export_event.set_source_type(
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB);
   } else {
     // This shouldn't be possible because event_data_ptr_ is typed as ExportEventDataPtr
     RAY_LOG(FATAL) << "Invalid event_data type.";
@@ -459,6 +491,7 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
     } else if (auto export_event_source_type_ptr =
                    std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
       // For export events
+      event_dir = std::filesystem::path(log_dir) / std::filesystem::path("export_events");
       source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
       ray::EventManager::Instance().AddExportReporter(
           *export_event_source_type_ptr,
@@ -481,6 +514,21 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
         RayEventInit_(
             source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
       });
+}
+
+bool IsExportAPIEnabledSourceType(
+    std::string source_type,
+    bool enable_export_api_write_global,
+    std::vector<std::string> enable_export_api_write_config) {
+  if (enable_export_api_write_global) {
+    return true;
+  }
+  for (const auto &element : enable_export_api_write_config) {
+    if (element == source_type) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace ray

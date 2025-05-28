@@ -48,8 +48,16 @@ DECLARE_stats(tasks);
 /// Actor stats, broken down by state.
 DECLARE_stats(actors);
 
+/// Job stats.
+DECLARE_stats(running_jobs);
+DECLARE_stats(finished_jobs);
+DECLARE_stats(job_duration_s);
+
 /// Placement group stats, broken down by state.
 DECLARE_stats(placement_groups);
+
+/// ASIO stats
+DECLARE_stats(io_context_event_loop_lag_ms);
 
 /// Event stats
 DECLARE_stats(operation_count);
@@ -62,6 +70,11 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+DECLARE_stats(grpc_server_req_succeeded);
+DECLARE_stats(grpc_server_req_failed);
+
+/// GRPC Client Failures
+DECLARE_stats(grpc_client_req_failed);
 
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
@@ -217,7 +230,7 @@ static Sum NumCachedWorkersSkippedJobMismatch(
     "workers");
 
 static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
-    "internal_num_processes_skipped_runtime_enviornment_mismatch",
+    "internal_num_processes_skipped_runtime_environment_mismatch",
     "The total number of cached workers skipped due to runtime environment mismatch.",
     "workers");
 

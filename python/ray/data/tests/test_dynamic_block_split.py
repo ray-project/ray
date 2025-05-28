@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -68,7 +68,7 @@ class RandomBytesDatasource(Datasource):
                             (self.num_rows_per_batch, self.row_size), dtype=np.uint8
                         )
                     }
-                    block = ArrowBlockAccessor.numpy_to_block(batch)
+                    block = ArrowBlockBuilder._table_from_pydict(batch)
                     yield block
                 else:
                     yield pd.DataFrame(
@@ -169,11 +169,13 @@ def test_dataset(
         identity_func = identity_fn
         empty_func = empty_fn
         func_name = "identity_fn"
+        task_name = f"ReadRandomBytes->MapBatches({func_name})"
     else:
         compute = ray.data.ActorPoolStrategy()
         identity_func = IdentityClass
         empty_func = EmptyClass
         func_name = "IdentityClass"
+        task_name = f"ReadRandomBytes->MapBatches({func_name}).submit"
 
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
@@ -203,8 +205,7 @@ def test_dataset(
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_get_datasource_or_legacy_reader": 1,
-                "ReadRandomBytes": lambda count: count < num_tasks,
+                "ReadRandomBytes": lambda count: count <= num_tasks,
             },
             object_store_stats={
                 "cumulative_created_plasma_bytes": lambda count: True,
@@ -226,7 +227,7 @@ def test_dataset(
                 f"({func_name})).get_location": lambda count: True,
                 "_MapWorker.__init__": lambda count: True,
                 "_MapWorker.get_location": lambda count: True,
-                f"ReadRandomBytes->MapBatches({func_name})": num_tasks,
+                task_name: num_tasks,
             },
         ),
         last_snapshot,

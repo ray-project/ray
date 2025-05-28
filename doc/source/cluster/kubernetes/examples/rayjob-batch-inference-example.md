@@ -14,7 +14,7 @@ You must have a Kubernetes cluster running,`kubectl` configured to use it, and G
 If you already have a Kubernetes cluster with GPUs, you can skip this step.
 
 
-Otherwise, follow [this tutorial](kuberay-gke-gpu-cluster-setup), but substitute the following GPU node pool creation command to create a Kubernetes cluster on GKE with four Nvidia T4 GPUs:
+Otherwise, follow [this tutorial](kuberay-gke-gpu-cluster-setup), but substitute the following GPU node pool creation command to create a Kubernetes cluster on GKE with four NVIDIA T4 GPUs:
 
 ```sh
 gcloud container node-pools create gpu-node-pool \
@@ -28,7 +28,7 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type n1-standard-64
 ```
 
-This example uses four [Nvidia T4](https://cloud.google.com/compute/docs/gpus#nvidia_t4_gpus) GPUs. The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types).
+This example uses four [NVIDIA T4](https://cloud.google.com/compute/docs/gpus#nvidia_t4_gpus) GPUs. The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types).
 
 ## Step 1: Install the KubeRay Operator
 
@@ -37,12 +37,12 @@ The KubeRay operator Pod must be on the CPU node if you have set up the taint fo
 
 ## Step 2: Submit the RayJob
 
-Create the RayJob custom resource with [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-job.batch-inference.yaml).
+Create the RayJob custom resource with [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-job.batch-inference.yaml).
 
 Download the file with `curl`:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-job.batch-inference.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.batch-inference.yaml
 ```
 
 Note that the `RayJob` spec contains a spec for the `RayCluster`. This tutorial uses a single-node cluster with 4 GPUs. For production use cases, use a multi-node cluster where the head node doesn't have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes which won't interfere with critical Ray processes on the head node.
@@ -120,8 +120,8 @@ Running: 62.0/64.0 CPU, 4.0/4.0 GPU, 955.57 MiB/12.83 GiB object_store_memory:  
 Running: 61.0/64.0 CPU, 4.0/4.0 GPU, 999.41 MiB/12.83 GiB object_store_memory:   0%|          | 0/200 [00:05<?, ?it/s]
 Running: 61.0/64.0 CPU, 4.0/4.0 GPU, 999.41 MiB/12.83 GiB object_store_memory:   0%|          | 1/200 [00:05<17:04,  5.15s/it]
 Running: 61.0/64.0 CPU, 4.0/4.0 GPU, 1008.68 MiB/12.83 GiB object_store_memory:   0%|          | 1/200 [00:05<17:04,  5.15s/it]
-Running: 61.0/64.0 CPU, 4.0/4.0 GPU, 1008.68 MiB/12.83 GiB object_store_memory: 100%|██████████| 1/1 [00:05<00:00,  5.15s/it]  
-                                                                                                                             
+Running: 61.0/64.0 CPU, 4.0/4.0 GPU, 1008.68 MiB/12.83 GiB object_store_memory: 100%|██████████| 1/1 [00:05<00:00,  5.15s/it]
+
 2023-08-22 15:48:33,905 WARNING actor_pool_map_operator.py:267 -- To ensure full parallelization across an actor pool of size 4, the specified batch size should be at most 5. Your configured batch size for this operator was 16.
 <PIL.Image.Image image mode=RGB size=500x375 at 0x7B37546CF7F0>
 Label:  tench, Tinca tinca

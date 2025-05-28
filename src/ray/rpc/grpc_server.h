@@ -17,8 +17,11 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -102,7 +105,8 @@ class GrpcServer {
         cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms) {
+        keepalive_time_ms_(keepalive_time_ms),
+        shutdown_(false) {
     Init();
   }
 
@@ -119,13 +123,12 @@ class GrpcServer {
   int GetPort() const { return port_; }
 
   /// Register a grpc service. Multiple services can be registered to the same server.
-  /// Note that the `service` registered must remain valid for the lifetime of the
-  /// `GrpcServer`, as it holds the underlying `grpc::Service`.
   ///
   /// \param[in] service A `GrpcService` to register to this server.
   /// NOTE: if token_auth is not set to false, cluster_id_ must not be Nil.
-  void RegisterService(GrpcService &service, bool token_auth = true);
-  void RegisterService(grpc::Service &service);
+  void RegisterService(std::unique_ptr<GrpcService> &&service, bool token_auth = true);
+
+  void RegisterService(std::unique_ptr<grpc::Service> &&grpc_service);
 
   grpc::Server &GetServer() { return *server_; }
 
@@ -164,7 +167,10 @@ class GrpcServer {
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
-  std::vector<std::reference_wrapper<grpc::Service>> services_;
+  std::vector<std::unique_ptr<grpc::Service>> grpc_services_;
+  /// The `GrpcService`(defined below) objects which contain grpc::Service objects not in
+  /// the above vector.
+  std::vector<std::unique_ptr<GrpcService>> services_;
   /// The `ServerCallFactory` objects.
   std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
   /// The number of completion queues the server is polling from.
@@ -179,6 +185,8 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
+
+  std::atomic_bool shutdown_;
 };
 
 /// Base class that represents an abstract gRPC service.

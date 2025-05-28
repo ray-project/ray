@@ -431,7 +431,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     metrics = {}
-    benchmark = Benchmark("image_loader_microbenchmark")
+    benchmark = Benchmark()
 
     if args.data_root is not None:
         # tf.data, load images.
@@ -583,7 +583,4 @@ if __name__ == "__main__":
                     ray_dataset.iter_torch_batches(batch_size=args.batch_size),
                 )
 
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/image_loader_microbenchmark.json"
-    )
-    benchmark.write_result(test_output_json)
+    benchmark.write_result()

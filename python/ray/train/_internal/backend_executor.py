@@ -7,6 +7,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.amd_gpu import HIP_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
+from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
 from ray.data import Dataset
 from ray.exceptions import RayActorError
@@ -25,7 +29,9 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+    ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -116,8 +122,19 @@ class BackendExecutor:
             ResourceConfig(
                 ray_constants.NEURON_CORES,
                 ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
-                ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
-            )
+                NEURON_RT_VISIBLE_CORES_ENV_VAR,
+            ),
+            ResourceConfig(
+                ray_constants.NPU,
+                ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
+                ASCEND_RT_VISIBLE_DEVICES_ENV_VAR,
+            ),
+            # For AMD GPUs, they are using HIP_VISIBLE_DEVICES env var.
+            ResourceConfig(
+                ray_constants.GPU,
+                ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
+                HIP_VISIBLE_DEVICES_ENV_VAR,
+            ),
         ]
 
         # Record the initialization time of BackendExecutor, which is
@@ -283,12 +300,10 @@ class BackendExecutor:
             CUDA_VISIBLE_DEVICES:
             - Worker1: "0,1,2,3"
             - Worker2: "0,1,2,3"
-            - Worker2: "0,1"
+            - Worker3: "0,1"
 
         """
-        self._share_resource_ids(
-            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
-        )
+        self._share_resource_ids(ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR)
 
     def _share_resource_ids(self, resource: str, env_var: str):
         """Sets the given env_var on all workers.
@@ -559,7 +574,8 @@ class BackendExecutor:
                 datasets=datasets,
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
-                run_status=RunStatusEnum.STARTED,
+                run_status=RunStatusEnum.RUNNING,
+                resources=[self._resources_per_worker] * self._num_workers,
             )
 
         # Run the training function asynchronously in its own thread.
@@ -657,14 +673,27 @@ class BackendExecutor:
         results = self.get_with_failure_handling(futures)
         return results
 
-    def report_final_run_status(self, errored=False):
-        """Report the final train run status and end time to TrainStateActor."""
+    def report_final_run_status(
+        self,
+        errored: bool = False,
+        failed_rank: Optional[int] = None,
+        stack_trace: Optional[str] = None,
+    ):
+        """Report the final train run status, error, and end time to TrainStateActor."""
         if self.state_tracking_enabled:
-            from ray.train._internal.state.schema import RunStatusEnum
+            from ray.train._internal.state.schema import (
+                MAX_ERROR_STACK_TRACE_LENGTH,
+                RunStatusEnum,
+            )
 
             if errored:
                 run_status = RunStatusEnum.ERRORED
-                status_detail = "Terminated due to an error in the training function."
+                status_detail = ""
+                if failed_rank is not None:
+                    status_detail += f"Rank {failed_rank} worker raised an error. \n"
+                if stack_trace is not None:
+                    # Keep only the last part of the stack trace if it's too long.
+                    status_detail += stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
             else:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""
@@ -755,7 +784,7 @@ class BackendExecutor:
             self._last_failure = None
             if self._max_failures > 0:
                 exc = RuntimeError(
-                    "Training has failed after " f"{self._num_failures} " "attempts."
+                    f"Training has failed after {self._num_failures} attempts."
                 )
                 raise exc.with_traceback(None) from failure
             else:
