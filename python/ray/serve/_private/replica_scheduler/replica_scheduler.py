@@ -1029,7 +1029,7 @@ class ReplicaScheduler(ABC):
         """
         pass
 
-    async def on_request_scheduled(
+    def on_request_scheduled(
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,

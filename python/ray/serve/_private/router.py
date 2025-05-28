@@ -547,7 +547,7 @@ class AsyncioRouter:
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
-                await self._replica_scheduler.on_request_scheduled(
+                self._replica_scheduler.on_request_scheduled(
                     pr, r.replica_id, result
                 )
                 if queue_info.accepted:

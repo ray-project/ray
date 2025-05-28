@@ -1,3 +1,4 @@
+import ray
 import asyncio
 import json
 import logging
@@ -20,7 +21,16 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_scheduler import (
+    LocalityScheduleMixin,
+    MultiplexScheduleMixin,
+)
+from ray.serve._private.replica_scheduler import (
+    ReplicaScheduler,
+    PowerOfTwoChoicesReplicaScheduler,
+)
+
+
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
 )
@@ -31,7 +41,7 @@ from ray.serve._private.replica_scheduler.replica_wrapper import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
+class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler):
     """Extends the PowerOfTwoChoicesReplicaScheduler with prefix-matching capabilities.
 
     This scheduler optimizes replica selection by considering input text prefixes:
@@ -55,16 +65,20 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         *args,
         imbalanced_threshold=10,
         match_rate_threshold=0.1,
-        do_eviction=True,
+        do_eviction=False,
         eviction_threshold_chars=400_000,
         eviction_target_chars=360_000,
         eviction_interval_secs=10,
+        tree_actor=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self._tree_actor = PrefixTreeActor.options(
-            name="PrefixTreeActor", get_if_exists=True
-        ).remote()
+        if tree_actor is None:
+            self._tree_actor = PrefixTreeActor.options(
+                name="PrefixTreeActor", get_if_exists=True
+            ).remote()
+        else:
+            self._tree_actor = tree_actor
 
         # === Prefix-aware scheduling logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
@@ -96,11 +110,6 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         self._num_requests_seen = 0
         self._zero_load_count = 0
 
-    # Override the FIFO scheduling property inherited from the PowerOfTwoChoicesReplicaScheduler
-    @property
-    def fifo_scheduling(self) -> bool:
-        return False
-
     async def _track_metrics(self):
         # Remove this function for PR, currently only used for benchmarking
         """Track metrics every 1s, save to JSON at end."""
@@ -116,7 +125,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
 
                 # === vLLM metrics via curl ===
                 try:
-                    response = session.get("http://localhost:5001/metrics")
+                    response = session.get("http://localhost:8085/metrics")
                     output = response.text
                     lines = output.strip().split("\n")
                     current_vllm_metrics = {}
@@ -177,9 +186,9 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                     print(f"[WARN] Failed to curl or parse /metrics: {e}")
 
                 # === Character count over time ===
-                tenant_char_count = await self._tree_actor.getattr.remote(
+                tenant_char_count = ray.get(self._tree_actor.getattr.remote(
                     "tenant_to_char_count"
-                )
+                ))
                 from collections import defaultdict
 
                 current_char_count = defaultdict(int)
@@ -220,7 +229,7 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         finally:
             self._track_metrics_task = None
 
-    async def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
+    def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
         """Extracts the text content from a pending request for prefix matching.
 
         Searches through request arguments for either 'messages' or 'prompt' attributes,
@@ -264,75 +273,80 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
     async def _prefix_match_best_replicas(
         self,
         pending_request: Optional[PendingRequest],
-        candidate_replica_ids: Set[ReplicaID],
-    ) -> List[ReplicaID]:
+        candidate_replicas: List[RunningReplica],
+    ) -> List[RunningReplica]:
         """
         Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
         0. Default: same as pow 2 scheduler, return 2 replicas at random.
         1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use replicas with smallest KV cache usage.
         2. If load is imbalanced, use default.
         """
-        # Convert candidate replica IDs to strings for prefix matching.
-        candidate_replica_ids_strings = [
-            replica_id.to_full_id_str() for replica_id in candidate_replica_ids
-        ]
-
-        chosen_replica_ids_strings = []
-
+        chosen_replica_id_strings = []
         if (
             pending_request is not None
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            input_text = await self._extract_text_from_request(pending_request)
+            input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
                 # Check for imbalanced load.
                 highest_queue_len = 0
                 lowest_queue_len = float("inf")
+                not_in_cache: List[ReplicaID] = []
                 if self._use_replica_queue_len_cache:
                     # Populate available queue lens from the cache.
-                    r: ReplicaID
-                    for r in candidate_replica_ids:
-                        queue_len = self._replica_queue_len_cache.get(r)
-                        if queue_len is None:
-                            # Don't do any replica queue length probing; leave it to the default replica scheduler.
-                            continue
+                    for r in candidate_replicas:
+                        queue_len = self._replica_queue_len_cache.get(r.replica_id)
+                        if queue_len is None or queue_len >= r.max_ongoing_requests:
+                            not_in_cache.append(r)
                         else:
                             highest_queue_len = max(highest_queue_len, queue_len)
                             lowest_queue_len = min(lowest_queue_len, queue_len)
+                else:
+                    not_in_cache = candidate_replicas
+                # if len(not_in_cache) > 0:
+                #     for r, queue_len in await self._probe_queue_lens(
+                #         not_in_cache,
+                #         0,
+                #     ):
+                #         if queue_len is None:
+                #             continue
+                #         highest_queue_len = max(highest_queue_len, queue_len)
+                #         lowest_queue_len = min(lowest_queue_len, queue_len)
+
                 is_imbalanced = (
                     highest_queue_len - lowest_queue_len > self._imbalanced_threshold
                 )
                 if not is_imbalanced:
+                    # Convert candidate replica IDs to strings for prefix matching.
+                    candidate_replica_ids_strings = [
+                        r.replica_id.to_full_id_str() for r in candidate_replicas
+                    ]
                     (
                         matched_text,
-                        matched_tenant_ids,
-                    ) = await self._tree_actor.prefix_match.remote(
+                        matched_tenant_id_strings,
+                    ) = ray.get(self._tree_actor.prefix_match.remote(
                         input_text, candidate_replica_ids_strings
-                    )
+                    ))
                     match_rate = len(matched_text) / len(input_text)
                     if match_rate < self._match_rate_threshold:
-                        smallest_tenants = (
-                            await self._tree_actor.get_smallest_tenants.remote()
+                        smallest_tenants_id_strings = (
+                            ray.get(self._tree_actor.get_smallest_tenants.remote())
                         )
-                        if smallest_tenants is not None and len(smallest_tenants) > 0:
-                            chosen_replica_ids_strings = smallest_tenants
+                        if smallest_tenants_id_strings is not None and len(smallest_tenants_id_strings) > 0:
+                            chosen_replica_id_strings = smallest_tenants_id_strings
                     else:
                         if (
-                            matched_tenant_ids is not None
-                            and len(matched_tenant_ids) > 0
+                            matched_tenant_id_strings is not None
+                            and len(matched_tenant_id_strings) > 0
                         ):
-                            chosen_replica_ids_strings = matched_tenant_ids
-        chosen_replica_ids = [
-            ReplicaID.from_full_id_str(replica_id_string)
-            for replica_id_string in chosen_replica_ids_strings
-        ]
-        return chosen_replica_ids
+                            chosen_replica_id_strings = matched_tenant_id_strings
+        return [[self._replicas[ReplicaID.from_full_id_str(chosen_id_string)] for chosen_id_string in chosen_replica_id_strings]]
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
-        self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()])
+        ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for scheduling.
@@ -354,19 +368,19 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         # 4) Update the prefix tree with the changes
         if added:
             added_strings = [rid.to_full_id_str() for rid in added]
-            self._tree_actor.add_tenants.remote(added_strings, time.time())
+            ray.get(self._tree_actor.add_tenants.remote(added_strings, time.time()))
 
         if removed:
             removed_strings = [rid.to_full_id_str() for rid in removed]
-            self._tree_actor.remove_tenants.remote(removed_strings)
+            ray.get(self._tree_actor.remove_tenants.remote(removed_strings))
 
         # === Start tasks (if enabled and not already running) ===
         if self._do_eviction and not self._eviction_loop_running:
-            self._tree_actor.start_eviction_loop.remote(
+            ray.get(self._tree_actor.start_eviction_loop.remote(
                 self._eviction_threshold_chars,
                 self._eviction_target_chars,
                 self._eviction_interval_secs,
-            )
+            ))
             self._eviction_loop_running = True
 
         if self._do_track_metrics and self._track_metrics_task is None:
@@ -389,11 +403,10 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
         procedure.
         """
         # Get fallback replicas from PowerOfTwoChoicesReplicaScheduler
-        fallback_replicas = await super().choose_replicas(
+        fallback_replicas = await PowerOfTwoChoicesReplicaScheduler.choose_replicas(self,
             replicas_ranks=replicas_ranks,
             pending_request=pending_request,
         )
-
         if pending_request is None or not fallback_replicas:
             return fallback_replicas
 
@@ -408,19 +421,22 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
                 pending_request=pending_request,
             )
 
-        if not candidate_replica_ids:
+        # Convert candidate replica IDs to RunningReplica objects.
+        replica_id_to_replica_map = {
+            replica.replica_id: replica for replica in replicas_ranks[0]
+        }
+        candidate_replicas = [replica_id_to_replica_map[candidate_replica_id] for candidate_replica_id in candidate_replica_ids]
+        if not candidate_replicas:
             return fallback_replicas
-
-        chosen_ids = await self._prefix_match_best_replicas(
-            pending_request, candidate_replica_ids
+        chosen_replicas = await self._prefix_match_best_replicas(
+            pending_request, candidate_replicas
         )
-
-        if chosen_ids:
-            return [[self._replicas[chosen_id] for chosen_id in chosen_ids]]
+        if chosen_replicas[0]:
+            return chosen_replicas
 
         return fallback_replicas
 
-    async def on_request_scheduled(
+    def on_request_scheduled(
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
@@ -437,8 +453,8 @@ class PrefixAwareReplicaScheduler(PowerOfTwoChoicesReplicaScheduler):
             and pending_request.args is not None
             and len(pending_request.args) > 0
         ):
-            input_text = await self._extract_text_from_request(pending_request)
+            input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
-                self._tree_actor.insert.remote(
+                ray.get(self._tree_actor.insert.remote(
                     input_text, replica_id.to_full_id_str(), time.time()
-                )
+                ))

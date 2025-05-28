@@ -594,6 +594,12 @@ class PrefixTree:
                         excess = char_count - eviction_target
                         self.evict_tenant_by_lru(tenant, excess)
 
+    def stop_eviction_loop(self):
+        with self.lock:
+            if self._eviction_task:
+                self._eviction_task.cancel()
+                # self._eviction_task.close()
+                self._eviction_task = None
 
 @ray.remote
 class PrefixTreeActor(PrefixTree):
