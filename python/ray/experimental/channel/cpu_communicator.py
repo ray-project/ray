@@ -199,9 +199,3 @@ class CPUCommunicator(Communicator):
 
     def send_stream(self):
         raise NotImplementedError
-
-    @classmethod
-    def generate_communicator_id(cls) -> str:
-        import uuid
-
-        return str(uuid.uuid4())
