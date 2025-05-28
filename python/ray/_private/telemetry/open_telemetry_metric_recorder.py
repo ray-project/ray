@@ -1,14 +1,14 @@
-import threading
 import logging
-from typing import List
+import threading
 from collections import defaultdict
+from typing import List
 
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import Observation
+from opentelemetry.sdk.metrics import MeterProvider
 
-from ray._private.metrics_agent import Record, Gauge
+from ray._private.metrics_agent import Gauge, Record
 
 logger = logging.getLogger(__name__)
 
