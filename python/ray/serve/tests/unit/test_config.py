@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray import cloudpickle
