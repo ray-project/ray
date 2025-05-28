@@ -187,7 +187,7 @@ void PullManager::DeactivateBundlePullRequest(
   for (const auto &obj_id : request.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto it = active_object_pull_requests_.find(obj_id);
-    if (it == active_object_pull_requests_.end() || !it->second.erase(request_id)) {
+    if (it == active_object_pull_requests_.end() || (it->second.erase(request_id) == 0)) {
       // The object is already deactivated, no action is required.
       continue;
     }
@@ -642,8 +642,8 @@ bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   return active_object_pull_requests_.count(object_id) == 1;
 }
 
-const PullManager::BundlePullRequestQueue &PullManager::GetBundlePullRequestQueue(
-    uint64_t request_id) const {
+PullManager::BundlePullRequestQueue &PullManager::GetBundlePullRequestQueue(
+    uint64_t request_id) {
   if (get_request_bundles_.requests.contains(request_id)) {
     return get_request_bundles_;
   } else if (wait_request_bundles_.requests.contains(request_id)) {
@@ -654,13 +654,7 @@ const PullManager::BundlePullRequestQueue &PullManager::GetBundlePullRequestQueu
   }
 }
 
-PullManager::BundlePullRequestQueue &PullManager::GetBundlePullRequestQueue(
-    uint64_t request_id) {
-  return const_cast<BundlePullRequestQueue &>(
-      const_cast<const PullManager *>(this)->GetBundlePullRequestQueue(request_id));
-}
-
-bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
+bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) {
   const BundlePullRequestQueue &bundles = GetBundlePullRequestQueue(request_id);
 
   // If a request isn't inactive then it must be

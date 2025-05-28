@@ -32,20 +32,19 @@ void PushManager::StartPush(const NodeID &dest_id,
   auto it = push_info_.find(push_id);
   if (it == push_info_.end()) {
     chunks_remaining_ += num_chunks;
-    auto push_state = std::make_unique<PushState>(num_chunks, send_chunk_fn);
-    push_requests_with_chunks_to_send_.push_back(
-        std::make_pair(push_id, push_state.get()));
+    auto push_state = std::make_unique<PushState>(num_chunks, std::move(send_chunk_fn));
+    push_requests_with_chunks_to_send_.emplace_back(push_id, push_state.get());
     push_info_[push_id] = std::move(push_state);
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    if (it->second->NoChunksToSend()) {
+    auto &push_state = it->second;
+    if (push_state->NoChunksToSend()) {
       // if all the chunks have been sent, the push request needs to be re-added to
       // `push_requests_with_chunks_to_send_`.
-      push_requests_with_chunks_to_send_.push_back(
-          std::make_pair(push_id, it->second.get()));
+      push_requests_with_chunks_to_send_.emplace_back(push_id, it->second.get());
     }
-    chunks_remaining_ += it->second->ResendAllChunks(send_chunk_fn);
+    chunks_remaining_ += push_state->ResendAllChunks(std::move(send_chunk_fn));
   }
   ScheduleRemainingPushes();
 }
