@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Dict, List, Any
 from urllib.parse import urlparse
 
 import boto3
@@ -17,22 +17,13 @@ logging.basicConfig(
 )
 
 
-def get_llm_config(serve_config_file: str) -> Dict[str, Any]:
+def get_llm_config(serve_config_file: List[Dict]) -> List[Any]:
     """Get the first llm_config from serve config file."""
     with open(serve_config_file, "r") as f:
         loaded_llm_config = yaml.safe_load(f)
 
-    application = loaded_llm_config["applications"][0]
-    assert (
-        "args" in application
-    ), f"Application must contain an 'args' key, got {application}"
-    if "llm_configs" in application["args"]:
-        config = application["args"]["llm_configs"][0]
-    elif "prefill_config" in application["args"]:
-        config = application["args"]["prefill_config"]
-    else:
-        raise ValueError(f"Unrecognized serve config schema: {application['args']}")
-
+    applications = loaded_llm_config["applications"]
+    config = applications[0]["args"]["llm_configs"][0]
     if isinstance(config, dict):
         return config
 
