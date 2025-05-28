@@ -12,12 +12,13 @@ BK_HOST = "https://api.buildkite.com/v2"
 def main():
     parser = argparse.ArgumentParser(description="Analyze Bazel test execution")
     parser.add_argument("--ray-path", help="path to ray repo")
-    parser.add_argument("--bk-api-key", help="buildkite api key")
+    parser.add_argument("--bk-api-token", help="buildkite api token")
     parser.add_argument("--look-back-hours", default=6, type=int, help="look back hours for nightly builds (default: 6)")
+    parser.add_argument("--offline", action="store_true", help="run offline mode")
     args = parser.parse_args()
 
     # Get all doctest jobs for the run
-    bk_client = BuildKiteClient(BK_HOST, args.bk_api_key, BK_ORGANIZATION, BK_PIPELINE)
+    bk_client = BuildKiteClient(BK_HOST, args.bk_api_token, BK_ORGANIZATION, BK_PIPELINE)
     print("init bk client")
     # list all recent runs for postmerge ran by release-automation
     bk_jobs = bk_client.get_nightly_bk_builds_for_pipeline(args.look_back_hours)
@@ -44,13 +45,19 @@ def main():
 
     # get doc test bk job ids
     doc_test_bk_job_ids = bk_client.get_doc_test_jobs_for_build(user_selected_build)
-    print(f"Found {len(doc_test_bk_job_ids)} doc test bk jobs")
+    print(f"Found {doc_test_bk_job_ids} doc test bk jobs")
 
     # Get all available test targets
     print("Querying available test targets...")
     print(args.ray_path)
-    all_targets = BazelQuery().get_all_test_targets(args.ray_path)
+    all_targets = BazelQuery.get_all_test_targets(args.ray_path)
     print(f"Found {len(all_targets)} total test targets")
+
+    # get all rst,md,ipynb files for target
+    files_for_targets = BazelQuery.get_files_for_targets(all_targets, args.ray_path)
+    with open("files_for_targets.txt", "w") as f:
+        for target, files in files_for_targets.items():
+            f.write(f"{target}: {files}\n")
 
     # List and Get all bazel events from s3
     s3_source = S3DataSource(S3_BUCKET, commit, doc_test_bk_job_ids)
@@ -58,11 +65,11 @@ def main():
     log_files = s3_source.download_all_bazel_events(f"{os.getcwd()}/bazel_events")
 
     # Parse log file for executed tests
-    filtered_tests, executed_tests = BazelQuery().parse_bazel_json(log_files, all_targets)
+    filtered_tests, executed_tests = BazelQuery.parse_bazel_json(log_files, all_targets)
     print(f"Found {len(executed_tests)} executed tests")
     print(f"Found {len(filtered_tests)} filtered tests")
     print(f"Found {len(all_targets)} total targets")
-    BazelQuery().output_test_coverage(filtered_tests, executed_tests, all_targets, user_selected_build["web_url"])
+    BazelQuery.output_test_coverage(filtered_tests, executed_tests, all_targets, files_for_targets, user_selected_build["web_url"])
 
 if __name__ == "__main__":
     main()

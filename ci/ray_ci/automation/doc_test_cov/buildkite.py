@@ -46,8 +46,11 @@ class BuildKiteClient:
 
     def get_doc_test_jobs_for_build(self, build: Dict) -> List[str]:
         job_ids = []
+        job_names = []
         for job in build["jobs"]:
             # need a better way to check if the job is a doc test job
             if ("command" in job and "-only-tags doctest" in job["command"]) or ("name" in job and "doc tests" in job["name"]):
                 job_ids.append(job["id"])
+                job_names.append(job["name"])
+        print(f"job_names: {job_names}")
         return job_ids

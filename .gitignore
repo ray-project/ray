@@ -183,6 +183,11 @@ venv
 .venv
 .conda
 
+# doc test coverage results
+ci/ray_ci/automation/doc_test_cov/results/*
+ci/ray_ci/automation/doc_test_cov/bazel_events/*
+
+
 # pyenv version file
 .python-version
 

@@ -4,7 +4,8 @@ from typing import Dict, List
 
 class BazelQuery:
 
-    def get_all_test_targets(self, ray_path: str) -> List[str]: # update this to be a SET
+    @staticmethod
+    def get_all_test_targets(ray_path: str) -> List[str]: # update this to be a SET
         """
         Get all test targets in the workspace using bazel query.
         """
@@ -17,8 +18,31 @@ class BazelQuery:
         )
         return result.stdout.strip().split("\n")
 
+    @staticmethod
+    def get_files_for_targets(targets: List[str], ray_path: str) -> List[str]:
+        """
+        Get all .rst,.md,.ipynb files for the given targets.
+        """
+        files_for_targets = {}
+        for target in targets:
+            try:
+                cmd = f"bazel query 'filter(\"\\.rst$|\\.md$|\\.ipynb$|\\.py$\", deps({target}, 1))'"
+                result = subprocess.run(
+                    cmd,
+                cwd=ray_path,
+                capture_output=True,
+                text=True,
+                shell=True
+                )
+                files_for_targets[target] = (result.stdout.strip().split("\n"))
+            except subprocess.CalledProcessError as e:
+                print(f"Error: {e}")
+                continue
 
-    def parse_bazel_json(self, log_files: str, targets: List[str]) -> Dict[str, str]:
+        return files_for_targets
+
+    @staticmethod
+    def parse_bazel_json(log_files: str, targets: List[str]) -> Dict[str, str]:
         """
         Parse bazel test log file to find executed tests and their status.
         Returns: Dict[target_name, status]
@@ -63,19 +87,16 @@ class BazelQuery:
         for label, status in executed_tests.items():
             print(f" label: {label}")
             if label in targets:
-                print(f"  Match found: {label}")
                 filtered_tests[label] = status
-            else:
-                print(f"  No match for: {label}")
-
         print(f"\nAfter filtering, found {len(filtered_tests)} matching target tests:")
         return filtered_tests, executed_tests
 
-
-    def output_test_coverage(self, filtered_tests: Dict[str, str], executed_tests: Dict[str, str], targets: List[str], bk_build_url: str):
+    @staticmethod
+    def output_test_coverage(filtered_tests: Dict[str, str], executed_tests: Dict[str, str], targets: List[str], target_file_map: Dict[str, List[str]], bk_build_url: str):
         """
         Get test coverage for the executed tests that match the targets.
         """
+        file_list = {}
         # Write results to a file
         with open("results/test_results.txt", "w") as f:
             f.write("Test Results Summary\n")
@@ -84,23 +105,38 @@ class BazelQuery:
             f.write("--------------------\n")
             f.write("\nTest Coverage Summary:\n")
             f.write("--------------------\n")
+            f.write(f"ALL TARGETS: {len(target_file_map)}\n")
+            for target in targets:
+                f.write(f"{target}\n")
+            f.write("--------------------\n")
             f.write("\nTESTED TARGETS:\n")
             untested_targets = []
             for target in targets:
                 if target in filtered_tests:
                     f.write(f"{target}: TESTED : {filtered_tests[target]}\n")
-                    print(f"  {target} = TESTED : {filtered_tests[target]}")
+                    for file in target_file_map[target]:
+                        file_list[file] = "TESTED"
+                        f.write(f"      {file}\n")
                 else:
-                    untested_targets.append(f"{target}: NOT TESTED\n")
+                    untested_targets.append(target)
             f.write("\nUNTESTED TARGETS:\n")
             f.write("--------------------\n")
             for target in untested_targets:
-                f.write(f"{target}")
-                print(f"  {target} = NOT TESTED")
+                f.write(f"{target} : NOT TESTED\n")
+                for file in target_file_map[target]:
+                    file_name = file.split(".")[0]
+                    if file_name not in executed_tests:
+                        file_list[file] = "NOT TESTED"
+                        f.write(f"      {file}\n")
             f.write("--------------------\n")
             f.write(f"Total Bazel targets: {len(targets)}\n")
             f.write(f"Tested Bazel Targets: {len(filtered_tests)}\n")
             f.write(f"Untested Bazel Targets: {len(untested_targets)}\n")
-            f.write(f"Test coverage: {len(filtered_tests) / len(targets) * 100}%\n")
+            f.write(f"Test coverage per target: {len(filtered_tests) / len(targets) * 100:.2f}%\n")
 
+            not_tested_count = sum(1 for status in file_list.values() if status == "NOT TESTED")
+            f.write(f"Test coverage per file: {(len(file_list.keys()) - not_tested_count) / len(file_list.keys()) * 100:.2f}%\n")
+        with open("results/file_list.txt", "w") as f:
+            for key in file_list.keys():
+                f.write(f"{key} : {file_list[key]}\n")
         print("\nResults have been written to test_results.txt")
