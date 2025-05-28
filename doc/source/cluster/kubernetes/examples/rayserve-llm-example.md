@@ -155,10 +155,10 @@ kubectl port-forward svc/ray-commotion-llm-head-svc 8625
 ```
 
 Once forwarded, navigate to the Serve tab on the Dashboard to review application status, deployments, routers, logs, and other relevant features.
-![LLM Serve Application](../images/ray-dashboard-llm-application.png)
+![LLM Serve Application](../images/ray_dashboard_llm_application.png)
 
 The Cluster tab provides detailed information about the Ray cluster components, including head and worker pods.
-![Ray Cluster](../images/ray-dashboard-llm-cluster.png)
+![Ray Cluster](../images/ray_dashboard_llm_cluster.png)
 
 For monitoring application and cluster-level metrics, set up Prometheus and Grafana for dashboarding by referring to the official documentation:
 * [Prometheus and Grafana with KubeRay](../k8s-ecosystem/prometheus-grafana.md)
