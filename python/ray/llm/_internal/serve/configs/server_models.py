@@ -433,14 +433,13 @@ class LLMConfig(BaseModelExtended):
 
         return deployment_config
 
-    def _get_deployment_name(self, name_prefix: str) -> str:
-        unsanitized_deployment_name = name_prefix + self.model_id
-        return unsanitized_deployment_name.replace("/", "--").replace(".", "_")
+    def _get_deployment_name(self) -> str:
+        return self.model_id.replace("/", "--").replace(".", "_")
 
     def get_serve_options(
         self,
         *,
-        name_prefix: str,
+        name_prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get the Serve options for the given LLM config.
 
@@ -463,8 +462,8 @@ class LLMConfig(BaseModelExtended):
                 llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
                 serve.run(llm_app)
 
-        Keyword Args:
-            name_prefix: The prefix to use for the deployment name.
+        Args:
+            name_prefix: Optional prefix to be used for the deployment name.
 
         Returns:
             The dictionary to use in .options() when creating the deployment.
@@ -489,7 +488,10 @@ class LLMConfig(BaseModelExtended):
 
         # Set the name of the deployment config to map to the model ID.
         if "name" not in deployment_config:
-            deployment_config["name"] = self._get_deployment_name(name_prefix)
+            deployment_config["name"] = self._get_deployment_name()
+        if name_prefix:
+            deployment_config["name"] = name_prefix + deployment_config["name"]
+
         return deployment_config
 
 
@@ -951,16 +953,20 @@ class SamplingParams(BaseModelExtended):
                 len(unique_val), MAX_NUM_STOPPING_SEQUENCES
             ).raise_exception()
 
-        return unique_val
+        return list(unique_val)
+
+    @field_validator("stop_tokens", mode="before")
+    @classmethod
+    def validate_stop_tokens(cls, values):
+        if not values:
+            return values
+        return sorted(set(values))
 
     @classmethod
     def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
         generate_kwargs = prompt.parameters or {}
         if not isinstance(generate_kwargs, dict):
             generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
-
-        generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
-        generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
 
         return generate_kwargs
 
