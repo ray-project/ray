@@ -383,16 +383,13 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   owner_address.set_port(object_info.owner_port);
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
 
-  std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> reader_status =
+  auto [object_reader, reader_status] =
       buffer_pool_.CreateObjectReader(object_id, owner_address);
-  Status status = reader_status.second;
-  if (!status.ok()) {
+  if (!reader_status.ok()) {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
         << "Ignoring stale read request for already deleted object: " << object_id;
     return;
   }
-
-  auto object_reader = std::move(reader_status.first);
   RAY_CHECK(object_reader) << "object_reader can't be null";
 
   if (object_reader->GetDataSize() != data_size ||
