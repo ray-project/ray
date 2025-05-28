@@ -90,6 +90,11 @@ def test_parse_node_labels_from_json():
 
 @contextmanager
 def _tempfile(content: str) -> ContextManager[str]:
+    """Yields a temporary file containing the provided content.
+
+    NOTE: we cannot use the built-in NamedTemporaryFile context manager because it
+    causes test failures on Windows due to holding the file descriptor open.
+    """
     f = tempfile.NamedTemporaryFile(mode="w+", delete=False)
     try:
         f.write(content)
