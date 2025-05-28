@@ -237,7 +237,7 @@ class PlasmaClientInterface {
 class PlasmaClient : public PlasmaClientInterface,
                      public std::enable_shared_from_this<PlasmaClient> {
  public:
-  PlasmaClient();
+  PlasmaClient() = default;
 
   Status Connect(const std::string &store_socket_name, int num_retries = -1) override;
 
