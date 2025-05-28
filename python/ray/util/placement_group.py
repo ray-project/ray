@@ -145,20 +145,18 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
 @client_mode_wrap
 def placement_group(
     bundles: List[Dict[str, float]],
-    bundle_label_selector: List[Dict[str, str]] = None,
     strategy: str = "PACK",
     name: str = "",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
     _soft_target_node_id: Optional[str] = None,
+    bundle_label_selector: List[Dict[str, str]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
     Args:
         bundles: A list of bundles which
             represent the resources requirements.
-        bundle_label_selector: A list of label selectors to apply to a
-            placement group on a per-bundle level.
         strategy: The strategy to create the placement group.
 
          - "PACK": Packs Bundles into as few nodes as possible.
@@ -186,6 +184,8 @@ def placement_group(
             If the target node has no available resources or died,
             bundles can be placed elsewhere.
             This currently only works with STRICT_PACK pg.
+        bundle_label_selector: A list of label selectors to apply to a
+            placement group on a per-bundle level.
 
     Raises:
         ValueError: if bundle type is not a list.
@@ -201,11 +201,11 @@ def placement_group(
 
     validate_placement_group(
         bundles=bundles,
-        bundle_label_selector=bundle_label_selector,
         strategy=strategy,
         lifetime=lifetime,
         _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
         _soft_target_node_id=_soft_target_node_id,
+        bundle_label_selector=bundle_label_selector,
     )
 
     if bundle_label_selector is None:
@@ -219,11 +219,11 @@ def placement_group(
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
-        bundle_label_selector,
         strategy,
         detached,
         _max_cpu_fraction_per_node,
         _soft_target_node_id,
+        bundle_label_selector,
     )
 
     return PlacementGroup(placement_group_id)
@@ -352,11 +352,11 @@ def check_placement_group_index(
 
 def validate_placement_group(
     bundles: List[Dict[str, float]],
-    bundle_label_selector: List[Dict[str, str]] = None,
     strategy: str = "PACK",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
     _soft_target_node_id: Optional[str] = None,
+    bundle_label_selector: List[Dict[str, str]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
@@ -386,10 +386,10 @@ def validate_placement_group(
     _validate_bundles(bundles)
 
     if bundle_label_selector is not None:
-        if len(bundles) < len(bundle_label_selector):
+        if len(bundles) != len(bundle_label_selector):
             raise ValueError(
                 f"Invalid bundle label selector {bundle_label_selector}. "
-                f"More label selectors than bundles provided to placement group."
+                f"The length of `bundle_label_selector` should equal the length of `bundles`."
             )
         _validate_bundle_label_selector(bundle_label_selector)
 

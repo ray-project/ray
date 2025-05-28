@@ -3848,11 +3848,11 @@ cdef class CoreWorker:
                             self,
                             c_string name,
                             c_vector[unordered_map[c_string, double]] bundles,
-                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
                             c_string strategy,
                             c_bool is_detached,
                             double max_cpu_fraction_per_node,
-                            soft_target_node_id):
+                            soft_target_node_id,
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy

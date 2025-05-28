@@ -7,6 +7,7 @@ from ray._private.label_utils import (
     validate_node_labels,
     validate_label_key,
     validate_label_value,
+    validate_label_selector,
     validate_label_selector_value,
     validate_node_label_syntax,
 )
@@ -204,6 +205,31 @@ def test_validate_label_value(value, should_raise, expected_message):
         assert expected_message in str(e.value)
     else:
         validate_label_value(value)
+
+
+@pytest.mark.parametrize(
+    "label_selector, expected_error",
+    [
+        (None, None),  # Valid: No input provided
+        ({"region": "us-west4"}, None),  # Valid label key and value
+        ({"ray.io/accelerator-type": "A100"}, None),  # Valid label key and value
+        ({"": "valid-value"}, "Invalid label key name"),  # Invalid label key (empty)
+        (
+            {"!-invalidkey": "valid-value"},
+            "Invalid label key name",
+        ),  # Invalid label key syntax
+        (
+            {"valid-key": "a" * 64},
+            "Invalid label selector value",
+        ),  # Invalid label value syntax
+    ],
+)
+def test_validate_label_selector(label_selector, expected_error):
+    result = validate_label_selector(label_selector)
+    if expected_error:
+        assert expected_error in result
+    else:
+        assert result is None
 
 
 @pytest.mark.parametrize(
