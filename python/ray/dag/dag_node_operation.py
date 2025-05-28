@@ -344,7 +344,7 @@ class _DAGOperationGraphNode_EXP:
             f"operation: {self.operation}, "
             f"task_idx: {self.task_idx}, "
             f"actor_id: {self.actor_handle._ray_actor_id}, "
-            f"requires_nccl: {self.requires_nccl})"
+            f"nccl_op_type: {self.nccl_op_type})"
         )
 
     def __lt__(self, other: "_DAGOperationGraphNode_EXP"):
@@ -396,10 +396,6 @@ class _DAGOperationGraphNode_EXP:
         return self.in_degree == 0 and (
             len(self.pending_sync_idxs) == len(self.sync_idxs)
         )
-
-    @property
-    def is_read(self) -> bool:
-        return self.operation.type == _DAGNodeOperationType.READ
 
     @property
     def is_nccl_read(self) -> bool:
@@ -1350,6 +1346,21 @@ def _extract_execution_schedule(
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
 ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
+    """
+    Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
+    and discard unnecessary information.
+    """
+    return {
+        actor: [node.operation for node in nodes]
+        for actor, nodes in actor_to_execution_schedule.items()
+    }
+
+
+def _extract_execution_schedule_EXP(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]
+    ],
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation_EXP]]:
     """
     Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
     and discard unnecessary information.
