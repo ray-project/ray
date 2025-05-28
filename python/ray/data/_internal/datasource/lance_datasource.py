@@ -61,14 +61,19 @@ class LanceDatasource(Datasource):
         for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
             if len(fragments) <= 0:
                 continue
+            # Use scanner.count_rows with filter to count rows meeting specified conditions
+            scanner_options = self.scanner_options.copy()
+            scanner_options["fragments"] = fragments
+            scanner_options["columns"] = []
+            scanner_options["with_row_id"] = True
+            scanner = self.lance_ds.scanner(**scanner_options)
 
+            num_rows = scanner.count_rows()
             fragment_ids = [f.metadata.id for f in fragments]
-            num_rows = sum(f.count_rows() for f in fragments)
             input_files = [
                 data_file.path() for f in fragments for data_file in f.data_files()
             ]
 
-            # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 schema=fragments[0].schema,
@@ -76,6 +81,7 @@ class LanceDatasource(Datasource):
                 size_bytes=None,
                 exec_stats=None,
             )
+            # Recovery scanner options
             scanner_options = self.scanner_options
             lance_ds = self.lance_ds
             retry_params = self._retry_params
