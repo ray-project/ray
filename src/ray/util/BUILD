@@ -182,6 +182,9 @@ ray_cc_library(
 ray_cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 ray_cc_library(

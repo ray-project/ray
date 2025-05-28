@@ -36,6 +36,7 @@
 #include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/type_traits.h"
 #include "ray/util/visibility.h"
 
 namespace boost::system {
@@ -108,6 +109,27 @@ enum class StatusCode : char {
 // Only clang supports warn_unused_result as a type annotation.
 class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 #endif
+
+template <typename Arg>
+inline void AppendArgToStatus(std::string *msg_str, Arg &&arg) {
+  if constexpr (std::is_same_v<std::decay_t<Arg>, std::filesystem::directory_entry>) {
+    // Explicitly handle std::filesystem::directory_entry.
+    absl::StrAppend(msg_str, arg.path().string());
+  } else if constexpr (can_absl_str_append_v<Arg>) {
+    // If absl::StrAppend supports this type, use it.
+    absl::StrAppend(msg_str, std::forward<Arg>(arg));
+  } else if constexpr (is_streamable_v<Arg>) {
+    // Otherwise, if the type is streamable, use it.
+    std::ostringstream oss;
+    oss << std::forward<Arg>(arg);
+    *msg_str += oss.str();
+  } else {
+    // For all other types, we need to assert that they are either appendable or
+    // streamable.
+    static_assert(can_absl_str_append_v<Arg> || is_streamable<Arg>::value,
+                  "Type must be either appendable or streamable");
+  }
+}
 
 class RAY_EXPORT Status {
  public:
@@ -329,7 +351,9 @@ class RAY_EXPORT Status {
 
   template <typename... T>
   Status &operator<<(T &&...msg) {
-    absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
+    if (RAY_PREDICT_FALSE(state_ != nullptr)) {
+      (AppendArgToStatus(&state_->msg, std::forward<T>(msg)), ...);
+    }
     return *this;
   }
 
