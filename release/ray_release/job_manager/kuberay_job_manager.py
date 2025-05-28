@@ -40,9 +40,6 @@ class KuberayJobManager:
             "name": job_name,
             "entrypoint": cmd_to_run,
             "rayImage": image,
-            "autoscalerConfig": {
-                "version": "v2"
-            },
             "computeConfig": compute_config,
             "runtimeEnv": {
                 "env_vars": env_vars,
@@ -50,6 +47,10 @@ class KuberayJobManager:
                 "working_dir": working_dir
             }
         }
+        if compute_config.get("headNode", {}).get("resources", {}):
+            request["autoscalerConfig"] = {
+                "version": "v2"
+            }
 
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
         token = self._get_kuberay_server_token()
