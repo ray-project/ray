@@ -1,30 +1,25 @@
 import pytest
 import sys
-import os
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
     RayPrometheusStatLogger,
 )
-from ray.llm._internal.utils import try_import
 from vllm import AsyncEngineArgs
 
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.sampling_params import SamplingParams
 
 
-vllm = try_import("vllm")
-
-
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="function")
 async def test_engine_metrics():
     """
     Test that the stat logger can be created successfully.
+    Keeping this test small to focus on instantiating the
+    derived class correctly.
     """
 
-    # Set VLLM_USE_V1 to 1 to use V1 APIs
-    os.environ["VLLM_USE_V1"] = "1"
     engine_args = AsyncEngineArgs(
-        model="unsloth/Llama-3.2-1B-Instruct",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
         dtype="auto",
         disable_log_stats=False,
     )
