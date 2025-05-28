@@ -1,5 +1,12 @@
+from contextlib import contextmanager
 import json
+import os
+import sys
+import tempfile
+from typing import ContextManager, Dict, Optional, Union
+
 import pytest
+
 from ray._private.label_utils import (
     parse_node_labels_json,
     parse_node_labels_string,
@@ -10,8 +17,6 @@ from ray._private.label_utils import (
     validate_label_selector_value,
     validate_node_label_syntax,
 )
-import sys
-import tempfile
 
 
 @pytest.mark.parametrize(
@@ -83,54 +88,61 @@ def test_parse_node_labels_from_json():
     assert 'The value of the "accelerator-type" is not string type' in str(e)
 
 
-def test_parse_node_labels_from_yaml_file():
-    # Empty/invalid yaml
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write("")
-        test_file.flush()  # Ensure data is written
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_from_yaml_file(test_file.name)
-        assert "The format after deserialization is not a key-value pair map" in str(e)
+@contextmanager
+def _tempfile(content: str) -> ContextManager[str]:
+    """Yields a temporary file containing the provided content.
 
-    # With non-existent yaml file
+    NOTE: we cannot use the built-in NamedTemporaryFile context manager because it
+    causes test failures on Windows due to holding the file descriptor open.
+    """
+    f = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+    try:
+        f.write(content)
+        f.flush()
+        yield f.name
+    finally:
+        os.unlink(f.name)
+
+
+def test_parse_node_labels_from_missing_yaml_file():
     with pytest.raises(FileNotFoundError):
         parse_node_labels_from_yaml_file("missing-file.yaml")
 
-    # Valid label key with empty value
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('"ray.io/accelerator-type": ""')
-        test_file.flush()  # Ensure data is written
-        labels_dict = parse_node_labels_from_yaml_file(test_file.name)
-    assert labels_dict == {"ray.io/accelerator-type": ""}
 
-    # Multiple valid label keys and values
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write(
-            '"ray.io/accelerator-type": "A100"\n"region": "us"\n"market-type": "spot"'
-        )
-        test_file.flush()  # Ensure data is written
-        labels_dict = parse_node_labels_from_yaml_file(test_file.name)
-    assert labels_dict == {
-        "ray.io/accelerator-type": "A100",
-        "region": "us",
-        "market-type": "spot",
-    }
-
-    # Non-string label key
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('{100: "A100"}')
-        test_file.flush()  # Ensure data is written
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_from_yaml_file(test_file.name)
-    assert "The key is not string type." in str(e)
-
-    # Non-string label value
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('{"gpu": 100}')
-        test_file.flush()  # Ensure data is written
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_from_yaml_file(test_file.name)
-    assert 'The value of "gpu" is not string type' in str(e)
+@pytest.mark.parametrize(
+    "content, expected_output, exception_match",
+    [
+        # Empty/invalid YAML file.
+        ("", ValueError, "is not a key-value pair map"),
+        # Invalid label key (not a string).
+        ('{100: "A100"}', ValueError, "The key is not string type."),
+        # Invalid label value (not a string).
+        ('{"gpu": 100}', ValueError, 'The value of "gpu" is not string type'),
+        # Valid file with empty label value.
+        ('"ray.io/accelerator-type": ""', {"ray.io/accelerator-type": ""}, None),
+        # Multiple valid label keys and values.
+        (
+            '"ray.io/accelerator-type": "A100"\n"region": "us"\n"market-type": "spot"',
+            {
+                "ray.io/accelerator-type": "A100",
+                "region": "us",
+                "market-type": "spot",
+            },
+            None,
+        ),
+    ],
+)
+def test_parse_node_labels_from_yaml_file(
+    content: str,
+    expected_output: Union[Dict, Exception],
+    exception_match: Optional[str],
+):
+    with _tempfile(content) as p:
+        if not isinstance(expected_output, dict):
+            with pytest.raises(expected_output, match=exception_match):
+                parse_node_labels_from_yaml_file(p)
+        else:
+            assert parse_node_labels_from_yaml_file(p) == expected_output
 
 
 @pytest.mark.parametrize(
