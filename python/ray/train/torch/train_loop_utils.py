@@ -156,7 +156,7 @@ def prepare_model(
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
-    """Prepares the model for distributed execution.
+    """Prepares PyTorch model for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
@@ -197,7 +197,7 @@ def prepare_data_loader(
     move_to_device: bool = True,
     auto_transfer: bool = True,
 ) -> torch.utils.data.DataLoader:
-    """Prepares :class:`~torch.utils.data.DataLoader` for distributed execution.
+    """Prepares PyTorch :class:`~torch.utils.data.DataLoader` for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
