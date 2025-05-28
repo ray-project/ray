@@ -486,7 +486,7 @@ class RLModule(Checkpointable, abc.ABC):
         abstraction can be used to create any components (e.g. NN layers) that your
         RLModule needs.
         """
-        return None
+        pass
 
     @OverrideToImplementCustomLogic
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
