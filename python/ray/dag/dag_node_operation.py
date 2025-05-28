@@ -336,7 +336,7 @@ class _DAGOperationGraphNode_EXP:
         # i.e., their in-degrees are zero. When a synchronous node is ready, it
         # will be added to the ready synchronous nodes of all the nodes in the
         # NCCL operation.
-        self.ready_sync_idxs: Set[int] = set()
+        self.pending_sync_idxs: Set[int] = set()
 
     def __repr__(self):
         return (
@@ -394,7 +394,7 @@ class _DAGOperationGraphNode_EXP:
         in its collective operation have zero in-degrees.
         """
         return self.in_degree == 0 and (
-            len(self.ready_sync_idxs) == len(self.sync_idxs)
+            len(self.pending_sync_idxs) == len(self.sync_idxs)
         )
 
     @property
@@ -403,23 +403,14 @@ class _DAGOperationGraphNode_EXP:
 
     @property
     def is_nccl_read(self) -> bool:
-        """
-        A node is a NCCL read if it is a read node and requires NCCL.
-        """
-        return self.nccl_op_type == _NCCLOperationType_EXP.P2P_RECV
+        return self.nccl_op_type == _NCCLOperationType_EXP.P2P_READ
 
     @property
     def is_nccl_compute(self) -> bool:
-        """
-        A node is a NCCL compute if it is a compute node and requires NCCL.
-        """
         return self.nccl_op_type == _NCCLOperationType_EXP.COLLECTIVE
 
     @property
     def is_nccl_write(self) -> bool:
-        """
-        A node is a NCCL write if it is a write node and requires NCCL.
-        """
         return self.nccl_op_type == _NCCLOperationType_EXP.P2P_WRITE
 
     @property
@@ -557,19 +548,15 @@ def _push_candidate_node_if_ready_EXP(
     operation is not ready until all the nodes are pending, then all the nodes will be
     pushed to the candidates.
     """
-    # For the NCCL write node, mark the downstream NCCL read nodes as ready. The NCCL
-    # operation becomes ready after both the write and read nodes are updated.
+    # [TODO]
     if node.is_nccl_write:
         for task_idx in node.out_edges:
             read_node = graph[task_idx]
             read_node.in_edges.pop(node.task_idx)
             assert read_node.is_nccl_read and len(read_node.in_edges) == 0
             _update_pending_sync_idxs_EXP(graph, read_node)
-    # For the NCCL operation, update the synchronous nodes.
     if len(node.sync_idxs) != 0:
         _update_pending_sync_idxs_EXP(graph, node)
-    # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
-    # node in the operation is ready, push all the nodes to the candidates.
     if node.is_ready:
         if len(node.sync_idxs) == 0:
             heapq.heappush(
@@ -919,7 +906,7 @@ def _build_dag_node_operation_graph_EXP(
             assert node.task_idx not in graph
             graph[node.task_idx] = node
             if i > 0 and not node.is_nccl_op:
-                _add_edge(op_nodes[i - 1], node, control_dependency=True)
+                _add_edge_EXP(op_nodes[i - 1], node, control_dependency=True)
 
     # Add data edges from an upstream task to its downstream tasks.
     # Set synchronous nodes for NCCL P2P operations.
@@ -948,23 +935,23 @@ def _build_dag_node_operation_graph_EXP(
                 for consumer_idx in consumer_idxs:
                     if consumer_idx in graph:
                         read_node = graph[consumer_idx]
-                        _add_edge(
+                        _add_edge_EXP(
                             write_node,
                             read_node,
-                            "nccl" if write_node.requires_nccl else "shm",
+                            "nccl" if write_node.is_nccl_write else "shm",
                         )
-                        if write_node.requires_nccl:
+                        if write_node.is_nccl_write:
                             idxs = {task_idx, consumer_idx}
                             for node in [write_node, read_node]:
                                 node.sync_idxs.update(idxs)
                 continue
             read_node = graph[downstream_task_idx]
-            _add_edge(
+            _add_edge_EXP(
                 write_node,
                 read_node,
-                "nccl" if write_node.requires_nccl else "shm",
+                "nccl" if write_node.is_nccl_write else "shm",
             )
-            if write_node.requires_nccl:
+            if write_node.is_nccl_write:
                 idxs = {task_idx, downstream_task_idx}
                 for node in [write_node, read_node]:
                     node.sync_idxs.update(idxs)
