@@ -1456,7 +1456,6 @@ python/ray/data/preprocessors/chain.py
 --------------------
 python/ray/data/preprocessors/concatenator.py
     DOC104: Method `Concatenator.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `Concatenator.__init__`: Argument names match, but type hints in these args do not match: columns, output_column_name, dtype, raise_if_missing
 --------------------
 python/ray/data/preprocessors/normalizer.py
     DOC107: Method `Normalizer.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
