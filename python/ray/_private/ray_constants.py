@@ -592,7 +592,7 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
     "RAY_experimental_enable_open_telemetry_on_agent", False
 )
 
-# Whether enable OpenTelemetry as the metrics collection backend on the core worker
+# Whether enable OpenTelemetry as the metrics collection backend on the core
 # components (core workers, gcs server, raylet, etc.). This flag is only used during
 # the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
 # It will be removed in the future.
