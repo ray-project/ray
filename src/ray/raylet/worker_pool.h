@@ -160,8 +160,11 @@ class WorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
+
+  /// Checks if any registered worker is available for scheduling.
+  virtual bool IsWorkerAvailableForScheduling() const = 0;
 
   /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
@@ -462,8 +465,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
+
+  bool IsWorkerAvailableForScheduling() const override;
 
   /// Get all the registered drivers.
   ///
@@ -471,7 +476,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// that are still registered.
   ///
   /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
   /// Returns debug string for class.
