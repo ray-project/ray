@@ -313,10 +313,12 @@ async def test_logprobs(
             assert len(logprob["top_logprobs"]) == num_logprobs
             assert list(logprob_token.encode()) == logprob["bytes"]
             # Special tokens that will not be a part of the response content
-            if logprob_token in ("<step>", "<|eot_id|>"):
+            if logprob_token in ("<step>", "<|eot_id|>", "<|im_end|>"):
                 continue
-            # Replace non-ASCII tokens, like Ċ, Ġ, etc. with a space
-            # TODO(lk-chen): Figure out why there are non-ASCII tokens in the response
+            # Replace non-ASCII tokens, like Ċ, Ġ, etc. with desired replacement
+            # TODO(lk-chen): This is hacking tokenizer, figure out how to properly
+            # handle this
+            logprob_token = logprob_token.replace("Ċ", "\n")
             logprob_token = re.sub(r"[^\x00-\x7F]", " ", logprob_token)
             running_str += logprob_token
         assert running_str == resp["message"]["content"]
