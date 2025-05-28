@@ -23,7 +23,6 @@ namespace ray {
 void parallel_memcopy(uint8_t *dst,
                       const uint8_t *src,
                       int64_t nbytes,
-                      uintptr_t block_size,
-                      int num_threads);
+                      uintptr_t block_size);
 
 }  // namespace ray
