@@ -75,11 +75,11 @@ def get_test_attr_regex_filters(filters_str: str) -> Dict[str, str]:
         if not line:
             continue
         parts = line.split(":", maxsplit=1)
-        if len(parts) != 2:
-            raise ReleaseTestConfigError(
-                f"Invalid test attr regex filter: {line}. "
-                "Should be of the form attr:regex"
-            )
+        # if len(parts) != 2:
+        #     raise ReleaseTestConfigError(
+        #         f"Invalid test attr regex filter: {line}. "
+        #         "Should be of the form attr:regex"
+        #     )
         test_attr_regex_filters[parts[0]] = parts[1]
     return test_attr_regex_filters
 

@@ -45,6 +45,7 @@ def test_init_global_config() -> None:
         config = get_global_config()
         assert config["byod_ray_ecr"] == "rayproject"
         assert config["aws2gce_credentials"] == "release/aws2gce_iam.json"
+        assert config["aws2gke_credentials"] == "release/aws2kuberay_gke.json"
         assert config["ci_pipeline_premerge"] == ["w00t"]
         assert config["ci_pipeline_postmerge"] == ["hi", "three"]
         assert (

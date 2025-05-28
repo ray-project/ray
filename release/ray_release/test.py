@@ -382,6 +382,12 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
+    def is_kuberay(self) -> bool:
+        """
+        Returns whether this test is running on Kuberay.
+        """
+        return self.get("env") == "kuberay"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -544,7 +550,7 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        ray_version = commit[:6]
+        ray_version = "31b1e0"
         if pr != "false":
             ray_version = f"pr-{pr}.{ray_version}"
         elif branch.startswith("releases/"):
@@ -585,7 +591,7 @@ class Test(dict):
         """
         Returns the anyscale byod ecr to use for this test.
         """
-        if self.is_gce():
+        if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
