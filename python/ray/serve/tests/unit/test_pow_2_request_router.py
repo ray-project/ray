@@ -21,20 +21,20 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import (
+from ray.serve._private.request_router import (
     PendingRequest,
-    PowerOfTwoChoicesReplicaScheduler,
+    PowerOfTwoChoicesRequestRouter,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
+from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 
 TIMER = MockTimer()
 
 DEFAULT_MAX_ONGOING_REQUESTS = 10
-SCHEDULER_NODE_ID = "scheduler_node_id"
-SCHEDULER_AZ = "scheduler_az"
+ROUTER_NODE_ID = "router_node_id"
+ROUTER_AZ = "router_az"
 
 
 class FakeRunningReplica(RunningReplica):
@@ -127,21 +127,21 @@ class FakeRunningReplica(RunningReplica):
 
 
 @pytest.fixture
-def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
+def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
     if not hasattr(request, "param"):
         request.param = {}
 
     # In order to prevent issues like https://github.com/ray-project/ray/issues/40631,
-    # construct the scheduler on a different loop to mimic the deployment handle path.
-    async def construct_scheduler(loop: asyncio.AbstractEventLoop):
-        scheduler = PowerOfTwoChoicesReplicaScheduler(
+    # construct the request router on a different loop to mimic the deployment handle path.
+    async def construct_request_router(loop: asyncio.AbstractEventLoop):
+        request_router = PowerOfTwoChoicesRequestRouter(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=request.param.get(
                 "handle_source", DeploymentHandleSource.REPLICA
             ),
             prefer_local_node_routing=request.param.get("prefer_local_node", False),
             prefer_local_az_routing=request.param.get("prefer_local_az", False),
-            self_node_id=SCHEDULER_NODE_ID,
+            self_node_id=ROUTER_NODE_ID,
             self_actor_id="fake-actor-id",
             self_actor_handle=None,
             self_availability_zone=request.param.get("az", None),
@@ -150,29 +150,29 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
             ),
             get_curr_time_s=TIMER.time,
         )
-        scheduler.backoff_sequence_s = request.param.get(
+        request_router.backoff_sequence_s = request.param.get(
             "backoff_sequence_s",
             [0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
         )
-        return scheduler
+        return request_router
 
     s = asyncio.new_event_loop().run_until_complete(
-        construct_scheduler(get_or_create_event_loop())
+        construct_request_router(get_or_create_event_loop())
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
     # to 0.01s to speed up the test.
     os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.01"})
     importlib.reload(ray.serve._private.constants)
-    importlib.reload(ray.serve._private.replica_scheduler.replica_scheduler)
+    importlib.reload(ray.serve._private.request_router.request_router)
 
     # Reset mock timer to avoid state leakage.
     TIMER.reset()
 
     yield s
 
-    # Always verify that all scheduling tasks exit once all queries are satisfied.
-    assert s.curr_num_scheduling_tasks == 0
+    # Always verify that all routing tasks exit once all queries are satisfied.
+    assert s.curr_num_routing_tasks == 0
     assert s.num_pending_requests == 0
 
 
@@ -204,7 +204,7 @@ def fake_pending_request(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -213,12 +213,12 @@ def fake_pending_request(
     ],
     indirect=True,
 )
-async def test_no_replicas_available_then_one_available(pow_2_scheduler):
+async def test_no_replicas_available_then_one_available(pow_2_router):
     """
     If there are replicas available, we should wait until one is added. Once a
     replica is added via `update_replicas`, the pending assignment should be fulfilled.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
@@ -234,7 +234,7 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -243,12 +243,12 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_replica_does_not_accept_then_accepts(pow_2_scheduler):
+async def test_replica_does_not_accept_then_accepts(pow_2_router):
     """
     If none of the replicas accept the request, we should repeatedly try with backoff.
     Once one accepts, the pending assignment should be fulfilled.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
@@ -268,7 +268,7 @@ async def test_replica_does_not_accept_then_accepts(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -277,12 +277,12 @@ async def test_replica_does_not_accept_then_accepts(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler):
+async def test_no_replicas_accept_then_new_one_accepts(pow_2_router):
     """
     If none of the replicas accept the request, we should repeatedly try with backoff.
     Once one accepts, the pending assignment should be fulfilled.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
@@ -305,7 +305,7 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -314,12 +314,12 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_one_replica_available_then_none_then_one(pow_2_scheduler):
+async def test_one_replica_available_then_none_then_one(pow_2_router):
     """
-    If a replica stops accepting requests, it should stop being scheduled. When it then
-    accepts, pending assingments should be scheduled on it.
+    If a replica stops accepting requests, it should stop being routed. When it then
+    accepts, pending assignments should be routed on it.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1")
@@ -342,7 +342,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -351,12 +351,12 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_two_replicas_available_then_one(pow_2_scheduler):
+async def test_two_replicas_available_then_one(pow_2_router):
     """
     If two replicas are available and accepting requests, they should both get
-    scheduled. If one is removed, only the other should be scheduled.
+    routed. If one is removed, only the other should be routed.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(0)
@@ -377,7 +377,7 @@ async def test_two_replicas_available_then_one(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -386,11 +386,11 @@ async def test_two_replicas_available_then_one(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_two_replicas_one_accepts(pow_2_scheduler):
+async def test_two_replicas_one_accepts(pow_2_router):
     """
-    If two replicas are available but only one accepts, only it should be scheduled.
+    If two replicas are available but only one accepts, only it should be routed.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(0)
@@ -406,7 +406,7 @@ async def test_two_replicas_one_accepts(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -415,11 +415,11 @@ async def test_two_replicas_one_accepts(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_three_replicas_two_accept(pow_2_scheduler):
+async def test_three_replicas_two_accept(pow_2_router):
     """
-    If three replicas are available but only two accept, only those should be scheduled.
+    If three replicas are available but only two accept, only those should be routed.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(0)
@@ -438,7 +438,7 @@ async def test_three_replicas_two_accept(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -447,12 +447,12 @@ async def test_three_replicas_two_accept(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_two_replicas_choose_shorter_queue(pow_2_scheduler):
+async def test_two_replicas_choose_shorter_queue(pow_2_router):
     """
     If two replicas are available and accept requests, the one with the shorter
-    queue should be scheduled.
+    queue should be routed.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(1)
@@ -468,7 +468,7 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -477,15 +477,15 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_tasks_scheduled_fifo(pow_2_scheduler):
+async def test_tasks_routed_fifo(pow_2_router):
     """
-    Verify that requests are always scheduled in FIFO order, even if many are being
+    Verify that requests are always routed in FIFO order, even if many are being
     assigned concurrently.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
-    # Schedule many requests in parallel; they cannot be fulfilled yet.
+    # Route many requests in parallel; they cannot be fulfilled yet.
     tasks = []
     for _ in range(10):
         tasks.append(
@@ -501,7 +501,7 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler):
     r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
-    # We need to wait until the initial ping from scheduler to replica
+    # We need to wait until the initial ping from request router to replica
     # finishes, which then resets the events in the testing structure
     # so that the test can proceed.
     await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
@@ -517,12 +517,12 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
+async def test_retried_tasks_routed_fifo(pow_2_router):
     """
-    Verify that pending requests whose scheduling is retried are still scheduled in fifo
+    Verify that pending requests whose routing is retried are still routed in fifo
     order based on creation time, even if they are inserted in a different order.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     start = time.time()
@@ -531,7 +531,7 @@ async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
     random_order_index = list(range(len(pending_requests)))
     random.shuffle(random_order_index)
 
-    # Schedule the requests in parallel; they cannot be fulfilled yet.
+    # Route the requests in parallel; they cannot be fulfilled yet.
     tasks = []
     for idx in random_order_index:
         tasks.append(
@@ -550,12 +550,12 @@ async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
     r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
-    # We need to wait until the initial ping from scheduler to replica
+    # We need to wait until the initial ping from request router to replica
     # finishes, which then resets the events in the testing structure
     # so that the test can proceed.
     await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
 
-    # Check that the tasks are scheduled in the order they were created (not the.
+    # Check that the tasks are routed in the order they were created (not the.
     # order they were retried).
     for expected_idx in range(len(pending_requests)):
         r1.set_queue_len_response(0)
@@ -569,7 +569,7 @@ async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -578,12 +578,12 @@ async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_cancellation(pow_2_scheduler):
+async def test_cancellation(pow_2_router):
     """
     If a pending assignment is cancelled, it shouldn't get fulfilled and the next
     request in the queue should be.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     task1 = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
@@ -600,14 +600,14 @@ async def test_cancellation(pow_2_scheduler):
 
     assert (await task2) == r1
 
-    # Verify that the scheduling tasks exit and there are no assignments left.
-    assert s.curr_num_scheduling_tasks == 0
+    # Verify that the routing tasks exit and there are no assignments left.
+    assert s.curr_num_routing_tasks == 0
     assert s.num_pending_requests == 0
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -616,12 +616,12 @@ async def test_cancellation(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_cancellation_when_replicas_maxed(pow_2_scheduler):
+async def test_cancellation_when_replicas_maxed(pow_2_router):
     """
     If a pending assignment is cancelled, it shouldn't get fulfilled and the next
     request in the queue should be.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
@@ -630,27 +630,27 @@ async def test_cancellation_when_replicas_maxed(pow_2_scheduler):
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
     s.update_replicas([r1])
-    # So one scheduling task should have been started to try to schedule
+    # So one routing task should have been started to try to route
     # the request to a replica, but it should be blocked because the
     # replica doesn't have capacity to accept new requests
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
-    assert s.curr_num_scheduling_tasks == 1
+    assert s.curr_num_routing_tasks == 1
 
-    # Cancel while the scheduling task is repeatedly trying to find an
+    # Cancel while the routing task is repeatedly trying to find an
     # available replica
     task.cancel()
 
-    # Verify that the scheduling tasks exit and there are no assignments left.
+    # Verify that the routing tasks exit and there are no assignments left.
     await async_wait_for_condition(
-        lambda: s.curr_num_scheduling_tasks == 0, retry_interval_ms=1
+        lambda: s.curr_num_routing_tasks == 0, retry_interval_ms=1
     )
     assert s.num_pending_requests == 0
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -659,12 +659,12 @@ async def test_cancellation_when_replicas_maxed(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_only_task_cancelled(pow_2_scheduler):
+async def test_only_task_cancelled(pow_2_router):
     """
     If a pending assignment is cancelled and it's the only one in the queue, it should
-    be passed over and the scheduling task should exit.
+    be passed over and the routing task should exit.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
@@ -680,19 +680,19 @@ async def test_only_task_cancelled(pow_2_scheduler):
 
     start = time.time()
     while time.time() - start < 10:
-        # Verify that the scheduling task exits and there are no assignments left.
-        if s.curr_num_scheduling_tasks == 0 and s.num_pending_requests == 0:
+        # Verify that the routing task exits and there are no assignments left.
+        if s.curr_num_routing_tasks == 0 and s.num_pending_requests == 0:
             break
         await asyncio.sleep(0.1)
     else:
         raise TimeoutError(
-            "Scheduling task and pending assignment still around after 10s."
+            "Routing task and pending assignment still around after 10s."
         )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -701,11 +701,11 @@ async def test_only_task_cancelled(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_scheduling_task_cap(pow_2_scheduler):
+async def test_routing_task_cap(pow_2_router):
     """
-    Verify that the number of scheduling tasks never exceeds the cap (2 * num_replicas).
+    Verify that the number of routing tasks never exceeds the cap (2 * num_replicas).
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     tasks = []
@@ -717,8 +717,8 @@ async def test_scheduling_task_cap(pow_2_scheduler):
     done, _ = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 0
 
-    # There should be zero scheduling tasks while there are no replicas.
-    assert s.curr_num_scheduling_tasks == 0
+    # There should be zero routing tasks while there are no replicas.
+    assert s.curr_num_routing_tasks == 0
 
     r1 = FakeRunningReplica("r1", reset_after_response=True)
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
@@ -729,16 +729,16 @@ async def test_scheduling_task_cap(pow_2_scheduler):
 
     # Now that there is at least one replica available, there should be nonzero
     # number of tasks running.
-    assert s.curr_num_scheduling_tasks > 0
-    assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
+    assert s.curr_num_routing_tasks > 0
+    assert s.curr_num_routing_tasks == s.max_num_routing_tasks
 
     # Number of tasks should increase when more replicas are available.
-    scheduling_tasks_one_replica = s.curr_num_scheduling_tasks
+    routing_tasks_one_replica = s.curr_num_routing_tasks
     r2 = FakeRunningReplica("r2")
     r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1, r2])
-    assert s.curr_num_scheduling_tasks > scheduling_tasks_one_replica
-    assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
+    assert s.curr_num_routing_tasks > routing_tasks_one_replica
+    assert s.curr_num_routing_tasks == s.max_num_routing_tasks
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
@@ -747,14 +747,12 @@ async def test_scheduling_task_cap(pow_2_scheduler):
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
 
-        assert s.curr_num_scheduling_tasks == min(
-            len(tasks), s.max_num_scheduling_tasks
-        )
+        assert s.curr_num_routing_tasks == min(len(tasks), s.max_num_routing_tasks)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -763,13 +761,13 @@ async def test_scheduling_task_cap(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_scheduling_task_cap_hard_limit(pow_2_scheduler):
+async def test_routing_task_cap_hard_limit(pow_2_router):
     """
-    Verify that the number of scheduling tasks never exceeds the hard limit if set.
+    Verify that the number of routing tasks never exceeds the hard limit if set.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     hard_limit = 2
-    s.max_num_scheduling_tasks_cap = hard_limit
+    s.max_num_routing_tasks_cap = hard_limit
 
     loop = get_or_create_event_loop()
 
@@ -782,8 +780,8 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler):
     done, _ = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 0
 
-    # There should be zero scheduling tasks while there are no replicas.
-    assert s.curr_num_scheduling_tasks == 0
+    # There should be zero routing tasks while there are no replicas.
+    assert s.curr_num_routing_tasks == 0
 
     r1 = FakeRunningReplica("r1", reset_after_response=True)
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
@@ -794,14 +792,14 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler):
 
     # Now that there is at least one replica available, there should be nonzero
     # number of tasks running.
-    assert s.curr_num_scheduling_tasks > 0
-    assert s.curr_num_scheduling_tasks == 2
+    assert s.curr_num_routing_tasks > 0
+    assert s.curr_num_routing_tasks == 2
 
     # Number of tasks should not increase when adding another replica due to the limit.
     r2 = FakeRunningReplica("r2")
     r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1, r2])
-    assert s.curr_num_scheduling_tasks == hard_limit
+    assert s.curr_num_routing_tasks == hard_limit
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
@@ -810,12 +808,12 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler):
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
 
-        assert s.curr_num_scheduling_tasks == min(len(tasks), hard_limit)
+        assert s.curr_num_routing_tasks == min(len(tasks), hard_limit)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -824,12 +822,12 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_replica_responds_after_being_removed(pow_2_scheduler):
+async def test_replica_responds_after_being_removed(pow_2_router):
     """
     Verify that if a replica is removed from the active set while the queue length
-    message is in flight, it won't be scheduled and a new replica will be.
+    message is in flight, it won't be routed and a new replica will be.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     # Set a very high response deadline to ensure we can have the replica respond after
@@ -839,12 +837,12 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler):
     r1 = FakeRunningReplica("r1")
     s.update_replicas([r1])
 
-    # Start the scheduling task, which will hang waiting for the queue length response.
+    # Start the routing task, which will hang waiting for the queue length response.
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
-    assert s.curr_num_scheduling_tasks == 1
+    assert s.curr_num_routing_tasks == 1
 
     # Update the replicas to remove the existing replica and add a new one.
     # Also set the queue length response on the existing replica.
@@ -852,35 +850,35 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler):
     s.update_replicas([r2])
     r1.set_queue_len_response(0)
 
-    # The original replica should *not* be scheduled.
+    # The original replica should *not* be routed.
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
-    assert s.curr_num_scheduling_tasks == 1
+    assert s.curr_num_routing_tasks == 1
 
-    # Set the new replica to accept, it should be scheduled.
+    # Set the new replica to accept, it should be routed.
     r2.set_queue_len_response(0)
     assert (await task) == r2
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
     ],
     indirect=True,
 )
-async def test_prefer_replica_on_same_node(pow_2_scheduler):
+async def test_prefer_replica_on_same_node(pow_2_router):
     """
-    Verify that the scheduler prefers replicas that are colocated on the same node ID
+    Verify that the request router prefers replicas that are colocated on the same node ID
     as itself. If the first candidate replicas on the same node reject the request,
     it should fall back to all replicas.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
-    r1 = FakeRunningReplica("r1", node_id=SCHEDULER_NODE_ID)
+    r1 = FakeRunningReplica("r1", node_id=ROUTER_NODE_ID)
     r1.set_queue_len_response(0)
     r2 = FakeRunningReplica("r2", node_id="some_other_node_in_the_stratosphere")
     r2.set_queue_len_response(0)
@@ -892,7 +890,7 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler):
             loop.create_task(s.choose_replica_for_request(fake_pending_request()))
         )
 
-    # All requests should be scheduled to the replica on the same node if it accepts.
+    # All requests should be routed to the replica on the same node if it accepts.
     assert all(replica == r1 for replica in await asyncio.gather(*tasks))
 
     # Update the replica on the same node to reject requests -- now requests should
@@ -905,35 +903,33 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler):
             loop.create_task(s.choose_replica_for_request(fake_pending_request()))
         )
 
-    # All requests should be scheduled to the other replica.
+    # All requests should be routed to the other replica.
     assert all(replica == r2 for replica in await asyncio.gather(*tasks))
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
-    [{"prefer_local_node": True, "prefer_local_az": True, "az": SCHEDULER_AZ}],
+    "pow_2_router",
+    [{"prefer_local_node": True, "prefer_local_az": True, "az": ROUTER_AZ}],
     indirect=True,
 )
-async def test_prefer_replica_in_same_az(pow_2_scheduler):
+async def test_prefer_replica_in_same_az(pow_2_router):
     """
     When prefer routing on same node and prefer routing to same AZ is
-    on, verify that the scheduler prefers
+    on, verify that the request router prefers
     * replicas that are colocated on the same node
     * then replicas that are colocated in the same AZ
     * lastly fall back to all replicas
     """
 
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
-    r1 = FakeRunningReplica(
-        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
-    )
+    r1 = FakeRunningReplica("r1", node_id=ROUTER_NODE_ID, availability_zone=ROUTER_AZ)
     r2 = FakeRunningReplica(
         "r2",
         node_id="some_other_node_in_the_stratosphere",
-        availability_zone=SCHEDULER_AZ,
+        availability_zone=ROUTER_AZ,
     )
     r3 = FakeRunningReplica(
         "r3",
@@ -953,7 +949,7 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler):
             )
         return await asyncio.gather(*tasks)
 
-    # All requests should be scheduled to the replica on the same node if it accepts.
+    # All requests should be routed to the replica on the same node if it accepts.
     assert all(replica == r1 for replica in await choose_replicas())
 
     # Update the replica on the same node to reject requests -- now requests should
@@ -969,21 +965,21 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
-    [{"prefer_local_az": False, "az": SCHEDULER_AZ}],
+    "pow_2_router",
+    [{"prefer_local_az": False, "az": ROUTER_AZ}],
     indirect=True,
 )
-async def test_prefer_az_off(pow_2_scheduler):
+async def test_prefer_az_off(pow_2_router):
     """
     When prefer routing to same AZ is OFF, verify that requests are
     spread to replicas across AZs
     """
 
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
-    r1 = FakeRunningReplica("r1", availability_zone=SCHEDULER_AZ)
-    r2 = FakeRunningReplica("r2", availability_zone=SCHEDULER_AZ)
+    r1 = FakeRunningReplica("r1", availability_zone=ROUTER_AZ)
+    r2 = FakeRunningReplica("r2", availability_zone=ROUTER_AZ)
     r3 = FakeRunningReplica("r3", availability_zone="western-hemisphere")
     r1.set_queue_len_response(0)
     r2.set_queue_len_response(0)
@@ -1019,25 +1015,23 @@ async def test_prefer_az_off(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
-    [{"prefer_local_node": False, "prefer_local_az": True, "az": SCHEDULER_AZ}],
+    "pow_2_router",
+    [{"prefer_local_node": False, "prefer_local_az": True, "az": ROUTER_AZ}],
     indirect=True,
 )
-async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_scheduler):
+async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_router):
     """
     When prefer routing on same node is OFF and prefer routing to same
-    AZ is ON, verify that the scheduler prefers
+    AZ is ON, verify that the request router prefers
     * replicas that are colocated in the same AZ
     * then fall back to all replicas
     """
 
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
-    r1 = FakeRunningReplica(
-        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
-    )
-    r2 = FakeRunningReplica("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
+    r1 = FakeRunningReplica("r1", node_id=ROUTER_NODE_ID, availability_zone=ROUTER_AZ)
+    r2 = FakeRunningReplica("r2", node_id="node-alpha", availability_zone=ROUTER_AZ)
     r3 = FakeRunningReplica("r3", node_id="node-beta", availability_zone="some_zone")
     r1.set_queue_len_response(0)
     r2.set_queue_len_response(0)
@@ -1052,9 +1046,9 @@ async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_scheduler):
             )
         return await asyncio.gather(*tasks)
 
-    # All requests should be scheduled to the two nodes in the same AZ
+    # All requests should be routed to the two nodes in the same AZ
     # (r1 and r2). Without node preference in routing, requests should
-    # be scheduled to BOTH r1 and r2
+    # be routed to BOTH r1 and r2
     assert set(await choose_replicas()) == {r1, r2}
 
     # Update replica on one of the nodes in the same AZ to reject
@@ -1071,24 +1065,24 @@ async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
-    [{"prefer_local_node": True, "prefer_local_az": False, "az": SCHEDULER_AZ}],
+    "pow_2_router",
+    [{"prefer_local_node": True, "prefer_local_az": False, "az": ROUTER_AZ}],
     indirect=True,
 )
-async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_scheduler):
+async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_router):
     """
     When prefer routing to same node is ON and prefer routing to same AZ
-    is OFF, verify that requests are first scheduled to same-node
+    is OFF, verify that requests are first routed to same-node
     replicas, then spread across all availability zones.
     """
 
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica(
-        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
+        "r1", node_id=ROUTER_NODE_ID, availability_zone=ROUTER_AZ
     )  # noqa
-    r2 = FakeRunningReplica("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
+    r2 = FakeRunningReplica("r2", node_id="node-alpha", availability_zone=ROUTER_AZ)
     r3 = FakeRunningReplica("r3", node_id="node-beta", availability_zone="west")
     r1.set_queue_len_response(0)
     r2.set_queue_len_response(0)
@@ -1114,7 +1108,7 @@ async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
         {"prefer_local_node": True, "prefer_local_az": False},
@@ -1124,12 +1118,12 @@ async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_scheduler):
     indirect=True,
 )
 class TestModelMultiplexing:
-    async def test_replicas_with_model_id_always_chosen(self, pow_2_scheduler):
+    async def test_replicas_with_model_id_always_chosen(self, pow_2_router):
         """
         Verify that if accepted, only replicas with a given model ID will be chosen.
         This should be independent of queue length.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
         r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
@@ -1145,11 +1139,11 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) in {r1, r2}
 
-    async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
+    async def test_choose_least_number_of_models_replicas(self, pow_2_router):
         """
         If no replica has the model_id, choose the least number of models replicas.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
         r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
         r2 = FakeRunningReplica("r2", model_ids={"m2"})
@@ -1161,12 +1155,12 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r2
 
-    async def test_backoff_from_least_number_of_models_replicas(self, pow_2_scheduler):
+    async def test_backoff_from_least_number_of_models_replicas(self, pow_2_router):
         """
         If no replica has the model_id, choose the least number of models replicas.
-        If those replicas cannot be scheduled to, we should fall back to all replicas.
+        If those replicas cannot be routed to, we should fall back to all replicas.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
         r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
         r2 = FakeRunningReplica("r2", model_ids={"m2"})
@@ -1178,11 +1172,11 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r1
 
-    async def test_no_replica_has_model_id(self, pow_2_scheduler):
+    async def test_no_replica_has_model_id(self, pow_2_router):
         """
         If no replica has the model_id, we should fall back to normal procedure.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
         r1 = FakeRunningReplica("r1", model_ids={})
@@ -1194,12 +1188,12 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r1
 
-    async def test_fall_back_to_replica_without_model_id(self, pow_2_scheduler):
+    async def test_fall_back_to_replica_without_model_id(self, pow_2_router):
         """
         Verify that we'll fall back to a replica that doesn't have the model ID if
         none of the replicas with it can accept the request.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
         r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
@@ -1215,12 +1209,12 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r3
 
-    async def test_multiple_queries_with_different_model_ids(self, pow_2_scheduler):
+    async def test_multiple_queries_with_different_model_ids(self, pow_2_router):
         """
         Verify that multiple queries with different model_ids will be mapped to the
         appropriate replicas.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
         r1 = FakeRunningReplica("r1", model_ids={"m1"})
@@ -1267,12 +1261,12 @@ class TestModelMultiplexing:
                 ]
             )
 
-    async def test_no_replicas_available_then_choose_one_with_id(self, pow_2_scheduler):
+    async def test_no_replicas_available_then_choose_one_with_id(self, pow_2_router):
         """
-        Verify that if new replicas are added while the scheduling task is in backoff,
+        Verify that if new replicas are added while the routing task is in backoff,
         it will prioritize those with the model ID.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
         r1 = FakeRunningReplica("r1")
@@ -1285,7 +1279,7 @@ class TestModelMultiplexing:
             for _ in range(100)
         ]
 
-        # Scheduling tasks should be in backoff.
+        # Routing tasks should be in backoff.
         done, _ = await asyncio.wait(tasks, timeout=0.01)
         assert len(done) == 0
 
@@ -1301,14 +1295,14 @@ class TestModelMultiplexing:
         assert all(replica == r3 for replica in await asyncio.gather(*tasks))
 
     @pytest.mark.asyncio
-    async def test_tasks_scheduled_fifo_among_model_ids(self, pow_2_scheduler):
+    async def test_tasks_routed_fifo_among_model_ids(self, pow_2_router):
         """
-        Verify that requests are scheduled FIFO based on model ID.
+        Verify that requests are routed FIFO based on model ID.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
-        # Schedule many requests to each model ID in parallel
+        # Route many requests to each model ID in parallel
         # that cannot be fulfilled yet.
         m1_tasks = []
         m2_tasks = []
@@ -1333,7 +1327,7 @@ class TestModelMultiplexing:
         r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
 
-        # We need to wait until the initial ping from scheduler to replica
+        # We need to wait until the initial ping from request router to replica
         # finishes, which then resets the events in the testing structure
         # so that the test can proceed.
         await async_wait_for_condition(
@@ -1343,8 +1337,8 @@ class TestModelMultiplexing:
             lambda: not r2._has_queue_len_response.is_set(), retry_interval_ms=10
         )
 
-        # In each iteration, allow one replica of w/ each model ID to be scheduled.
-        # The tasks for each model ID should be scheduled in FIFO order.
+        # In each iteration, allow one replica of w/ each model ID to be routed.
+        # The tasks for each model ID should be routed in FIFO order.
         for _ in range(10):
             r1.set_queue_len_response(0)
             r2.set_queue_len_response(0)
@@ -1361,12 +1355,12 @@ class TestModelMultiplexing:
             assert done.pop() == m2_tasks[0]
             m2_tasks = m2_tasks[1:]
 
-    async def test_replicas_with_model_id_not_chosen_when_busy(self, pow_2_scheduler):
+    async def test_replicas_with_model_id_not_chosen_when_busy(self, pow_2_router):
         """
         Setup 3 replicas, one of which has the model ID, the other two do not. Verifies
         that when the replica with the model ID is busy, the other replicas are chosen.
         """
-        s = pow_2_scheduler
+        s = pow_2_router
         loop = get_or_create_event_loop()
 
         r1 = FakeRunningReplica("r1", model_ids={"m1"})
@@ -1385,11 +1379,11 @@ class TestModelMultiplexing:
             for _ in range(100)
         ]
 
-        # Ensure that all tasks are scheduled to r2 and r3 right away, since r1 is busy.
+        # Ensure that all tasks are routed to r2 and r3 right away, since r1 is busy.
         #
         # The timeout is important in this test, else the request can still wait for the
         # multiplexed_matching_timeout to expire then to go to other replicas. This
-        # timeout ensures that the request is scheduled to other replicas right away
+        # timeout ensures that the request is routed to other replicas right away
         # after first try.
         done, _ = await asyncio.wait(tasks, timeout=0.1)
         assert len(done) == 100
@@ -1398,19 +1392,19 @@ class TestModelMultiplexing:
 
 
 @pytest.mark.asyncio
-async def test_get_queue_len_cancelled_on_timeout(pow_2_scheduler):
+async def test_get_queue_len_cancelled_on_timeout(pow_2_router):
     """
     Verify that `get_queue_len` is cancelled if the `queue_len_response_deadline_s`
     is reached.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     s.queue_len_response_deadline_s = 0.001
     loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1")
     s.update_replicas([r1])
 
-    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # Attempt to route; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -1424,11 +1418,11 @@ async def test_get_queue_len_cancelled_on_timeout(pow_2_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_queue_len_response_deadline_backoff(pow_2_scheduler):
+async def test_queue_len_response_deadline_backoff(pow_2_router):
     """
     Verify that the response deadline is exponentially backed off up to the max.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     s.queue_len_response_deadline_s = 0.001
     s.max_queue_len_response_deadline_s = 0.005
     loop = get_or_create_event_loop()
@@ -1436,7 +1430,7 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler):
     r1 = FakeRunningReplica("r1")
     s.update_replicas([r1])
 
-    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # Attempt to route; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
@@ -1468,12 +1462,12 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_max_queue_len_response_deadline(pow_2_scheduler):
+async def test_max_queue_len_response_deadline(pow_2_router):
     """
     Verify that if the max response deadline is > the initial deadline, the initial is
     always used.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     s.queue_len_response_deadline_s = 0.01
     s.max_queue_len_response_deadline_s = 0.001
     loop = get_or_create_event_loop()
@@ -1481,7 +1475,7 @@ async def test_max_queue_len_response_deadline(pow_2_scheduler):
     r1 = FakeRunningReplica("r1")
     s.update_replicas([r1])
 
-    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # Attempt to route; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
@@ -1496,7 +1490,7 @@ async def test_max_queue_len_response_deadline(pow_2_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
+async def test_replicas_updated_event_on_correct_loop(pow_2_router):
     """See https://github.com/ray-project/ray/issues/40631.
 
     The `await` statements below would fail with
@@ -1504,11 +1498,11 @@ async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
     """
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(
-            pow_2_scheduler._replicas_updated_event.wait(), timeout=0.001
+            pow_2_router._replicas_updated_event.wait(), timeout=0.001
         )
 
-    pow_2_scheduler._replicas_updated_event.set()
-    await pow_2_scheduler._replicas_updated_event.wait()
+    pow_2_router._replicas_updated_event.set()
+    await pow_2_router._replicas_updated_event.wait()
 
 
 @pytest.mark.asyncio
@@ -1573,17 +1567,17 @@ async def test_queue_len_cache():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"use_replica_queue_len_cache": True},
     ],
     indirect=True,
 )
-async def test_queue_len_cache_active_probing(pow_2_scheduler):
+async def test_queue_len_cache_active_probing(pow_2_router):
     """
     Verify that if a replica has a valid queue entry, it is not actively probed.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
     staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 
@@ -1596,7 +1590,7 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    # 0 probes from scheduling requests
+    # 0 probes from routing requests
     # + 1 probe from when the replica set was updated with replica r1
     assert len(r1.queue_len_deadline_history) - 1 == 0
 
@@ -1608,25 +1602,25 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    # 1 probe from scheduling requests
+    # 1 probe from routing requests
     # + 1 probe from when the replica set was updated with replica r1
     assert len(r1.queue_len_deadline_history) - 1 == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"use_replica_queue_len_cache": True},
     ],
     indirect=True,
 )
-async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
+async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_router):
     """
     Verify that if a replica has a cache entry but is at max_ongoing_requests, it's
     actively probed.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
@@ -1637,11 +1631,11 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
-    # 1 probe from scheduling requests
+    # 1 probe from routing requests
     # + 1 probe from when the replica set was updated with replica r1
     assert len(r1.queue_len_deadline_history) - 1 == 1
 
-    # Now let the replica respond and accept the request, it should be scheduled.
+    # Now let the replica respond and accept the request, it should be routed.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
@@ -1650,18 +1644,18 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"use_replica_queue_len_cache": True},
     ],
     indirect=True,
 )
-async def test_queue_len_cache_background_probing(pow_2_scheduler):
+async def test_queue_len_cache_background_probing(pow_2_router):
     """
     Verify that if there are two replicas, one with a valid queue entry and one without,
     the one in the queue is chosen and the other is probed in the background.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     loop = get_or_create_event_loop()
 
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
@@ -1674,7 +1668,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    # 0 probes from scheduling requests
+    # 0 probes from routing requests
     # + 1 probe from when the replica set was updated with replica r1
     assert len(r1.queue_len_deadline_history) - 1 == 0
 
@@ -1682,7 +1676,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
 
     def r2_was_probed():
         # Check that r2 was probed and the response was added to the cache.
-        # 1 probe from scheduling requests
+        # 1 probe from routing requests
         # + 1 probe from when the replica set was updated with replica r1
         assert (
             len(r2.queue_len_deadline_history) - 1 == 1
@@ -1695,17 +1689,17 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"use_replica_queue_len_cache": True},
     ],
     indirect=True,
 )
-async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
+async def test_queue_len_cache_entries_added_correctly(pow_2_router):
     """
     Verify that the cache entries are updated for probed replicas correctly.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
     staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 
     r1 = FakeRunningReplica("r1")
@@ -1726,7 +1720,7 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
         else:
             assert replica in {r1, r2}
 
-        # i+1 probes from scheduling requests
+        # i+1 probes from routing requests
         # + 1 probe from when the replica set was updated with replica r1
         assert len(r1.queue_len_deadline_history) - 1 == i + 1
         assert len(r2.queue_len_deadline_history) - 1 == i + 1
@@ -1737,20 +1731,20 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {"prefer_local_node": True, "prefer_local_az": True},
     ],
     indirect=True,
 )
 @pytest.mark.parametrize("backoff_index", [0, 10, 2048])
-async def test_backoff_index_handling(pow_2_scheduler, backoff_index: int):
+async def test_backoff_index_handling(pow_2_router, backoff_index: int):
     """Ensure that different ranges of backoff_index are valid.
 
     In the past, high backoff_indexes (greater than 1024) have caused
     OverflowErrors. See https://github.com/ray-project/ray/issues/43964.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(0)
@@ -1765,15 +1759,15 @@ async def test_backoff_index_handling(pow_2_scheduler, backoff_index: int):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+@pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
 async def test_replicas_actor_died_error(
-    pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):
     """
     If replicas return an ActorDiedError, they should be removed from the
     local list.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(
@@ -1786,10 +1780,10 @@ async def test_replicas_actor_died_error(
 
     s.update_replicas([r1, r2])
 
-    # After detecting that the first replica died, the scheduler should
-    # stop scheduling it.
+    # After detecting that the first replica died, the request router should
+    # stop routing it.
     await s.choose_replica_for_request(fake_pending_request())
-    assert set(pow_2_scheduler.curr_replicas.values()) == {r2}
+    assert set(pow_2_router.curr_replicas.values()) == {r2}
 
     # Check that get_queue_len is never called on r1 and always called on r2.
     r1.num_get_queue_len_calls = 0
@@ -1799,15 +1793,15 @@ async def test_replicas_actor_died_error(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+@pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
 async def test_replicas_actor_unavailable_error(
-    pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):
     """
     If replicas return an ActorUnavailableError, they should remain in the
     local list.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
     r1.set_queue_len_response(1)
@@ -1827,13 +1821,13 @@ async def test_replicas_actor_unavailable_error(
     for _ in range(10):
         assert (await s.choose_replica_for_request(fake_pending_request())) == r2
 
-    # The scheduler should keep r1 since it may recover.
-    assert set(pow_2_scheduler.curr_replicas.values()) == {r1, r2}
+    # The request router should keep r1 since it may recover.
+    assert set(pow_2_router.curr_replicas.values()) == {r1, r2}
 
     # Restore r1.
     r1.set_queue_len_response(queue_len=0, exception=None)
 
-    # The scheduler should keep picking r1 since it has a smaller queue length.
+    # The request router should keep picking r1 since it has a smaller queue length.
     for _ in range(10):
         assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
@@ -1841,23 +1835,23 @@ async def test_replicas_actor_unavailable_error(
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler",
+    "pow_2_router",
     [
         {
             "prefer_local_node": True,
             "prefer_local_az": True,
-            "az": SCHEDULER_AZ,
+            "az": ROUTER_AZ,
             "backoff_sequence_s": [999, 999, 999, 999],
         },
     ],
     indirect=True,
 )
-async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
+async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     """
-    When the scheduler fails to schedule a request to a replica on the same node, and
+    When the request router fails to route a request to a replica on the same node, and
     the same zone, it should not sleep before retrying and add additional latency.
     """
-    s = pow_2_scheduler
+    s = pow_2_router
 
     # create a stub for random.sample to track the replicas that are chosen
     original_sample = random.sample
@@ -1879,13 +1873,11 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
     #   - r3 being different node and different zone
     #
     # only r3 is available to serve requests
-    r1 = FakeRunningReplica(
-        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
-    )
+    r1 = FakeRunningReplica("r1", node_id=ROUTER_NODE_ID, availability_zone=ROUTER_AZ)
     r2 = FakeRunningReplica(
         "r2",
         node_id="some_other_node_in_the_stratosphere",
-        availability_zone=SCHEDULER_AZ,
+        availability_zone=ROUTER_AZ,
     )
     r3 = FakeRunningReplica(
         "r3",
@@ -1902,14 +1894,14 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
         # r3 was not chosen after trying local node and local AZ. Which is fine.
         # clear all pending tasks
         task.cancel()
-        s._scheduling_tasks.clear()
+        s._routing_tasks.clear()
         s._pending_requests_to_fulfill.clear()
-        s._pending_requests_to_schedule.clear()
+        s._pending_requests_to_route.clear()
     else:
 
         # The request will be served by r3 without added latency.
         # Since we set up the `backoff_sequence_s` to be 999s, this 10s timeout will still
-        # capture the extra delay if it was added between scheduling loop.
+        # capture the extra delay if it was added between routing loop.
         assert len(done) == 1
         assert done.pop().result() == r3
 

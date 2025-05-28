@@ -10,7 +10,7 @@ from ray.serve._private.config import (
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
+from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
@@ -237,9 +237,7 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-        request_router_class: Default[
-            Union[str, ReplicaScheduler, None]
-        ] = DEFAULT.VALUE,
+        request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,

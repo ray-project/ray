@@ -14,7 +14,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass()
-class RequestSchedulingContext:
+class RequestRoutingContext:
     multiplexed_start_matching_time: Optional[float] = None
     tried_fewest_multiplexed_models: bool = False
     tried_first_multiplexed_models: bool = False
@@ -30,8 +30,8 @@ class PendingRequest:
     metadata: RequestMetadata
     created_at: float = field(default_factory=time.time)
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
-    scheduling_context: RequestSchedulingContext = field(
-        default_factory=RequestSchedulingContext
+    routing_context: RequestRoutingContext = field(
+        default_factory=RequestRoutingContext
     )
 
     def reset_future(self):
