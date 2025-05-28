@@ -124,6 +124,10 @@ class KuberayJobManager:
         if "jobs" not in response_json or len(response_json["jobs"]) == 0:
             raise Exception(f"No jobs found for {self.job_name}")
         if len(response_json["jobs"]) > 1:
+            print(f"{self.job_name}Jobs: \n")
+            for job in response_json["jobs"]:
+                print(job)
+                print()
             raise Exception(f"Multiple jobs found for {self.job_name}")
         return response_json["jobs"][0]
 
