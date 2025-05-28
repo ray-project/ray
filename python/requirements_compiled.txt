@@ -1870,7 +1870,7 @@ pyzmq==26.0.3
     #   notebook
 qpd==0.4.4
     # via fugue
-raydp==1.7.0b20231020.dev0
+raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/data-test-requirements.txt
 redis==4.4.2
     # via -r python/requirements/test-requirements.txt
