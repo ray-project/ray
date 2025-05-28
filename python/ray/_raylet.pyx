@@ -3730,7 +3730,7 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 # For Ray tasks, we always use `OBJECT_STORE`.
-                b"OBJECT_STORE")
+                TENSOR_TRANSPORT_OBJECT_STORE)
 
             current_c_task_id = current_task.native()
 
@@ -3938,7 +3938,7 @@ cdef class CoreWorker:
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
                           c_bool enable_task_events,
-                          c_string tensor_transport):
+                          int py_tensor_transport):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3954,6 +3954,7 @@ cdef class CoreWorker:
             unordered_map[c_string, c_string] c_labels
             unordered_map[c_string, c_string] c_label_selector
             c_string call_site
+            CTensorTransport c_tensor_transport_val
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3961,6 +3962,8 @@ cdef class CoreWorker:
 
         if RayConfig.instance().record_task_actor_creation_sites():
             call_site = ''.join(traceback.format_stack())
+
+        c_tensor_transport_val = <CTensorTransport>py_tensor_transport
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -3988,7 +3991,7 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        tensor_transport),
+                        c_tensor_transport_val),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -3996,6 +3999,7 @@ cdef class CoreWorker:
                     return_refs,
                     current_c_task_id,
                 )
+
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we

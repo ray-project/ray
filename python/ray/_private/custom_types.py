@@ -1,6 +1,9 @@
 from typing import Literal
 
 from ray.core.generated.common_pb2 import (
+    GLOO,
+    NCCL,
+    OBJECT_STORE,
     ErrorType,
     Language,
     TaskStatus,
@@ -125,6 +128,7 @@ TENSOR_TRANSPORT = [
     "GLOO",
 ]
 TypeTensorTransport = Literal[tuple(TENSOR_TRANSPORT)]
+TypeTensorTransportEnum = Literal[OBJECT_STORE, NCCL, GLOO]
 
 
 def validate_protobuf_enum(grpc_enum, custom_enum):

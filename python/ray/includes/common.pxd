@@ -339,7 +339,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
                      const unordered_map[c_string, c_string] &label_selector,
-                     c_string tensor_transport)
+                     CTensorTransport tensor_transport)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()

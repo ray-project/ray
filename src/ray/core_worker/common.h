@@ -65,16 +65,17 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() = default;
-  TaskOptions(std::string name_p,
-              int num_returns_p,
-              std::unordered_map<std::string, double> &resources_p,
-              std::string concurrency_group_name_p = "",
-              int64_t generator_backpressure_num_objects_p = -1,
-              std::string serialized_runtime_env_info_p = "{}",
-              bool enable_task_events_p = kDefaultTaskEventEnabled,
-              std::unordered_map<std::string, std::string> labels_p = {},
-              std::unordered_map<std::string, std::string> label_selector_p = {},
-              std::string tensor_transport_p = "")
+  TaskOptions(
+      std::string name_p,
+      int num_returns_p,
+      std::unordered_map<std::string, double> &resources_p,
+      std::string concurrency_group_name_p = "",
+      int64_t generator_backpressure_num_objects_p = -1,
+      std::string serialized_runtime_env_info_p = "{}",
+      bool enable_task_events_p = kDefaultTaskEventEnabled,
+      std::unordered_map<std::string, std::string> labels_p = {},
+      std::unordered_map<std::string, std::string> label_selector_p = {},
+      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE)
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -83,9 +84,8 @@ struct TaskOptions {
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        label_selector(std::move(label_selector_p)) {
-    RAY_CHECK(rpc::TensorTransport_Parse(tensor_transport_p, &tensor_transport));
-  }
+        label_selector(std::move(label_selector_p)),
+        tensor_transport(tensor_transport_p) {}
 
   /// The name of this task.
   std::string name;

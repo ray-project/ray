@@ -41,7 +41,12 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
-from ray._private.custom_types import TENSOR_TRANSPORT, TypeTensorTransport
+from ray._private.custom_types import (
+    TENSOR_TRANSPORT,
+    TypeTensorTransport,
+    TypeTensorTransportEnum,
+)
+from ray.core.generated.common_pb2 import TensorTransport, OBJECT_STORE
 
 if TYPE_CHECKING:
     pass
@@ -111,11 +116,14 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            method.__ray_tensor_transport__ = kwargs["tensor_transport"].upper()
-            if method.__ray_tensor_transport__ not in TENSOR_TRANSPORT:
+            tensor_transport_str = kwargs["tensor_transport"].upper()
+            if tensor_transport_str not in TENSOR_TRANSPORT:
                 raise ValueError(
-                    f"Invalid tensor transport {method.__ray_tensor_transport__}, must be one of {TENSOR_TRANSPORT}."
+                    f"Invalid tensor transport {tensor_transport_str}, must be one of {TENSOR_TRANSPORT}."
                 )
+            method.__ray_tensor_transport__ = TensorTransport.Value(
+                tensor_transport_str
+            )
         return method
 
     return annotate_method
@@ -172,7 +180,7 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
-        tensor_transport: Optional[TypeTensorTransport] = None,
+        tensor_transport: Optional[TypeTensorTransportEnum] = None,
     ):
         """Initialize an ActorMethod.
 
@@ -233,7 +241,9 @@ class ActorMethod:
             self._actor_hard_ref = None
         # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
         # as the default transport for this actor method.
-        self._tensor_transport: TypeTensorTransport = tensor_transport or "OBJECT_STORE"
+        self._tensor_transport: TypeTensorTransportEnum = (
+            tensor_transport or OBJECT_STORE
+        )
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -392,11 +402,15 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
-        tensor_transport = tensor_transport or self._tensor_transport
-        if tensor_transport not in TENSOR_TRANSPORT:
-            raise ValueError(
-                f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
-            )
+        if tensor_transport is None:
+            tensor_transport = self._tensor_transport
+        else:
+            if tensor_transport not in TENSOR_TRANSPORT:
+                raise ValueError(
+                    f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
+                )
+            # Convert `tensor_transport` from string to enum.
+            tensor_transport = TensorTransport.Value(tensor_transport)
         args = args or []
         kwargs = kwargs or {}
 
@@ -432,10 +446,10 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         obj_ref = invocation(args, kwargs)
-        if tensor_transport != "OBJECT_STORE":
+        if tensor_transport != OBJECT_STORE:
             if num_returns != 1:
                 raise ValueError(
-                    f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
+                    f"Currently, methods with tensor_transport={TensorTransport.Name(tensor_transport)} only support 1 return value. "
                     "Please make sure the actor method returns a single object."
                 )
 
@@ -530,7 +544,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
-        self.method_name_to_tensor_transport: Dict[str, TypeTensorTransport] = {}
+        self.method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum] = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -1430,7 +1444,7 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
-        method_name_to_tensor_transport: Dict[str, TypeTensorTransport],
+        method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1557,7 +1571,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
-        tensor_transport: TypeTensorTransport = "OBJECT_STORE",
+        tensor_transport: TypeTensorTransportEnum = OBJECT_STORE,
     ):
         """Method execution stub for an actor handle.
 
