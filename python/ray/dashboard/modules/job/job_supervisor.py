@@ -250,7 +250,7 @@ class JobSupervisor:
         if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
             os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
         ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
+            "auto", ray._private.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
         return {
