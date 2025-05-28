@@ -16,7 +16,8 @@ from ray_release.test_automation.ci_state_machine import CITestStateMachine
 from ray_release.configs.global_config import get_global_config
 
 
-RUN_PER_FLAKY_TEST = 2
+# We will run each flaky test this number of times per CI job independent of pass/fail.
+RUN_PER_FLAKY_TEST = 1
 
 
 class TesterContainer(Container):
