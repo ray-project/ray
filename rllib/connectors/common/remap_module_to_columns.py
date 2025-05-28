@@ -117,7 +117,12 @@ class RemapModuleToColumns(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # Remap [col]->(eps_id,)->[data ..] to DEFAULT_MODULE_ID->[col]->[data ..].
+        # Remap:
+        # [col]->(eps_id,)->[data ..]
+        # to:
+        # DEFAULT_MODULE_ID->[col]->[data ..]
+        # Thereby, store the original map-structure (sequence of episode IDs) in the
+        # `shared_data` dict for reconstruction inside the ModuleToEnv pipeline.
         module_data = {DEFAULT_MODULE_ID: {}}
         memorized_map_structure = []
 

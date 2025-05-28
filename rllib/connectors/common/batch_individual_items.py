@@ -147,71 +147,14 @@ class BatchIndividualItems(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        is_multi_rl_module = isinstance(rl_module, MultiRLModule)
-
         # Convert lists of individual items into properly batched data.
-        # for column, column_data in batch.copy().items():
         for module_id, module_data in batch.copy().items():
-            # Multi-agent case: This connector piece should only be used after(!)
-            # the AgentToModuleMapping connector has already been applied, leading
-            # to a batch structure of:
-            # [module_id] -> [col0] -> [list of individual batch items]
-            # if is_multi_rl_module and module_id in rl_module:
-            # Case, in which data has already been properly batched before this
-            # connector piece is called.
-            # if not self._multi_agent:
-            #    continue
-            # If MA Off-Policy and independent sampling we need to overcome this
-            # check.
-            # module_data = column_data
             for col, individual_items in module_data.copy().items():
+                # Don't batch info dicts, ever. Often, they have inhomogenous structures
+                # across the episode/batch.
                 if col != Columns.INFOS and isinstance(individual_items, list):
                     module_data[col] = batch_fn(
                         individual_items,
                         individual_items_already_have_batch_dim="auto",
                     )
-
-            # Simple case: There is a list directly under `column`:
-            # Batch the list.
-            # elif isinstance(module_data, list):
-            #    batch[module_id] = batch_fn(
-            #        module_data,
-            #        individual_items_already_have_batch_dim="auto",
-            #    )
-
-            # Single-agent case: There is a dict under `column` mapping
-            # `eps_id` to lists of items:
-            # Concat all these lists, then batch.
-            # elif not self._multi_agent:
-            #    # TODO: only really need this in non-Learner connector pipeline
-            #    #memorized_map_structure = []
-            #    list_to_be_batched = []
-            #    for (eps_id,) in column_data.keys():
-            #        for item in column_data[(eps_id,)]:
-            #            # Only record structure for OBS column.
-            #            #if column == Columns.OBS:
-            #            #    memorized_map_structure.append(eps_id)
-            #            list_to_be_batched.append(item)
-            #    # INFOS should not be batched (remain a list).
-            #    batch[column] = (
-            #        list_to_be_batched
-            #        if column == Columns.INFOS
-            #        else batch_fn(
-            #            list_to_be_batched,
-            #            individual_items_already_have_batch_dim="auto",
-            #        )
-            #    )
-            #    if is_multi_rl_module:
-            #        if DEFAULT_MODULE_ID not in batch:
-            #            batch[DEFAULT_MODULE_ID] = {}
-            #        batch[DEFAULT_MODULE_ID][column] = batch.pop(column)
-
-            #    # Only record structure for OBS column.
-            #    #if column == Columns.OBS and shared_data is not None:
-            #    #    shared_data["memorized_map_structure"] = memorized_map_structure
-            # Multi-agent case: But Module ID not found in our RLModule -> Ignore this
-            # `module_id` entirely.
-            # else:
-            #    pass
-
         return batch
