@@ -8,12 +8,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
 from ray.util.state import list_actors
 from ray.runtime_env.runtime_env import RuntimeEnv
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
-    DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_NAMESPACE_DASHBOARD,
 )
 from ray._private.test_utils import (
@@ -31,13 +29,10 @@ from ray.dashboard.modules.dashboard_sdk import (
     ClusterInfo,
     parse_cluster_info,
 )
-from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
-from ray.util.state import list_nodes
 from ray._raylet import GcsClient
-import psutil
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -188,7 +183,6 @@ def get_register_agents_number(gcs_client):
         {
             "include_dashboard": True,
             "env_vars": {
-                "CANDIDATE_AGENT_NUMBER": "2",
                 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
                 "RAY_health_check_initial_delay_ms": "0",
                 "RAY_health_check_period_ms": "1000",
@@ -251,15 +245,14 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
         worker_node_1.node_id,
     }
 
-    # The cluster has multiple worker nodes, but it won't be considered due to
-    # hitting the CANDIDATE_AGENT_NUMBER=2 limit.
+    # The cluster has multiple worker nodes, so we should spread across them.
     worker_node_2 = cluster.add_node()
     assert run_jobs_and_get_node_ids(10) == {
         cluster.head_node.node_id,
         worker_node_1.node_id,
     }
 
-    # Now that the first worker node is dead, the second should be considered.
+    # The first worker should no longer be considered after it crashes.
     worker_node_1.kill_raylet()
     wait_for_condition(
         lambda: run_jobs_and_get_node_ids(10)

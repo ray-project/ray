@@ -17,7 +17,6 @@ import pytest
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.util.state import list_actors
 from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -33,6 +32,7 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
+from ray.util.state import list_actors
 
 
 def test_specifying_num_cpus_and_num_gpus_logs_warning(

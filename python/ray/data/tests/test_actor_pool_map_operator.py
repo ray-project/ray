@@ -12,7 +12,6 @@ from freezegun import freeze_time
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.util.state import list_actors
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionResources
@@ -25,6 +24,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
+from ray.util.state import list_actors
 
 
 @ray.remote
