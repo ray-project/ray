@@ -335,10 +335,9 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
+        node = ray._private.worker.global_worker.node
         driver_agent_http_address = (
-            "http://"
-            f"{ray.worker.global_worker.node.node_ip_address}:"
-            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
+            f"http://{node.node_ip_address}:{node.dashboard_agent_listen_port}"
         )
         driver_node_id = ray.get_runtime_context().get_node_id()
 
