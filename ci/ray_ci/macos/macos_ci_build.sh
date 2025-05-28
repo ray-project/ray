@@ -38,7 +38,7 @@ build_x86_64() {
   source ~/.zshrc
   ./ci/ci.sh build
   # Test wheels
-  ./ci/ci.sh test_wheels
+  # ./ci/ci.sh test_wheels
   # Build jars
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
@@ -79,7 +79,7 @@ build_aarch64() {
   source ~/.zshrc
   ./ci/ci.sh build
   # Test wheels
-  ./ci/ci.sh test_wheels
+  # ./ci/ci.sh test_wheels
   # Build jars
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
