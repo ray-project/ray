@@ -3364,7 +3364,10 @@ py_test(
     name = "examples/actions/custom_action_distribution",
     size = "large",
     srcs = ["examples/actions/custom_action_distribution.py"],
-    args = ["--enable-new-api-stack", "--temperature=0.75"],
+    args = [
+        "--enable-new-api-stack",
+        "--temperature=0.75",
+    ],
     main = "examples/actions/custom_action_distribution.py",
     tags = [
         "examples",
