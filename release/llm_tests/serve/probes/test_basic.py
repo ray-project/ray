@@ -2,7 +2,6 @@
 import asyncio
 import base64
 import os
-import re
 import time
 
 import openai
@@ -309,18 +308,11 @@ async def test_logprobs(
     for resp in response:
         running_str = ""
         for logprob in resp["logprobs"]["content"]:
-            logprob_token = logprob["token"]
             assert len(logprob["top_logprobs"]) == num_logprobs
-            assert list(logprob_token.encode()) == logprob["bytes"]
+            assert list(logprob["token"].encode()) == logprob["bytes"]
             # Special tokens that will not be a part of the response content
-            if logprob_token in ("<step>", "<|eot_id|>", "<|im_end|>"):
-                continue
-            # Replace non-ASCII tokens, like Ċ, Ġ, etc. with desired replacement
-            # TODO(lk-chen): This is hacking tokenizer, figure out how to properly
-            # handle this
-            logprob_token = logprob_token.replace("Ċ", "\n")
-            logprob_token = re.sub(r"[^\x00-\x7F]", " ", logprob_token)
-            running_str += logprob_token
+            if logprob["token"] not in ("<step>", "<|eot_id|>"):
+                running_str += logprob["token"]
         assert running_str == resp["message"]["content"]
 
     # top logprobs have to be between 0 and 5

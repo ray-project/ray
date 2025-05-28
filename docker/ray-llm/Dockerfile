@@ -75,8 +75,6 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
 
 (
     echo "Installing UCX"
-    # Needed by UCX
-    sudo apt-get install -y librdmacm-dev
     cd "${TEMP_DIR}"
     wget "https://github.com/openucx/ucx/releases/download/v1.18.0/ucx-1.18.0.tar.gz" -q
     tar xzf ucx-1.18.0.tar.gz; rm ucx-1.18.0.tar.gz
