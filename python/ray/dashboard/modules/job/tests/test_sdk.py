@@ -250,6 +250,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     assert run_jobs_and_get_node_ids(10) == {
         cluster.head_node.node_id,
         worker_node_1.node_id,
+        worker_node_2.node_id,
     }
 
     # The first worker should no longer be considered after it crashes.
