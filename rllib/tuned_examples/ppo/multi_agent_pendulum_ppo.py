@@ -25,7 +25,9 @@ config = (
     PPOConfig()
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(
+            multi_agent=True
+        ),
     )
     .training(
         train_batch_size_per_learner=1024,
