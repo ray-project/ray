@@ -1921,7 +1921,7 @@ class Node:
 
         # Get environment variables populated from K8s Pod Spec
         market_type = os.environ.get("RAY_NODE_MARKET_TYPE", "")
-        node_group = os.environ.get("RAY_NODE_GROUP", "")
+        node_group = os.environ.get("RAY_NODE_TYPE_NAME", "")
         availability_zone = os.environ.get("RAY_NODE_ZONE", "")
         availability_region = os.environ.get("RAY_NODE_REGION", "")
 
