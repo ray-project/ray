@@ -14,19 +14,20 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, IO, AnyStr
+from typing import IO, AnyStr, List, Optional
 
-# Import psutil after ray so the packaged version is used.
-import psutil
 from filelock import FileLock
 
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._raylet import GcsClient, GcsClientOptions
-from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray._raylet import GcsClient, GcsClientOptions
+from ray.core.generated.common_pb2 import Language
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 resource = None
 if sys.platform != "win32":
