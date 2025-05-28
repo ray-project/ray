@@ -3,11 +3,26 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
     Target,
+    Row,
 )
+
+
+class PanelId:
+    """
+    A class to generate unique panel IDs.
+    """
+
+    id = 0
+
+    @staticmethod
+    def next():
+        PanelId.id += 1
+        return PanelId.id
+
 
 # Ray Train Metrics (Controller)
 CONTROLLER_STATE_PANEL = Panel(
-    id=1,
+    id=PanelId.next(),
     title="Controller State",
     description="Current state of the train controller.",
     unit="",
@@ -20,7 +35,7 @@ CONTROLLER_STATE_PANEL = Panel(
 )
 
 CONTROLLER_OPERATION_TIME_PANEL = Panel(
-    id=2,
+    id=PanelId.next(),
     title="Controller Operation Time",
     description="Time taken by the controller for worker group operations.",
     unit="seconds",
@@ -40,7 +55,7 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
 
 # Ray Train Metrics (Worker)
 WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
-    id=3,
+    id=PanelId.next(),
     title="Checkpoint Report Time",
     description="Time taken to report a checkpoint to storage.",
     unit="seconds",
@@ -56,7 +71,7 @@ WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
 
 # Core System Resources
 CPU_UTILIZATION_PANEL = Panel(
-    id=4,
+    id=PanelId.next(),
     title="CPU Usage",
     description="CPU core utilization across all workers.",
     unit="cores",
@@ -73,7 +88,7 @@ CPU_UTILIZATION_PANEL = Panel(
 )
 
 MEMORY_UTILIZATION_PANEL = Panel(
-    id=5,
+    id=PanelId.next(),
     title="Total Memory Usage",
     description="Total physical memory used vs total available memory.",
     unit="bytes",
@@ -84,13 +99,13 @@ MEMORY_UTILIZATION_PANEL = Panel(
         ),
         Target(
             expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
-            legend="Total Memory: {{instance}}",
+            legend="MAX",
         ),
     ],
 )
 
 MEMORY_DETAILED_PANEL = Panel(
-    id=6,
+    id=PanelId.next(),
     title="Memory Allocation Details",
     description="Memory allocation details including available and shared memory.",
     unit="bytes",
@@ -109,7 +124,7 @@ MEMORY_DETAILED_PANEL = Panel(
 # GPU Resources
 # TODO: Add GPU Device/Index as a filter.
 GPU_UTILIZATION_PANEL = Panel(
-    id=7,
+    id=PanelId.next(),
     title="GPU Usage",
     description="GPU utilization across all workers.",
     unit="GPUs",
@@ -126,7 +141,7 @@ GPU_UTILIZATION_PANEL = Panel(
 )
 
 GPU_MEMORY_UTILIZATION_PANEL = Panel(
-    id=8,
+    id=PanelId.next(),
     title="GPU Memory Usage",
     description="GPU memory usage across all workers.",
     unit="bytes",
@@ -144,7 +159,7 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
 
 # Storage Resources
 DISK_UTILIZATION_PANEL = Panel(
-    id=9,
+    id=PanelId.next(),
     title="Disk Space Usage",
     description="Disk space usage across all workers.",
     unit="bytes",
@@ -161,7 +176,7 @@ DISK_UTILIZATION_PANEL = Panel(
 )
 
 DISK_THROUGHPUT_PANEL = Panel(
-    id=10,
+    id=PanelId.next(),
     title="Disk Throughput",
     description="Current disk read/write throughput.",
     unit="Bps",
@@ -178,7 +193,7 @@ DISK_THROUGHPUT_PANEL = Panel(
 )
 
 DISK_OPERATIONS_PANEL = Panel(
-    id=11,
+    id=PanelId.next(),
     title="Disk Operations",
     description="Current disk read/write operations per second.",
     unit="ops/s",
@@ -196,7 +211,7 @@ DISK_OPERATIONS_PANEL = Panel(
 
 # Network Resources
 NETWORK_THROUGHPUT_PANEL = Panel(
-    id=12,
+    id=PanelId.next(),
     title="Network Throughput",
     description="Current network send/receive throughput.",
     unit="Bps",
@@ -213,7 +228,7 @@ NETWORK_THROUGHPUT_PANEL = Panel(
 )
 
 NETWORK_TOTAL_PANEL = Panel(
-    id=13,
+    id=PanelId.next(),
     title="Network Total Traffic",
     description="Total network traffic sent/received.",
     unit="bytes",
@@ -229,7 +244,46 @@ NETWORK_TOTAL_PANEL = Panel(
     ],
 )
 
-TRAIN_GRAFANA_PANELS = [
+TRAIN_GRAFANA_PANELS = []
+
+TRAIN_GRAFANA_ROWS = [
+    # Train Metrics Row
+    Row(
+        title="Train Metrics",
+        id=PanelId.next(),
+        panels=[
+            # Ray Train Metrics (Controller)
+            CONTROLLER_STATE_PANEL,
+            CONTROLLER_OPERATION_TIME_PANEL,
+            # Ray Train Metrics (Worker)
+            WORKER_CHECKPOINT_REPORT_TIME_PANEL,
+        ],
+        collapsed=False,
+    ),
+    # System Resources Row
+    Row(
+        title="Resource Utilization",
+        id=PanelId.next(),
+        panels=[
+            CPU_UTILIZATION_PANEL,
+            MEMORY_UTILIZATION_PANEL,
+            MEMORY_DETAILED_PANEL,
+            # GPU Resources
+            GPU_UTILIZATION_PANEL,
+            GPU_MEMORY_UTILIZATION_PANEL,
+            # Storage Resources
+            DISK_UTILIZATION_PANEL,
+            DISK_THROUGHPUT_PANEL,
+            DISK_OPERATIONS_PANEL,
+            # Network Resources
+            NETWORK_THROUGHPUT_PANEL,
+            NETWORK_TOTAL_PANEL,
+        ],
+        collapsed=True,
+    ),
+]
+
+TRAIN_RUN_PANELS = [
     # Ray Train Metrics (Controller)
     CONTROLLER_STATE_PANEL,
     CONTROLLER_OPERATION_TIME_PANEL,
@@ -238,29 +292,44 @@ TRAIN_GRAFANA_PANELS = [
     # Core System Resources
     CPU_UTILIZATION_PANEL,
     MEMORY_UTILIZATION_PANEL,
-    MEMORY_DETAILED_PANEL,
     # GPU Resources
     GPU_UTILIZATION_PANEL,
     GPU_MEMORY_UTILIZATION_PANEL,
     # Storage Resources
     DISK_UTILIZATION_PANEL,
-    DISK_THROUGHPUT_PANEL,
-    DISK_OPERATIONS_PANEL,
     # Network Resources
     NETWORK_THROUGHPUT_PANEL,
-    NETWORK_TOTAL_PANEL,
 ]
 
+TRAIN_WORKER_PANELS = [
+    # Ray Train Metrics (Worker)
+    WORKER_CHECKPOINT_REPORT_TIME_PANEL,
+    # Core System Resources
+    CPU_UTILIZATION_PANEL,
+    MEMORY_UTILIZATION_PANEL,
+    # GPU Resources
+    GPU_UTILIZATION_PANEL,
+    GPU_MEMORY_UTILIZATION_PANEL,
+    # Storage Resources
+    DISK_UTILIZATION_PANEL,
+    # Network Resources
+    NETWORK_THROUGHPUT_PANEL,
+]
 
-ids = [panel.id for panel in TRAIN_GRAFANA_PANELS]
-assert len(ids) == len(
-    set(ids)
-), f"Duplicated id found. Use unique id for each panel. {ids}"
+# Get all panel IDs from both top-level panels and panels within rows
+all_panel_ids = [panel.id for panel in TRAIN_GRAFANA_PANELS]
+for row in TRAIN_GRAFANA_ROWS:
+    all_panel_ids.append(row.id)
+    all_panel_ids.extend(panel.id for panel in row.panels)
+
+assert len(all_panel_ids) == len(
+    set(all_panel_ids)
+), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
 train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",
-    panels=TRAIN_GRAFANA_PANELS,
+    rows=TRAIN_GRAFANA_ROWS,
     standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="train_grafana_dashboard_base.json",
 )
