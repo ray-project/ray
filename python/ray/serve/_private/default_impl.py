@@ -1,6 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 import ray
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -15,8 +16,11 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    CONTROLLER_MAX_CONCURRENCY,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -24,8 +28,6 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
-from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
@@ -140,6 +142,7 @@ def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
+    request_router_class: Optional[Callable] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -149,32 +152,19 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-        deployment_id,
-        handle_options._source,
-        handle_options._prefer_local_routing,
-        RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-        node_id,
-        actor_id,
-        ray.get_runtime_context().current_actor
-        if ray.get_runtime_context().get_actor_id()
-        else None,
-        availability_zone,
-        # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=not is_inside_ray_client_context,
-        create_replica_wrapper_func=lambda r: RunningReplica(r),
-    )
-
     return SingletonThreadRouter(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        replica_scheduler=replica_scheduler,
+        request_router_class=request_router_class,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,
+        node_id=node_id,
+        availability_zone=availability_zone,
+        prefer_local_node_routing=handle_options._prefer_local_routing,
     )
 
 
@@ -204,3 +194,21 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         )
 
     return handle.options(stream=not info.app_is_cross_language)
+
+
+def get_controller_impl():
+    from ray.serve._private.controller import ServeController
+
+    controller_impl = ray.remote(
+        name=SERVE_CONTROLLER_NAME,
+        namespace=SERVE_NAMESPACE,
+        num_cpus=0,
+        lifetime="detached",
+        max_restarts=-1,
+        max_task_retries=-1,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+    )(ServeController)
+
+    return controller_impl

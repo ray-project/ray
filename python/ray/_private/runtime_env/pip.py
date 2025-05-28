@@ -5,11 +5,10 @@ import logging
 import os
 import shutil
 import sys
-from typing import Dict, List, Optional
 from asyncio import create_task, get_running_loop
+from typing import Dict, List, Optional
 
-from ray._private.runtime_env import virtualenv_utils
-from ray._private.runtime_env import dependency_utils
+from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd

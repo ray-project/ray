@@ -31,7 +31,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

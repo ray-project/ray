@@ -205,7 +205,7 @@ void ActorManager::WaitForActorRefDeleted(
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
                                                       callback)) {
-    RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+    RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
     callback(actor_creation_return_id);
   }
 }
@@ -213,15 +213,14 @@ void ActorManager::WaitForActorRefDeleted(
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
-  RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
-                << ", actor_id: " << actor_id
-                << ", ip address: " << actor_data.address().ip_address()
-                << ", port: " << actor_data.address().port() << ", worker_id: "
-                << WorkerID::FromBinary(actor_data.address().worker_id())
-                << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
-                << ", num_restarts: " << actor_data.num_restarts()
-                << ", death context type="
-                << gcs::GetActorDeathCauseString(actor_data.death_cause());
+  const auto worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
+  const auto raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(raylet_id)
+      << "received notification on actor, state: " << actor_state
+      << ", ip address: " << actor_data.address().ip_address()
+      << ", port: " << actor_data.address().port()
+      << ", num_restarts: " << actor_data.num_restarts() << ", death context type="
+      << gcs::GetActorDeathCauseString(actor_data.death_cause());
   if (actor_data.preempted()) {
     actor_task_submitter_.SetPreempted(actor_id);
   }
@@ -333,8 +332,9 @@ void ActorManager::MarkActorKilledOrOutOfScope(
 
   /// Invalidate named actor cache.
   if (!actor_name.empty()) {
-    RAY_LOG(DEBUG) << "Actor name cache is invalidated for the actor of name "
-                   << actor_name << " namespace " << ray_namespace << " id " << actor_id;
+    RAY_LOG(DEBUG).WithField(actor_id)
+        << "Actor name cache is invalidated for the actor of name " << actor_name
+        << " namespace " << ray_namespace;
     cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
   }
 }

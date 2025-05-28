@@ -11,7 +11,6 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.async_utils import enable_monitor_loop_lag
@@ -163,7 +162,7 @@ class DashboardHead:
         try:
             # If gcs is permanently dead, gcs client will exit the process
             # (see gcs_rpc_client.h)
-            await self.gcs_aio_client.check_alive(node_ips=[], timeout=None)
+            await self.gcs_client.async_check_alive(node_ips=[], timeout=None)
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
 
@@ -293,14 +292,14 @@ class DashboardHead:
         logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
         return handles
 
-    async def _setup_metrics(self, gcs_aio_client):
+    async def _setup_metrics(self, gcs_client):
         metrics = DashboardPrometheusMetrics()
 
         # Setup prometheus metrics export server
         assert internal_kv._internal_kv_initialized()
-        assert gcs_aio_client is not None
+        assert gcs_client is not None
         address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
-        await gcs_aio_client.internal_kv_put(
+        await gcs_client.async_internal_kv_put(
             "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
         )
         if prometheus_client:
@@ -389,9 +388,6 @@ class DashboardHead:
 
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(address=gcs_address, cluster_id=self.cluster_id_hex)
-        self.gcs_aio_client = GcsAioClient(
-            address=gcs_address, cluster_id=self.cluster_id_hex
-        )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
         dashboard_head_modules, subprocess_module_handles = self._load_modules(
@@ -405,7 +401,7 @@ class DashboardHead:
             handle.wait_for_module_ready()
 
         if not self.minimal:
-            self.metrics = await self._setup_metrics(self.gcs_aio_client)
+            self.metrics = await self._setup_metrics(self.gcs_client)
             self._event_loop_lag_s_max: Optional[float] = None
 
             def on_new_lag(lag_s):

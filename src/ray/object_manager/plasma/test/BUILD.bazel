@@ -32,8 +32,8 @@ ray_cc_test(
     ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        "//:object_manager_common",
         "//src/ray/core_worker:experimental_mutable_object_manager",
+        "//src/ray/object_manager:object_manager_common",
         "@com_google_googletest//:gtest_main",
     ],
 )

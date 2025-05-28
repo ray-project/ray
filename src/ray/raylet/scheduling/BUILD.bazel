@@ -120,7 +120,7 @@ ray_cc_library(
     srcs = ["local_resource_manager.cc"],
     hdrs = ["local_resource_manager.h"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",

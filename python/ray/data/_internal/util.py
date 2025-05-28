@@ -26,13 +26,14 @@ from typing import (
 )
 
 import numpy as np
-import psutil
 import pyarrow
 from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+
+import psutil
 
 if TYPE_CHECKING:
     import pandas
@@ -698,7 +699,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
 
 def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
@@ -785,13 +786,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -800,7 +802,7 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:

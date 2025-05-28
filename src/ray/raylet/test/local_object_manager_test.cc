@@ -28,7 +28,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/object_manager/ownership_based_object_directory.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
@@ -336,7 +336,6 @@ class LocalObjectManagerTestWithMinSpillingSize {
             gcs_client_,
             subscriber_.get(),
             &client_pool,
-            /*max_object_report_batch_size=*/20000,
             [](const ObjectID &object_id, const rpc::ErrorType &error_type) {})),
         manager(
             manager_node_id_,

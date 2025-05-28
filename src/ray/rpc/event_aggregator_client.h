@@ -14,21 +14,21 @@
 
 #pragma once
 
-#include <string>
-#include <memory>
 #include <grpcpp/grpcpp.h>
+
+#include <memory>
+#include <string>
 
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/event.grpc.pb.h"
-#include "src/ray/protobuf/event.pb.h"
-#include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/event_aggregator_service.grpc.pb.h"
+#include "src/ray/protobuf/event_aggregator_service.pb.h"
 
 namespace ray {
 namespace rpc {
 
-/// Client used for communicating with a remote event aggregator server.
-/// TODO: Update to match the new event aggregator service.
+/// Client used for communicating with an event aggregator server in the dashboard
+/// agent.
 class EventAggregatorClient {
  public:
   virtual ~EventAggregatorClient() = default;
@@ -37,9 +37,8 @@ class EventAggregatorClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  virtual void ReceiveEvents(
-      const rpc::AddTaskEventDataRequest &request,
-      const ClientCallback<rpc::AddTaskEventDataReply> &callback) = 0;
+  virtual void AddEvents(const rpc::AddEventRequest &request,
+                         const ClientCallback<rpc::AddEventReply> &callback) = 0;
 };
 
 class EventAggregatorClientImpl : public EventAggregatorClient {
@@ -52,26 +51,26 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   EventAggregatorClientImpl(const std::string &address,
                             const int port,
                             ClientCallManager &client_call_manager) {
-    RAY_LOG(INFO) << "Initiate the event aggregator client of address:" << address
-                  << " port:" << port;
-    grpc_client_ = std::make_unique<GrpcClient<AggregatorService>>(
+    RAY_LOG(INFO) << "Initiating the event aggregator client with address: " << address
+                  << " port: " << port;
+    grpc_client_ = std::make_unique<GrpcClient<EventAggregatorService>>(
         address, port, client_call_manager);
   };
 
-  void ReceiveEvents(
-      const rpc::AddTaskEventDataRequest &request,
-      const ClientCallback<rpc::AddTaskEventDataReply> &callback) override {
-    grpc_client_->CallMethod<rpc::AddTaskEventDataRequest, rpc::AddTaskEventDataReply>(
-        &AggregatorService::Stub::PrepareAsyncReceiveEvents,
+  void AddEvents(const rpc::AddEventRequest &request,
+                 const ClientCallback<rpc::AddEventReply> &callback) override {
+    grpc_client_->CallMethod<rpc::AddEventRequest, rpc::AddEventReply>(
+        &EventAggregatorService::Stub::PrepareAsyncReceiveEvents,
         request,
         callback,
-        "ReceiveEvents.grpc_client.ReceiveEvents",
+        "EventAggregatorService.grpc_client.AddEvents",
+        // TODO(myan): Add timeout and retry logic.
         /*timeout_ms*/ -1);
   }
 
  private:
   // The RPC client.
-  std::unique_ptr<GrpcClient<AggregatorService>> grpc_client_;
+  std::unique_ptr<GrpcClient<EventAggregatorService>> grpc_client_;
 };
 
 }  // namespace rpc

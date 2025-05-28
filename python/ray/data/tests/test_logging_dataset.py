@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 
@@ -54,48 +55,71 @@ def _test_harness(filename_01: str, filename_02: str):
         f"Dataset {dataset_02_id} execution finished"
         in log_01_contents + log_02_contents
     )
+    return log_01_contents, log_02_contents
 
 
 def test_dataset_logging_concurrent(ray_start_regular_shared, reset_logging):
     from concurrent.futures import ThreadPoolExecutor
 
     def _short(x):
+        logger = logging.getLogger("ray.data")
+        logger.info("short function is running")
         time.sleep(0.1)
         return x
 
     def _long(x):
+        logger = logging.getLogger("ray.data")
+        logger.info("long function is running")
         time.sleep(1)
         return x
 
-    ds01 = ray.data.range(100, override_num_blocks=20).map_batches(_short)
+    ds01 = ray.data.range(1).map_batches(_short)
     ds01.set_name("test_dataset_logging_concurrent_01")
 
-    ds02 = ray.data.range(100, override_num_blocks=20).map_batches(_long)
+    ds02 = ray.data.range(1).map_batches(_long)
     ds02.set_name("test_dataset_logging_concurrent_02")
 
     with ThreadPoolExecutor() as executor:
         executor.submit(ds01.materialize)
         executor.submit(ds02.materialize)
 
-    _test_harness(
+    log_01_contents, log_02_contents = _test_harness(
         "test_dataset_logging_concurrent_01",
         "test_dataset_logging_concurrent_02",
     )
+    # for concurrent datasets, which dataset contains the worker logs is not
+    # deterministic, so we only check that the logs are present in the combined logs
+    assert "short function is running" in log_01_contents + log_02_contents
+    assert "long function is running" in log_01_contents + log_02_contents
 
 
 def test_dataset_logging_sequential(ray_start_regular_shared, reset_logging):
-    ds01 = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+    def _short(x):
+        logger = logging.getLogger("ray.data")
+        logger.info("short function is running")
+        time.sleep(0.1)
+        return x
+
+    def _long(x):
+        logger = logging.getLogger("ray.data")
+        logger.info("long function is running")
+        time.sleep(1)
+        return x
+
+    ds01 = ray.data.range(1).map_batches(_short)
     ds01.set_name("test_dataset_logging_sequential_01")
     ds01.materialize()
 
-    ds02 = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+    ds02 = ray.data.range(1).map_batches(_long)
     ds02.set_name("test_dataset_logging_sequential_02")
     ds02.materialize()
 
-    _test_harness(
+    log_01_contents, log_02_contents = _test_harness(
         "test_dataset_logging_sequential_01",
         "test_dataset_logging_sequential_02",
     )
+    assert "short function is running" in log_01_contents
+    assert "long function is running" in log_02_contents
 
 
 if __name__ == "__main__":

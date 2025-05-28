@@ -10,7 +10,6 @@
 #
 #   ;  # Semicolon to separate rules
 
-
 python/ray/air/
 @ ml train tune data linux_wheels
 ;
@@ -85,7 +84,19 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python accelerated_dag
+@ python compiled_graphs
+;
+
+python/ray/util/client/
+@ python ray_client
+;
+
+python/ray/util/dask/
+@ python dask
+;
+
+python/ray/util/spark/
+@ python spark_on_ray
 ;
 
 python/
@@ -97,10 +108,6 @@ python/
 
 .buildkite/core.rayci.yml
 @ python core_cpp
-;
-
-.buildkite/serverless.rayci.yml
-@ python
 ;
 
 java/
@@ -116,6 +123,11 @@ cpp/
 docker/
 .buildkite/pipeline.build_cpp.yml
 @ docker linux_wheels
+;
+
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
 ;
 
 .readthedocs.yaml
@@ -136,7 +148,7 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
-# Release test unit tests are ALWAYS RUN, so pass
+@ tools
 ;
 
 release/*.md
@@ -158,6 +170,10 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
+ci/fossa/
+ci/docker/fossa.Dockerfile
+ci/docker/fossa.wanda.yaml
+bazel/tests/
 @ tools
 ;
 
@@ -205,7 +221,12 @@ ci/ci.sh
 src/
 @ core_cpp cpp
 @ java python linux_wheels macos_wheels
-@ dashboard release_tests accelerated_dag
+@ dashboard release_tests
+;
+
+src/ray/core_worker/experimental*.h
+src/ray/core_worker/experimental*.cc
+@ compiled_graphs
 ;
 
 .github/
@@ -219,6 +240,6 @@ setup_hooks.sh
 .pre-commit-config.yaml
 .isort.cfg
 .prettierrc.toml
-build.sh
+.fossa.yml
 # pass
 ;

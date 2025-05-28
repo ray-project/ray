@@ -1,6 +1,6 @@
-from typing import Any, Callable, Dict, Optional
+import warnings
+from typing import Any, Callable, Dict, Optional, Tuple
 
-import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -80,6 +80,7 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
+            op_name=self.name,
             target_max_block_size=self.actual_target_max_block_size,
         )
 
@@ -108,27 +109,13 @@ class TaskPoolMapOperator(MapOperator):
         )
         self._submit_data_task(gen, bundle)
 
-    def shutdown(self, force: bool = False):
-        # Cancel all active tasks.
-        for _, task in self._data_tasks.items():
-            ray.cancel(task.get_waitable())
-        # Wait until all tasks have failed or been cancelled.
-        for _, task in self._data_tasks.items():
-            try:
-                ray.get(task.get_waitable())
-            except ray.exceptions.RayError:
-                # Cancellation either succeeded, or the task had already failed with
-                # a different error, or cancellation failed. In all cases, we
-                # swallow the exception.
-                pass
-
-        super().shutdown(force)
-
     def progress_str(self) -> str:
         return ""
 
-    def base_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources()
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        return self.incremental_resource_usage(), ExecutionResources.for_limits()
 
     def current_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
@@ -144,9 +131,27 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
+            memory=self._ray_remote_args.get("memory", 0),
             object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
             or 0,
         )
 
     def get_concurrency(self) -> Optional[int]:
         return self._concurrency
+
+    def all_inputs_done(self):
+        super().all_inputs_done()
+
+        if (
+            self._concurrency is not None
+            and self._metrics.num_inputs_received < self._concurrency
+        ):
+            warnings.warn(
+                f"The maximum number of concurrent tasks for '{self.name}' is set to "
+                f"{self._concurrency}, but the operator only received "
+                f"{self._metrics.num_inputs_received} input(s). This means that the "
+                f"operator can launch at most {self._metrics.num_inputs_received} "
+                "task(s), which is less than the concurrency limit. You might be able "
+                "to increase the number of concurrent tasks by configuring "
+                "`override_num_blocks` earlier in the pipeline."
+            )

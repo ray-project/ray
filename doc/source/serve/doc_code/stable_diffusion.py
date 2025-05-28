@@ -71,9 +71,8 @@ if __name__ == "__main__":
     ray.init(
         runtime_env={
             "pip": [
-                "diffusers==0.14.0",
-                "transformers==4.25.1",
-                "accelerate==0.17.1",
+                "diffusers==0.33.1",
+                "transformers==4.51.3",
             ]
         }
     )

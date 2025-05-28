@@ -88,3 +88,16 @@ filegroup(
     sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
     urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
 )
+
+http_archive(
+    name = "com_github_storypku_bazel_iwyu",
+    sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",
+    strip_prefix = "bazel_iwyu-0.19.2",
+    urls = [
+        "https://github.com/storypku/bazel_iwyu/archive/0.19.2.tar.gz",
+    ],
+)
+
+load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
+
+bazel_iwyu_dependencies()
