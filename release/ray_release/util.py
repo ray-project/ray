@@ -222,24 +222,29 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     """
     head_node_instance_type = compute_config["head_node_type"].get("instance_type")
     worker_node_types = compute_config["worker_node_types"]
+    head_node_resources = compute_config.get("head_node_type", {}).get("resources", {})
 
     kuberay_worker_nodes = []
     for worker_node_type in worker_node_types:
-        kuberay_worker_nodes.append({
+        worker_node_config = {
             "groupName": worker_node_type.get("name"),
             "instanceType": worker_node_type.get("instance_type"),
-            "resources": worker_node_type.get("resources", {}),
             "minWorkers": worker_node_type.get("min_workers"),
             "maxWorkers": worker_node_type.get("max_workers")
-        })
+        }
+        if worker_node_type.get("resources", {}):
+            worker_node_config["resources"] = worker_node_type.get("resources", {})
+        kuberay_worker_nodes.append(worker_node_config)
 
-    return {
+    config = {
         "headNode": {
             "instanceType": head_node_instance_type,
-            "resources": compute_config.get("head_node_type", {}).get("resources", {})
         },
         "workerNodes": kuberay_worker_nodes
     }
+    if head_node_resources:
+        config["headNode"]["resources"] = head_node_resources
+    return config
 
 
 def upload_working_dir(working_dir: str) -> str:
