@@ -123,7 +123,7 @@ def _split_single_block(
         _meta = BlockMetadata(
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
-            schema=meta.schema,
+            schema=meta.get_schema(),
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )

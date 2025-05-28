@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
+from ray.data.block import BlockMetadata, SchemaRegistry, Block
+from ray.types import ObjectRef
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
@@ -112,7 +114,7 @@ class DataOpTask(OpTask):
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             try:
-                block_ref = self._streaming_gen._next_sync(0)
+                block_ref: ObjectRef[Block] = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
@@ -122,7 +124,7 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta = ray.get(next(self._streaming_gen))
+                meta: BlockMetadata = ray.get(next(self._streaming_gen))
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error

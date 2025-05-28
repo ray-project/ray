@@ -162,7 +162,7 @@ class ExecutionPlan:
                 schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
                 count = self._snapshot_bundle.num_rows()
             elif self._snapshot_metadata is not None:
-                schema = self._snapshot_metadata.schema
+                schema = self._snapshot_metadata.get_schema()
                 count = self._snapshot_metadata.num_rows
             else:
                 # This plan hasn't executed any operators.
@@ -370,7 +370,7 @@ class ExecutionPlan:
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
         else:
-            schema = self._logical_plan.dag.aggregate_output_metadata().schema
+            schema = self._logical_plan.dag.aggregate_output_metadata().get_schema()
             if not schema and fetch_if_missing:
                 # For consistency with the previous implementation, we fetch the schema if
                 # the plan is read-only even if `fetch_if_missing` is False.
