@@ -50,5 +50,5 @@ You can also specify the input argument for `train_func` as a dictionary via the
 
          trainer = ray.train.torch.TorchTrainer(train_func, train_loop_config=config, ...)
 
-    Note: The above code only applies to PyTorch `DataLoader`. If you are using Ray Datasets, you directly pass it to the TorchTrainer's `datasets` parameter. Then, inside the training function, use `ray.train.get_dataset_shard <https://docs.ray.io/en/latest/train/api/doc/ray.train.get_dataset_shard.html#ray-train-get-dataset-shard>`_ to assign a data shard to each worker. For more details, refer to :ref:`data-ingest-torch`.
+    Note: The above code only applies to PyTorch `DataLoader`. If you are using Ray Datasets, you instead pass them to TorchTrainer's `datasets` parameter. Then, inside the training function, use `ray.train.get_dataset_shard <https://docs.ray.io/en/latest/train/api/doc/ray.train.get_dataset_shard.html#ray-train-get-dataset-shard>`_ to assign a data shard to each worker. For more details, refer to :ref:`data-ingest-torch`.
     
