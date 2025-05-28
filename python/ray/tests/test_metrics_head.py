@@ -143,6 +143,25 @@ def test_metrics_folder_with_dashboard_override(
                 assert global_filters in variable["definition"]
                 assert global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
+            # Check that panels have some width and height
+            for panel in contents["panels"]:
+                assert panel["gridPos"]["h"] > 0
+                assert panel["gridPos"]["w"] > 0
+            # Check for series overrides for MAX and MAX + PENDING
+            found_max = False
+            found_max_pending = False
+            for panel in contents["panels"]:
+                for override in panel.get("seriesOverrides", []):
+                    if override.get("alias") == "MAX":
+                        assert override["fill"] == 0
+                        assert override["stack"] is False
+                        found_max = True
+                    if override.get("alias") == "MAX + PENDING":
+                        assert override["fill"] == 0
+                        assert override["stack"] is False
+                        found_max_pending = True
+            assert found_max
+            assert found_max_pending
 
         # Serve Dashboard
         with open(f"{override_dashboard_dir}/serve_grafana_dashboard.json") as f:
@@ -200,7 +219,4 @@ def test_serve_dashboard_utilizes_global_filters():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

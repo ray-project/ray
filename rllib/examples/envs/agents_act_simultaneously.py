@@ -94,7 +94,9 @@ if __name__ == "__main__":
             env_config={"sheldon_cooper_mode": args.sheldon_cooper_mode},
         )
         .env_runners(
-            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+            env_to_module_connector=(
+                lambda env, spaces, device: FlattenObservations(multi_agent=True)
+            ),
         )
         .multi_agent(
             # Define two policies.

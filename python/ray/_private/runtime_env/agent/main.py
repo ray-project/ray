@@ -4,15 +4,15 @@ import os
 import sys
 
 import ray._private.ray_constants as ray_constants
-from ray.core.generated import (
-    runtime_env_agent_pb2,
-)
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray._private.process_watcher import create_check_raylet_task
 from ray._private import logging_utils
+from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import GcsClient
+from ray.core.generated import (
+    runtime_env_agent_pb2,
+)
 
 
 def import_libs():
@@ -24,9 +24,8 @@ def import_libs():
 import_libs()
 
 import runtime_env_consts  # noqa: E402
-from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 from aiohttp import web  # noqa: E402
-
+from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")

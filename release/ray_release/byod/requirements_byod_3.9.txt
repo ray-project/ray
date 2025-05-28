@@ -587,7 +587,7 @@ crcmod==1.7 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   gsutil
-cryptography==44.0.3 \
+cryptography==44.0.3 ; sys_platform != "darwin" \
     --hash=sha256:02f55fb4f8b79c1221b0961488eaae21015b69b210e18c386b69de182ebb1259 \
     --hash=sha256:157f1f3b8d941c2bd8f3ffee0af9b049c9665c39d3da9db2dc338feca5e98a43 \
     --hash=sha256:192ed30fac1728f7587c6f4613c29c584abdc565d7417c13904708db10206645 \

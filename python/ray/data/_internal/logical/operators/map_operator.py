@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -133,6 +134,9 @@ class AbstractUDFMap(AbstractMap):
             elif inspect.isfunction(fn):
                 # normal function or lambda function.
                 return f"{op_name}({fn.__name__})"
+            elif isinstance(fn, functools.partial):
+                # functools.partial
+                return f"{op_name}({fn.func.__name__})"
             else:
                 # callable object.
                 return f"{op_name}({fn.__class__.__name__})"

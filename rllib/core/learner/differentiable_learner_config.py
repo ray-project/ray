@@ -1,3 +1,4 @@
+import gymnasium as gym
 from dataclasses import dataclass, fields
 
 from typing import Callable, List, Optional, Union
@@ -6,7 +7,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.utils.typing import ModuleID
+from ray.rllib.utils.typing import DeviceType, ModuleID
 
 
 @dataclass
@@ -63,9 +64,9 @@ class DifferentiableLearnerConfig:
 
     def build_learner_connector(
         self,
-        input_observation_space,
-        input_action_space,
-        device=None,
+        input_observation_space: Optional[gym.spaces.Space],
+        input_action_space: Optional[gym.spaces.Space],
+        device: Optional[DeviceType] = None,
     ):
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,

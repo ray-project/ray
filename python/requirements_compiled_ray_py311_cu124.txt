@@ -712,9 +712,9 @@ gymnasium==1.0.0 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu124.txt
     #   -r python/requirements.txt
-h11==0.14.0 \
-    --hash=sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d \
-    --hash=sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761
+h11==0.16.0 \
+    --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
+    --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu124.txt
     #   uvicorn
@@ -1147,6 +1147,7 @@ opentelemetry-api==1.26.0 \
     #   -r python/requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-otlp==1.26.0 \
@@ -1174,6 +1175,12 @@ opentelemetry-exporter-otlp-proto-http==1.26.0 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu124.txt
     #   opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.47b0 \
+    --hash=sha256:03e8ebccdaeae3a7dad9909d1203dfce5d6c3311ff715911156ed61d9928ab44 \
+    --hash=sha256:d65d73da0689f5ec4da9951b209f04ecc8596864daf9b7422bac0d7dc3cb7b76
+    # via
+    #   -c python/requirements_compiled_ray_test_py311_cu124.txt
+    #   -r python/requirements.txt
 opentelemetry-proto==1.26.0 \
     --hash=sha256:237ef4fdd7f752b2fe740352643f8ef82733bd8e0db8b46ed808125ac7c7f112 \
     --hash=sha256:ff1ad9a3c572075883c2af0053cefdfaba005d71eade783c4524d34660d53b60
@@ -1190,6 +1197,7 @@ opentelemetry-sdk==1.26.0 \
     #   -r python/requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.47b0 \
     --hash=sha256:ecae7367203e5204c70518e6d24b438480d6a6f1e5c8ee9dc2145f176ff4452e \
     --hash=sha256:fac014ac2098b1a05fe58af77cbe74c825ff869d6d53d316c393cc77f507ec15
@@ -1322,6 +1330,7 @@ prometheus-client==0.19.0 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu124.txt
     #   -r python/requirements.txt
+    #   opentelemetry-exporter-prometheus
 propcache==0.3.0 \
     --hash=sha256:02df07041e0820cacc8f739510078f2aadcfd3fc57eaeeb16d5ded85c872c89e \
     --hash=sha256:03acd9ff19021bd0567582ac88f821b66883e158274183b9e5586f678984f8fe \

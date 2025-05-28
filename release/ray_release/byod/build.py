@@ -16,8 +16,8 @@ from ray_release.test import (
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
-DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
+DATAPLANE_FILENAME = "dataplane_20250515.tar.gz"
+DATAPLANE_DIGEST = "b6afd94c7acdb0040d032f72a24cf701a03e60794b3f21cce8cdb5ab8796f938"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = (

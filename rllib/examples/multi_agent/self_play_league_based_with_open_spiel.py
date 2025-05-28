@@ -65,6 +65,7 @@ from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
+    enable_new_api_stack=True,
     env="markov_soccer",
     num_env_runners=2,
     checkpoint_freq=1,

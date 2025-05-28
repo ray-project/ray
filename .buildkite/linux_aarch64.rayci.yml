@@ -59,6 +59,7 @@ steps:
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
       - linux_wheels
+      - release_wheels
       - oss
     instance_type: medium-arm64
     commands:

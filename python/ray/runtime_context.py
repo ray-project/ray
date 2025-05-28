@@ -533,6 +533,18 @@ class RuntimeContext(object):
             ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 
+    def get_node_labels(self) -> Dict[str, List[str]]:
+        """
+        Get the node labels of the current worker.
+
+        Returns:
+            A dictionary of label key-value pairs.
+        """
+        worker = self.worker
+        worker.check_connected()
+
+        return worker.current_node_labels
+
 
 _runtime_context = None
 _runtime_context_lock = threading.Lock()

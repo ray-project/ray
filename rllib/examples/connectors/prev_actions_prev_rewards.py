@@ -108,7 +108,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define our custom connector pipelines.
-    def _env_to_module(env):
+    def _env_to_module(env, spaces, device):
         # Create the env-to-module connector pipeline.
         return [
             PrevActionsPrevRewards(

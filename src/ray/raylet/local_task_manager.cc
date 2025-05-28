@@ -901,11 +901,9 @@ bool LocalTaskManager::CancelTask(
       scheduling_failure_message);
 }
 
-bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar,
-    bool *any_pending,
-    int *num_pending_actor_creation,
-    int *num_pending_tasks) const {
+const RayTask *LocalTaskManager::AnyPendingTasksForResourceAcquisition(
+    int *num_pending_actor_creation, int *num_pending_tasks) const {
+  const RayTask *exemplar = nullptr;
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
@@ -938,14 +936,12 @@ bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
         *num_pending_tasks += 1;
       }
 
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
+      if (exemplar == nullptr) {
+        exemplar = &task;
       }
     }
   }
-  // If there's any pending task, at this point, there's no progress being made.
-  return *any_pending;
+  return exemplar;
 }
 
 void LocalTaskManager::Dispatch(

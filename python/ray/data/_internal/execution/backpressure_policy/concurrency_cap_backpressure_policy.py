@@ -1,11 +1,10 @@
 import logging
 from typing import TYPE_CHECKING
 
+from .backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-
-from .backpressure_policy import BackpressurePolicy
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (

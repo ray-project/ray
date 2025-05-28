@@ -21,8 +21,8 @@ from ray._private.runtime_env.conda_utils import (
     create_conda_env_if_needed,
     delete_conda_env,
     get_conda_activate_commands,
-    get_conda_info_json,
     get_conda_envs,
+    get_conda_info_json,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri

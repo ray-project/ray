@@ -354,7 +354,7 @@ class DAGNode(DAGNodeBase):
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
-            _ray_cache_refs: If true, stores the the default executor's return values
+            _ray_cache_refs: If true, stores the default executor's return values
                 on each node in this DAG in a cache. These should be a mix of:
                 - ray.ObjectRefs pointing to the outputs of method and function nodes
                 - Serve handles for class nodes

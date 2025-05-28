@@ -369,23 +369,21 @@ class ExecutionPlan:
 
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
-
-        elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
+        else:
             schema = self._logical_plan.dag.aggregate_output_metadata().schema
+            if not schema and fetch_if_missing:
+                # For consistency with the previous implementation, we fetch the schema if
+                # the plan is read-only even if `fetch_if_missing` is False.
 
-        elif fetch_if_missing:
-            # For consistency with the previous implementation, we fetch the schema if
-            # the plan is read-only even if `fetch_if_missing` is False.
+                iter_ref_bundles, _, executor = self.execute_to_iterator()
 
-            iter_ref_bundles, _, executor = self.execute_to_iterator()
-
-            # Make sure executor is fully shutdown upon exiting
-            with executor:
-                for ref_bundle in iter_ref_bundles:
-                    for metadata in ref_bundle.metadata:
-                        if metadata.schema is not None:
-                            schema = metadata.schema
-                            break
+                # Make sure executor is fully shutdown upon exiting
+                with executor:
+                    for ref_bundle in iter_ref_bundles:
+                        for metadata in ref_bundle.metadata:
+                            if metadata.schema is not None:
+                                schema = metadata.schema
+                                break
 
         self._schema = schema
         return self._schema

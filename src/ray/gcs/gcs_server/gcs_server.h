@@ -263,18 +263,10 @@ class GcsServer {
   std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
-  /// Global KV storage handler and service.
+  /// Global KV storage handler.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
-  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
-  /// Job info handler and service.
+  /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
-  std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
-  /// Actor info service.
-  std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
-  /// Node info handler and service.
-  std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
-  /// Node resource info handler and service.
-  std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
@@ -287,22 +279,12 @@ class GcsServer {
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
-  /// Worker info service.
-  std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
-  /// Placement Group info handler and service.
-  std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
-  /// Runtime env handler and service.
+  /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
-  std::unique_ptr<rpc::RuntimeEnvGrpcService> runtime_env_service_;
-  /// GCS PubSub handler and service.
+  /// GCS PubSub handler.
   std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
-  std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
   /// GCS Task info manager for managing task states change events.
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
-  /// Independent task info service from the main grpc service.
-  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
-  /// Gcs Autoscaler state manager.
-  std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
   /// Grpc based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   /// The runner to run function periodically.

@@ -39,7 +39,7 @@ class ThreadRunner:
                     self._ret = result
             except BaseException as e:
                 with self._lock:
-                    # Exclude the the first 2 frames from the traceback, which are
+                    # Exclude the first 2 frames from the traceback, which are
                     # the `ThreadRunner._run_target` and `construct_train_func` calls.
                     # TODO(justinvyu): This is brittle and may break if the call stack
                     # changes. Figure out a more robust way to exclude these frames.

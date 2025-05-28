@@ -16,7 +16,7 @@ config = (
     PPOConfig()
     .environment(CartPoleWithLargeObservationSpace)
     .env_runners(
-        env_to_module_connector=lambda env: FlattenObservations(),
+        env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         episodes_to_numpy=False,
     )
     .training(

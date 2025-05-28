@@ -9,6 +9,6 @@
 
 ## Getting Started
 
-**When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `start.ipynb` file and follow the instructions there.**
+**When the workspace is up and running, start coding by clicking on the Jupyter or VS Code icon above. Open the `start.ipynb` file and follow the instructions there.**
 
 By the end, we will have classified around 10k images with a PyTorch model.

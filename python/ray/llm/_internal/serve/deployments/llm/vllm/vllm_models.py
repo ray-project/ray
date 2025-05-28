@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING, Union
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator, ValidationError
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
@@ -24,7 +24,11 @@ from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
 )
+from ray.llm._internal.serve.configs.prompt_formats import Prompt
 
+
+# The key for the kv_transfer_params in the internal metadata.
+KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
 
 vllm = try_import("vllm")
 
@@ -211,19 +215,51 @@ class VLLMSamplingParams(SamplingParams):
     Args:
         top_k: The number of highest probability vocabulary tokens to keep for top-k-filtering.
         seed: Seed for deterministic sampling with temperature>0.
+        repetition_penalty: Float that penalizes new tokens based on whether they
+            appear in the prompt and the generated text so far. Values > 1 encourage
+            the model to use new tokens, while values < 1 encourage the model to repeat
+            tokens.
     """
 
     _ignored_fields = {"best_of", "n", "logit_bias"}
 
     top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
     seed: Optional[int] = None
+    kv_transfer_params: Optional[Dict[str, Any]] = None
+
+    @field_validator("n", mode="before")
+    @classmethod
+    def validate_n(cls, values):
+        if values != 1:
+            raise ValidationError("n>1 is not supported yet in rayllm.")
+        return values
+
+    @classmethod
+    def _get_model_validate_kwargs(cls, prompt: Prompt) -> Dict[str, Any]:
+        """
+        Extend the base class's `_get_model_validate_kwargs` to include vllm-specific parameters.
+        """
+        generate_kwargs = super()._get_model_validate_kwargs(prompt)
+        if (
+            prompt.parameters is not None
+            and KV_TRANSFER_PARAMS_KEY in prompt.parameters
+        ):
+            generate_kwargs[KV_TRANSFER_PARAMS_KEY] = prompt.parameters[
+                KV_TRANSFER_PARAMS_KEY
+            ]
+        return generate_kwargs
 
 
 class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    # Intentionally override the base class's `sampling_params` field.
     sampling_params: Optional[
-        Union[VLLMSamplingParams, List[VLLMSamplingParams]]
+        Union[
+            VLLMSamplingParams,
+            List[VLLMSamplingParams],
+        ]
     ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None

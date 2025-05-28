@@ -1,10 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
-import copy
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
-from ray.rllib.utils.metrics.stats import Stats
+from ray.rllib.utils.metrics.stats import Stats, merge_stats
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
 from ray.util import log_once
@@ -32,6 +32,7 @@ class MetricsLogger:
     data, such as sliding windows or EMA coefficients.
     - Optionally clearing all logged values after a `reduce()` call to make space for
     new data.
+    - Tracking throughputs of logged values.
 
     .. testcode::
 
@@ -75,7 +76,7 @@ class MetricsLogger:
         remote_results_1 = remote_logger_1.reduce()
         remote_results_2 = remote_logger_2.reduce()
         # .. then merge the two results into the controller logger.
-        main_logger.merge_and_log_n_dicts([remote_results_1, remote_results_2])
+        main_logger.aggregate([remote_results_1, remote_results_2])
         check(main_logger.peek("count"), 5)
 
         # 4) Time blocks of code using EMA (coeff=0.1). Note that the higher the coeff
@@ -264,6 +265,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -338,7 +340,7 @@ class MetricsLogger:
 
         Args:
             key: The key (or nested key-tuple) to log the `value` under.
-            value: The value to log.
+            value: The value to log. This should be a numeric value.
             reduce: The reduction method to apply, once `self.reduce()` is called.
                 If None, will collect all logged values under `key` in a list (and
                 also return that list upon calling `self.reduce()`).
@@ -368,6 +370,12 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
+            reduce_per_index_on_aggregate: If True, when merging Stats objects in parallel, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -389,9 +397,7 @@ class MetricsLogger:
                 self._set_key(
                     key,
                     (
-                        Stats.similar_to(value, init_values=value.values)
-                        if isinstance(value, Stats)
-                        else Stats(
+                        Stats(
                             value,
                             reduce=reduce,
                             window=window,
@@ -399,6 +405,7 @@ class MetricsLogger:
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
                             throughput_ema_coeff=throughput_ema_coeff,
+                            reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
                         )
                     ),
                 )
@@ -440,17 +447,23 @@ class MetricsLogger:
                         f"but got argument window={window} while the existing Stats object {key} "
                         f"has window={stats._window}."
                     )
-                if isinstance(value, Stats):
-                    # If value itself is a `Stats`, we merge it on time axis into self's
-                    # `Stats`.
-                    stats.merge_on_time_axis(value)
-                else:
-                    # Otherwise, we just push the value into self's `Stats`.
-                    stats.push(value)
+                if (
+                    reduce_per_index_on_aggregate
+                    != stats._reduce_per_index_on_aggregate
+                    and log_once(f"reduce_per_index_on_aggregate_warning_{key}")
+                ):
+                    logger.warning(
+                        f"reduce_per_index_on_aggregate should be the same for all logged values under the same key, "
+                        f"but got argument reduce_per_index_on_aggregate={reduce_per_index_on_aggregate} while the existing Stats object {key} "
+                        f"has reduce_per_index_on_aggregate={stats._reduce_per_index_on_aggregate}."
+                    )
+
+                # Otherwise, we just push the value into self's `Stats`.
+                stats.push(value)
 
     def log_dict(
         self,
-        stats_dict,
+        value_dict,
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
@@ -459,8 +472,16 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> None:
-        """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
+        """Logs all leafs of a possibly nested dict of values to this logger.
+
+        To aggregate logs from upstream components, use `aggregate`.
+
+        This is a convinience function that is equivalent to:
+        ```
+        tree.map_structure_with_path(lambda path, value: logger.log_value(path, value, ...), value_dict)
+        ```
 
         Traverses through all leafs of `stats_dict` and - if a path cannot be found in
         this logger yet, will add the `Stats` found at the leaf under that new key.
@@ -506,7 +527,7 @@ class MetricsLogger:
             })
 
         Args:
-            stats_dict: The (possibly nested) dict with `Stats` or individual values as
+            value_dict: The (possibly nested) dict with individual values as
                 leafs to be logged to this logger.
             key: An additional key (or tuple of keys) to prepend to all the keys
                 (or tuples of keys in case of nesting) found inside `stats_dict`.
@@ -542,37 +563,61 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
         """
         assert isinstance(
-            stats_dict, dict
-        ), f"`stats_dict` ({stats_dict}) must be dict!"
+            value_dict, dict
+        ), f"`stats_dict` ({value_dict}) must be dict!"
 
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):
             extended_key = prefix_key + force_tuple(tree.flatten(path))
 
+            if isinstance(stat_or_value, Stats):
+                deprecation_warning(
+                    old="MetricsLogger.log_dict() for Stats objects",
+                    new="MetricsLogger.aggregate()",
+                    error=True,
+                )
+
             self.log_value(
                 extended_key,
-                stat_or_value,
+                value=stat_or_value,
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
+                reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
             )
 
         with self._threading_lock:
-            tree.map_structure_with_path(_map, stats_dict)
+            tree.map_structure_with_path(_map, value_dict)
 
-    def merge_and_log_n_dicts(
+    @Deprecated(new="aggregate", error=False)
+    def merge_and_log_n_dicts(self, *args, **kwargs):
+        return self.aggregate(*args, **kwargs)
+
+    def aggregate(
         self,
         stats_dicts: List[Dict[str, Any]],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
-        """Merges n dicts, generated by n parallel components, and logs the results.
+        """Merges n stats_dicts and logs result by merging on the time axis with existing stats.
+
+        The n stats_dicts should be generated by n parallel components such that merging their
+        respective stats in parallel is meaningful. This lets us aggregate stats in a tree structure of
+        MetricsLoggers.
+
+        If you want to log a dictionary of values (not Stats objects), use `log_dict`.
 
         .. testcode::
 
@@ -594,7 +639,7 @@ class MetricsLogger:
             learner2_results = logger_learner2.reduce()
 
             # Merge the stats from both Learners.
-            main_logger.merge_and_log_n_dicts(
+            main_logger.aggregate(
                 [learner1_results, learner2_results],
                 key="learners",
             )
@@ -618,7 +663,7 @@ class MetricsLogger:
             env_runner2_results = logger_env_runner2.reduce()
 
             # Merge the stats from both EnvRunners.
-            main_logger.merge_and_log_n_dicts(
+            main_logger.aggregate(
                 [env_runner1_results, env_runner2_results],
                 key="env_runners",
             )
@@ -652,7 +697,7 @@ class MetricsLogger:
             logger2_results = logger2.reduce()
 
             # Merge the stats from both Learners.
-            main_logger.merge_and_log_n_dicts([logger1_results, logger2_results])
+            main_logger.aggregate([logger1_results, logger2_results])
             check(main_logger.peek("some_stat"), 150)
 
             # Example: Sum over n parallel components' stats with a window of 3.
@@ -671,23 +716,26 @@ class MetricsLogger:
             logger2_results = logger2.reduce()
 
             # Merge the stats from both Learners.
-            main_logger.merge_and_log_n_dicts([logger1_results, logger2_results])
+            main_logger.aggregate([logger1_results, logger2_results])
             # The expected procedure is as follows:
             # The individual internal values lists of the two loggers are as follows:
             # env runner 1: [50, 25, 10, 5]
             # env runner 2: [75, 100]
             # Move backwards from index=-1 (each time, loop through both loggers)
-            # index=-1 -> [5, 100] -> leave as-is, b/c we are sum'ing -> [5, 100]
-            # index=-2 -> [10, 75] -> leave as-is -> [5, 100, 10, 75] -> STOP b/c we
-            # have reached >= window.
-            # reverse the list -> [75, 10, 100, 5]
-            check(main_logger.peek("some_stat"), 115)  # last 3 items (window) get sum'd
+            # index=-1 -> [5, 100] -> reduce over both two indices -> [(5 + 100) / 2, (5 + 100) / 2] = [52.5, 52.5]
+            # Result = [52.5, 52.5]
+            # len() = 2 < window = 3
+            # index=-2 -> [10, 75] -> reduce over both two indices -> [(10 + 75) / 2, (10 + 75) / 2] = [42.5, 42.5]
+            # result = [42.5, 42.5, 52.5, 52.5]
+            # len() = 4 >= window = 3
+            check(main_logger.peek("some_stat"), 147.5)  # last 3 items (window) get sum'd
 
         Args:
             stats_dicts: List of n stats dicts to be merged and then logged.
             key: Optional top-level key under which to log all keys/key sequences
                 found in the n `stats_dicts`.
         """
+        assert isinstance(stats_dicts, list), "stats_dicts must be a list"
         all_keys = set()
 
         def traverse_and_add_paths(d, path=()):
@@ -736,44 +784,17 @@ class MetricsLogger:
                 if self._key_in_stats(key, stats=s)
             ]
 
-            # Find a base Stats object first - we will use this to merge with incoming Stats objects
-            base_stats = None
-            own_stats = self._get_key(key, stats=self.stats, key_error=False)
+            structure_under_key = self._get_key(key, stats=self.stats, key_error=False)
+            # self._get_key returns {} if the key is not found
+            own_stats = (
+                None if isinstance(structure_under_key, dict) else structure_under_key
+            )
 
-            if not self._key_in_stats(key):
-                # We need to deepcopy here first because stats from incoming_stats may be altered in the future
-                base_stats = copy.deepcopy(incoming_stats[0])
-            elif len(incoming_stats) > 0:
-                base_stats = own_stats
+            merged_stats = merge_stats(
+                base_stats=own_stats, incoming_stats=incoming_stats
+            )
 
-                # Special case: `base_stats` is a lifetime sum (reduce=sum,
-                # clear_on_reduce=False) -> We subtract the previous value (from 2
-                # `reduce()` calls ago) from all to-be-merged stats, so we don't count
-                # twice the older sum from before.
-                if (
-                    base_stats._reduce_method == "sum"
-                    and base_stats._inf_window
-                    and base_stats._clear_on_reduce is False
-                ):
-                    for stat in incoming_stats:
-                        base_stats.push(-stat.get_reduce_history()[-2][0])
-            else:
-                continue
-
-            if not self._key_in_stats(key):
-                # Note that we may take a mean of means here, which is not the same as a mean of all values
-                # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
-                if len(incoming_stats) > 1:
-                    base_stats.merge_in_parallel(*incoming_stats[1:])
-            elif len(incoming_stats) > 0:
-                if len(incoming_stats) > 1:
-                    # There are more than one incoming parallel others -> Merge all of them
-                    # in parallel (equal importance)
-                    incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
-                # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
-                base_stats.merge_on_time_axis(incoming_stats[0])
-
-            self._set_key(key, base_stats)
+            self._set_key(key, merged_stats)
 
     def log_time(
         self,
@@ -785,6 +806,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -847,6 +869,12 @@ class MetricsLogger:
                 through: <MetricsLogger>.peek(key, throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -868,6 +896,7 @@ class MetricsLogger:
                     clear_on_reduce=clear_on_reduce,
                     throughput=with_throughput,
                     throughput_ema_coeff=throughput_ema_coeff,
+                    reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
                 ),
             )
 
@@ -893,7 +922,7 @@ class MetricsLogger:
         which returns an equivalent, reduced dict with values at the leafs.
         Component A can then further log these n result dicts through its own
         MetricsLogger through:
-        `logger.merge_and_log_n_dicts([n returned result dicts from n subcomponents])`.
+        `logger.aggregate([n returned result dicts from n subcomponents])`.
 
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -928,15 +957,7 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
-            # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
-            # We need to do this so that lifetime stats are accumulated only in the root logger
-            if not self._is_root_logger:
-                # For non-root logger or non-lifetime stats, reduce normally
-                values = stats.reduce(compile=False)
-                return Stats.similar_to(stats, init_values=values)
-            else:
-                # Only the root logger should return the actual values
-                return stats.reduce(compile=True)
+            return stats.reduce(compile=self._is_root_logger)
 
         try:
             with self._threading_lock:
@@ -984,6 +1005,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
+        reduce_per_index_on_aggregate: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -1030,6 +1052,13 @@ class MetricsLogger:
                 <MetricsLogger>.peek([key], throughput=True).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
+                Note that this is only applied if `key` does not exist in `self` yet.
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
@@ -1050,6 +1079,7 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
+                reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
             )
 
     def reset(self) -> None:

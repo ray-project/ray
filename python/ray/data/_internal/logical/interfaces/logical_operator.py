@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional
 
-from ray.data.block import BlockMetadata
-
 from .operator import Operator
+from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle

@@ -52,7 +52,11 @@ class TestVLLMEngine:
         ],
     )
     async def test_get_prompt_limit(
-        self, llm_config: LLMConfig, engine_kwargs: dict, expected_prompt_limit: int
+        # llm_config is a fixture defined in serve.tests.conftest.py
+        self,
+        llm_config: LLMConfig,
+        engine_kwargs: dict,
+        expected_prompt_limit: int,
     ):
         llm_config = llm_config.model_copy(deep=True)
         vllm_engine = VLLMEngine(llm_config)

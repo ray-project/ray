@@ -151,7 +151,7 @@ def custom_eval_function(
     # You can compute metrics from the episodes manually, or use the Algorithm's
     # convenient MetricsLogger to store all evaluation metrics inside the main
     # algo.
-    algorithm.metrics.merge_and_log_n_dicts(
+    algorithm.metrics.aggregate(
         env_runner_metrics, key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
     )
     eval_results = algorithm.metrics.peek((EVALUATION_RESULTS, ENV_RUNNER_RESULTS))

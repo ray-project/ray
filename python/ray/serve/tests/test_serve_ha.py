@@ -1,4 +1,3 @@
-import os
 import sys
 import threading
 from time import sleep
@@ -114,7 +113,7 @@ from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
 head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(
-    **requests.get("http://localhost:52365/api/serve/applications/").json())
+    **requests.get("http://localhost:8265/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
@@ -122,7 +121,4 @@ assert serve_details.controller_info.node_id == head_node_id
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

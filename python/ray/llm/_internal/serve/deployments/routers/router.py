@@ -232,6 +232,12 @@ class LLMRouter:
 
     async def check_health(self):
         await self._init_completed.wait()
+        await asyncio.gather(
+            *[
+                handle.check_health.remote()
+                for handle in self._default_serve_handles.values()
+            ]
+        )
 
     def _get_configured_serve_handle(self, model_id: str):
         """Gets a ServeHandle to a model deployment.

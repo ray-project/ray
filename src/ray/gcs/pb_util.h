@@ -24,7 +24,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

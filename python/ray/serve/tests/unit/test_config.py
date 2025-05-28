@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray import cloudpickle
@@ -5,6 +7,7 @@ from ray._common.utils import import_attr
 from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
+from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
@@ -32,6 +35,10 @@ fake_policy_return_value = 123
 
 def fake_policy():
     return fake_policy_return_value
+
+
+class FakeRequestRouter:
+    ...
 
 
 def test_autoscaling_config_validation():
@@ -126,6 +133,40 @@ class TestDeploymentConfig:
 
         # Valid parameter with DEFAULT.VALUE passed in should be ignored
         DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
+
+    def test_setting_and_getting_request_router_class(self):
+        """Check that setting and getting request_router_class works."""
+        request_router_path = (
+            "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+        )
+        if sys.platform == "win32":
+            request_router_path = "com_github_ray_project_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+
+        # Passing request_router_class as a class.
+        deployment_config = DeploymentConfig.from_default(
+            request_router_class=FakeRequestRouter
+        )
+        assert deployment_config.request_router_class == request_router_path
+        assert deployment_config.get_request_router_class() == FakeRequestRouter
+
+        # Passing request_router_class as an import path.
+        deployment_config = DeploymentConfig.from_default(
+            request_router_class=request_router_path
+        )
+        assert deployment_config.request_router_class == request_router_path
+        assert deployment_config.get_request_router_class() == FakeRequestRouter
+
+        # Not passing request_router_class should
+        # default to `PowerOfTwoChoicesRequestRouter`.
+        deployment_config = DeploymentConfig.from_default()
+        assert (
+            deployment_config.request_router_class
+            == "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
+        )
+        assert (
+            deployment_config.get_request_router_class()
+            == PowerOfTwoChoicesRequestRouter
+        )
 
 
 class TestReplicaConfig:

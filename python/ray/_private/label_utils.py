@@ -1,10 +1,12 @@
 import json
 import re
-import yaml
 from typing import (
     Dict,
     Optional,
 )
+
+import yaml
+
 import ray._private.ray_constants as ray_constants
 
 # Regex patterns used to validate that labels conform to Kubernetes label syntax rules.

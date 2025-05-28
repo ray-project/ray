@@ -8,7 +8,6 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.json as pajson
 import pytest
-import requests
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -19,6 +18,9 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     PartitionStyle,
     PathPartitionFilter,
+)
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -737,42 +739,20 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
-def test_json_with_http_path_parallelization(ray_start_regular_shared):
-    from ray.data.datasource.file_based_datasource import (
-        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserver):
+    num_files = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    urls = []
+    for i in range(num_files):
+        httpserver.expect_request(f"/file{i}.json").respond_with_json({"id": i})
+        urls.append(httpserver.url_for(f"/file{i}.json"))
+
+    ds = ray.data.read_json(urls)
+    actual_rows = ds.take_all()
+
+    expected_rows = [{"id": i} for i in range(num_files)]
+    assert sorted(actual_rows, key=lambda row: row["id"]) == sorted(
+        expected_rows, key=lambda row: row["id"]
     )
-
-    def is_url_accessible(url: str) -> bool:
-        """Check if a URL is accessible."""
-        try:
-            response = requests.head(
-                url, timeout=5
-            )  # Use HEAD request to check connectivity
-            return response.status_code == 200
-        except requests.RequestException:
-            return False
-
-    # List of URLs to check
-    data_urls = [
-        (
-            f"https://data.commoncrawl.org/contrib/datacomp/DCLM-pool/"
-            f"crawl=CC-MAIN-2022-49/1669446711712.26/CC-MAIN-20221210042021"
-            f"-20221210072021-000{i:02}.jsonl.gz"
-        )
-        for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD + 3)
-    ]
-
-    data_urls = [url for url in data_urls if is_url_accessible(url)]
-    # Check if at least one URL is accessible
-    if len(data_urls) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD:
-        pytest.skip("Not enough accessible HTTP links, skipping test.")
-
-    # Test logic
-    ds = ray.data.read_json(data_urls, include_paths=True)
-    ds = ds.select_columns(["path"])
-    df = ds.to_pandas().drop_duplicates()
-
-    assert len(df) == len(data_urls)
 
 
 if __name__ == "__main__":

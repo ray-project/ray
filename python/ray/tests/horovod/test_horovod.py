@@ -1,5 +1,8 @@
+import sys
+
 import pytest
 import torch
+
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -91,7 +94,4 @@ def test_horovod_example(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

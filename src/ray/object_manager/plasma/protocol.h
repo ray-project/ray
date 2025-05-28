@@ -236,14 +236,4 @@ Status SendConnectReply(const std::shared_ptr<Client> &client, int64_t memory_ca
 
 Status ReadConnectReply(uint8_t *data, size_t size, int64_t *memory_capacity);
 
-/* Plasma Evict message functions (no reply so far). */
-
-Status SendEvictRequest(const std::shared_ptr<StoreConn> &store_conn, int64_t num_bytes);
-
-Status ReadEvictRequest(const uint8_t *data, size_t size, int64_t *num_bytes);
-
-Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
-
-Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes);
-
 }  // namespace plasma

@@ -3,10 +3,8 @@ import os
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import check_ray_client_dependencies_installed
-
 
 logger = logging.getLogger(__name__)
 

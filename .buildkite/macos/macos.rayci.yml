@@ -12,6 +12,7 @@ steps:
     tags:
       - macos_wheels
       - python_dependencies
+      - release_wheels
     job_env: MACOS
     instance_type: macos
     commands:
@@ -23,6 +24,7 @@ steps:
     tags:
       - macos_wheels
       - python_dependencies
+      - release_wheels
     job_env: MACOS
     instance_type: macos-arm64
     commands:

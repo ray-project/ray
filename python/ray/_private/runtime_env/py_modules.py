@@ -10,8 +10,8 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
-    get_uri_for_file,
     get_uri_for_directory,
+    get_uri_for_file,
     get_uri_for_package,
     install_wheel_package,
     is_whl_uri,
@@ -23,8 +23,8 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.exceptions import RuntimeEnvSetupError
 from ray._raylet import GcsClient
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 

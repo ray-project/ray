@@ -995,7 +995,13 @@ def placement_groups_to_resource_demands(
     resource_demand_vector = []
     unconverted = []
     for placement_group in pending_placement_groups:
-        shapes = [dict(bundle.unit_resources) for bundle in placement_group.bundles]
+        # Skip **placed** bundle (which has node id associated with it).
+        shapes = []
+        for bundle in placement_group.bundles:
+            if bundle.node_id != b"":
+                continue
+            shapes.append(dict(bundle.unit_resources))
+
         if (
             placement_group.strategy == PlacementStrategy.PACK
             or placement_group.strategy == PlacementStrategy.SPREAD

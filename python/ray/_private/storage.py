@@ -4,9 +4,9 @@ import urllib
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray._private.utils import load_class
 
 if TYPE_CHECKING:

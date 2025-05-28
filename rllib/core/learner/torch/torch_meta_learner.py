@@ -86,7 +86,7 @@ class TorchMetaLearner(TorchLearner):
 
         # Build all `DifferentiableLearner`s.
         for other in self.others:
-            other.build()
+            other.build(device=self._device)
 
         # Ensure 'others' have a module reference.
         for other in self.others:
@@ -204,7 +204,9 @@ class TorchMetaLearner(TorchLearner):
             # Log training results from the `DifferentiableLearner`s.
             # TODO (simon): Right now metrics are not carried over b/c of
             #   the double tensormode problem.
-            self.metrics.log_dict(others_results, key=DIFFERENTIABLE_LEARNER_RESULTS)
+            self.metrics.aggregate(
+                stats_dicts=[others_results], key=DIFFERENTIABLE_LEARNER_RESULTS
+            )
 
             # Make the actual in-graph/traced meta-`_update` call. This should return
             # all tensor values (no numpy).

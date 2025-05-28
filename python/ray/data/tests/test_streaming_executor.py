@@ -145,7 +145,14 @@ def test_disallow_non_unique_operators():
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
 
-def test_process_completed_tasks():
+@pytest.fixture
+def sleep_task_ref():
+    sleep_task_ref = sleep.remote()
+    yield sleep_task_ref
+    ray.cancel(sleep_task_ref, force=True)
+
+
+def test_process_completed_tasks(sleep_task_ref):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -163,7 +170,8 @@ def test_process_completed_tasks():
     assert len(topo[o1].output_queue) == 20, topo
 
     # Test processing completed work items.
-    sleep_task = MetadataOpTask(0, sleep.remote(), lambda: None)
+    sleep_task_callback = MagicMock()
+    sleep_task = MetadataOpTask(0, sleep_task_ref, sleep_task_callback)
     done_task_callback = MagicMock()
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
@@ -171,6 +179,7 @@ def test_process_completed_tasks():
     o1.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
+    sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
     o1.mark_execution_finished.assert_not_called()
@@ -453,7 +462,12 @@ def test_validate_dag():
         _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
-def test_configure_output_locality():
+# Mock the `scale_up` method to avoid creating and leaking resources.
+@patch(
+    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale_up",
+    return_value=1,
+)
+def test_configure_output_locality(mock_scale_up):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -549,8 +563,8 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_time_scheduling():
-    ds = ray.data.range(1000).map_batches(lambda x: x)
+def test_streaming_exec_schedule_s():
+    ds = ray.data.range(1)
     for _ in ds.iter_batches():
         continue
 

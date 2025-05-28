@@ -1,6 +1,7 @@
 import ray
 from ray import serve
 import pytest
+from ray.serve.llm import LLMServer
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
@@ -104,3 +105,17 @@ def testing_model_no_accelerator(shutdown_ray_and_serve):
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
         yield client, model_id
+
+
+@pytest.fixture
+def create_server():
+    """Asynchronously create an LLMServer instance."""
+
+    async def creator(*args, **kwargs):
+        # _ = LLMServer(...) will raise TypeError("__init__() should return None")
+        # so we do __new__ then __init__
+        server = LLMServer.__new__(LLMServer)
+        await server.__init__(*args, **kwargs)
+        return server
+
+    return creator

@@ -1,7 +1,4 @@
 import binascii
-import random
-import string
-from collections import defaultdict
 import contextlib
 import errno
 import functools
@@ -12,14 +9,17 @@ import logging
 import multiprocessing
 import os
 import platform
+import random
 import re
 import signal
+import string
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import warnings
+from collections import defaultdict
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
@@ -27,16 +27,14 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    List,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
     Union,
-    List,
-    Mapping,
 )
 
-# Import psutil after ray so the packaged version is used.
-import psutil
 from google.protobuf import json_format
 
 import ray
@@ -44,6 +42,9 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -292,8 +293,8 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     to the visible ids."""
 
     from ray._private.accelerators import (
-        get_all_accelerator_resource_names,
         get_accelerator_manager_for_resource,
+        get_all_accelerator_resource_names,
     )
 
     return {

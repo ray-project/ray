@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -736,14 +737,10 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
 
 def test_transient_error_retry(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
-        # Inject transient errors into the RPC client. There is a 25% chance
-        # that the RPC request will fail, a 25% chance that the RPC reply
-        # will fail, and a 50% chance that the RPC will succeed. This test
-        # submits 200 tasks with infinite retries and verifies that all tasks
-        # eventually succeed in the unstable network environment.
+        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=100",
+            "CoreWorkerService.grpc_client.PushTask=100:25:25",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -764,10 +761,43 @@ def test_transient_error_retry(monkeypatch, ray_start_cluster):
         assert ray.get(refs) == list(range(200))
 
 
-if __name__ == "__main__":
-    import pytest
+@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+def test_update_object_location_batch_failure(
+    monkeypatch, ray_start_cluster, deterministic_failure
+):
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
+            + ("100:0" if deterministic_failure == "request" else "0:100"),
+        )
+        cluster = ray_start_cluster
+        head_node_id = cluster.add_node(
+            num_cpus=0,
+        ).node_id
+        ray.init(address=cluster.address)
+        worker_node_id = cluster.add_node(num_cpus=1).node_id
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        @ray.remote(num_cpus=1)
+        def create_large_object():
+            return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
+
+        @ray.remote(num_cpus=0)
+        def consume_large_object(obj):
+            return sys.getsizeof(obj)
+
+        obj_ref = create_large_object.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=worker_node_id, soft=False
+            )
+        ).remote()
+        consume_ref = consume_large_object.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
+        ).remote(obj_ref)
+        assert ray.get(consume_ref) > 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

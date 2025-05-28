@@ -18,6 +18,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import (
+    serve_llm_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
@@ -26,117 +29,6 @@ GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
-
-TARGET_TEMPLATE = {
-    "exemplar": True,
-    "expr": "0",
-    "interval": "",
-    "legendFormat": "",
-    "queryType": "randomWalk",
-    "refId": "A",
-}
-
-
-PANEL_TEMPLATE = {
-    "aliasColors": {},
-    "bars": False,
-    "dashLength": 10,
-    "dashes": False,
-    "datasource": r"${datasource}",
-    "description": "<Description>",
-    "fieldConfig": {"defaults": {}, "overrides": []},
-    "fill": 10,
-    "fillGradient": 0,
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-    "hiddenSeries": False,
-    "id": 26,
-    "legend": {
-        "alignAsTable": True,
-        "avg": False,
-        "current": True,
-        "hideEmpty": False,
-        "hideZero": True,
-        "max": False,
-        "min": False,
-        "rightSide": False,
-        "show": True,
-        "sort": "current",
-        "sortDesc": True,
-        "total": False,
-        "values": True,
-    },
-    "lines": True,
-    "linewidth": 1,
-    "nullPointMode": "null",
-    "options": {"alertThreshold": True},
-    "percentage": False,
-    "pluginVersion": "7.5.17",
-    "pointradius": 2,
-    "points": False,
-    "renderer": "flot",
-    "seriesOverrides": [
-        {
-            "$$hashKey": "object:2987",
-            "alias": "MAX",
-            "dashes": True,
-            "color": "#1F60C4",
-            "fill": 0,
-            "stack": False,
-        },
-        {
-            "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
-            "hiddenSeries": True,
-        },
-        {
-            "$$hashKey": "object:2987",
-            "alias": "MAX + PENDING",
-            "dashes": True,
-            "color": "#777777",
-            "fill": 0,
-            "stack": False,
-        },
-    ],
-    "spaceLength": 10,
-    "stack": True,
-    "steppedLine": False,
-    "targets": [],
-    "thresholds": [],
-    "timeFrom": None,
-    "timeRegions": [],
-    "timeShift": None,
-    "title": "<Title>",
-    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
-    "type": "graph",
-    "xaxis": {
-        "buckets": None,
-        "mode": "time",
-        "name": None,
-        "show": True,
-        "values": [],
-    },
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "units",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
-    "yaxis": {"align": False, "alignLevel": None},
-}
 
 
 def _read_configs_for_dashboard(
@@ -201,6 +93,17 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(serve_deployment_dashboard_config)
+
+
+def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the serve dashboard and returns
+    both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(serve_llm_dashboard_config)
 
 
 def generate_data_grafana_dashboard() -> Tuple[str, str]:
@@ -268,7 +171,7 @@ def _generate_grafana_panels(
     out = []
     panel_global_filters = [*config.standard_global_filters, *global_filters]
     for i, panel in enumerate(config.panels):
-        template = copy.deepcopy(PANEL_TEMPLATE)
+        template = copy.deepcopy(panel.template.value)
         template.update(
             {
                 "title": panel.title,
@@ -286,7 +189,7 @@ def _generate_grafana_panels(
         template["fill"] = panel.fill
         template["stack"] = panel.stack
         if panel.stack is True:
-            # If connected is not true, any nulls will cause the stacking visualization to break
+            # If connected is not True, any nulls will cause the stacking visualization to break
             # making the total appear much smaller than it actually is.
             template["nullPointMode"] = "connected"
         template["linewidth"] = panel.linewidth
@@ -305,7 +208,7 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
     for target, ref_id in zip(
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
-        template = copy.deepcopy(TARGET_TEMPLATE)
+        template = copy.deepcopy(target.template.value)
         template.update(
             {
                 "expr": target.expr.format(

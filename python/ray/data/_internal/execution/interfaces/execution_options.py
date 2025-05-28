@@ -1,10 +1,9 @@
 import os
 from typing import Dict, List, Optional, Union
 
+from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
-
-from .common import NodeIdStr
 
 
 class ExecutionResources:

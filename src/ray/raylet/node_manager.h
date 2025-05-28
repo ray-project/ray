@@ -32,7 +32,9 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
+#include "ray/object_manager/plasma/client.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/dependency_manager.h"
@@ -130,10 +132,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// allocation.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
-              const std::string &self_node_name,
+              std::string self_node_name,
               const NodeManagerConfig &config,
-              const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client,
+              rpc::ClientCallManager &client_call_manager,
+              rpc::CoreWorkerClientPool &worker_rpc_pool,
+              std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
+              std::unique_ptr<IObjectDirectory> object_directory,
+              std::unique_ptr<ObjectManagerInterface> object_manager,
+              plasma::PlasmaClientInterface &store_client,
+              std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+                  mutable_object_provider,
               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Handle an unexpected error that occurred on a client connection.
@@ -183,7 +192,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
+  int GetObjectManagerPort() const { return object_manager_->GetServerPort(); }
 
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
@@ -224,9 +233,29 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       int64_t limit,
       const std::function<void()> &on_all_replied);
 
-  std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() {
-    return mutable_object_provider_;
-  }
+  /// Handle an object becoming local. This updates any local accounting, but
+  /// does not write to any global accounting in the GCS.
+  ///
+  /// \param object_info The info about the object that is locally available.
+  /// \return Void.
+  void HandleObjectLocal(const ObjectInfo &object_info);
+
+  /// Handle an object that is no longer local. This updates any local
+  /// accounting, but does not write to any global accounting in the GCS.
+  ///
+  /// \param object_id The object that has been evicted locally.
+  /// \return Void.
+  void HandleObjectMissing(const ObjectID &object_id);
+
+  /// Get pointers to objects stored in plasma. They will be
+  /// released once the returned references go out of scope.
+  ///
+  /// \param[in] object_ids The objects to get.
+  /// \param[out] results The pointers to objects stored in
+  /// plasma.
+  /// \return Whether the request was successful.
+  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                            std::vector<std::unique_ptr<RayObject>> *results);
 
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
@@ -234,7 +263,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
  private:
-  FRIEND_TEST(NodeManagerTest, TestHandleReportWorkerBacklog);
+  FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -245,7 +274,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     SetIdleIfLeaseEmpty();
   }
 
-  inline void SetIdleIfLeaseEmpty() {
+  void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
       cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
           WorkFootprint::NODE_WORKERS);
@@ -395,19 +424,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param job_id The job that exited.
   /// \return Void.
   void CleanUpTasksForFinishedJob(const JobID &job_id);
-
-  /// Handle an object becoming local. This updates any local accounting, but
-  /// does not write to any global accounting in the GCS.
-  ///
-  /// \param object_info The info about the object that is locally available.
-  /// \return Void.
-  void HandleObjectLocal(const ObjectInfo &object_info);
-  /// Handle an object that is no longer local. This updates any local
-  /// accounting, but does not write to any global accounting in the GCS.
-  ///
-  /// \param object_id The object that has been evicted locally.
-  /// \return Void.
-  void HandleObjectMissing(const ObjectID &object_id);
 
   /// Handles the event that a job is started.
   ///
@@ -694,16 +710,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param task RayTask that is infeasible
   void PublishInfeasibleTaskError(const RayTask &task) const;
 
-  /// Get pointers to objects stored in plasma. They will be
-  /// released once the returned references go out of scope.
-  ///
-  /// \param[in] object_ids The objects to get.
-  /// \param[out] results The pointers to objects stored in
-  /// plasma.
-  /// \return Whether the request was successful.
-  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                            std::vector<std::unique_ptr<RayObject>> *results);
-
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
@@ -763,11 +769,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
-  /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
-  /// channel is registered.
-  std::shared_ptr<raylet::RayletClient> CreateRayletClient(
-      const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
-
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -781,9 +782,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.
-  rpc::ClientCallManager client_call_manager_;
+  rpc::ClientCallManager &client_call_manager_;
   /// Pool of RPC client connections to core workers.
-  rpc::CoreWorkerClientPool worker_rpc_pool_;
+  rpc::CoreWorkerClientPool &worker_rpc_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
   std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
@@ -791,11 +792,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// manager.
   std::unique_ptr<IObjectDirectory> object_directory_;
   /// Manages client requests for object transfers and availability.
-  ObjectManager object_manager_;
+  std::unique_ptr<ObjectManagerInterface> object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  std::unique_ptr<plasma::PlasmaClient> store_client_;
+  plasma::PlasmaClientInterface &store_client_;
+  /// Mutable object provider for compiled graphs.
+  std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+      mutable_object_provider_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The period used for the resources report timer.
@@ -826,9 +830,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
-
-  /// The node manager RPC service.
-  rpc::NodeManagerGrpcService node_manager_service_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
@@ -929,16 +930,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
 
-  /// RaySyncerService for gRPC
-  syncer::RaySyncerService ray_syncer_service_;
-
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
-
-  std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
 }  // namespace ray::raylet

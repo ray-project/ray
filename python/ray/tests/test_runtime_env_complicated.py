@@ -1,14 +1,15 @@
 import os
 import platform
-from pathlib import Path
-import pytest
 import subprocess
 import sys
 import tempfile
 import time
+import yaml
+from pathlib import Path
 from typing import List
 from unittest import mock
-import yaml
+
+import pytest
 
 import ray
 from ray.runtime_env import RuntimeEnv
@@ -1185,9 +1186,4 @@ setup(
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -48,12 +48,9 @@ class MockLocalTaskManager : public ILocalTaskManager {
                int64_t backlog_size),
               (override));
   MOCK_METHOD(void, ClearWorkerBacklog, (const WorkerID &worker_id), (override));
-  MOCK_METHOD(bool,
+  MOCK_METHOD(const RayTask *,
               AnyPendingTasksForResourceAcquisition,
-              (RayTask * example,
-               bool *any_pending,
-               int *num_pending_actor_creation,
-               int *num_pending_tasks),
+              (int *num_pending_actor_creation, int *num_pending_tasks),
               (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));

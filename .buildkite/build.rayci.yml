@@ -3,6 +3,7 @@ steps:
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
+      - release_wheels
       - linux_wheels
       - oss
     instance_type: large

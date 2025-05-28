@@ -137,7 +137,7 @@ def test_with_rest_api(ray_start_stop):
 
     def application_running():
         response = requests.get(
-            "http://localhost:52365/api/serve/applications/", timeout=15
+            "http://localhost:8265/api/serve/applications/", timeout=15
         )
         assert response.status_code == 200
 

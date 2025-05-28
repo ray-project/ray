@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
@@ -328,7 +329,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
-# Length of time to respect entries in the queue length cache when scheduling requests.
+# Length of time to respect entries in the queue length cache when routing requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
 )
@@ -376,6 +377,21 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
 
+
+def str_to_list(s: str) -> List[str]:
+    """Return a list from a comma-separated string.
+
+    Trims whitespace and skips empty entries.
+    """
+    return [r.strip() for r in s.split(",") if r.strip()]
+
+
+# Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
+# Example: "customx,customy"
+RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
+    os.environ.get("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "")
+)
+
 # Feature flag to always override local_testing_mode to True in serve.run.
 # This is used for internal testing to avoid passing the flag to every invocation.
 RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
@@ -411,4 +427,9 @@ RAY_SERVE_PROXY_GC_THRESHOLD = int(
 # Set to `0` to disable caching entirely.
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
+)
+
+# The default request router class to use if none is specified.
+DEFAULT_REQUEST_ROUTER_PATH = (
+    "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
 )

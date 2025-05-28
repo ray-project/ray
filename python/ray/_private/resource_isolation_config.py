@@ -2,7 +2,6 @@ import logging
 from typing import Optional
 
 import ray._private.ray_constants as ray_constants
-
 import ray._private.utils as utils
 
 logger = logging.getLogger(__name__)

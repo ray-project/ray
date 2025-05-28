@@ -260,6 +260,9 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-prometheus",
+            "opentelemetry-proto",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",

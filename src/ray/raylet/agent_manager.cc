@@ -20,8 +20,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/util/event.h"
-#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 #include "ray/util/thread_utils.h"
@@ -32,6 +30,7 @@ namespace raylet {
 
 void AgentManager::StartAgent() {
   std::vector<const char *> argv;
+  argv.reserve(options_.agent_commands.size());
   for (const std::string &arg : options_.agent_commands) {
     argv.push_back(arg.c_str());
   }
@@ -46,7 +45,7 @@ void AgentManager::StartAgent() {
   }
 
   // Do this after the debug print for argv.data()
-  argv.push_back(NULL);
+  argv.push_back(nullptr);
 
   // Set node id to agent.
   ProcessEnvironment env;

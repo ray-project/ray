@@ -134,6 +134,14 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // Cloudpickled request router definition.
+  bytes serialized_request_router_cls = 15;
+
+  // The import path of the request router if user passed a string. Will be the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 16;
 }
 
 // Deployment language.

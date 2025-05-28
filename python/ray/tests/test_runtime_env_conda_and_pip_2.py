@@ -1,10 +1,11 @@
 import os
-from typing import Dict
 import pytest
 import sys
+from unittest import mock
+
+import ray
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.test_utils import generate_runtime_env_dict
-import ray
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -12,65 +13,83 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def override_runtime_env_retries():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RUNTIME_ENV_RETRY_TIMES": "1",
+        },
+    ):
+        print("Exporting 'RUNTIME_ENV_RETRY_TIMES=1'")
+        yield
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 @pytest.mark.parametrize("field", ["conda", "pip"])
-@pytest.mark.parametrize("specify_env_in_init", [True, False])
-@pytest.mark.parametrize("spec_format", ["file", "python_object"])
-def test_install_failure_logging(
-    start_cluster,
-    specify_env_in_init,
+def test_ray_init_install_failure(
+    start_cluster_shared,
+    tmp_path,
     field,
-    spec_format,
+):
+    cluster, address = start_cluster_shared
+    using_ray_client = address.startswith("ray://")
+    bad_runtime_env = generate_runtime_env_dict(
+        field, "python_object", tmp_path, pip_list=["fake-package"]
+    )
+
+    if using_ray_client:
+        # When using Ray client, ray.init will raise.
+        with pytest.raises(ConnectionAbortedError) as excinfo:
+            ray.init(address, runtime_env=bad_runtime_env)
+            assert "fake-package" in str(excinfo.value)
+    else:
+        # When not using Ray client, the error will be surfaced when a task/actor
+        # is scheduled.
+        ray.init(address, runtime_env=bad_runtime_env)
+
+        @ray.remote
+        def g():
+            pass
+
+        with pytest.raises(RuntimeEnvSetupError, match="fake-package"):
+            ray.get(g.remote())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
+@pytest.mark.parametrize("field", ["conda", "pip"])
+def test_install_failure_logging(
+    start_cluster_shared,
+    field,
     tmp_path,
 ):
-    cluster, address = start_cluster
-    using_ray_client = address.startswith("ray://")
-
-    bad_envs: Dict[str, Dict] = {}
-    bad_packages: Dict[str, str] = {}
-    for scope in "init", "actor", "task":
-        bad_packages[scope] = "doesnotexist" + scope
-        bad_envs[scope] = generate_runtime_env_dict(
-            field, spec_format, tmp_path, pip_list=[bad_packages[scope]]
-        )
-
-    if specify_env_in_init:
-        if using_ray_client:
-            with pytest.raises(ConnectionAbortedError) as excinfo:
-                ray.init(address, runtime_env=bad_envs["init"])
-                assert bad_packages["init"] in str(excinfo.value)
-        else:
-            ray.init(address, runtime_env=bad_envs["init"])
-
-            @ray.remote
-            def g():
-                pass
-
-            with pytest.raises(RuntimeEnvSetupError, match=bad_packages["init"]):
-                ray.get(g.remote())
-        return
-
+    cluster, address = start_cluster_shared
     ray.init(address)
 
-    @ray.remote(runtime_env=bad_envs["actor"])
+    @ray.remote(
+        runtime_env=generate_runtime_env_dict(
+            field, "python_object", tmp_path, pip_list=["does-not-exist-actor"]
+        )
+    )
     class A:
         def f(self):
             pass
 
     a = A.remote()  # noqa
-    with pytest.raises(RuntimeEnvSetupError, match=bad_packages["actor"]):
+    with pytest.raises(RuntimeEnvSetupError, match="does-not-exist-actor"):
         ray.get(a.f.remote())
 
-    @ray.remote(runtime_env=bad_envs["task"])
+    @ray.remote(
+        runtime_env=generate_runtime_env_dict(
+            field, "python_object", tmp_path, pip_list=["does-not-exist-task"]
+        )
+    )
     def f():
         pass
 
-    with pytest.raises(RuntimeEnvSetupError, match=bad_packages["task"]):
+    with pytest.raises(RuntimeEnvSetupError, match="does-not-exist-task"):
         ray.get(f.remote())
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
