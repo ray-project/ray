@@ -255,9 +255,7 @@ class ConnectorPipelineV2(ConnectorV2):
         prev_connector = self.connectors[idx]
 
         self._check_batch_format_compatibility(
-            prev_connector,
-            connector,
-            self.connectors[idx] if len(self) > idx else None
+            prev_connector, connector, self.connectors[idx] if len(self) > idx else None
         )
 
         self.connectors.insert(idx + 1, connector)

@@ -65,6 +65,7 @@ class ModuleToAgentUnmapping(ConnectorV2):
                         # have the structure (eps_id, agent_id, module_id)).
                         new_column_data[(eps_id,)].append(column_data[i])
                     agent_data[column] = dict(new_column_data)
+
         # Multi-agent case.
         else:
             episode_map_structure = shared_data.get("vector_env_episodes_map", {})
@@ -103,4 +104,5 @@ class ModuleToAgentUnmapping(ConnectorV2):
                             column_data[i]
                         )
                     agent_data[column].update(dict(new_column_data))
-            return dict(agent_data)
+
+        return dict(agent_data)

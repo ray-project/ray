@@ -59,6 +59,7 @@ class ConnectorV2BatchFormats(enum.Enum):
     flipped to a new mapping from module ID to column to individual items. By default,
     the `AgentToModuleMapping` connector piece performs this task.
     """
+
     BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS = (
         "column_to_episode_to_individual_items"
     )
