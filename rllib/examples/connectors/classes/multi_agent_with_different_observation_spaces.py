@@ -29,6 +29,8 @@ class DoubleXYPosToDiscreteIndex(ConnectorV2):
     b/c the env rewards the first collision between the two agents. Hence, an agent
     should have information of which row the other agent is currently in, so it can
     change to this row and try to collide with the other agent.
+
+    This connector piece doesn't alter the incoming `batch` and returns it as-is.
     """
 
     @override(ConnectorV2)
@@ -148,6 +150,8 @@ class DoubleXYPosToSingleXYPos(ConnectorV2):
     b/c the env rewards the first collision between the two agents. Hence, an agent
     should have information of which row the other agent is currently in, so it can
     change to this row and try to collide with the other agent.
+
+    This connector piece doesn't alter the incoming `batch` and returns it as-is.
     """
 
     @override(ConnectorV2)

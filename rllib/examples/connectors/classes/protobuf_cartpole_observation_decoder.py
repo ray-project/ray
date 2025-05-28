@@ -27,6 +27,8 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
     The incoming observation space must be a 1D Box of dtype uint8
     (which is the same as a binary string). The outgoing observation space is the
     normal CartPole-v1 1D space: Box(-inf, inf, (4,), float32).
+
+    This connector piece doesn't alter the incoming `batch` and returns it as-is.
     """
 
     @override(ConnectorV2)
