@@ -4198,7 +4198,11 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
         AddObjectLocationOwner(object_id, node_id);
       } else if (object_location_update.plasma_location_update() ==
                  rpc::ObjectPlasmaLocationUpdate::REMOVED) {
-        RemoveObjectLocationOwner(object_id, node_id);
+        auto reference_exists =
+            reference_counter_->RemoveObjectLocation(object_id, node_id);
+        if (!reference_exists) {
+          RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
+        }
       } else {
         RAY_LOG(FATAL) << "Invalid object plasma location update "
                        << object_location_update.plasma_location_update()
@@ -4270,14 +4274,6 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
       reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     }
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
-  }
-}
-
-void CoreWorker::RemoveObjectLocationOwner(const ObjectID &object_id,
-                                           const NodeID &node_id) {
-  auto reference_exists = reference_counter_->RemoveObjectLocation(object_id, node_id);
-  if (!reference_exists) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
   }
 }
 
