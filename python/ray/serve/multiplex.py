@@ -141,7 +141,7 @@ class _ModelMultiplexWrapper:
                 self.registered_model_gauge.set(1, tags={"model_id": model_id})
 
             if self._push_multiplexed_replica_info:
-                _get_global_client().record_replica_routing_info(
+                _get_global_client().record_request_routing_info(
                     RequestRoutingInfo(
                         replica_id=self._replica_id,
                         multiplexed_model_ids=self._get_loading_and_loaded_model_ids(),
