@@ -45,7 +45,7 @@ def insert_test_dir_in_pythonpath():
 
 @pytest.mark.asyncio
 async def test_working_dir_cleanup(tmpdir, ray_start_regular):
-    gcs_client = ray.worker.global_worker.gcs_client
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     plugin = WorkingDirPlugin(tmpdir, gcs_client)
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
@@ -73,7 +73,7 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
-    gcs_client = ray.worker.global_worker.gcs_client
+    gcs_client = ray._private.worker.global_worker.gcs_client
     # Create an arbitrary nonempty directory to upload.
     path = Path(tmpdir)
     dir_to_upload = path / "dir_to_upload"
