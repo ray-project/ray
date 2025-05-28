@@ -1083,20 +1083,15 @@ class TestBuildDAGNodeOperationGraph_EXP:
 
         actor_to_operation_nodes = {
             fake_actor: [
-                list(generate_dag_graph_nodes(0, task_idx_1, fake_actor).values()),
-                list(generate_dag_graph_nodes(1, task_idx_2, fake_actor).values()),
+                generate_dag_graph_node_EXP(0, task_idx_1, fake_actor),
+                generate_dag_graph_node_EXP(1, task_idx_2, fake_actor),
             ],
         }
-        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
+        graph = _build_dag_node_operation_graph_EXP(
+            idx_to_task, actor_to_operation_nodes
+        )
         assert len(graph) == 2
 
-        self.check_edges_between_read_compute_write(
-            graph, task_idx_1, [(0, 1), (1, 2), (1, 1)]
-        )
-        self.check_edges_between_read_compute_write(
-            graph, task_idx_2, [(1, 1), (2, 1), (1, 0)]
-        )
-        self.check_edge_between_writer_and_reader(graph, task_idx_1, task_idx_2)
         self.check_edge_between_compute_nodes(graph, task_idx_1, task_idx_2)
 
     def test_two_actors(self, monkeypatch):
@@ -1128,31 +1123,21 @@ class TestBuildDAGNodeOperationGraph_EXP:
 
         actor_to_operation_nodes = {
             fake_actor_1: [
-                list(generate_dag_graph_nodes(0, task_idx_1, fake_actor_1).values()),
-                list(generate_dag_graph_nodes(1, task_idx_3, fake_actor_1).values()),
+                generate_dag_graph_node_EXP(0, task_idx_1, fake_actor_1),
+                generate_dag_graph_node_EXP(1, task_idx_3, fake_actor_1),
             ],
             fake_actor_2: [
-                list(generate_dag_graph_nodes(0, task_idx_2, fake_actor_2).values()),
-                list(generate_dag_graph_nodes(1, task_idx_4, fake_actor_2).values()),
+                generate_dag_graph_node_EXP(0, task_idx_2, fake_actor_2),
+                generate_dag_graph_node_EXP(1, task_idx_4, fake_actor_2),
             ],
         }
-        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
+        graph = _build_dag_node_operation_graph_EXP(
+            idx_to_task, actor_to_operation_nodes
+        )
         assert len(graph) == 4
 
-        self.check_edges_between_read_compute_write(
-            graph, task_idx_1, [(0, 1), (1, 2), (1, 1)]
-        )
-        self.check_edges_between_read_compute_write(
-            graph, task_idx_2, [(0, 1), (1, 2), (1, 1)]
-        )
-        self.check_edges_between_read_compute_write(
-            graph, task_idx_3, [(1, 1), (2, 1), (1, 0)]
-        )
-        self.check_edges_between_read_compute_write(
-            graph, task_idx_4, [(1, 1), (2, 1), (1, 0)]
-        )
-        self.check_edge_between_writer_and_reader(graph, task_idx_1, task_idx_4)
-        self.check_edge_between_writer_and_reader(graph, task_idx_2, task_idx_3)
+        self.check_edge_between_compute_nodes(graph, task_idx_1, task_idx_4)
+        self.check_edge_between_compute_nodes(graph, task_idx_2, task_idx_3)
 
 
 class TestGenerateActorToExecutionSchedule:
