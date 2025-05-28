@@ -229,8 +229,8 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
         worker_node_config = {
             "groupName": worker_node_type.get("name"),
             "instanceType": worker_node_type.get("instance_type"),
-            "minWorkers": worker_node_type.get("min_workers"),
-            "maxWorkers": worker_node_type.get("max_workers")
+            "minNodes": worker_node_type.get("min_workers"),
+            "maxNodes": worker_node_type.get("max_workers")
         }
         if worker_node_type.get("resources", {}):
             worker_node_config["resources"] = worker_node_type.get("resources", {})
