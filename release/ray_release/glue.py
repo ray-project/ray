@@ -418,7 +418,7 @@ def run_release_test(
         kuberay_job_manager = KuberayJobManager()
         retcode, duration = kuberay_job_manager.run_and_wait(
             job_name=test["name"].replace(".", "-").replace("_", "-"),
-            image=test.get_anyscale_base_byod_image(),
+            image=test.get_anyscale_byod_image(),
             cmd_to_run=test["run"]["script"],
             env_vars=test.get_byod_runtime_env(),
             working_dir=working_dir_upload_path,
