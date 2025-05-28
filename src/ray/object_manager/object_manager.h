@@ -443,9 +443,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// The gPRC server.
   rpc::GrpcServer object_manager_server_;
 
-  /// The gRPC service.
-  rpc::ObjectManagerGrpcService object_manager_service_;
-
   /// The client call manager used to deal with reply.
   rpc::ClientCallManager client_call_manager_;
 

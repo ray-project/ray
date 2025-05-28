@@ -377,6 +377,7 @@ class AsyncioRouter:
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
         request_router: Optional[RequestRouter] = None,
+        _request_router_initialized_event: Optional[asyncio.Event] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -400,11 +401,11 @@ class AsyncioRouter:
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
 
-        if self._event_loop.is_running():
+        if _request_router_initialized_event:
+            self._request_router_initialized = _request_router_initialized_event
+        else:
             future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
             self._request_router_initialized = future.result()
-        else:
-            self._request_router_initialized = asyncio.Event()
 
         if self._request_router:
             self._request_router_initialized.set()
@@ -475,7 +476,8 @@ class AsyncioRouter:
         )
         shared.register(self)
 
-    def get_request_router(self) -> Optional[RequestRouter]:
+    @property
+    def request_router(self) -> Optional[RequestRouter]:
         """Get and lazy loading request router.
 
         If the request_router_class not provided, and the request router is not
@@ -484,38 +486,30 @@ class AsyncioRouter:
         setting `self._request_router_initialized` to signal that the request
         router is initialized.
         """
-        if not self._request_router:
-            if self._request_router_class:
-                request_router = self._request_router_class(
-                    deployment_id=self.deployment_id,
-                    handle_source=self._handle_source,
-                    self_node_id=self._node_id,
-                    self_actor_id=self._self_actor_id,
-                    self_actor_handle=ray.get_runtime_context().current_actor
-                    if ray.get_runtime_context().get_actor_id()
-                    else None,
-                    # Streaming ObjectRefGenerators are not supported in Ray Client
-                    use_replica_queue_len_cache=self._enable_strict_max_ongoing_requests,
-                    create_replica_wrapper_func=lambda r: RunningReplica(r),
-                    prefer_local_node_routing=self._prefer_local_node_routing,
-                    prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-                    self_availability_zone=self._availability_zone,
-                )
+        if not self._request_router and self._request_router_class:
+            request_router = self._request_router_class(
+                deployment_id=self.deployment_id,
+                handle_source=self._handle_source,
+                self_node_id=self._node_id,
+                self_actor_id=self._self_actor_id,
+                self_actor_handle=ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
+                # Streaming ObjectRefGenerators are not supported in Ray Client
+                use_replica_queue_len_cache=self._enable_strict_max_ongoing_requests,
+                create_replica_wrapper_func=lambda r: RunningReplica(r),
+                prefer_local_node_routing=self._prefer_local_node_routing,
+                prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+                self_availability_zone=self._availability_zone,
+            )
 
-                # Populate the running replicas if they are already available.
-                if self._running_replicas is not None:
-                    request_router.update_running_replicas(self._running_replicas)
+            # Populate the running replicas if they are already available.
+            if self._running_replicas is not None:
+                request_router.update_running_replicas(self._running_replicas)
 
-                self._request_router = request_router
-
-        if self._request_router:
+            self._request_router = request_router
             self._request_router_initialized.set()
         return self._request_router
-
-    @property
-    def request_router(self) -> Optional[RequestRouter]:
-        """Accessor for the request router."""
-        return self.get_request_router()
 
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated

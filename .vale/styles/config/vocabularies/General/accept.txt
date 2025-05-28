@@ -45,23 +45,32 @@ deserialize
 dev
 dev to prod
 DPO
+Flink
 GGUF
 GKE
 GPTQ
 GPU[s]
+hostfile
+HTTP
+KServe
 KTO
 Kueue
 LMs
 LSH
 Megatron
+MLflow
 namespace
 NER
 Nsight
 NumPy
+OOM
+pipelining
 NVIDIA
 pretraining
+productionize
 Pythonic
 QPS
+retrigger
 RISECamp
 rollouts
 SFT
@@ -75,4 +84,9 @@ VM[s]
 uncaptured
 URI[s]
 [Vv]ision LMs
+[Rr]esample
+[Rr]esampling
+[Ss]pectogram(s)?
+[Dd]etokenizer?s?
+[Dd]etokenization
 VS Code

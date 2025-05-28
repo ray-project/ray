@@ -951,16 +951,20 @@ class SamplingParams(BaseModelExtended):
                 len(unique_val), MAX_NUM_STOPPING_SEQUENCES
             ).raise_exception()
 
-        return unique_val
+        return list(unique_val)
+
+    @field_validator("stop_tokens", mode="before")
+    @classmethod
+    def validate_stop_tokens(cls, values):
+        if not values:
+            return values
+        return sorted(set(values))
 
     @classmethod
     def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
         generate_kwargs = prompt.parameters or {}
         if not isinstance(generate_kwargs, dict):
             generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
-
-        generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
-        generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
 
         return generate_kwargs
 
