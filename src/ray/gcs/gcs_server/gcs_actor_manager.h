@@ -276,7 +276,8 @@ class GcsActor {
 
 using RegisterActorCallback =
     std::function<void(std::shared_ptr<GcsActor>, const Status &status)>;
-using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using RestartActorForLineageReconstructionCallback =
+    std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
@@ -348,9 +349,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRestartActor(rpc::RestartActorRequest request,
-                          rpc::RestartActorReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRestartActorForLineageReconstruction(
+      rpc::RestartActorForLineageReconstructionRequest request,
+      rpc::RestartActorForLineageReconstructionReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleCreateActor(rpc::CreateActorRequest request,
                          rpc::CreateActorReply *reply,
@@ -667,11 +669,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
-  /// Callbacks of pending `RestartActor` requests.
+  /// Callbacks of pending `RestartActorForLineageReconstruction` requests.
   /// Maps actor ID to actor restart callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
-  absl::flat_hash_map<ActorID, std::vector<RestartActorCallback>>
-      actor_to_restart_callbacks_;
+  absl::flat_hash_map<ActorID, std::vector<RestartActorForLineageReconstructionCallback>>
+      actor_to_restart_for_lineage_reconstruction_callbacks_;
   /// Callbacks of actor creation requests.
   /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
   /// messages come from a Driver/Worker caused by some network problems.

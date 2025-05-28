@@ -12,7 +12,7 @@ from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import async_wait_for_condition
+from ray._private.test_utils import wait_for_condition, async_wait_for_condition
 import ray.dashboard.consts as dashboard_consts
 
 # This test requires non-minimal Ray.
@@ -268,6 +268,10 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
 
+    def read_file_content(file_path):
+        with file_path.open("r") as f:
+            return f.read()
+
     response = await client.post(
         "/logging_in_module", data=b"Not all those who wander are lost"
     )
@@ -278,40 +282,46 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.log"
     )
-    with log_file_path.open("r") as f:
-        log_file_content = f.read()
 
-    # Assert on the log format and the content.
-    log_pattern = (
-        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
-    )
-    matches = re.findall(log_pattern, log_file_content)
+    def verify():
+        with log_file_path.open("r") as f:
+            log_file_content = f.read()
 
-    # Expected format: [(file_name, content), ...]
-    expected_logs = [
-        ("utils.py", "TestModule is initing"),
-        ("utils.py", "TestModule is done initing"),
-        ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
-    ]
-    assert all(
-        (file_name, content) in matches for (file_name, content) in expected_logs
-    ), f"Expected to contain {expected_logs}, got {matches}"
+        # Assert on the log format and the content.
+        log_pattern = (
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
+        )
+        matches = re.findall(log_pattern, log_file_content)
+
+        # Expected format: [(file_name, content), ...]
+        expected_logs = [
+            ("utils.py", "TestModule is initing"),
+            ("utils.py", "TestModule is done initing"),
+            ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
+        ]
+        return all(
+            (file_name, content) in matches for (file_name, content) in expected_logs
+        )
+
+    wait_for_condition(verify)
 
     # Assert that stdout is logged to "dashboard_TestModule.out"
     out_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.out"
     )
-    with out_log_file_path.open("r") as f:
-        out_log_file_content = f.read()
-    assert out_log_file_content == "In /logging_in_module, stdout\n"
+    wait_for_condition(
+        lambda: read_file_content(out_log_file_path)
+        == "In /logging_in_module, stdout\n"
+    )
 
     # Assert that stderr is logged to "dashboard_TestModule.err"
     err_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
     )
-    with err_log_file_path.open("r") as f:
-        err_log_file_content = f.read()
-    assert err_log_file_content == "In /logging_in_module, stderr\n"
+    wait_for_condition(
+        lambda: read_file_content(err_log_file_path)
+        == "In /logging_in_module, stderr\n"
+    )
 
 
 async def test_logging_in_module_with_multiple_incarnations(

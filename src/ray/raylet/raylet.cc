@@ -25,6 +25,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/object_manager/plasma/client.h"
@@ -178,18 +179,31 @@ Raylet::Raylet(instrumented_io_context &main_service,
         ref.set_object_id(object_id.Binary());
         this->node_manager_->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
       });
-  node_manager_ = std::make_unique<NodeManager>(main_service,
-                                                self_node_id,
-                                                node_name,
-                                                node_manager_config,
-                                                gcs_client_,
-                                                client_call_manager_,
-                                                worker_rpc_pool_,
-                                                std::move(core_worker_subscriber),
-                                                std::move(object_directory),
-                                                std::move(object_manager),
-                                                std::make_unique<plasma::PlasmaClient>(),
-                                                std::move(shutdown_raylet_gracefully));
+  auto raylet_client_factory = [this](const NodeID &node_id,
+                                      rpc::ClientCallManager &client_call_manager) {
+    const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
+        rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                           node_info->node_manager_port(),
+                                           client_call_manager);
+    return std::make_shared<raylet::RayletClient>(std::move(raylet_client));
+  };
+  node_manager_ = std::make_unique<NodeManager>(
+      main_service,
+      self_node_id,
+      node_name,
+      node_manager_config,
+      gcs_client_,
+      client_call_manager_,
+      worker_rpc_pool_,
+      std::move(core_worker_subscriber),
+      std::move(object_directory),
+      std::move(object_manager),
+      plasma_client_,
+      std::make_unique<core::experimental::MutableObjectProvider>(
+          plasma_client_, std::move(raylet_client_factory), /*check_signals=*/nullptr),
+      std::move(shutdown_raylet_gracefully));
 
   SetCloseOnExec(acceptor_);
   self_node_info_.set_node_id(self_node_id_.Binary());
