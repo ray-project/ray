@@ -155,6 +155,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.task_execution_callback = callback;
   options.startup_token = ConfigInternal::Instance().startup_token;
   options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
+  options.accelerator_cpu_mask = ConfigInternal::Instance().accelerator_cpu_mask;
   rpc::JobConfig job_config;
   job_config.set_default_actor_lifetime(
       ConfigInternal::Instance().default_actor_lifetime);
