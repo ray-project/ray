@@ -40,15 +40,16 @@ CUDA_HOME=`dirname $(dirname $(which nvcc))`
 TEMP_DIR="nixl_installer"
 mkdir -p "${TEMP_DIR}"
 
+sudo apt-get update
+# kmod needed by nvidia-installer, pkg-config needed by GDRCopy, librdmacm-dev needed by UCX
+sudo apt-get install -y kmod pkg-config librdmacm-dev
+
 (
     echo "Installing GDRCopy"
     cd "${TEMP_DIR}"
-    sudo apt-get update
-    # Needed by nvidia-installer
-    sudo apt-get install -y kmod
-    ls /lib/modules/${KVER} || sudo apt install linux-headers-${KVER} -y
+    [[ -d "/lib/modules/${KVER}" ]] || sudo apt-get install linux-headers-${KVER} -y
     NV_DRIVER_VERSION="570.153.02"
-    wget https://us.download.nvidia.com/XFree86/Linux-x86_64/${NV_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run
+    wget "https://us.download.nvidia.com/XFree86/Linux-x86_64/${NV_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run" -q
     sh NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run -x
     sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
         --silent \
@@ -58,9 +59,7 @@ mkdir -p "${TEMP_DIR}"
         --utility-prefix="/usr"
 
     (
-        # Needed by GDRCopy
-        sudo apt-get install -y pkg-config
-        wget https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz
+        wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz" -q
         tar xzf v2.5.tar.gz; rm v2.5.tar.gz
         cd gdrcopy-2.5
         sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
@@ -76,10 +75,8 @@ mkdir -p "${TEMP_DIR}"
 
 (
     echo "Installing UCX"
-    # Needed by UCX
-    sudo apt-get install -y librdmacm-dev
     cd "${TEMP_DIR}"
-    wget https://github.com/openucx/ucx/releases/download/v1.18.0/ucx-1.18.0.tar.gz
+    wget "https://github.com/openucx/ucx/releases/download/v1.18.0/ucx-1.18.0.tar.gz" -q
     tar xzf ucx-1.18.0.tar.gz; rm ucx-1.18.0.tar.gz
     cd ucx-1.18.0
 
@@ -111,7 +108,7 @@ mkdir -p "${TEMP_DIR}"
     echo "Installing NIXL"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
-    wget https://github.com/ai-dynamo/nixl/archive/refs/tags/0.2.0.tar.gz
+    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/0.2.0.tar.gz" -q
     tar xzf 0.2.0.tar.gz; rm 0.2.0.tar.gz
     cd nixl-0.2.0
     meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
