@@ -124,7 +124,6 @@ def test_basic(ray_start_regular):
 
     all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
-    assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [

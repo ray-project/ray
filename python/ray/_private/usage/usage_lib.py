@@ -43,10 +43,10 @@ folder (e.g., /tmp/ray/session_[id]/*).
 """
 import json
 import logging
-import threading
 import os
 import platform
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
@@ -57,14 +57,14 @@ import requests
 import yaml
 
 import ray
-from ray._raylet import GcsClient
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray._raylet import GcsClient
+from ray.core.generated import gcs_pb2, usage_pb2
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-from ray.core.generated import usage_pb2, gcs_pb2
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
