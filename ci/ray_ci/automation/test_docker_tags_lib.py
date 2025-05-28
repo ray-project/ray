@@ -30,6 +30,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
+    call_crane_copy,
 )
 
 
@@ -253,7 +254,7 @@ def test_is_release_tag(tag, release_versions, expected_value):
     assert _is_release_tag(tag, release_versions) == expected_value
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.call_crane_copy")
 def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
     tag = "test_namespace/test_repository:test_tag"
     mock_call_crane_cp.return_value = (
@@ -263,19 +264,21 @@ def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
 
     is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
     mock_call_crane_cp.assert_called_once_with(
-        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
+        source=tag,
+        destination="aws-ecr/name/repo:test_tag",
     )
     assert is_copied is True
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.call_crane_copy")
 def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
     tag = "test_namespace/test_repository:test_tag"
     mock_call_crane_cp.return_value = (1, "Error: Failed to copy tag.")
 
     is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
     mock_call_crane_cp.assert_called_once_with(
-        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
+        source=tag,
+        destination="aws-ecr/name/repo:test_tag",
     )
     assert is_copied is False
 
@@ -691,30 +694,40 @@ def _start_local_registry():
 def test_generate_index():
     registry_proc, registry_thread, temp_dir, port = _start_local_registry()
     try:
-        test_image1 = f"localhost:{port}/test-image:1.0"
-        test_image2 = f"localhost:{port}/test-image:2.0"
+        test_image1 = f"localhost:{port}/test-image:test-tag-amd64"
+        test_image2 = f"localhost:{port}/test-image:test-tag-arm64"
 
-        subprocess.run(["docker", "pull", "alpine:3.16"], check=True)
-        subprocess.run(["docker", "pull", "alpine:3.17"], check=True)
-
-        subprocess.run(["docker", "tag", "alpine:3.16", test_image1], check=True)
-        subprocess.run(["docker", "tag", "alpine:3.17", test_image2], check=True)
-
-        subprocess.run(["docker", "push", test_image1], check=True)
-        subprocess.run(["docker", "push", test_image2], check=True)
+        alpine3_16_amd64_digest = (
+            "sha256:0db9d004361b106932f8c7632ae54d56e92c18281e2dd203127d77405020abf6"
+        )
+        alpine3_16_arm64_digest = (
+            "sha256:4bdb4ac63839546daabfe0a267a363b3effa17ce02ac5f42d222174484c5686c"
+        )
+        call_crane_copy(
+            source=f"alpine:3.16@{alpine3_16_amd64_digest}", destination=test_image1
+        )
+        call_crane_copy(
+            source=f"alpine:3.16@{alpine3_16_arm64_digest}", destination=test_image2
+        )
 
         # Generate index
         index_repo = "test-index"
-        index_name = f"localhost:{port}/{index_repo}:latest"
+        index_name = f"localhost:{port}/{index_repo}:test-multiarch-tag"
         generate_index(index_name=index_name, tags=[test_image1, test_image2])
 
         # Verify index was created with 2 image manifests
         response = requests.get(
-            f"http://localhost:{port}/v2/{index_repo}/manifests/latest"
+            f"http://localhost:{port}/v2/{index_repo}/manifests/test-multiarch-tag"
         )
         assert response.status_code == 200
         assert "manifests" in response.json()
         assert len(response.json()["manifests"]) == 2
+        for manifest in response.json()["manifests"]:
+            architecture = manifest["platform"]["architecture"]
+            if architecture == "amd64":
+                assert manifest["digest"] == alpine3_16_amd64_digest
+            elif architecture == "arm64":
+                assert manifest["digest"] == alpine3_16_arm64_digest
     finally:
         registry_proc.kill()
         registry_thread.join()

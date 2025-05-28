@@ -469,6 +469,30 @@ def _crane_binary():
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
+def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
+    try:
+        with subprocess.Popen(
+            [
+                _crane_binary(),
+                "copy",
+                source,
+                destination,
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            output = ""
+            for line in proc.stdout:
+                logger.info(line + "\n")
+                output += line
+            return_code = proc.wait()
+            if return_code:
+                raise subprocess.CalledProcessError(return_code, proc.args)
+            return return_code, output
+    except subprocess.CalledProcessError as e:
+        return e.returncode, e.output
+
+
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
     try:
         with subprocess.Popen(
@@ -556,10 +580,9 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     _, repo_tag = tag.split("/")
     tag_name = repo_tag.split(":")[1]
     logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
-    return_code, output = _call_crane_cp(
-        tag=tag_name,
+    return_code, output = call_crane_copy(
         source=tag,
-        aws_ecr_repo=aws_ecr_repo,
+        destination=f"{aws_ecr_repo}:{tag_name}",
     )
     if return_code:
         logger.info(f"Failed to copy {tag} to {aws_ecr_repo}:{tag_name}......")
