@@ -7,7 +7,7 @@ head_node_type:
         memory: "8Gi"
       requests:
         cpu: "2"
-        memory: "16Gi"
+        memory: "8Gi"
 
 worker_node_types:
     - name: worker_node
