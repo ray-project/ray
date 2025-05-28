@@ -1400,6 +1400,9 @@ def test_groupby_arrow_multi_agg(
             for k, v in row.items()
         }
 
+    print(f"Expected: {expected_row}, (rounded: {_round_to_13_digits(expected_row)})")
+    print(f"Result: {result_row} (rounded: {_round_to_13_digits(result_row)})")
+
     assert _round_to_13_digits(expected_row) == _round_to_13_digits(result_row)
 
 
