@@ -24,7 +24,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
-    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE_WORKER,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
     env_integer,
 )
 from ray._raylet import WorkerID, GCS_PID_KEY
@@ -510,7 +510,7 @@ class ReporterAgent(
         """
         # This method suppposes to forward data to self._open_telemetry_metric_recorder
         # to record them to Prometheus. Currently, that logic is not yet implemented.
-        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE_WORKER is set to True,
+        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE is set to True,
         # this is a no-op.
         pass
 
@@ -1374,7 +1374,7 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE_WORKER:
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )
