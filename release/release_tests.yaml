@@ -104,6 +104,7 @@
       cluster:
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
     - __suffix__: kuberay
+      env: kuberay
       cluster:
         cluster_compute: cpt_autoscaling_1-3_kuberay.yaml
 
