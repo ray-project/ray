@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -151,20 +150,20 @@ class BatchIndividualItems(ConnectorV2):
         is_multi_rl_module = isinstance(rl_module, MultiRLModule)
 
         # Convert lists of individual items into properly batched data.
-        #for column, column_data in batch.copy().items():
+        # for column, column_data in batch.copy().items():
         for module_id, module_data in batch.copy().items():
             # Multi-agent case: This connector piece should only be used after(!)
             # the AgentToModuleMapping connector has already been applied, leading
             # to a batch structure of:
             # [module_id] -> [col0] -> [list of individual batch items]
-            #if is_multi_rl_module and module_id in rl_module:
-                # Case, in which data has already been properly batched before this
-                # connector piece is called.
-                #if not self._multi_agent:
-                #    continue
-                # If MA Off-Policy and independent sampling we need to overcome this
-                # check.
-                #module_data = column_data
+            # if is_multi_rl_module and module_id in rl_module:
+            # Case, in which data has already been properly batched before this
+            # connector piece is called.
+            # if not self._multi_agent:
+            #    continue
+            # If MA Off-Policy and independent sampling we need to overcome this
+            # check.
+            # module_data = column_data
             for col, individual_items in module_data.copy().items():
                 if col != Columns.INFOS and isinstance(individual_items, list):
                     module_data[col] = batch_fn(
@@ -174,7 +173,7 @@ class BatchIndividualItems(ConnectorV2):
 
             # Simple case: There is a list directly under `column`:
             # Batch the list.
-            #elif isinstance(module_data, list):
+            # elif isinstance(module_data, list):
             #    batch[module_id] = batch_fn(
             #        module_data,
             #        individual_items_already_have_batch_dim="auto",
@@ -183,7 +182,7 @@ class BatchIndividualItems(ConnectorV2):
             # Single-agent case: There is a dict under `column` mapping
             # `eps_id` to lists of items:
             # Concat all these lists, then batch.
-            #elif not self._multi_agent:
+            # elif not self._multi_agent:
             #    # TODO: only really need this in non-Learner connector pipeline
             #    #memorized_map_structure = []
             #    list_to_be_batched = []

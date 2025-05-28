@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -117,7 +116,6 @@ class NumpyToTensor(ConnectorV2):
         # `batch` already a ModuleID to batch mapping format.
         if not (is_multi_rl_module and all(c in rl_module._rl_modules for c in batch)):
             is_single_agent = True
-            #batch = {DEFAULT_MODULE_ID: batch}
 
         for module_id, module_data in batch.copy().items():
             infos = module_data.pop(Columns.INFOS, None)

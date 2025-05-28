@@ -1,14 +1,10 @@
 from typing import Any, Dict, List, Optional
 
-import gymnasium as gym
-
 from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch as batch_fn
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 

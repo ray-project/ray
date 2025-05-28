@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 import tree  # pip install dm_tree
@@ -61,15 +60,15 @@ class UnBatchToIndividualItems(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        #memorized_map_structure = shared_data.get("memorized_map_structure")
-        #episode_map_structure = shared_data.get("vector_env_episodes_map", {})
+        # memorized_map_structure = shared_data.get("memorized_map_structure")
+        # episode_map_structure = shared_data.get("vector_env_episodes_map", {})
         # Simple case (no structure stored): Just unbatch.
-        #if memorized_map_structure is None:
+        # if memorized_map_structure is None:
         return tree.map_structure(lambda s: unbatch_fn(s), batch)
 
         # Single agent case: Memorized structure is a list, whose indices map to
         # eps_id values.
-        #elif isinstance(memorized_map_structure, list):
+        # elif isinstance(memorized_map_structure, list):
         #    for column, column_data in batch.copy().items():
         #        column_data = unbatch_fn(column_data)
         #        new_column_data = defaultdict(list)
@@ -82,7 +81,7 @@ class UnBatchToIndividualItems(ConnectorV2):
         ## Multi-agent case: Memorized structure is dict mapping module_ids to lists of
         ## (eps_id, agent_id)-tuples, such that the original individual-items-based form
         ## can be constructed.
-        #else:
+        # else:
         #    for module_id, module_data in batch.copy().items():
         #        if module_id not in memorized_map_structure:
         #            raise KeyError(
@@ -123,5 +122,5 @@ class UnBatchToIndividualItems(ConnectorV2):
         #                new_column_data[key].append(column_data[i])
         #            module_data[column] = dict(new_column_data)
         #
-        #return batch
+        # return batch
         #
