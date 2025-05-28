@@ -50,7 +50,7 @@ class GetRequest {
   /// \return Whether all requested objects are available.
   bool Wait(int64_t timeout_ms);
   /// Set the object content for the specific object id.
-  void Set(const ObjectID &object_id, std::shared_ptr<RayObject> buffer);
+  void Set(const ObjectID &object_id, const std::shared_ptr<RayObject> &object);
   /// Get the object content for the specific object id.
   std::shared_ptr<RayObject> Get(const ObjectID &object_id) const;
   /// Whether this is a `get` request.
@@ -91,14 +91,7 @@ const absl::flat_hash_set<ObjectID> &GetRequest::ObjectIds() const { return obje
 bool GetRequest::ShouldRemoveObjects() const { return remove_after_get_; }
 
 bool GetRequest::Wait(int64_t timeout_ms) {
-  RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
-  if (timeout_ms == -1) {
-    // Wait forever until all objects are ready.
-    std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return is_ready_; });
-    return true;
-  }
-
+  RAY_CHECK(timeout_ms >= 0);
   // Wait until all objects are ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
   auto is_ready_status_after_timeout = cv_.wait_for(
@@ -106,8 +99,9 @@ bool GetRequest::Wait(int64_t timeout_ms) {
   return is_ready_status_after_timeout;
 }
 
-void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
-  std::scoped_lock<std::mutex> lock(mutex_);
+void GetRequest::Set(const ObjectID &object_id,
+                     const std::shared_ptr<RayObject> &object) {
+  std::unique_lock<std::mutex> lock(mutex_);
   if (is_ready_) {
     return;  // We have already hit the number of objects to return limit.
   }
@@ -117,6 +111,7 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
       (abort_if_any_object_is_exception_ && object->IsException() &&
        !object->IsInPlasmaError())) {
     is_ready_ = true;
+    lock.unlock();
     cv_.notify_all();
   }
 }
@@ -354,29 +349,23 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   bool done = false;
-  bool timed_out = false;
   Status signal_status = Status::OK();
-  int64_t remaining_timeout = timeout_ms;
+  std::optional<std::chrono::steady_clock::time_point> timeout_point;
+  if (timeout_ms != -1) {
+    timeout_point =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  }
   int64_t iteration_timeout =
-      timeout_ms == -1
-          ? RayConfig::instance().get_check_signal_interval_milliseconds()
-          : std::min(timeout_ms,
-                     RayConfig::instance().get_check_signal_interval_milliseconds());
+      RayConfig::instance().get_check_signal_interval_milliseconds();
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
-  while (!timed_out && signal_status.ok() &&
-         !(done = get_request->Wait(iteration_timeout))) {
+  while ((timeout_point && std::chrono::steady_clock::now() <= timeout_point) &&
+         signal_status.ok() && !(done = get_request->Wait(iteration_timeout))) {
     if (check_signals_) {
       signal_status = check_signals_();
-    }
-
-    if (remaining_timeout >= 0) {
-      remaining_timeout -= iteration_timeout;
-      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
-      timed_out = remaining_timeout <= 0;
     }
   }
 
