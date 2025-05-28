@@ -10,6 +10,7 @@ import ray
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
@@ -138,7 +139,9 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(f"[_insert_node_into_linked_list] Tenant '{tenant}' does not exist. No action taken.")
+                logger.warning(
+                    f"[_insert_node_into_linked_list] Tenant '{tenant}' does not exist. No action taken."
+                )
                 return
 
             # Skip if node is the root
@@ -163,7 +166,9 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(f"[_remove_node_from_linked_list] Tenant '{tenant}' does not exist. No action taken.")
+                logger.warning(
+                    f"[_remove_node_from_linked_list] Tenant '{tenant}' does not exist. No action taken."
+                )
                 return
 
             # Skip if node is the root
@@ -201,7 +206,9 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(f"[_remove_tenant_single_node] Tenant '{tenant}' does not exist. No action taken.")
+                logger.warning(
+                    f"[_remove_tenant_single_node] Tenant '{tenant}' does not exist. No action taken."
+                )
                 return 0
             if tenant not in node.tenant_to_last_access_time:
                 logger.warning(
@@ -237,7 +244,9 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant in self.tenant_to_char_count:
-                    logger.warning(f"[_add_tenants] Tenant '{tenant}' already exists. Skipping.")
+                    logger.warning(
+                        f"[_add_tenants] Tenant '{tenant}' already exists. Skipping."
+                    )
                     continue
 
                 self.tenant_to_char_count[tenant] = 0
@@ -459,7 +468,9 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant not in self.tenant_to_char_count:
-                    logger.warning(f"[_remove_tenants] Tenant '{tenant}' does not exist. Skipping.")
+                    logger.warning(
+                        f"[_remove_tenants] Tenant '{tenant}' does not exist. Skipping."
+                    )
                     chars_removed[tenant] = 0
                     continue
 
@@ -600,6 +611,7 @@ class PrefixTree:
                 self._eviction_task.cancel()
                 # self._eviction_task.close()
                 self._eviction_task = None
+
 
 @ray.remote
 class PrefixTreeActor(PrefixTree):

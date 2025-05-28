@@ -1,4 +1,3 @@
-import ray
 import asyncio
 import json
 import logging
@@ -8,11 +7,11 @@ import time
 from typing import (
     List,
     Optional,
-    Set,
 )
 
 import requests
 
+import ray
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -21,18 +20,16 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.replica_scheduler import (
+    PowerOfTwoChoicesReplicaScheduler,
+    ReplicaScheduler,
+)
+from ray.serve._private.replica_scheduler.common import (
+    PendingRequest,
+)
 from ray.serve._private.replica_scheduler.replica_scheduler import (
     LocalityScheduleMixin,
     MultiplexScheduleMixin,
-)
-from ray.serve._private.replica_scheduler import (
-    ReplicaScheduler,
-    PowerOfTwoChoicesReplicaScheduler,
-)
-
-
-from ray.serve._private.replica_scheduler.common import (
-    PendingRequest,
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import (
     RunningReplica,
@@ -41,7 +38,9 @@ from ray.serve._private.replica_scheduler.replica_wrapper import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler):
+class PrefixAwareReplicaScheduler(
+    LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler
+):
     """Extends the PowerOfTwoChoicesReplicaScheduler with prefix-matching capabilities.
 
     This scheduler optimizes replica selection by considering input text prefixes:
@@ -100,10 +99,10 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
         # Just used for benchmarking, will remove for PR eventually
         self._do_track_metrics = False
         self._track_metrics_task = None
-        self._vllm_metrics_path = "/home/ray/default/work/_testing/results/vllm_metrics"
-        self._char_count_over_time_path = (
-            "/home/ray/default/work/_testing/results/char_count_over_time"
+        self._vllm_metrics_path = (
+            "/home/ray/default/work/ray/_benchmarking_scripts/results/vllm_metrics"
         )
+        self._char_count_over_time_path = "/home/ray/default/work/ray/_benchmarking_scripts/results/char_count_over_time"
         self._vllm_metrics_over_time = {}
         self._char_count_over_time = {}
         self._benchmark_start_time = 0.0
@@ -115,7 +114,9 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
         """Track metrics every 1s, save to JSON at end."""
         try:
             self._benchmark_start_time = time.time()
-            print("Beginning to track metrics immediately")
+            print(
+                f"Beginning to track metrics immediately at time {self._benchmark_start_time}"
+            )
             session = requests.Session()
             while True:
                 await asyncio.sleep(1)
@@ -125,7 +126,8 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
 
                 # === vLLM metrics via curl ===
                 try:
-                    response = session.get("http://localhost:8085/metrics")
+                    response = session.get("http://localhost:5001/metrics")
+                    # response = session.get("http://localhost:8085/metrics")
                     output = response.text
                     lines = output.strip().split("\n")
                     current_vllm_metrics = {}
@@ -186,9 +188,9 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
                     print(f"[WARN] Failed to curl or parse /metrics: {e}")
 
                 # === Character count over time ===
-                tenant_char_count = ray.get(self._tree_actor.getattr.remote(
-                    "tenant_to_char_count"
-                ))
+                tenant_char_count = ray.get(
+                    self._tree_actor.getattr.remote("tenant_to_char_count")
+                )
                 from collections import defaultdict
 
                 current_char_count = defaultdict(int)
@@ -199,9 +201,14 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
 
                 # === End condition ===
                 if self._num_requests_seen > 10 and total_load == 0:
+                    print(
+                        f"Total load is 0 at time {current_time} with num_requests_seen {self._num_requests_seen}"
+                    )
                     self._zero_load_count += 1
                     if self._zero_load_count >= 2:
-                        print("Benchmark ended, writing data to disk")
+                        print(
+                            f"Benchmark ended, writing data to disk at time {current_time}"
+                        )
                         # Dump vLLM metrics
                         os.makedirs(self._vllm_metrics_path, exist_ok=True)
                         os.makedirs(self._char_count_over_time_path, exist_ok=True)
@@ -304,15 +311,15 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
                             lowest_queue_len = min(lowest_queue_len, queue_len)
                 else:
                     not_in_cache = candidate_replicas
-                # if len(not_in_cache) > 0:
-                #     for r, queue_len in await self._probe_queue_lens(
-                #         not_in_cache,
-                #         0,
-                #     ):
-                #         if queue_len is None:
-                #             continue
-                #         highest_queue_len = max(highest_queue_len, queue_len)
-                #         lowest_queue_len = min(lowest_queue_len, queue_len)
+                if len(not_in_cache) > 0:
+                    for r, queue_len in await self._probe_queue_lens(
+                        not_in_cache,
+                        0,
+                    ):
+                        if queue_len is None:
+                            continue
+                        highest_queue_len = max(highest_queue_len, queue_len)
+                        lowest_queue_len = min(lowest_queue_len, queue_len)
 
                 is_imbalanced = (
                     highest_queue_len - lowest_queue_len > self._imbalanced_threshold
@@ -322,18 +329,20 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
                     candidate_replica_ids_strings = [
                         r.replica_id.to_full_id_str() for r in candidate_replicas
                     ]
-                    (
-                        matched_text,
-                        matched_tenant_id_strings,
-                    ) = ray.get(self._tree_actor.prefix_match.remote(
-                        input_text, candidate_replica_ids_strings
-                    ))
+                    (matched_text, matched_tenant_id_strings,) = ray.get(
+                        self._tree_actor.prefix_match.remote(
+                            input_text, candidate_replica_ids_strings
+                        )
+                    )
                     match_rate = len(matched_text) / len(input_text)
                     if match_rate < self._match_rate_threshold:
-                        smallest_tenants_id_strings = (
-                            ray.get(self._tree_actor.get_smallest_tenants.remote())
+                        smallest_tenants_id_strings = ray.get(
+                            self._tree_actor.get_smallest_tenants.remote()
                         )
-                        if smallest_tenants_id_strings is not None and len(smallest_tenants_id_strings) > 0:
+                        if (
+                            smallest_tenants_id_strings is not None
+                            and len(smallest_tenants_id_strings) > 0
+                        ):
                             chosen_replica_id_strings = smallest_tenants_id_strings
                     else:
                         if (
@@ -341,7 +350,12 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
                             and len(matched_tenant_id_strings) > 0
                         ):
                             chosen_replica_id_strings = matched_tenant_id_strings
-        return [[self._replicas[ReplicaID.from_full_id_str(chosen_id_string)] for chosen_id_string in chosen_replica_id_strings]]
+        return [
+            [
+                self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
+                for chosen_id_string in chosen_replica_id_strings
+            ]
+        ]
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
@@ -376,11 +390,13 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
 
         # === Start tasks (if enabled and not already running) ===
         if self._do_eviction and not self._eviction_loop_running:
-            ray.get(self._tree_actor.start_eviction_loop.remote(
-                self._eviction_threshold_chars,
-                self._eviction_target_chars,
-                self._eviction_interval_secs,
-            ))
+            ray.get(
+                self._tree_actor.start_eviction_loop.remote(
+                    self._eviction_threshold_chars,
+                    self._eviction_target_chars,
+                    self._eviction_interval_secs,
+                )
+            )
             self._eviction_loop_running = True
 
         if self._do_track_metrics and self._track_metrics_task is None:
@@ -403,7 +419,8 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
         procedure.
         """
         # Get fallback replicas from PowerOfTwoChoicesReplicaScheduler
-        fallback_replicas = await PowerOfTwoChoicesReplicaScheduler.choose_replicas(self,
+        fallback_replicas = await PowerOfTwoChoicesReplicaScheduler.choose_replicas(
+            self,
             replicas_ranks=replicas_ranks,
             pending_request=pending_request,
         )
@@ -425,7 +442,10 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
         replica_id_to_replica_map = {
             replica.replica_id: replica for replica in replicas_ranks[0]
         }
-        candidate_replicas = [replica_id_to_replica_map[candidate_replica_id] for candidate_replica_id in candidate_replica_ids]
+        candidate_replicas = [
+            replica_id_to_replica_map[candidate_replica_id]
+            for candidate_replica_id in candidate_replica_ids
+        ]
         if not candidate_replicas:
             return fallback_replicas
         chosen_replicas = await self._prefix_match_best_replicas(
@@ -455,6 +475,8 @@ class PrefixAwareReplicaScheduler(LocalityScheduleMixin, MultiplexScheduleMixin,
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
-                ray.get(self._tree_actor.insert.remote(
-                    input_text, replica_id.to_full_id_str(), time.time()
-                ))
+                ray.get(
+                    self._tree_actor.insert.remote(
+                        input_text, replica_id.to_full_id_str(), time.time()
+                    )
+                )

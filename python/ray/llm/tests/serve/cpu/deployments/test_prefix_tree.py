@@ -857,16 +857,18 @@ class TestPrefixTreeActorEvictionLoop:
         interval_secs = 0.1  # Short interval for testing
 
         # Start the eviction loop
-        ray.get(tree_actor.start_eviction_loop.remote(
-            eviction_threshold, eviction_target, interval_secs
-        ))
+        ray.get(
+            tree_actor.start_eviction_loop.remote(
+                eviction_threshold, eviction_target, interval_secs
+            )
+        )
 
         # Add tenant and insert data over the threshold
         ray.get(tree_actor.add_tenants.remote(["tenant_1"], 0))
         ray.get(tree_actor.insert.remote("hello", "tenant_1", 1))  # 5 chars
-        ray.get(tree_actor.insert.remote(
-            "excess", "tenant_1", 2
-        ))  # 6 more chars, total: 11
+        ray.get(
+            tree_actor.insert.remote("excess", "tenant_1", 2)
+        )  # 6 more chars, total: 11
 
         # Verify initial count
         assert ray.get(tree_actor.getattr.remote("tenant_to_char_count")) == {
@@ -891,18 +893,22 @@ class TestPrefixTreeActorEvictionLoop:
         interval_secs = 0.1
 
         # Start the eviction loop
-        ray.get(tree_actor.start_eviction_loop.remote(
-            eviction_threshold, eviction_target, interval_secs
-        ))
+        ray.get(
+            tree_actor.start_eviction_loop.remote(
+                eviction_threshold, eviction_target, interval_secs
+            )
+        )
 
         # Add two tenants with data over threshold
         ray.get(tree_actor.add_tenants.remote(["tenant_1", "tenant_2"], 0))
         ray.get(tree_actor.insert.remote("hello", "tenant_1", 1))  # 5 chars
-        ray.get(tree_actor.insert.remote(
-            "excess", "tenant_1", 2
-        ))  # 6 more chars, total: 11
+        ray.get(
+            tree_actor.insert.remote("excess", "tenant_1", 2)
+        )  # 6 more chars, total: 11
         ray.get(tree_actor.insert.remote("bigstring", "tenant_2", 3))  # 9 chars
-        ray.get(tree_actor.insert.remote("more", "tenant_2", 4))  # 4 more chars, total: 13
+        ray.get(
+            tree_actor.insert.remote("more", "tenant_2", 4)
+        )  # 4 more chars, total: 13
 
         # Verify initial counts
         initial_count = ray.get(tree_actor.getattr.remote("tenant_to_char_count"))
@@ -930,16 +936,18 @@ class TestPrefixTreeActorEvictionLoop:
         interval_secs = 0.1
 
         # Start the eviction loop
-        ray.get(tree_actor.start_eviction_loop.remote(
-            eviction_threshold, eviction_target, interval_secs
-        ))
+        ray.get(
+            tree_actor.start_eviction_loop.remote(
+                eviction_threshold, eviction_target, interval_secs
+            )
+        )
 
         # Add two tenants - one over threshold, one under
         ray.get(tree_actor.add_tenants.remote(["over_tenant", "under_tenant"], 0))
         ray.get(tree_actor.insert.remote("hello", "over_tenant", 1))  # 5 chars
-        ray.get(tree_actor.insert.remote(
-            "excess", "over_tenant", 2
-        ))  # 6 more chars, total: 11
+        ray.get(
+            tree_actor.insert.remote("excess", "over_tenant", 2)
+        )  # 6 more chars, total: 11
         ray.get(tree_actor.insert.remote("small", "under_tenant", 3))  # 5 chars
 
         # Verify initial counts
@@ -969,9 +977,9 @@ class TestPrefixTreeActorEvictionLoop:
         # Add tenant and insert data over the threshold
         ray.get(tree_actor.add_tenants.remote(["tenant_1"], 0))
         ray.get(tree_actor.insert.remote("hello", "tenant_1", 1))  # 5 chars
-        ray.get(tree_actor.insert.remote(
-            "excess", "tenant_1", 2
-        ))  # 6 more chars, total: 11
+        ray.get(
+            tree_actor.insert.remote("excess", "tenant_1", 2)
+        )  # 6 more chars, total: 11
 
         # Wait for eviction loop to run
         await asyncio.sleep(0.3)
