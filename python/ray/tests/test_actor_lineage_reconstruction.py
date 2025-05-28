@@ -11,8 +11,9 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import common_pb2
 
 
+@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
 def test_actor_reconstruction_triggered_by_lineage_reconstruction(
-    monkeypatch, ray_start_cluster
+    monkeypatch, ray_start_cluster, deterministic_failure
 ):
     # Test the sequence of events:
     # actor goes out of scope and killed
@@ -21,10 +22,11 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
     # This test also injects network failure to make sure relevant rpcs are retried.
+    chaos_failure = "100:0" if deterministic_failure == "request" else "0:100"
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=5:25:25,"
-        "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=5:25:25",
+        f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{chaos_failure},"
+        f"ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=1:{chaos_failure}",
     )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})
