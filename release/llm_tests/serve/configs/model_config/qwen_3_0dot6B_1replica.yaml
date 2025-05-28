@@ -11,6 +11,7 @@ runtime_env:
     VLLM_USE_V1: "1"
 
 engine_kwargs:
+  max_model_len: 8192
   # Need eager mode to suppress https://github.com/vllm-project/vllm/issues/18244
   enforce_eager: True
   data_parallel_size: 1

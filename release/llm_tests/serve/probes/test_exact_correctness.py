@@ -18,10 +18,12 @@ def deterministic_querier(openai_async_client):
 
 HELLO_WORLD_RESPONSES_BY_MODEL = {
     "default": ("Hello world.", "'Hello world.'"),
+    "Qwen3-0.6B": ("<think>\nOkay, the user wants me",),
 }
 
 COUNTING_PATTERN_RESPONSES_BY_MODEL = {
-    "default": ["Five", "five", "Five.", "five."],
+    "default": ("Five", "five", "Five.", "five."),
+    "Qwen3-0.6B": ("<think>\nOkay, the user provided the pattern",),
 }
 
 
