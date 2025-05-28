@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Sequence, Union
+from typing import TYPE_CHECKING, List, Optional, Sequence, Union
 
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,

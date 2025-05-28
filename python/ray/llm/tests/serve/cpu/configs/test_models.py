@@ -321,6 +321,18 @@ class TestPublicLLMConfig:
                 )
             )
 
+    def test_extend_config(self):
+        """Test that public users can define their own config that uses LLMConfig."""
+        class MyLLMConfig(pydantic.BaseModel):
+            llm_config: PublicLLMConfig
+
+        my_llm_config = MyLLMConfig(
+            llm_config=PublicLLMConfig.parse_from(
+                f"{CONFIG_DIRS_PATH}/matching_configs/hf_prompt_format.yaml"
+            )[0]
+        )
+        assert my_llm_config.llm_config.model_id == "mistral-community/pixtral-12b"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

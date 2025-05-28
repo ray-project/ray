@@ -503,13 +503,13 @@ def _is_yaml_file(filename: str) -> bool:
     return False
 
 
-def _parse_path_args(path: str) -> List[LLMConfig]:
+def _parse_path_args(path: str) -> List["ray.serve.llm.LLMConfig"]:
     assert os.path.exists(
         path
     ), f"Could not load model from {path}, as it does not exist."
     if os.path.isfile(path):
         with open(path, "r") as f:
-            llm_config = LLMConfig.parse_yaml(f)
+            llm_config = ray.serve.llm.LLMConfig.parse_yaml(f)
             return [llm_config]
     elif os.path.isdir(path):
         apps = []
@@ -517,7 +517,7 @@ def _parse_path_args(path: str) -> List[LLMConfig]:
             for p in files:
                 if _is_yaml_file(p):
                     with open(os.path.join(root, p), "r") as f:
-                        llm_config = LLMConfig.parse_yaml(f)
+                        llm_config = ray.serve.llm.LLMConfig.parse_yaml(f)
                         apps.append(llm_config)
         return apps
     else:
