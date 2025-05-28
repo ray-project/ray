@@ -141,7 +141,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
-         const std::string &tensor_transport) {
+         const rpc::TensorTransport &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);

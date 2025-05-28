@@ -73,7 +73,7 @@ struct CoreWorkerOptions {
       // The max number of unconsumed objects where a generator
       // can run without a pause.
       int64_t generator_backpressure_num_objects,
-      const std::string &tensor_transport)>;
+      const rpc::TensorTransport &tensor_transport)>;
 
   CoreWorkerOptions()
       : store_socket(""),

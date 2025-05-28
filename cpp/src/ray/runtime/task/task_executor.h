@@ -98,7 +98,7 @@ class TaskExecutor {
       int64_t generator_backpressure_num_objects,
       /* This is used by the in-actor GPU object store. However, it is only supported in
        * the Python frontend. */
-      const std::string &tensor_transport);
+      const rpc::TensorTransport &tensor_transport);
 
   virtual ~TaskExecutor(){};
 

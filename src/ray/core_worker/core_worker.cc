@@ -3380,8 +3380,6 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
-  rpc::TensorTransport tensor_transport = task_spec.TensorTransport();
-  std::string tensor_transport_str = rpc::TensorTransport_Name(tensor_transport);
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -3405,7 +3403,7 @@ Status CoreWorker::ExecuteTask(
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
-      /*tensor_transport=*/tensor_transport_str);
+      /*tensor_transport=*/task_spec.TensorTransport());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

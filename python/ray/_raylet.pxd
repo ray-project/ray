@@ -31,6 +31,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CLabelMatchExpressions,
+    CTensorTransport,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -161,7 +162,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             ref_generator_id=*, # CObjectID
-            c_string c_tensor_transport=*,
+            CTensorTransport c_tensor_transport=*,
         )
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref)

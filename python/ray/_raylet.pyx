@@ -142,6 +142,8 @@ from ray.includes.common cimport (
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
     kGcsPidKey,
+    CTensorTransport,
+    TENSOR_TRANSPORT_OBJECT_STORE,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1752,7 +1754,7 @@ cdef void execute_task(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        c_string c_tensor_transport) except *:
+        CTensorTransport c_tensor_transport) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -2119,7 +2121,7 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        c_string c_tensor_transport):
+        CTensorTransport c_tensor_transport):
 
     is_retryable_error[0] = False
 
@@ -2310,7 +2312,7 @@ cdef CRayStatus task_execution_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        c_string c_tensor_transport) nogil:
+        CTensorTransport c_tensor_transport) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -4319,7 +4321,7 @@ cdef class CoreWorker:
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
                             ref_generator_id=None,
-                            c_string c_tensor_transport=b"OBJECT_STORE"):
+                            CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
         cdef:
             CObjectID return_id
             size_t data_size
@@ -4330,7 +4332,6 @@ cdef class CoreWorker:
             CObjectID c_ref_generator_id = CObjectID.Nil()
             shared_ptr[CRayObject] *return_ptr
 
-        tensor_transport = c_tensor_transport.decode("ascii")
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
 
@@ -4391,7 +4392,7 @@ cdef class CoreWorker:
             # TODO(kevin85421): We should consider unifying both serialization logic in the future
             # when GPU objects are more stable. We currently separate the logic to ensure
             # GPU object-related logic does not affect the normal object serialization logic.
-            if tensor_transport != "OBJECT_STORE":
+            if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
                 serialized_object = context.serialize_and_store_gpu_objects(output, return_id.Hex())
