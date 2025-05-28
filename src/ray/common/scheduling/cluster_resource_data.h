@@ -61,7 +61,7 @@ class ResourceRequest {
 
   const LabelSelector &GetLabelSelector() const { return label_selector_; }
 
-  void SetLabelSelector(const LabelSelector &label_selector) {
+  void SetLabelSelector(LabelSelector label_selector) {
     label_selector_ = std::move(label_selector);
   }
 
