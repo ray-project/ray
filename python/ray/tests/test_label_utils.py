@@ -90,11 +90,10 @@ def test_parse_node_labels_from_json():
 
 @contextmanager
 def _tempfile(content: str) -> ContextManager[str]:
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+    f = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+    try:
         f.write(content)
         f.flush()
-
-    try:
         yield f.name
     finally:
         os.unlink(f.name)
