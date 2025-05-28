@@ -162,38 +162,33 @@ def test_ray_start_set_node_labels_from_file():
         os.remove(test_file_path)
 
 
-# def test_add_default_ray_node_labels_sets_expected_labels(shutdown_only):
-#     # Set environment variables for test
-#     os.environ["RAY_NODE_MARKET_TYPE"] = "spot"
-#     os.environ["RAY_NODE_GROUP"] = "worker-group-1"
-#     os.environ["RAY_NODE_REGION"] = "us-central2"
-#     os.environ["RAY_NODE_ZONE"] = "us-central2-b"
+def test_add_default_ray_node_labels(shutdown_only):
+    # Set environment variables for test
+    os.environ["RAY_NODE_MARKET_TYPE"] = "spot"
+    os.environ["RAY_NODE_TYPE_NAME"] = "worker-group-1"
+    os.environ["RAY_NODE_REGION"] = "us-central2"
+    os.environ["RAY_NODE_ZONE"] = "us-central2-b"
 
-#     # Patch accelerator manager to return a known type since test
-#     # is not actually scheduled on accelerator node.
-#     with patch.object(
-#         get_all_accelerator_managers()[0],
-#         "get_current_node_accelerator_type",
-#         return_value="A100",
-#     ):
-#         ray.init()
-#         node_info = ray.nodes()[0]
-#         labels = node_info["Labels"]
+    ray.init()
+    node_info = ray.nodes()[0]
+    labels = node_info["Labels"]
 
-#         assert labels.get("ray.io/market-type") == "spot"
-#         assert labels.get("ray.io/node-group") == "worker-group-1"
-#         assert labels.get("ray.io/availability-region") == "us-central2"
-#         assert labels.get("ray.io/availability-zone") == "us-central2-b"
-#         assert labels.get("ray.io/accelerator-type") == "A100"
+    assert labels.get("ray.io/market-type") == "spot"
+    assert labels.get("ray.io/node-group") == "worker-group-1"
+    assert labels.get("ray.io/availability-region") == "us-central2"
+    assert labels.get("ray.io/availability-zone") == "us-central2-b"
+    assert (
+        labels.get("ray.io/accelerator-type") is None
+    )  # node is not scheduled on an accelerator
 
-#     # Unset env vars
-#     for k in [
-#         "RAY_NODE_MARKET_TYPE",
-#         "RAY_NODE_GROUP",
-#         "RAY_NODE_ZONE",
-#         "RAY_NODE_REGION",
-#     ]:
-#         del os.environ[k]
+    # Unset env vars
+    for k in [
+        "RAY_NODE_MARKET_TYPE",
+        "RAY_NODE_TYPE_NAME",
+        "RAY_NODE_ZONE",
+        "RAY_NODE_REGION",
+    ]:
+        del os.environ[k]
 
 
 if __name__ == "__main__":
