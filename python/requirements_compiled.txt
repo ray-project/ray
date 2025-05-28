@@ -712,7 +712,7 @@ gymnasium==1.0.0
     #   pettingzoo
     #   shimmy
     #   supersuit
-h11==0.14.0
+h11==0.16.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpcore
@@ -731,7 +731,7 @@ holidays==0.39
     #   prophet
 hpbandster==0.7.4 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-requirements.txt
-httpcore==1.0.7
+httpcore==1.0.9
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpx
