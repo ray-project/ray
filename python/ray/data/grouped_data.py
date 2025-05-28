@@ -11,6 +11,7 @@ from ray.data.block import (
     DataBatch,
     UserDefinedFunction,
 )
+from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
 
@@ -156,10 +157,7 @@ class GroupedData:
                 that can be instantiated to create such a callable. It takes as
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
                 select ``pyarrow.Table``, or ``"numpy"`` to select
@@ -184,6 +182,24 @@ class GroupedData:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -197,17 +213,34 @@ class GroupedData:
             :meth:`GroupedData.aggregate`
                 Use this method for common aggregation use cases.
         """
-        # Globally sort records by key.
-        # Note that sort() will ensure that records of the same key partitioned
-        # into the same block.
-        if self._key is not None:
-            sorted_ds = self._dataset.sort(self._key)
+
+        # Prior to applying map operation we have to shuffle the data based on provided
+        # key and (optionally) number of partitions
+        #
+        #   - In case key is none, we repartition into a single block
+        #   - In case when hash-shuffle strategy is employed -- perform `repartition_and_sort`
+        #   - Otherwise we perform "global" sort of the dataset (to co-locate rows with the
+        #     same key values)
+        if self._key is None:
+            shuffled_ds = self._dataset.repartition(1)
+        elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            num_partitions = (
+                self._num_partitions
+                or self._dataset.context.default_hash_shuffle_parallelism
+            )
+            shuffled_ds = self._dataset.repartition(
+                num_partitions,
+                keys=self._key,
+                # Blocks must be sorted after repartitioning, such that group
+                # of rows sharing the same key values are co-located
+                sort=True,
+            )
         else:
-            sorted_ds = self._dataset.repartition(1)
+            shuffled_ds = self._dataset.sort(self._key)
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def apply_udf_to_groups(udf, batch, *args, **kwargs):
+        def _apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
@@ -242,12 +275,12 @@ class GroupedData:
                     self.fn = fn(*args, **kwargs)
 
                 def __call__(self, batch, *args, **kwargs):
-                    yield from apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+                    yield from _apply_udf_to_groups(self.fn, batch, *args, **kwargs)
 
         else:
 
             def wrapped_fn(batch, *args, **kwargs):
-                yield from apply_udf_to_groups(fn, batch, *args, **kwargs)
+                yield from _apply_udf_to_groups(fn, batch, *args, **kwargs)
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
@@ -256,9 +289,9 @@ class GroupedData:
         else:
             wrapped_fn.__name__ = fn.__name__
 
-        # Note we set batch_size=None here, so it will use the entire block as a batch,
-        # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds._map_batches_without_batch_size_validation(
+        # NOTE: We set batch_size=None here, so that every batch contains the entire block,
+        #       guaranteeing that groups are contained in full (ie not being split)
+        return shuffled_ds._map_batches_without_batch_size_validation(
             wrapped_fn,
             batch_size=None,
             compute=compute,

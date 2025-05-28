@@ -60,6 +60,9 @@ def _make_multi_callbacks(callback_class_list):
         def on_env_runners_recreated(self, **kwargs) -> None:
             pass
 
+        def on_offline_eval_runners_recreated(self, **kwargs) -> None:
+            pass
+
         def on_checkpoint_loaded(self, **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_checkpoint_loaded(**kwargs)
@@ -99,6 +102,16 @@ def _make_multi_callbacks(callback_class_list):
         def on_evaluate_end(self, **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_evaluate_end(**kwargs)
+
+        # TODO (simon, sven): Fix the test such that we can simply remove
+        # these.
+        def on_evaluate_offline_start(self, **kwargs):
+            for callback in self._callback_list:
+                callback.on_evaluate_offline_start(**kwargs)
+
+        def on_evaluate_offline_end(self, **kwargs):
+            for callback in self._callback_list:
+                callback.on_evaluate_offline_end(**kwargs)
 
         def on_postprocess_trajectory(
             self,

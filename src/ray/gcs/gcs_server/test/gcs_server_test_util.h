@@ -30,7 +30,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
@@ -157,6 +157,7 @@ struct GcsServerMocker {
         uint64_t data_size,
         uint64_t metadata_size,
         void *data,
+        void *metadata,
         const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
     // Trigger reply to RequestWorkerLease.
@@ -321,8 +322,8 @@ struct GcsServerMocker {
         const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
-    ray::Status WaitForDirectActorCallArgs(
-        const std::vector<rpc::ObjectReference> &references, int64_t tag) override {
+    ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                                     int64_t tag) override {
       return ray::Status::OK();
     }
 

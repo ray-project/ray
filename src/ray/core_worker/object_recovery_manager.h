@@ -34,7 +34,7 @@ using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<PinObjectsInt
     const std::string &ip_address, int port)>;
 
 using ObjectLookupCallback = std::function<void(
-    const ObjectID &object_id, const std::vector<rpc::Address> &raylet_locations)>;
+    const ObjectID &object_id, std::vector<rpc::Address> raylet_locations)>;
 
 // A callback for if we fail to recover an object.
 using ObjectRecoveryFailureCallback = std::function<void(
@@ -99,13 +99,13 @@ class ObjectRecoveryManager {
   /// fails, attempt to reconstruct it by resubmitting the task that created
   /// the object.
   void PinOrReconstructObject(const ObjectID &object_id,
-                              const std::vector<rpc::Address> &locations);
+                              std::vector<rpc::Address> locations);
 
   /// Pin a new copy for the object at the given location. If that fails, then
   /// try one of the other locations.
   void PinExistingObjectCopy(const ObjectID &object_id,
                              const rpc::Address &raylet_address,
-                             const std::vector<rpc::Address> &other_locations);
+                             std::vector<rpc::Address> other_locations);
 
   /// Reconstruct an object by resubmitting the task that created it.
   void ReconstructObject(const ObjectID &object_id);

@@ -14,10 +14,6 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind/bind.hpp>
-#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -29,12 +25,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/status.h"
-#include "ray/object_manager/ownership_based_object_directory.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/object_manager/common.h"
 #include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
 

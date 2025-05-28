@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Union, Tuple
 import ray
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
@@ -17,10 +17,13 @@ class BatchModelTelemetry(BaseModelExtended):
     model_architecture: str = ""
     batch_size: int = 0
     accelerator_type: str = ""
-    concurrency: int = 0
+    concurrency: Union[int, Tuple[int, int]] = 0
     task_type: str = ""
+
+    # For the parallel size, 0 means not supported.
     pipeline_parallel_size: int = 0
     tensor_parallel_size: int = 0
+    data_parallel_size: int = 0
 
 
 class BatchTelemetryTags(str, Enum):
@@ -34,6 +37,7 @@ class BatchTelemetryTags(str, Enum):
     LLM_BATCH_TASK_TYPE = "LLM_BATCH_TASK_TYPE"
     LLM_BATCH_PIPELINE_PARALLEL_SIZE = "LLM_BATCH_PIPELINE_PARALLEL_SIZE"
     LLM_BATCH_TENSOR_PARALLEL_SIZE = "LLM_BATCH_TENSOR_PARALLEL_SIZE"
+    LLM_BATCH_DATA_PARALLEL_SIZE = "LLM_BATCH_DATA_PARALLEL_SIZE"
 
 
 @ray.remote(
@@ -77,6 +81,9 @@ class _TelemetryAgent:
             ),
             BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: ",".join(
                 [str(t.tensor_parallel_size) for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_DATA_PARALLEL_SIZE: ",".join(
+                [str(t.data_parallel_size) for t in self._tracking_telemetries]
             ),
         }
 

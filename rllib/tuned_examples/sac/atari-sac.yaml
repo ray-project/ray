@@ -1,7 +1,7 @@
 # @OldAPIStack
 # Run e.g. on a g3.16xlarge (4 GPUs) with `num_gpus=1` (1 for each trial;
 # MsPacman torch + tf; Pong torch + tf).
-# Uses the hyperparameters published in [2] (see rllib/agents/sac/README.md).
+# Uses the hyperparameters published in [2] (see rllib/algorithms/sac/README.md).
 atari-sac-tf-and-torch:
     env:
         grid_search:

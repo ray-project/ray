@@ -1,9 +1,9 @@
-import os
 import argparse
 import base64
 import json
-import time
+import os
 import sys
+import time
 
 import ray
 import ray._private.node
@@ -12,8 +12,8 @@ import ray._private.utils
 import ray.actor
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
-from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 from ray._private.ray_logging import get_worker_log_file_name
+from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -190,6 +190,15 @@ parser.add_argument(
         "to import before accepting work."
     ),
 )
+parser.add_argument(
+    "--enable-resource-isolation",
+    type=bool,
+    required=False,
+    default=False,
+    help=(
+        "If true, core worker enables resource isolation by adding itself into appropriate cgroup."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -245,7 +254,7 @@ if __name__ == "__main__":
 
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
-    # external storage is intialized.
+    # external storage is initialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray._private import external_storage, storage
 
@@ -269,6 +278,7 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
+        enable_resource_isolation=args.enable_resource_isolation,
     )
 
     worker = ray._private.worker.global_worker
