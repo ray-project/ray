@@ -201,6 +201,22 @@ class TestBuildVllmDeployment:
         handle = serve.run(app)
         assert handle.deployment_name.startswith(_name_prefix_for_test)
 
+    def test_build_llm_deployment_name_prefix_along_with_deployment_config(
+        self,
+        llm_config_with_mock_engine,
+        shutdown_ray_and_serve,
+    ):
+        """Test `build_llm_deployment` can build a vLLM deployment with name prefix and deployment config."""
+
+        config_with_name: LLMConfig = llm_config_with_mock_engine.model_copy(deep=True)
+        _deployment_name = "deployment_name_from_config"
+        _name_prefix_for_test = "test_name_prefix"
+        config_with_name.deployment_config["name"] = _deployment_name
+        app = build_llm_deployment(config_with_name, name_prefix=_name_prefix_for_test)
+        assert isinstance(app, serve.Application)
+        handle = serve.run(app)
+        assert handle.deployment_name == _name_prefix_for_test + _deployment_name
+
 
 def extract_applications_from_output(output: bytes) -> dict:
     """
