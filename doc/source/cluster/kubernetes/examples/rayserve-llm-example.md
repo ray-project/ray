@@ -163,3 +163,4 @@ The Cluster tab provides detailed information about the Ray cluster components, 
 For monitoring application and cluster-level metrics, set up Prometheus and Grafana for dashboarding by referring to the official documentation:
 * [Prometheus and Grafana with KubeRay](../k8s-ecosystem/prometheus-grafana.md)
 * [Collecting and Monitoring Metrics in Ray](../../metrics.md)
+* [Configuring and Managing Dashboards](../../configure-manage-dashboard.md)
