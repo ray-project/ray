@@ -322,8 +322,8 @@ struct GcsServerMocker {
         const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
-    ray::Status WaitForDirectActorCallArgs(
-        const std::vector<rpc::ObjectReference> &references, int64_t tag) override {
+    ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                                     int64_t tag) override {
       return ray::Status::OK();
     }
 

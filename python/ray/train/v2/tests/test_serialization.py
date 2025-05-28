@@ -3,11 +3,11 @@ import sys
 import pytest
 
 import ray
-from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 def block_import(import_name):
@@ -49,7 +49,7 @@ def test_deserialization_error(ray_start_4_cpus):
     """Test that train_fn deserialization errors are propagated properly.
 
     This test showcases a common deserialization error example, where
-    the the driver script successfully imports torch, but torch is not
+    the driver script successfully imports torch, but torch is not
     installed on the worker nodes.
     """
     import torch

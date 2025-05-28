@@ -166,7 +166,7 @@ class DependencyWaiterInterface {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  virtual ray::Status WaitForDirectActorCallArgs(
+  virtual ray::Status WaitForActorCallArgs(
       const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
@@ -387,8 +387,8 @@ class RayletClient : public RayletClientInterface {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  ray::Status WaitForDirectActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) override;
+  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                                   int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///

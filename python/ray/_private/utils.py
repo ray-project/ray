@@ -1,7 +1,4 @@
 import binascii
-import random
-import string
-from collections import defaultdict
 import contextlib
 import errno
 import functools
@@ -12,14 +9,17 @@ import logging
 import multiprocessing
 import os
 import platform
+import random
 import re
 import signal
+import string
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import warnings
+from collections import defaultdict
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
@@ -27,16 +27,14 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    List,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
     Union,
-    List,
-    Mapping,
 )
 
-# Import psutil after ray so the packaged version is used.
-import psutil
 from google.protobuf import json_format
 
 import ray
@@ -44,6 +42,9 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -195,9 +196,8 @@ def push_error_to_driver(
 def publish_error_to_driver(
     error_type: str,
     message: str,
-    gcs_publisher,
+    gcs_client,
     job_id=None,
-    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -210,7 +210,7 @@ def publish_error_to_driver(
         error_type: The type of the error.
         message: The message that will be printed in the background
             on the driver.
-        gcs_publisher: The GCS publisher to use.
+        gcs_client: The GCS client to use.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
@@ -218,9 +218,7 @@ def publish_error_to_driver(
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     try:
-        gcs_publisher.publish_error(
-            job_id.hex().encode(), error_type, message, job_id, num_retries
-        )
+        gcs_client.publish_error(job_id.hex().encode(), error_type, message, job_id, 60)
     except Exception:
         logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
@@ -295,8 +293,8 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     to the visible ids."""
 
     from ray._private.accelerators import (
-        get_all_accelerator_resource_names,
         get_accelerator_manager_for_resource,
+        get_all_accelerator_resource_names,
     )
 
     return {
@@ -1636,15 +1634,20 @@ def get_runtime_env_info(
     return json_format.MessageToJson(proto_runtime_env_info)
 
 
-def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
+def parse_runtime_env_for_task_or_actor(
+    runtime_env: Optional[Union[Dict, "RuntimeEnv"]]
+):
     from ray.runtime_env import RuntimeEnv
+    from ray.runtime_env.runtime_env import _validate_no_local_paths
 
     # Parse local pip/conda config files here. If we instead did it in
     # .remote(), it would get run in the Ray Client server, which runs on
     # a remote node where the files aren't available.
     if runtime_env:
         if isinstance(runtime_env, dict):
-            return RuntimeEnv(**(runtime_env or {}))
+            runtime_env = RuntimeEnv(**(runtime_env or {}))
+            _validate_no_local_paths(runtime_env)
+            return runtime_env
         raise TypeError(
             "runtime_env must be dict or RuntimeEnv, ",
             f"but got: {type(runtime_env)}",

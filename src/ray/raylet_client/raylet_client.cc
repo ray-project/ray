@@ -200,7 +200,7 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
   return result;
 }
 
-Status RayletClient::WaitForDirectActorCallArgs(
+Status RayletClient::WaitForActorCallArgs(
     const std::vector<rpc::ObjectReference> &references, int64_t tag) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<ObjectID> object_ids;
@@ -209,10 +209,10 @@ Status RayletClient::WaitForDirectActorCallArgs(
     object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
     owner_addresses.push_back(ref.owner_address());
   }
-  auto message = protocol::CreateWaitForDirectActorCallArgsRequest(
+  auto message = protocol::CreateWaitForActorCallArgsRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses), tag);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
+  return conn_->WriteMessage(MessageType::WaitForActorCallArgsRequest, &fbb);
 }
 
 Status RayletClient::PushError(const JobID &job_id,

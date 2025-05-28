@@ -17,7 +17,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupState,
     WorkerStatus,
 )
-from ray.train.v2._internal.util import time_monotonic, ObjectRefWrapper
+from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 
 
 class DummyWorkerGroup(WorkerGroup):

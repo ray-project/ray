@@ -3,17 +3,18 @@ import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import (
+    Any,
+    Dict,
     Iterable,
     Optional,
-    Dict,
-    Any,
 )
+
 import pyarrow
 import pyarrow.types as pat
-from ray.data.block import BlockAccessor
+
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteReturnType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

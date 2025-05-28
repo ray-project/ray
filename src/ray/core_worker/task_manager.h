@@ -740,12 +740,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param attempt_number The attempt number to record the task status change
   /// event. If not specified, the attempt number will be the current attempt number of
   /// the task.
+  ///
+  /// \note This function updates `task_entry` in place. Please only call
+  /// this function within the same lock scope where `task_entry` is retrieved from
+  /// `submissible_tasks_`. If not, the task entry may be invalidated if the flat_hash_map
+  /// is rehashed or the element is removed from the map.
   void SetTaskStatus(
       TaskEntry &task_entry,
       rpc::TaskStatus status,
       std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt,
       bool include_task_info = false,
-      std::optional<int32_t> attempt_number = std::nullopt);
+      std::optional<int32_t> attempt_number = std::nullopt)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
@@ -753,7 +759,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the retry counter.
   ///
   /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnResubmit(TaskEntry &task_entry);
+  void MarkTaskRetryOnResubmit(TaskEntry &task_entry) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Update the task entry for the task attempt to reflect retry on failure.
   ///
@@ -761,7 +767,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the retry counter.
   ///
   /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
+  void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Mark the stream is ended.
   /// The end of the stream always contains a "sentinel object" passed

@@ -130,12 +130,12 @@ def test_s3_filesystem_serialization(fs, wrap_with_retries):
     Also checks that filesystems wrapped with RetryingPyFileSystem are
     properly unwrapped.
     """
-    from ray.data.datasource.file_based_datasource import (
-        _wrap_s3_serialization_workaround,
-        _unwrap_s3_serialization_workaround,
-    )
-    from ray.data._internal.util import RetryingPyFileSystem
     import ray.cloudpickle as ray_pickle
+    from ray.data._internal.util import RetryingPyFileSystem
+    from ray.data.datasource.file_based_datasource import (
+        _unwrap_s3_serialization_workaround,
+        _wrap_s3_serialization_workaround,
+    )
 
     orig_fs = fs
 
