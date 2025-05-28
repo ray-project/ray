@@ -249,7 +249,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] is_application_error Whether this is an Exception return.
   /// \return Void.
   void CompletePendingTask(const TaskID &task_id,
-                           const rpc::PushTaskReply &reply,
+                           rpc::PushTaskReply reply,
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
@@ -321,7 +321,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
-      const rpc::ReportGeneratorItemReturnsRequest &request,
+      rpc::ReportGeneratorItemReturnsRequest request,
       const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
@@ -682,7 +682,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// return object. Returns true if the task's return object was returned
   /// directly by value.
   bool HandleTaskReturn(const ObjectID &object_id,
-                        const rpc::ReturnObject &return_object,
+                        rpc::ReturnObject return_object,
                         const NodeID &worker_raylet_id,
                         bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
