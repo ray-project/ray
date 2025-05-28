@@ -63,10 +63,6 @@ class ReportHead(SubprocessModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ray_config = None
-        # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
-        # asynchronous and will lead to low performance. ray disconnect()
-        # will be hang when the ray.state is connected and the GCS is exit.
-        # Please refer to: https://github.com/ray-project/ray/issues/16328
         self.service_discovery = PrometheusServiceDiscoveryWriter(
             self.gcs_address, self.temp_dir
         )

@@ -1913,7 +1913,7 @@ def get_resource_usage(gcs_address, timeout=10):
     from ray.core.generated import gcs_service_pb2_grpc
 
     if not gcs_address:
-        gcs_address = ray.worker._global_node.gcs_address
+        gcs_address = ray._private.worker._global_node.gcs_address
 
     gcs_channel = ray._private.utils.init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False

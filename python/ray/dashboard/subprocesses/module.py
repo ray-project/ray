@@ -11,7 +11,7 @@ import multiprocessing
 import multiprocessing.connection
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsChannel
 from ray.dashboard.subprocesses.utils import (

@@ -165,13 +165,6 @@ class _DeprecationWrapper:
         return value
 
 
-# TODO(ekl) remove this entirely after 3rd party libraries are all migrated.
-worker = _DeprecationWrapper("worker", ray._private.worker)
-ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
-serialization = _DeprecationWrapper("serialization", ray._private.serialization)
-state = _DeprecationWrapper("state", ray._private.state)
-
-
 # Pulic Ray APIs
 __all__ = [
     "__version__",

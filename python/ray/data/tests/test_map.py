@@ -17,6 +17,7 @@ import pytest
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.util.state import list_actors
 from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -102,14 +103,9 @@ def test_basic_actors(shutdown_only):
 
     # Make sure all actors are dead after dataset execution finishes.
     def _all_actors_dead():
-        actor_table = ray.state.actors()
-        actors = {
-            _id: actor_info
-            for _id, actor_info in actor_table.items()
-            if actor_info["ActorClassName"] == _MapWorker.__name__
-        }
+        actors = list_actors(filters=("class_name", "=", _MapWorker.__name__))
         assert len(actors) > 0
-        return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
+        return all(a.state == "DEAD" for a in actors)
 
     wait_for_condition(_all_actors_dead)
 

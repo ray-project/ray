@@ -579,8 +579,8 @@ def test_custom_arrow_data_serializer_parquet_roundtrip(
 
 def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
-    ray.worker._post_init_hooks = []
-    context = ray.worker.global_worker.get_serialization_context()
+    ray._private.worker._post_init_hooks = []
+    context = ray._private.worker.global_worker.get_serialization_context()
     context._unregister_cloudpickle_reducer(pa.Table)
     # Disable custom Arrow array serialization.
     os.environ["RAY_DISABLE_CUSTOM_ARROW_ARRAY_SERIALIZATION"] = "1"

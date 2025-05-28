@@ -33,7 +33,7 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
 
     # When GCS is down, right now some core worker members are not cleared
     # properly in ray.shutdown.
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     # Clear cache and global serve client
     serve.shutdown()
@@ -51,7 +51,7 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     assert kv1.get("1") == b"1"
 
     # Kill the GCS
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
@@ -84,14 +84,14 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     # Kill the GCS.
     print("Kill GCS")
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     # Make sure pid doesn't change within 5s.
     with pytest.raises(Exception):
         wait_for_condition(lambda: pid != call(), timeout=5, retry_interval_ms=1)
 
     print("Start GCS")
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     # Make sure nothing changed even when GCS is back.
     with pytest.raises(Exception):
@@ -106,7 +106,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     pid = call()
 
     print("Kill GCS")
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     # TODO(abrar): The following block of code causes the pytest process to crash
     # abruptly. It's unclear why this is happening. Check with ray core team.
@@ -198,7 +198,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
         wait_for_condition(router_populated_with_replicas, threshold=2, handle=h)
 
     # Kill GCS server before a single request is sent.
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     returned_pids = set()
     if use_proxy:
@@ -248,7 +248,7 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
     )
 
     # Kill GCS server before router gets to send request to second replica
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     returned_pids = set()
     for _ in range(20):
@@ -296,7 +296,7 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
     )
 
     # Kill GCS server before router gets to send request to second replica
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     returned_pids = set()
     for _ in range(20):
