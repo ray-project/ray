@@ -28,7 +28,7 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.local_testing_mode import make_local_deployment_handle
 from ray.serve._private.logging_utils import configure_component_logger
-from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
+from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -334,7 +334,7 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    request_router_class: Default[Union[str, ReplicaScheduler, None]] = DEFAULT.VALUE,
+    request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -401,9 +401,9 @@ def deployment(
             the config will be used to set up the Serve logger on the deployment.
         request_router_class: The class of the request router used for this
             deployment. This can be a string or a class. All the deployment
-            handle created for this deployment will use the scheduling policy
+            handle created for this deployment will use the routing policy
             defined by the request router. Default to Serve's
-            PowerOfTwoChoicesReplicaScheduler.
+            PowerOfTwoChoicesRequestRouter.
 
     Returns:
         `Deployment`
