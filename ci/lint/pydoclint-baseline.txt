@@ -481,7 +481,6 @@ python/ray/air/result.py
 python/ray/air/util/check_ingest.py
     DOC101: Method `DummyTrainer.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `DummyTrainer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: , batch_size: Optional[int]].
-    DOC201: Function `make_local_dataset_iterator` does not have a return section in docstring
 --------------------
 python/ray/air/util/tensor_extensions/arrow.py
     DOC101: Function `pyarrow_table_from_pydict`: Docstring contains fewer arguments than in function signature.
@@ -1668,10 +1667,6 @@ python/ray/llm/_internal/serve/configs/prompt_formats.py
     DOC107: Method `Image.check_image_url`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Method `Image.check_image_url`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [value: ].
     DOC201: Method `Image.check_image_url` does not have a return section in docstring
---------------------
-python/ray/llm/_internal/serve/configs/server_models.py
-    DOC101: Method `LLMConfig.get_serve_options`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LLMConfig.get_serve_options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [name_prefix: str].
 --------------------
 python/ray/llm/_internal/serve/deployments/llm/llm_server.py
     DOC101: Method `LLMServer.__init__`: Docstring contains fewer arguments than in function signature.
