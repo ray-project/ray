@@ -1267,6 +1267,8 @@ class Node:
             create_out=True,
             create_err=True,
         )
+        resource_spec = self.get_resource_spec()
+        node_labels = self._add_default_ray_node_labels(resource_spec)
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1282,7 +1284,7 @@ class Node:
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,
-            self.get_resource_spec(),
+            resource_spec,
             plasma_directory,
             fallback_directory,
             object_store_memory,
@@ -1315,7 +1317,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self.node_labels,
+            labels=node_labels,
             resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1913,3 +1915,36 @@ class Node:
             # so we truncate it to the first 50 characters
             # to avoid any issues.
             record_hardware_usage(cpu_model_name[:50])
+
+    def _add_default_ray_node_labels(self, resource_spec):
+        node_labels = self._get_node_labels()
+
+        # Get environment variables populated from K8s Pod Spec
+        market_type = os.environ.get("RAY_NODE_MARKET_TYPE", "")
+        node_group = os.environ.get("RAY_NODE_GROUP", "")
+        availability_zone = os.environ.get("RAY_NODE_ZONE", "")
+        availability_region = os.environ.get("RAY_NODE_REGION", "")
+
+        # Map environment variables to default ray node labels
+        if market_type:
+            node_labels["ray.io/market-type"] = market_type
+        if node_group:
+            node_labels["ray.io/node-group"] = node_group
+        if availability_zone:
+            node_labels["ray.io/availability-zone"] = availability_zone
+        if availability_region:
+            node_labels["ray.io/availability-region"] = availability_region
+
+        # Get accelerator type from ResourceSpec
+        accelerator_type = None
+        if resource_spec.resolved():
+            for key in resource_spec.resources:
+                if key.startswith(ray_constants.RESOURCE_CONSTRAINT_PREFIX):
+                    accelerator_type = key.split(
+                        ray_constants.RESOURCE_CONSTRAINT_PREFIX
+                    )[1]
+                    break  # Only add one value for ray.io/accelerator-type
+        if accelerator_type:
+            node_labels["ray.io/accelerator-type"] = accelerator_type
+
+        return node_labels
