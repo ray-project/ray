@@ -1332,6 +1332,12 @@ memray==1.10.0 ; sys_platform != 'win32' \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   -r python/requirements.txt
+meson==1.8.0 \
+    --hash=sha256:0a9b23311271519bd03dca12d7d8b0eab582c3a2c5da433d465b6e519dc88e2f \
+    --hash=sha256:472b7b25da286447333d32872b82d1c6f1a34024fb8ee017d7308056c25fec1f
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 mistral-common==1.5.4 \
     --hash=sha256:0af4124ab09d1409761e91ec61681476882d46f9418eea8908d39c01222e0f6b \
     --hash=sha256:acef3367a4386d5dd3d9e23330348bbebe90a5cbd2fc5587d8a8d13d9893e537
@@ -2172,6 +2178,12 @@ pyasn1-modules==0.3.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   google-auth
+pybind11==2.13.6 \
+    --hash=sha256:237c41e29157b962835d356b370ededd57594a26d5894a795960f0047cb5caf5 \
+    --hash=sha256:ba6af10348c12b24e92fa086b39cfba0eff619b61ac77c406167d813b096d39a
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 pycountry==24.6.1 \
     --hash=sha256:b61b3faccea67f87d10c1f2b0fc0be714409e8fcdcc1315613174f6466c10221 \
     --hash=sha256:f1a4fb391cd7214f8eefd39556d740adcc233c778a27f8942c8dca351d6ce06f
