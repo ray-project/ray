@@ -528,7 +528,7 @@ def _parse_path_args(path: str) -> List[LLMConfig]:
 
 def parse_args(
     args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
-) -> List[LLMConfig]:
+) -> List["ray.serve.llm.LLMConfig"]:
     """Parse the input args and return a standardized list of LLMConfig objects
 
     Supported args format:
@@ -538,20 +538,21 @@ def parse_args(
     4. A dict or LLMConfig object
     5. A list of dicts or LLMConfig objects
     """
+    PublicLLMConfigCls = ray.serve.llm.LLMConfig
 
     raw_models = [args]
     if isinstance(args, list):
         raw_models = args
 
     # For each
-    models: List[LLMConfig] = []
+    models: List[PublicLLMConfigCls] = []
     for raw_model in raw_models:
         if isinstance(raw_model, str):
             if os.path.exists(raw_model):
                 parsed_models = _parse_path_args(raw_model)
             else:
                 try:
-                    llm_config = LLMConfig.parse_yaml(raw_model)
+                    llm_config = PublicLLMConfigCls.parse_yaml(raw_model)
                     parsed_models = [llm_config]
                 except pydantic.ValidationError as e:
                     raise ValueError(
@@ -561,10 +562,10 @@ def parse_args(
                     ) from e
         else:
             try:
-                llm_config = LLMConfig.model_validate(raw_model)
+                llm_config = PublicLLMConfigCls.model_validate(raw_model)
                 parsed_models = [llm_config]
             except pydantic.ValidationError:
-                parsed_models = [LLMConfig.model_validate(raw_model)]
+                parsed_models = [PublicLLMConfigCls.model_validate(raw_model)]
         models += parsed_models
 
     return models

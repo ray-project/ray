@@ -12,9 +12,7 @@ from ray import serve
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
     LLMRawResponse,
-    parse_args as parse_llm_configs,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import ResponsePostprocessor
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     KV_TRANSFER_PARAMS_KEY,
 )
@@ -41,12 +39,7 @@ class PDServingArgs(BaseModel):
         """Converts this LLMServingArgs object into an DeployArgs object."""
 
         def parse_configs_and_cast_type(config: Union[str, LLMConfig]) -> LLMConfig:
-            # ray.serve.llm.__init__ imports internal LLMConfig, and extends it to external-facing LLMConfig.
-            # parse_llm_configs returns internal LLMConfig, while {prefill, decode}_configs expect external-facing LLMConfig.
-            # So the model_dump() here is to convert the type, to satisfy pydantic.
-            # TODO(lk-chen): refactor llm_config parsing to avoid this model_dump, and make llm_config more reusable.
-            config = parse_llm_configs([config])[0]
-            return LLMConfig(**config.model_dump())
+            return LLMConfig.parse_from([config])[0]
 
         return PDServingArgs(
             # Parse string file path into LLMConfig
@@ -133,8 +126,8 @@ class PDProxyServer(LLMServer):
             request_id=request_id, prompt=prefill_prompt, stream=False
         )
 
-        prefill_response = await ResponsePostprocessor.merge_stream(
-            prefill_response_gen
+        prefill_response = LLMRawResponse.merge_stream(
+            *[resp async for resp in prefill_response_gen]
         )
         if prefill_response.error:
             logger.error(f"Prefill server returned error: {prefill_response.error}")

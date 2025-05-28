@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, List, Sequence, Union
 
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
@@ -6,6 +6,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs as _LLMServingArgs,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
+    parse_args as _parse_llm_configs,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as _LLMServer,
@@ -28,7 +29,31 @@ if TYPE_CHECKING:
 class LLMConfig(_LLMConfig):
     """The configuration for starting an LLM deployment."""
 
-    pass
+    @staticmethod
+    def parse_from(
+        args: Union[str, "LLMConfig", Sequence[Union["LLMConfig", str]]]
+    ) -> List["LLMConfig"]:
+        """Parse the input args and return a standardized list of LLMConfig objects.
+
+        Supported args format:
+        1. The path to a yaml file defining your LLMConfig
+        2. A list of yaml files defining multiple LLMConfigs
+        3. A dict or LLMConfig object
+        4. A list of dicts or LLMConfig objects
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                from ray.serve.llm import LLMConfig
+
+                # Parse a single LLMConfig from a yaml file
+                llm_configs = LLMConfig.parse_from("path/to/llm_config.yaml")
+                assert len(llm_configs) == 1
+
+                print(llm_configs[0])
+        """
+        return _parse_llm_configs(args)
 
 
 @PublicAPI(stability="alpha")
