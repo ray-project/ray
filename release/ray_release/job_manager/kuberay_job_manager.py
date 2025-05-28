@@ -40,6 +40,9 @@ class KuberayJobManager:
             "name": job_name,
             "entrypoint": cmd_to_run,
             "rayImage": image,
+            "autoscalerConfig": {
+                "version": "v2"
+            },
             "computeConfig": compute_config,
             "runtimeEnv": {
                 "env_vars": env_vars,

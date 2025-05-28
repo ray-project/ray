@@ -227,13 +227,17 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     for worker_node_type in worker_node_types:
         kuberay_worker_nodes.append({
             "groupName": worker_node_type.get("name"),
-            "instanceType": worker_node_type.get("instance_type"), 
+            "instanceType": worker_node_type.get("instance_type"),
+            "resources": worker_node_type.get("resources", {}),
             "minWorkers": worker_node_type.get("min_workers"),
             "maxWorkers": worker_node_type.get("max_workers")
         })
 
     return {
-        "headNode": {"instanceType": head_node_instance_type},
+        "headNode": {
+            "instanceType": head_node_instance_type,
+            "resources": compute_config.get("head_node_type", {}).get("resources", {})
+        },
         "workerNodes": kuberay_worker_nodes
     }
 
