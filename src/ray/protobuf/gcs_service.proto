@@ -180,7 +180,8 @@ message ReportActorOutOfScopeReply {
 service ActorInfoGcsService {
   // Register actor to gcs service.
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
-  rpc RestartActorForLineageReconstruction(RestartActorForLineageReconstructionRequest) returns (RestartActorForLineageReconstructionReply);
+  rpc RestartActorForLineageReconstruction(RestartActorForLineageReconstructionRequest)
+      returns (RestartActorForLineageReconstructionReply);
   // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
