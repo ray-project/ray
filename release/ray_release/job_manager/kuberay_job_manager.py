@@ -113,7 +113,7 @@ class KuberayJobManager:
         return retcode, duration
 
     def _get_job(self) -> Dict[str, Any]:
-        url = f"{KUBERAY_SERVER_URL}/api/v1/jobs?namespace={DEFAULT_KUBERAY_NAMESPACE}&name={self.job_name}"
+        url = f"{KUBERAY_SERVER_URL}/api/v1/jobs?namespace={DEFAULT_KUBERAY_NAMESPACE}&names={self.job_name}"
         token = self._get_kuberay_server_token()
         headers = {
             "Authorization": "Bearer " + token,

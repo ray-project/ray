@@ -2818,6 +2818,11 @@
       frequency: manual
       cluster:
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: decision_tree/autoscaling_compute_kuberay.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3392,6 +3397,11 @@
       frequency: manual
       cluster:
         cluster_compute: placement_group_tests/compute_gce.yaml
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: placement_group_tests/compute_kuberay.yaml
 
 - name: placement_group_performance_test
   group: core-daily-test
@@ -4113,6 +4123,12 @@
   run:
     timeout: 1800
     script: python run.py
+  
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      cluster:
+        cluster_compute: kuberay.yaml
 
 
 ##############
