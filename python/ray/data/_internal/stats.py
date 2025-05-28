@@ -834,7 +834,6 @@ class DatasetStats:
         *,
         metadata: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
-        stats_uuid: str = None,
         base_name: str = None,
     ):
         """Create dataset stats.
@@ -844,8 +843,6 @@ class DatasetStats:
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
-            stats_uuid: The uuid for the stats, used to fetch the right stats
-                from the stats actor.
             base_name: The name of the base operation for a multi-operator operation.
         """
 
@@ -861,7 +858,6 @@ class DatasetStats:
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
-        self.stats_uuid = stats_uuid
 
         # Streaming executor stats
         self.streaming_exec_schedule_s: Timer = Timer()
