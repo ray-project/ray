@@ -32,6 +32,8 @@ PYARROW_VERSION = get_pyarrow_version()
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+# Minimum version of Arrow that pa.infer_type supports nested structures, e.g. dictionaries and lists
+MIN_PYARROW_VERSION_INFER_TYPE_NESTED_AND_DICT_TYPES = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -67,6 +69,21 @@ def _arrow_extension_scalars_are_subclassable():
     return (
         PYARROW_VERSION is None
         or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
+    )
+
+
+def _arrow_infer_type_supports_nested_and_dict_types():
+    """
+    Whether Arrow infer_type supports nested structures and dictionaries in the
+    current pyarrow version.
+
+    This returns True if the pyarrow version is 13.0.0+, or if the pyarrow version is
+    unknown.
+    """
+    # TODO(zhaoch23): Remove utility once we only support Arrow 13.0.0+.
+    return (
+        PYARROW_VERSION is None
+        or PYARROW_VERSION >= MIN_PYARROW_VERSION_INFER_TYPE_NESTED_AND_DICT_TYPES
     )
 
 
@@ -227,6 +244,19 @@ def _convert_to_pyarrow_native_array(
             column_values = [v if v.is_valid else None for v in column_values]
 
         return pa.array(column_values, type=pa_type)
+
+    except pa.ArrowInvalid as e:
+        if (
+            log_once(f"column_{column_name}_convertion_warning")
+            and not _arrow_infer_type_supports_nested_and_dict_types()
+        ):
+            logger.warning(
+                f"Failed to infer the type of column '{column_name}'. "
+                f"If you are using a nested structure (e.g. list, dictionary) "
+                f"or dictionary, please upgrade to pyarrow >= "
+                "{MIN_PYARROW_VERSION_INFER_TYPE_NESTED_AND_DICT_TYPES} "
+            )
+        raise ArrowConversionError(str(column_values)) from e
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e
 
