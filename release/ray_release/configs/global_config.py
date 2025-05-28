@@ -17,6 +17,7 @@ class GlobalConfig(TypedDict):
     state_machine_branch_aws_bucket: str
     state_machine_disabled: bool
     aws2gce_credentials: str
+    aws2gke_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
     ci_pipeline_buildkite_secret: str
@@ -79,6 +80,10 @@ def _init_global_config(config_file: str):
             config_content.get("credentials", {}).get("aws2gce")
             or config_content.get("release_byod", {}).get("aws2gce_credentials")
         ),
+        aws2gke_credentials=(
+            config_content.get("credentials", {}).get("aws2gke")
+            or config_content.get("release_byod", {}).get("aws2gke_credentials")
+        ),
         state_machine_pr_aws_bucket=config_content.get("state_machine", {})
         .get("pr", {})
         .get(
@@ -104,4 +109,4 @@ def _init_global_config(config_file: str):
     # setup GCP workload identity federation
     os.environ[
         "GOOGLE_APPLICATION_CREDENTIALS"
-    ] = f"/workdir/{config['aws2gce_credentials']}"
+    ] = f"/workdir/{config['aws2gke_credentials']}"
