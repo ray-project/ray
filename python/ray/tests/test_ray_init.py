@@ -361,6 +361,7 @@ def runtime_env_working_dir():
 @pytest.fixture
 def py_module_whl():
     f = tempfile.NamedTemporaryFile(suffix=".whl", delete=False)
+    f.close()
     yield f.name
     os.unlink(f.name)
 
