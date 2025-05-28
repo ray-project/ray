@@ -1,0 +1,12 @@
+# install nightly due to
+# https://github.com/ray-project/ray/pull/51488
+ray[data,llm]>=2.45
+ruff>=0.11.5
+transformers>=4.51.3
+torchaudio
+datasets[audio]>=3.6.0
+accelerate
+huggingface_hub[hf_xet]
+xgrammar
+pydantic
+flashinfer-python

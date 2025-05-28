@@ -93,7 +93,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     # Create some values to close over.
     val1 = 1
@@ -140,7 +140,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     @ray.remote
     class Actor1:
@@ -217,7 +217,7 @@ def test_use_actor_twice(ray_start_10_cpus):
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+    # Make sure we can define and actors within remote functions.
 
     @ray.remote
     def f(x, n):
@@ -239,7 +239,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+    # Make sure we can create and use actors within remote functions.
 
     @ray.remote
     class Actor1:
@@ -1650,8 +1650,43 @@ def test_get_local_actor_state(ray_start_regular_shared):
     )
 
 
-if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+@pytest.mark.parametrize("exit_type", ["ray.kill", "out_of_scope"])
+def test_exit_immediately_after_creation(ray_start_regular_shared, exit_type: str):
+    if client_test_enabled() and exit_type == "out_of_scope":
+        pytest.skip("out_of_scope actor cleanup doesn't work with Ray client.")
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    a_id = a._actor_id.hex()
+    b = A.remote()
+    b_id = b._actor_id.hex()
+
+    def _num_actors_alive() -> int:
+        still_alive = list(
+            filter(
+                lambda a: a.actor_id in {a_id, b_id},
+                list_actors(filters=[("state", "=", "ALIVE")]),
+            )
+        )
+        print(still_alive)
+        return len(still_alive)
+
+    wait_for_condition(lambda: _num_actors_alive() == 2)
+
+    if exit_type == "ray.kill":
+        ray.kill(a)
+        ray.kill(b)
+    elif exit_type == "out_of_scope":
+        del a
+        del b
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        pytest.fail(f"Unrecognized exit_type: '{exit_type}'.")
+
+    wait_for_condition(lambda: _num_actors_alive() == 0)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -141,6 +141,7 @@ from ray.includes.common cimport (
     kWorkerSetupHookKeyName,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
+    kGcsPidKey,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
