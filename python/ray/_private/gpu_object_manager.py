@@ -1,7 +1,8 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-from ray.actor import ActorHandle
-from ray._raylet import ObjectRef
 from collections import namedtuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from ray._raylet import ObjectRef
+from ray.actor import ActorHandle
 
 if TYPE_CHECKING:
     import torch
@@ -64,6 +65,8 @@ class GPUObjectManager:
             src_actor=src_actor, tensor_meta=tensor_meta
         )
 
+    # TODO(kevin85421): Call this function to remove the `obj_ref` from the `gpu_object_refs` dictionary
+    # to allow garbage collection of the object.
     def remove_gpu_object_ref(self, obj_ref: ObjectRef):
         del self.gpu_object_refs[obj_ref]
 
@@ -78,6 +81,7 @@ class GPUObjectManager:
         # destination rank `dst_rank`.
         def __ray_send__(self, obj_id: str, dst_rank: int):
             import torch.distributed as dist
+
             from ray._private.worker import global_worker
 
             gpu_object_manager = global_worker.gpu_object_manager
@@ -111,6 +115,7 @@ class GPUObjectManager:
         ):
             import torch
             import torch.distributed as dist
+
             from ray._private.worker import global_worker
 
             gpu_object_manager = global_worker.gpu_object_manager
