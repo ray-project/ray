@@ -66,7 +66,10 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         if previous_state._state_type == current_state._state_type:
             return
 
-        logger.info(f"[State Transition] {previous_state} -> {current_state}.")
+        logger.info(
+            f"[State Transition] {previous_state._state_type.state_name} -> "
+            f"{current_state._state_type.state_name}."
+        )
 
         if isinstance(current_state, SchedulingState):
             # TODO: This should probably always be ResizeDecision.
