@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Any, Dict, Optional
 
 from ray.rllib.core.columns import Columns
@@ -19,7 +18,7 @@ def _make_categorical_with_temperature(temp):
     value `temp`.
 
     Args:
-        temp: The default temperature to use.
+        temp: The default temperature to use for the generated distribution class.
     """
 
     class TorchCategoricalWithTemp(TorchCategorical):
@@ -27,7 +26,7 @@ def _make_categorical_with_temperature(temp):
             """Initializes a TorchCategoricalWithTemp instance.
 
             Args:
-                logits: Event log probabilities (unnormalized)
+                logits: Event log probabilities (non-normalized).
                 probs: The probabilities of each event.
                 temperature: In case of using logits, this parameter can be used to
                     determine the sharpness of the distribution. i.e.
@@ -106,13 +105,14 @@ class CustomActionDistributionRLModule(TorchRLModule, ValueFunctionAPI):
 
         # Plug in a custom action dist class.
         # NOTE: If you need more granularity as to which distribution class is used by
-        # which forward method (forward_inference, forward_explration, forward_train),
-        # override the RLModule methods `get_inference_action_dist_cls`,
-        # `get_exploration_action_dist_cls`, and `get_train_action_dist_cls` and return
-        # your custom class(es) from these. In this case, leave self.action_dist_cls set
-        # to None, its default value.
+        # which forward method (`forward_inference`, `forward_exploration`,
+        # `forward_train`), override the RLModule methods
+        # `get_inference_action_dist_cls`, `get_exploration_action_dist_cls`, and
+        # `get_train_action_dist_cls`, and return
+        # your custom class(es) from these. In this case, leave `self.action_dist_cls`
+        # set to None, its default value.
         self.action_dist_cls = _make_categorical_with_temperature(
-            self.model_config.get("action_dist_temperature", 1.0),
+            self.model_config["action_dist_temperature"]
         )
 
     @override(TorchRLModule)

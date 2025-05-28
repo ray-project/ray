@@ -374,6 +374,11 @@ class RLModule(Checkpointable, abc.ABC):
             False by default.
         model_config: A config dict to specify features of this RLModule.
 
+    Attributes:
+        action_dist_cls: An optional ray.rllib.models.distribution.Distribution subclass
+            to use for sampling actions, given parameters from a batch
+            (`Columns.ACTION_DIST_INPUTS`).
+
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
 
