@@ -712,7 +712,7 @@ gymnasium==1.0.0
     #   pettingzoo
     #   shimmy
     #   supersuit
-h11==0.14.0
+h11==0.16.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpcore
