@@ -1,6 +1,6 @@
 import asyncio
-import inspect
 import fnmatch
+import inspect
 import io
 import json
 import logging
@@ -12,26 +12,18 @@ import socket
 import subprocess
 import sys
 import tempfile
-import uuid
 import time
 import timeit
 import traceback
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass
 
 import requests
-from ray._raylet import Config
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
-from ray._private import (
-    ray_constants,
-)
-from ray._private.worker import RayContext
 import yaml
 
 import ray
@@ -41,17 +33,22 @@ import ray._private.services
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import (
+    ray_constants,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
-from ray._raylet import GcsClientOptions, GlobalStateAccessor
+from ray._private.worker import RayContext
+from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
-    node_manager_pb2,
     gcs_service_pb2,
+    node_manager_pb2,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +59,7 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families, Sample
+    from prometheus_client.parser import Sample, text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
 
     Sample = None
@@ -1546,6 +1543,7 @@ class RayletKiller(NodeKillerBase):
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
         from grpc._channel import _InactiveRpcError
+
         from ray.core.generated import node_manager_pb2_grpc
 
         raylet_address = f"{ip}:{port}"
@@ -1599,8 +1597,8 @@ class WorkerKillerActor(ResourceKillerActor):
         # not finish successfully on its own.
         self.kill_immediately_after_found = True
 
-        from ray.util.state.common import ListApiOptions
         from ray.util.state.api import StateApiClient
+        from ray.util.state.common import ListApiOptions
 
         self.client = StateApiClient()
         self.task_options = ListApiOptions(
@@ -1892,6 +1890,7 @@ def wandb_setup_api_key_hook():
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
+
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
@@ -1943,6 +1942,7 @@ def get_load_metrics_report(webui_url):
 def kill_raylet(raylet, graceful=False):
     import grpc
     from grpc._channel import _InactiveRpcError
+
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'

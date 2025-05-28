@@ -831,9 +831,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
-  /// The node manager RPC service.
-  rpc::NodeManagerGrpcService node_manager_service_;
-
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
   LocalObjectManager local_object_manager_;
@@ -932,9 +929,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
-
-  /// RaySyncerService for gRPC
-  syncer::RaySyncerService ray_syncer_service_;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
