@@ -380,8 +380,13 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
 ];
 
 export const Metrics = () => {
-  const { grafanaHost, grafanaOrgId, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    grafanaOrgId,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+  } = useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";

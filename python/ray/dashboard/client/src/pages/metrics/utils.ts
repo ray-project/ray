@@ -68,13 +68,13 @@ export const getMetricsInfo = async () => {
       info.dashboardUids = resp.data.data.dashboardUids;
       info.dashboardDatasource = resp.data.data.dashboardDatasource;
     }
-  } catch (e) { }
+  } catch (e) {}
   try {
     const resp = await fetchPrometheusHealthcheck();
     if (resp.data.result) {
       info.prometheusHealth = resp.data.result;
     }
-  } catch (e) { }
+  } catch (e) {}
 
   return info;
 };
@@ -93,6 +93,6 @@ export const getTimeZoneInfo = async () => {
         value: resp.data.value,
       };
     }
-  } catch (e) { }
+  } catch (e) {}
   return null;
 };

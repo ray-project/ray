@@ -225,8 +225,13 @@ export const useViewServeDeploymentMetricsButtonUrl = (
   deploymentName: string,
   replicaId?: string,
 ) => {
-  const { grafanaHost, grafanaOrgId, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    grafanaOrgId,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+  } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
 
@@ -237,6 +242,6 @@ export const useViewServeDeploymentMetricsButtonUrl = (
   return grafanaHost === undefined || !prometheusHealth
     ? null
     : `${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-Deployment=${encodeURIComponent(
-      deploymentName,
-    )}${replicaStr}&var-datasource=${dashboardDatasource}`;
+        deploymentName,
+      )}${replicaStr}&var-datasource=${dashboardDatasource}`;
 };
