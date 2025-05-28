@@ -435,10 +435,10 @@ DEFAULT_REQUEST_ROUTER_PATH = (
 )
 
 # The default request routing period to use if none is specified.
-DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S = 10
+DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S = 10
 
 # The default request routing timeout to use if none is specified.
-DEFAULT_REQUEST_SCHEDULING_STATS_TIMEOUT_S = 30
+DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 
 # Name of deployment request routing stats method implemented by user.
-REQUEST_SCHEDULING_STATS_METHOD = "record_routing_stats"
+REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
