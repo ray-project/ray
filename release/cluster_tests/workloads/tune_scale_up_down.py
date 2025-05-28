@@ -69,7 +69,7 @@ def main():
         num_samples=3,
         config={"head_node_ip": head_node_ip},
         callbacks=[node_counter],
-        resources_per_trial={"cpu": 3},
+        resources_per_trial={"cpu": 2},
     )
 
     node_counts = Counter(node_counter.node_counts)
