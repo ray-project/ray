@@ -3,10 +3,10 @@ head_node_type:
     instance_type: n2-standard-4  # 4 CPUs
     resources:
       limits: 
-        cpu: "4"
-        memory: "16Gi"
+        cpu: "2"
+        memory: "8Gi"
       requests:
-        cpu: "4"
+        cpu: "2"
         memory: "16Gi"
 
 worker_node_types:
@@ -14,11 +14,11 @@ worker_node_types:
       instance_type: n2-standard-4
       resources:
         limits:
-          cpu: "4"
-          memory: "16Gi"
+          cpu: "2"
+          memory: "8Gi"
         requests:
-          cpu: "4"
-          memory: "16Gi"
+          cpu: "2"
+          memory: "8Gi"
       min_workers: 0
       max_workers: 2
       use_spot: false
