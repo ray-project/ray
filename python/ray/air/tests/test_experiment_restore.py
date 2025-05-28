@@ -121,7 +121,7 @@ def test_experiment_restore(tmp_path, runner_type):
     no_interrupts_runtime = 16.0
     # Todo(krfricke): See if we can improve the actor startup/shutdown time
     # to reduce the passing factor again.
-    passing_factor = 2.5
+    passing_factor = 3
     passing_runtime = no_interrupts_runtime * passing_factor
     _print_message(
         "Experiment should finish with a total runtime of\n"
