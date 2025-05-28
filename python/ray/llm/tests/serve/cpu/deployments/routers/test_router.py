@@ -17,10 +17,6 @@ from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray import serve
 import openai
 
-from logging import getLogger
-
-logger = getLogger(__name__)
-
 
 @pytest.fixture(name="llm_config")
 def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
@@ -51,8 +47,6 @@ def create_router(llm_config: LLMConfig):
     serve.run(router)
 
     client = openai.Client(base_url="http://localhost:8000/v1", api_key="foo")
-    client._router = router
-    client._server_handles = [server]
     yield client
 
     serve.shutdown()
