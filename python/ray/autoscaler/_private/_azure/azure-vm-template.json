@@ -77,7 +77,7 @@
 	    "type": "int",
 	    "defaultValue": 128,
 	    "metadata": {
-		"description": "Size of the OS disk in GB. Default is 30GB."
+		"description": "Size of the OS disk in GB. Default is 128GB."
 	    }
 	},
         "provisionPublicIp": {
