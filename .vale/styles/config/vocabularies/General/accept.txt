@@ -1,9 +1,13 @@
-# Use 'API' judiciously: https://developers.google.com/style/word-list#api.
+# When adding anyting to this file, please preserve the ~approxmately alphabetical sort
+
 [Aa]pplication
+[Aa]sync
 [Cc]odec
 [Cc]omposable
-[Dd]eduplication
 [Dd]eduplicate(s)?
+[Dd]eduplication
+[Dd]etokenization
+[Dd]etokenizer?s?
 [Dd]ict(s)?
 [Ee]xoshuffle
 [Gg]rafana
@@ -13,45 +17,48 @@
 [Pp]arallelization
 [Pp]erformant
 [Pp]rofiler
+[Rr]esample
+[Rr]esampling
+[Ss]pectogram(s)?
 [Ss]ubclassing
+[Tt][Ll][Ss]
+[Vv]ision LMs
 Alibaba
 Alpaca
 Anyscale
+# Use 'API' judiciously: https://developers.google.com/style/word-list#api.
 API(s)?
 ARM
 async
 autoscales
+bool
 breakpoint
 BTS
 CLI
-CPU(s)?
-[Aa]sync
-g[Rr][Pp][Cc]
-http
-kubectl
-[Tt][Ll][Ss]
-subprocess
-UUID
-bool
-deserializes
-PACK
 configs
-disable
+CPU(s)?
+CRD(s)?
+deduplicate(s)?
 DeepSpeed
 deserialization
 deserialize
+deserializes
 dev
 dev to prod
+disable
 DPO
 Flink
+[Gg][Rr][Pp][Cc]
 GGUF
 GKE
 GPTQ
 GPU(s)?
 hostfile
 HTTP
+Kaggle
 KServe
 KTO
+kubectl
 Kueue
 LMs
 LSH
@@ -61,9 +68,11 @@ namespace
 NER
 Nsight
 NumPy
-OOM
-pipelining
 NVIDIA
+OOM
+PACK
+pipelining
+preemptible
 pretraining
 productionize
 Pythonic
@@ -73,18 +82,12 @@ RISECamp
 rollouts
 SFT
 ShareGPT
+subprocess
 teardown
-deserialization
-VPC(s)?
-preemptible
-CRD(s)?
-VM(s)?
 uncaptured
+underutilization
 URI(s)?
-[Vv]ision LMs
-[Rr]esample
-[Rr]esampling
-[Ss]pectogram(s)?
-[Dd]etokenizer?s?
-[Dd]etokenization
+UUID
+VM(s)?
+VPC(s)?
 VS Code
