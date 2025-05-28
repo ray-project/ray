@@ -43,7 +43,7 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/[a-q]'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/'
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
@@ -52,7 +52,7 @@ repos:
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
-          --exclude=thirdparty,
+          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$,
           # --generate-baseline=True, # Not generally needed, but documenting since this is how we generate the initial baseline
           --auto-regenerate-baseline=True,
           # Current settings (not because we think they're right, but because we
