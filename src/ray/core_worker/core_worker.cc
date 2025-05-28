@@ -363,12 +363,15 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
   return Status::OK();
 }
 
-CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
+CoreWorker::CoreWorker(CoreWorkerOptions options,
+                       instrumented_io_context &io_context,
+                       const WorkerID &worker_id)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
+      io_service_(io_context),
       io_work_(io_service_.get_executor()),
       client_call_manager_(
           std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false)),
