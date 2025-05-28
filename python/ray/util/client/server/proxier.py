@@ -18,7 +18,6 @@ import grpc
 import psutil
 
 import ray
-import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
@@ -253,10 +252,11 @@ class ProxyManager:
                 r = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply()
                 r.ParseFromString(response_data)
 
-                if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
+                if r.status == runtime_env_agent_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
                     return r.serialized_runtime_env_context
                 elif (
-                    r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED
+                    r.status
+                    == runtime_env_agent_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED
                 ):
                     raise RuntimeError(
                         "Failed to create runtime_env for Ray client "

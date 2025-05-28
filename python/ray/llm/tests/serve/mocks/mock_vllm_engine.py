@@ -313,11 +313,7 @@ class MockMultiplexEngine(LLMEngine):
 
     async def generate(self, arg):
         assert self.started, "Engine was not started"
-        # First yield the arg
         yield arg
-        # Yield some output
-        for i in range(10):
-            yield i
 
     async def check_health(self):
         return True
