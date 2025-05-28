@@ -289,6 +289,62 @@ Finally, use a LogQL query to view logs for a specific RayCluster or RayJob, and
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 [KubernetesDownwardAPI]: https://kubernetes.io/docs/concepts/workloads/pods/downward-api/
 
+### Configure logging sidecar with Fluentbit on GKE
+If you want to deploy your Ray cluster on GKE and use Cloud Logging, you can read the following steps:\
+You can follow this [doc](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/collect-view-logs-metrics#view_ray_logs) to create a GKE cluster, and then create a Ray cluster on it.
+A Fluentbit sidecar container should be deployed alongside the Ray head container in the same pod.
+This Fluentbit sidecar collects logs from the Ray container, and then the DaemonSet Fluentbit in the GKE cluster forwards the logs to Cloud Logging, so you can read the logs in your GCP Logs Explorer.
+If you don't see the logs in GCP Logs Explorer, the following debugging information may be helpful.
+#### Verify the Fluenbit sidecar
+* Get the information of the pod.
+```shell
+ kubectl get pods -n <raycluster-namespace> -o yaml 
+```
+* Verify that a Fluentbit sidecar is present in the Pod.
+```shell
+kubectl get pod <pod-name> -n <raycluster-namespace> -o go-template='{{range .spec.containers}}{{.name}}{{"\n"}}{{end}}'
+```
+
+* Verify that the Fluentbit sidecar has collected logs from the Ray container.
+```shell
+kubectl logs pod <pod-name> -n <raycluster-namespace> -c fluentbit
+```
+
+#### Enable Cloud Logging
+If the Fluentbit sidecar is functional but you still can't read the logs in Logs Explorer, 
+there might be a permissions issue. Follow these steps to debug:
+
+* Confirm that logging is enabled at the GCP project level. If not, run the second command.
+```shell
+gcloud services list --enabled --filter="NAME=logging.googleapis.com"
+
+gcloud services enable logging.googleapis.com
+```
+
+* Confirm that logging is enabled at the GKE cluster level. If not, run the second command.
+```shell
+gcloud container clusters describe <cluster-name>  --zone <cluster-zone>   '--format=value(name,loggingConfig.componentConfig.enableComponents)'
+
+gcloud container clusters update <cluster-name> --region=<cluster-region> --logging=SYSTEM,WORKLOAD
+```
+
+* Confirm the Cloud Logging access scope for the GKE node pool. If it's not correctly configured, run the second command.
+```shell
+gcloud container clusters describe <cluster-name>  --zone <cluster-zone>  --format="value(nodePools[].config.oauthScopes)"
+
+gcloud container node-pools create <node-pool-name> --cluster <cluster-name>  --scopes https://www.googleapis.com/auth/logging.write --zone <node-pool-zone>
+```
+
+* List the node pools and their service accounts. Confirm that the GKE node pool's service account has permission to write logs. If not, run the fourth command.
+```shell
+gcloud container clusters describe <cluster-name> --zone=<cluster-zone> --format="value(nodePools.name)"
+
+gcloud container node-pools describe <node-pool-name> --cluster=<cluster-name> --zone=<cluster-zone> --format="value(config.serviceAccount)"
+    
+gcloud projects get-iam-policy <project-id> --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:<node-pool-service-account-email>"
+
+gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<node-pool-service-account-email>" --role="roles/logging.logWriter"
+```
 (redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
