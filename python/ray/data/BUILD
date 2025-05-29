@@ -536,6 +536,20 @@ py_test(
 )
 
 py_test(
+    name = "test_map_sql",
+    size = "small",
+    srcs = ["tests/test_map_sql.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_numpy",
     size = "medium",
     srcs = ["tests/test_numpy.py"],
