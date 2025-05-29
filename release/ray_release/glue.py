@@ -12,6 +12,7 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
+from ray_release.job_manager.kuberay_job_manager import KuberayJobManager
 from ray_release.test import Test
 from ray_release.config import (
     DEFAULT_BUILD_TIMEOUT,
@@ -41,6 +42,7 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
+from ray_release.util import convert_cluster_compute_to_kuberay_compute_config, upload_working_dir, KUBERAY_SERVER_URL, DEFAULT_KUBERAY_NAMESPACE
 
 type_str_to_command_runner = {
     "job": JobRunner,
@@ -54,7 +56,6 @@ command_runner_to_cluster_manager = {
 
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
-
 
 def _get_extra_tags_from_env() -> dict:
     env_vars = (
@@ -98,12 +99,12 @@ def _load_test_configuration(
     # Workaround while Anyscale Jobs don't support leaving cluster alive
     # after the job has finished.
     # TODO: Remove once we have support in Anyscale
-    if no_terminate and run_type == "anyscale_job":
-        logger.warning(
-            "anyscale_job run type does not support --no-terminate. "
-            "Switching to job (Ray Job) run type."
-        )
-        run_type = "job"
+    # if no_terminate and run_type == "anyscale_job":
+    #     logger.warning(
+    #         "anyscale_job run type does not support --no-terminate. "
+    #         "Switching to job (Ray Job) run type."
+    #     )
+    #     run_type = "job"
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -400,6 +401,33 @@ def run_release_test(
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
+
+    if test.get_name().endswith(".kuberay"):
+        # Load test configuration
+        result.stable = test.get("stable", True)
+        result.smoke_test = smoke_test
+        cluster_compute = load_test_cluster_compute(test, test_definition_root)
+        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(cluster_compute)
+        working_dir_upload_path = upload_working_dir(get_working_dir(test))
+        
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+
+        kuberay_job_manager = KuberayJobManager()
+        retcode, duration = kuberay_job_manager.run_and_wait(
+            job_name=test["name"].replace(".", "-").replace("_", "-"),
+            image=test.get_anyscale_byod_image(),
+            cmd_to_run=test["run"]["script"],
+            env_vars=test.get_byod_runtime_env(),
+            working_dir=working_dir_upload_path,
+            pip=test.get_byod_pips(),
+            compute_config=kuberay_compute_config,
+            timeout=command_timeout
+        )
+        kuberay_job_manager.fetch_results()
+        result.return_code = retcode
+        result.runtime = duration
+        return result
+
     try:
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, command_runner, artifact_path = _load_test_configuration(

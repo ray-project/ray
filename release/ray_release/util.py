@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import requests
 from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
+import shutil
+from google.cloud import storage
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
-
 
 class DeferredEnvVar:
     def __init__(self, var: str, default: Optional[str] = None):
@@ -33,7 +34,8 @@ ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
 ]
-
+KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
+DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
 
 def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
     # We support by default reading from the branch bucket only, since most of the use
@@ -206,3 +208,65 @@ def join_cloud_storage_paths(*paths: str):
     while joined_path[-1] == "/":
         joined_path = joined_path[:-1]
     return joined_path
+
+
+def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> dict:
+    """Convert cluster compute config to KubeRay compute config format.
+    Args:
+        compute_config: Original cluster compute configuration dict.
+    Returns:
+        Dict containing KubeRay-formatted compute configuration.
+    """
+    head_node_instance_type = compute_config["head_node_type"].get("instance_type")
+    worker_node_types = compute_config["worker_node_types"]
+    head_node_resources = compute_config.get("head_node_type", {}).get("resources", {})
+
+    kuberay_worker_nodes = []
+    for worker_node_type in worker_node_types:
+        worker_node_config = {
+            "groupName": worker_node_type.get("name"),
+            "instanceType": worker_node_type.get("instance_type"),
+            "minNodes": worker_node_type.get("min_workers"),
+            "maxNodes": worker_node_type.get("max_workers")
+        }
+        if worker_node_type.get("resources", {}):
+            worker_node_config["resources"] = worker_node_type.get("resources", {})
+        kuberay_worker_nodes.append(worker_node_config)
+
+    config = {
+        "headNode": {
+            "instanceType": head_node_instance_type,
+        },
+        "workerNodes": kuberay_worker_nodes
+    }
+    if head_node_resources:
+        config["headNode"]["resources"] = head_node_resources
+    return config
+
+
+def upload_working_dir(working_dir: str) -> str:
+    """Upload working directory to GCS bucket.
+    
+    Args:
+        working_dir: Path to directory to upload.
+    Returns:
+        GCS path where directory was uploaded.
+    """
+    import tempfile
+    import time
+
+    # Create archive of working dir
+    timestamp = str(int(time.time()))
+    archived_filename = f"ray_release_{timestamp}.zip"
+    output_path = os.path.abspath(archived_filename)
+
+    logger.info(f"Archiving working directory: {working_dir}")
+    shutil.make_archive(output_path[:-4], "zip", working_dir)
+
+    # Upload to GCS
+    gcs_client = storage.Client()
+    bucket = gcs_client.bucket("ray-release-working-dir")
+    blob = bucket.blob(archived_filename)
+    blob.upload_from_filename(archived_filename)
+
+    return f"gs://ray-release-working-dir/{blob.name}"
