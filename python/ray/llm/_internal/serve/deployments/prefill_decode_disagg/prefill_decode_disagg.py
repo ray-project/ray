@@ -183,10 +183,12 @@ def build_app(pd_serving_args: dict) -> Application:
                 }
             )
 
-    # TODO(lk-chen): here we should update build_llm_deployment to allow `name_prefix` argument
-    # so that we can better distinguish P/D deployments.
-    prefill_deployment = build_llm_deployment(pd_config.prefill_config)
-    decode_deployment = build_llm_deployment(pd_config.decode_config)
+    prefill_deployment = build_llm_deployment(
+        pd_config.prefill_config, name_prefix="Prefill:"
+    )
+    decode_deployment = build_llm_deployment(
+        pd_config.decode_config, name_prefix="Decode:"
+    )
 
     proxy_server_deployment = PDProxyServer.as_deployment().bind(
         llm_config=LLMConfig(

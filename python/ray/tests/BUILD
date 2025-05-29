@@ -85,6 +85,7 @@ py_test_module_list(
         "test_job.py",
         "test_kill_subprocesses.py",
         "test_memstat.py",
+        "test_storage.py",
     ],
     tags = [
         "exclusive",
@@ -483,6 +484,7 @@ py_test_module_list(
         "test_unhandled_error.py",
         "test_wait.py",
         "test_widgets.py",
+        "test_worker_graceful_shutdown.py",
     ],
     tags = [
         "exclusive",
@@ -757,7 +759,6 @@ py_test_module_list(
         "test_placement_group.py",
         "test_scheduling_performance.py",
         "test_state_api_2.py",
-        "test_storage.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
     ],
