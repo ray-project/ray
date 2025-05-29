@@ -38,7 +38,7 @@ from ray.data.block import (
     BlockType,
     U,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 
 try:
     import pyarrow
@@ -59,16 +59,13 @@ logger = logging.getLogger(__name__)
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 
-# Set the max chunk size for Arrow to Batches for ArrowBlockAccessor.iter_rows().
-ARROW_BATCHES_MAX_CHUNK_SIZE_PERCENT = env_integer(
-    "RAY_DATA_ARROW_TO_BATCHES_MAX_CHUNK_SIZE_PERCENT", 100
+# Set the max chunk size in bytes for Arrow to Batches conversion in
+# ArrowBlockAccessor.iter_rows().
+ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES = env_integer(
+    "RAY_DATA_ARROW_TO_BATCHES_MAX_CHUNK_SIZE_BYTES",
+    int(DEFAULT_TARGET_MAX_BLOCK_SIZE / 4),
 )
-ARROW_BATCHES_MIN_CHUNK_SIZE = env_integer(
-    "RAY_DATA_ARROW_TO_BATCHES_MIN_CHUNK_SIZE", 4
-)
-ARROW_BATCHES_MAX_CHUNK_SIZE = env_integer(
-    "RAY_DATA_ARROW_TO_BATCHES_MAX_CHUNK_SIZE", 128
-)
+
 
 # We offload some transformations to polars for performance.
 def get_sort_transform(context: DataContext) -> Callable:
@@ -178,13 +175,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
-        self._batch_max_chunk_size = min(
-            ARROW_BATCHES_MAX_CHUNK_SIZE,
-            max(
-                ARROW_BATCHES_MIN_CHUNK_SIZE,
-                int(self._table.num_rows * ARROW_BATCHES_MAX_CHUNK_SIZE_PERCENT / 100),
-            ),
-        )
+        # Set the max chunk size in rows for Arrow to Batches conversion in
+        # ArrowBlockAccessor.iter_rows().
+        self._batch_max_chunk_size = None
+        if self._table.nbytes > 0:
+            avg_row_size = int(self._table.nbytes / self._table.num_rows)
+            self._batch_max_chunk_size = int(
+                ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES / avg_row_size
+            )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
