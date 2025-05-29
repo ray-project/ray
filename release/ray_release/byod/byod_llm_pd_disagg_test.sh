@@ -7,4 +7,4 @@ set -exo pipefail
 
 # https://github.com/vllm-project/vllm/pull/17751 (Nixl Integration. May 12)
 pip3 install --no-cache-dir \
-    "vllm@https://wheels.vllm.ai/d19110204c03e9b77ed957fc70c1262ff370f5e2/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
+    "vllm==0.9.0"
