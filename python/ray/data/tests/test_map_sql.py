@@ -1,6 +1,7 @@
+import pyarrow as pa
+
 import pytest
 import ray
-import pyarrow as pa
 
 try:
     import polars
