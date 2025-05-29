@@ -1358,9 +1358,13 @@ class Learner(Checkpointable):
         elif (
             isinstance(training_data.batch, MultiAgentBatch)
             and training_data.batch.policy_batches
-            and isinstance(
-                next(iter(training_data.batch.policy_batches.values()))["obs"],
-                numpy.ndarray,
+            and (
+                isinstance(
+                    next(iter(training_data.batch.policy_batches.values()))["obs"],
+                    numpy.ndarray,
+                )
+                or next(iter(training_data.batch.policy_batches.values()))["obs"].device
+                != self._device
             )
         ):
             batch = self._convert_batch_type(training_data.batch)

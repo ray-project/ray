@@ -23,7 +23,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 )
 from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 from ray.data._internal.util import capfirst
-from ray.data.block import BlockMetadata, BlockStats
+from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
@@ -365,41 +365,6 @@ class _StatsActor:
                 tag_keys=("dataset", "node_ip"),
             )
         return metrics
-
-    def record_start(self, stats_uuid):
-        self.start_time[stats_uuid] = time.perf_counter()
-        self.fifo_queue.append(stats_uuid)
-        # Purge the oldest stats if the limit is exceeded.
-        if len(self.fifo_queue) > self.max_stats:
-            uuid = self.fifo_queue.pop(0)
-            if uuid in self.start_time:
-                del self.start_time[uuid]
-            if uuid in self.last_time:
-                del self.last_time[uuid]
-            if uuid in self.metadata:
-                del self.metadata[uuid]
-
-    def record_task(
-        self, stats_uuid: str, task_idx: int, blocks_metadata: List[BlockMetadata]
-    ):
-        # Null out the schema to keep the stats size small.
-        # TODO(chengsu): ideally schema should be null out on caller side.
-        for metadata in blocks_metadata:
-            metadata.schema = None
-        if stats_uuid in self.start_time:
-            self.metadata[stats_uuid][task_idx] = blocks_metadata
-            self.last_time[stats_uuid] = time.perf_counter()
-
-    def get(self, stats_uuid):
-        if stats_uuid not in self.metadata:
-            return {}, 0.0
-        return (
-            self.metadata[stats_uuid],
-            self.last_time[stats_uuid] - self.start_time[stats_uuid],
-        )
-
-    def _get_stats_dict_size(self):
-        return len(self.start_time), len(self.last_time), len(self.metadata)
 
     def get_dataset_id(self):
         dataset_id = str(self.next_dataset_id)
@@ -869,8 +834,6 @@ class DatasetStats:
         *,
         metadata: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
-        needs_stats_actor: bool = False,
-        stats_uuid: str = None,
         base_name: str = None,
     ):
         """Create dataset stats.
@@ -880,11 +843,6 @@ class DatasetStats:
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
-            needs_stats_actor: Whether this Dataset's stats needs a stats actor for
-                stats collection. This is currently only used for Datasets using a
-                lazy datasource (i.e. a LazyBlockList).
-            stats_uuid: The uuid for the stats, used to fetch the right stats
-                from the stats actor.
             base_name: The name of the base operation for a multi-operator operation.
         """
 
@@ -900,8 +858,6 @@ class DatasetStats:
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
-        self.needs_stats_actor = needs_stats_actor
-        self.stats_uuid = stats_uuid
 
         # Streaming executor stats
         self.streaming_exec_schedule_s: Timer = Timer()
@@ -950,17 +906,6 @@ class DatasetStats:
     def to_summary(self) -> "DatasetStatsSummary":
         """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
         object, which can be used to generate a summary string."""
-        if self.needs_stats_actor:
-            ac = self.stats_actor
-            # TODO(chengsu): this is a super hack, clean it up.
-            stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            # Only populate stats when stats from all read tasks are ready at
-            # stats actor.
-            if len(stats_map.items()) == len(self.metadata["Read"]):
-                self.metadata["Read"] = []
-                for _, blocks_metadata in sorted(stats_map.items()):
-                    self.metadata["Read"] += blocks_metadata
-
         operators_stats = []
         is_sub_operator = len(self.metadata) > 1
         for name, stats in self.metadata.items():

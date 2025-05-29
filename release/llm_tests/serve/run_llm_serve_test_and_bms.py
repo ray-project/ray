@@ -100,7 +100,6 @@ def main(
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
     vllm_use_v1_env = "1" if vllm_use_v1 else "0"
     env_vars["VLLM_USE_V1"] = vllm_use_v1_env
-    llm_config = get_llm_config(serve_config_file)
 
     if run_vllm_profiler:
 
@@ -149,6 +148,7 @@ def main(
                 raise RuntimeError(f"Tests failed! {exit_code=}")
 
         if run_serve_llm_profiler:
+            llm_config = get_llm_config(serve_config_file)
             # For now, the values are hardcoded.
             results = run_bm(
                 api_url=api_url,

@@ -843,24 +843,20 @@ void NodeManager::QueryAllWorkerStates(
 // Note that this can print the false negative messages
 // e.g., there are many actors taking up resources for a long time.
 void NodeManager::WarnResourceDeadlock() {
-  ray::RayTask exemplar;
-  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  std::string available_resources;
 
   // Check if any progress is being made on this raylet.
-  for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-    if (worker->IsAvailableForScheduling()) {
-      // Progress is being made in a task, don't warn.
-      resource_deadlock_warned_ = 0;
-      return;
-    }
+  if (worker_pool_.IsWorkerAvailableForScheduling()) {
+    // Progress is being made in a task, don't warn.
+    resource_deadlock_warned_ = 0;
+    return;
   }
 
+  auto exemplar = cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
+      &pending_actor_creations, &pending_tasks);
   // Check if any tasks are blocked on resource acquisition.
-  if (!cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
-          &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
+  if (exemplar == nullptr) {
     // No pending tasks, no need to warn.
     resource_deadlock_warned_ = 0;
     return;
@@ -871,7 +867,7 @@ void NodeManager::WarnResourceDeadlock() {
   // case resource_deadlock_warned_:  0 => first time, don't do anything yet
   // case resource_deadlock_warned_:  1 => second time, print a warning
   // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
-  if (any_pending && resource_deadlock_warned_++ > 0) {
+  if (resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
     // Trigger global GC to hopefully free up resource slots.
     TriggerGlobalGC();
@@ -881,9 +877,8 @@ void NodeManager::WarnResourceDeadlock() {
       return;
     }
 
-    std::ostringstream error_message;
-    error_message
-        << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
+    RAY_LOG(WARNING)
+        << "The actor or task with ID " << exemplar->GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. You can ignore this message if this "
         << "Ray cluster is expected to auto-scale or if you specified a "
         << "runtime_env for this actor or task, which may take time to install.  "
@@ -891,16 +886,13 @@ void NodeManager::WarnResourceDeadlock() {
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
         << "Required resources for this actor or task: "
-        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
+        << exemplar->GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_->GetClusterResourceManager()
                .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()))
         << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
-
-    std::string error_message_str = error_message.str();
-    RAY_LOG(WARNING) << error_message_str;
     RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_->DebugStr();
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked

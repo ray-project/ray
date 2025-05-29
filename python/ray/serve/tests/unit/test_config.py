@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray import cloudpickle
@@ -134,24 +136,24 @@ class TestDeploymentConfig:
 
     def test_setting_and_getting_request_router_class(self):
         """Check that setting and getting request_router_class works."""
+        request_router_path = (
+            "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+        )
+        if sys.platform == "win32":
+            request_router_path = "com_github_ray_project_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
             request_router_class=FakeRequestRouter
         )
-        assert (
-            deployment_config.request_router_class
-            == "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
-        )
+        assert deployment_config.request_router_class == request_router_path
         assert deployment_config.get_request_router_class() == FakeRequestRouter
 
         # Passing request_router_class as an import path.
         deployment_config = DeploymentConfig.from_default(
-            request_router_class="python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            request_router_class=request_router_path
         )
-        assert (
-            deployment_config.request_router_class
-            == "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
-        )
+        assert deployment_config.request_router_class == request_router_path
         assert deployment_config.get_request_router_class() == FakeRequestRouter
 
         # Not passing request_router_class should

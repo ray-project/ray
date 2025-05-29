@@ -57,7 +57,8 @@ doc/tutorial.rst: lint doc
 doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
 ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
 ci/docker/doctest.build.Dockerfile: lint
-release/requirements_buildkite.txt: lint release_tests
+release/requirements.txt: lint release_tests
+release/requirements_buildkite.txt: lint tools
 ci/lint/lint.sh: lint tools
 .buildkite/lint.rayci.yml: lint tools
 .buildkite/macos.rayci.yml: lint macos_wheels

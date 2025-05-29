@@ -405,13 +405,9 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    import uuid
-
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
-        needs_stats_actor=True,
-        stats_uuid=uuid.uuid4(),
     )
     read_op = Read(
         datasource,

@@ -86,7 +86,7 @@ class TorchMetaLearner(TorchLearner):
 
         # Build all `DifferentiableLearner`s.
         for other in self.others:
-            other.build()
+            other.build(device=self._device)
 
         # Ensure 'others' have a module reference.
         for other in self.others:
