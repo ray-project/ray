@@ -355,16 +355,16 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
-Currently, we have added auto loading of dashboard JSON if you use [install.sh](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to deploy with the latest version of Kuberay. Dashboards in [config/grafana](https://github.com/ray-project/kuberay/tree/master/config/grafana) should appear in Grafana automatically.
+In KubeRay v1.4.0, [install.sh](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) automatically imports the Ray dashboard JSON files from [config/grafana](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana.
 
-However, if the dashboards aren't loaded, you could still manually import them with the following steps.
+If you want to use JSON files from a different Ray version, you can manually import them using the following instructions.
 
 * Click "Dashboards" icon in the left panel.
 * Click "New".
 * Click "Import".
 * Click "Upload JSON file".
 * Choose a JSON file.
-  * Case 1: If you are using Ray 2.9.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
+  * Case 1: If you are using Ray 2.41.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
   * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
 * Click "Import".
 
