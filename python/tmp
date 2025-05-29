@@ -1,3 +1,0 @@
-Exit()
-task_manager_->Drain()
-task_receiver_->Stop();
