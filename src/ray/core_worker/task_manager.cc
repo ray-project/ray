@@ -684,6 +684,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
         return false;
       }
     }
+    // TODO(irabbani): this else case looks important. What is the correct behavior here?
   }
 
   // NOTE: If it is the first execution (e.g., CompletePendingTask has never been called),
@@ -716,10 +717,31 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
     // When an object is reported, the object is ready to be fetched.
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    HandleTaskReturn(object_id,
-                     return_object,
-                     NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+    bool inlined_object =
+        HandleTaskReturn(object_id,
+                         return_object,
+                         NodeID::FromBinary(request.worker_addr().raylet_id()),
+                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+
+    // This is a hack to see if tests pass.
+    if (!inlined_object) {
+      absl::MutexLock lock(&mu_);
+      auto task_entry_it = submissible_tasks_.find(task_id);
+      // TODO(irabbani): I think the task can be removed from submissible during
+      // execution.
+      if (task_entry_it == submissible_tasks_.end()) {
+        execution_signal_callback(
+            Status::NotFound("Stale object reports from the previous attempt."), -1);
+        return false;
+      }
+      // if we've received an object for a task, then it's eligible for lineage
+      // reconstruction.
+      // TODO(irabbani): this isn't a clean semantic since the generator can have holes it
+      // in it and objects can be returned out of order. A cleaner semantic would be,
+      // whatever has been consumed through next(generator) by the caller needs to be
+      // reconstructed.
+      task_entry_it->second.reconstructable_return_ids.emplace(object_id);
+    }
   }
 
   // Handle backpressure if needed.
@@ -1298,6 +1320,12 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     // from submissible_tasks_. Do nothing in this case.
     return {};
   }
+  // TODO(irabbani): Can the underlying iterator become invalid outside of the mutex?
+  if (it->second.spec.IsStreamingGenerator()) {
+    store_in_plasma_ids = it->second.reconstructable_return_ids;
+    return store_in_plasma_ids;
+  }
+
   first_execution = it->second.num_successful_executions == 0;
   if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;
@@ -1350,7 +1378,13 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // case, all these objects are lost from the plasma store, so we
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
-    auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    auto object_ref_stream_it = object_ref_streams_.find(generator_id);
+    // TODO(irabbani): Can this be deleted? I think it can, but I need to double check.
+    RAY_CHECK(object_ref_stream_it != object_ref_streams_.end());
+    auto num_streaming_generator_returns = std::max(
+        spec.NumStreamingGeneratorReturns(),
+        static_cast<size_t>(object_ref_stream_it->second.LastConsumedIndex() + 1));
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {

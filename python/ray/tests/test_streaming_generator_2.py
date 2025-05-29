@@ -6,6 +6,7 @@ import time
 import gc
 
 import ray
+import ray.exceptions
 from ray.experimental.state.api import list_actors
 from ray._private.test_utils import (
     wait_for_condition,
@@ -534,6 +535,56 @@ def test_reconstruction_generator_out_of_scope(
 
     del ref
     assert_no_leak()
+
+
+# TODO(irabbani): what is the test for. Link issue as well
+def test_all_consumed_references_resolve_to_error_if_reconstruction_fails(
+    ray_start_cluster,
+):
+
+    cluster = ray_start_cluster
+
+    cluster.add_node(
+        num_cpus=0,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+        _system_config={
+            "health_check_failure_threshold": 10,
+            "health_check_period_ms": 100,
+            "health_check_timeout_ms": 100,
+            "health_check_initial_delay_ms": 0,
+        },
+    )
+
+    # this is the driver program
+    ray.init(address=cluster.address)
+
+    # add the node with the custom resource type to
+    # force scheduling of the actor
+    node = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_restarts=0, max_task_retries=-1, num_cpus=1)
+    class UnrestartableActor:
+        def func(self, signal_actor_handle):
+            for i in range(10):
+                # signal here once we get to two objects produced
+                yield np.ones(1024**2, dtype=np.int8)
+                if i == 2:
+                    signal_actor_handle.send.remote()
+
+    signal_actor = SignalActor.options(resources={"head": 1}).remote()
+    unrestartable_actor = UnrestartableActor.remote()
+
+    generator = unrestartable_actor.func.remote(signal_actor)
+    signal_actor.wait.remote()
+
+    obj_ref_1 = next(generator)
+    cluster.remove_node(node, allow_graceful=False)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 1)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(obj_ref_1, timeout=10)
 
 
 if __name__ == "__main__":
