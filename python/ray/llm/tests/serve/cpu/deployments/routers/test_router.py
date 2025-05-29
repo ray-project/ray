@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 import sys
 
@@ -155,6 +156,22 @@ class TestRouter:
         assert autoscaling_config.min_replicas == 5
         assert autoscaling_config.initial_replicas == 5
         assert autoscaling_config.max_replicas == 5
+
+    @pytest.mark.asyncio
+    async def test_check_health(self, llm_config: LLMConfig):
+        """Test health check functionality."""
+
+        server = MagicMock()
+        server.llm_config = MagicMock()
+        server.llm_config.remote = AsyncMock(return_value=llm_config)
+        server.check_health = MagicMock()
+        server.check_health.remote = AsyncMock()
+
+        router = LLMRouter(llm_deployments=[server])
+
+        await router.check_health()
+
+        assert server.check_health.remote.call_count == 1
 
 
 if __name__ == "__main__":
