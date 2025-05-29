@@ -83,9 +83,9 @@ class KuberayJobManager:
                 "working_dir": working_dir
             }
         }
-        if compute_config.get("headNode", {}).get("resources", {}):
+        if compute_config.get("autoscalerVersion"):
             request["autoscalerConfig"] = {
-                "version": "v2"
+                "version": compute_config["autoscalerVersion"]
             }
 
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
