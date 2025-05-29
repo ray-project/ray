@@ -9,6 +9,7 @@ import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't handle SIGTERM gracefully.")
 @pytest.mark.parametrize("actor_type", ["asyncio", "threaded"])
 def test_ray_get_during_graceful_shutdown(ray_start_regular_shared, actor_type: str):
     """Test that ray.get works as expected when draining tasks during shutdown.
