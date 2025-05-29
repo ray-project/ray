@@ -4,9 +4,9 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GridPos,
     Panel,
+    PanelTemplate,
     Target,
     TargetTemplate,
-    PanelTemplate,
 )
 
 SERVE_LLM_GRAFANA_PANELS = [
