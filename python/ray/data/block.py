@@ -201,6 +201,7 @@ class BlockStats:
 _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
+@DeveloperAPI
 class SchemaRegistry:
     """
     Collision-safe, weak-ref based deduplication cache.
@@ -214,10 +215,15 @@ class SchemaRegistry:
     lock = threading.Lock()
 
     @classmethod
-    def dedup(cls, obj):
+    def dedup(cls, obj: Optional[Union[type, "pyarrow.lib.Schema"]]):
         """Get a deduplicated version of obj (or insert it if new)."""
         if obj is None:
             return obj
+
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
+        if isinstance(obj, PandasBlockSchema):
+            obj = _schema_from_pandas_block(obj)
         h = hash(obj)
 
         with cls.lock:
@@ -267,7 +273,6 @@ class BlockMetadata(BlockStats):
 
         if self.input_files is None:
             self.input_files = []
-
         self.schema = SchemaRegistry.dedup(self.schema)
 
 
@@ -760,3 +765,29 @@ def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
     ).astype(int)
 
     return boundaries
+
+
+def _pandas_dtype_to_arrow(dtype):
+    import pyarrow
+
+    """Convert numpy/pandas dtype to pyarrow type."""
+    if np.issubdtype(dtype, np.integer):
+        return pyarrow.int64()
+    elif np.issubdtype(dtype, np.floating):
+        return pyarrow.float64()
+    elif np.issubdtype(dtype, np.bool_):
+        return pyarrow.bool_()
+    elif np.issubdtype(dtype, np.datetime64):
+        return pyarrow.timestamp("ns")
+    else:
+        return pyarrow.string()  # fallback for object types
+
+
+def _schema_from_pandas_block(pandas_schema):
+    import pyarrow
+
+    fields = [
+        pyarrow.field(name, _pandas_dtype_to_arrow(dtype))
+        for name, dtype in zip(pandas_schema.names, pandas_schema.types)
+    ]
+    return pyarrow.schema(fields)
