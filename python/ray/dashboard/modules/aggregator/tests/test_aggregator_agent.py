@@ -314,7 +314,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
     assert reply.status.status_code == 5
     assert (
         reply.status.status_message
-        == "event 2 dropped because event buffer full, event 3 dropped because event buffer full"
+        == "event 1 dropped because event buffer full, event 2 dropped because event buffer full"
     )
 
 

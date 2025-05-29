@@ -134,16 +134,19 @@ class AggregatorAgent(
         status_messages = []
         for event in events_data.events:
             try:
-                self._event_buffer.put(event, block=False)
+                self._event_buffer.put_nowait(event)
                 with self._lock:
                     self._events_received_since_last_metrics_update += 1
             except queue.Full:
+                old_event = self._event_buffer.get_nowait()
+                self._event_buffer.put_nowait(event)
                 with self._lock:
+                    self._events_received_since_last_metrics_update += 1
                     self._events_dropped_at_event_buffer_since_last_metrics_update += 1
                 if status_code == 0:
                     status_code = 5
                 status_messages.append(
-                    f"event {event.event_id.decode()} dropped because event buffer full"
+                    f"event {old_event.event_id.decode()} dropped because event buffer full"
                 )
             except Exception as e:
                 logger.error(
