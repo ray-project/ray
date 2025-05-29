@@ -18,6 +18,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
@@ -57,6 +58,17 @@ logger = logging.getLogger(__name__)
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
+
+# Set the max chunk size for Arrow to Batches for ArrowBlockAccessor.iter_rows().
+ARROW_BATCHES_MAX_CHUNK_SIZE_PERCENT = env_integer(
+    "RAY_DATA_ARROW_TO_BATCHES_MAX_CHUNK_SIZE_PERCENT", 100
+)
+ARROW_BATCHES_MIN_CHUNK_SIZE = env_integer(
+    "RAY_DATA_ARROW_TO_BATCHES_MIN_CHUNK_SIZE", 16
+)
+ARROW_BATCHES_MAX_CHUNK_SIZE = env_integer(
+    "RAY_DATA_ARROW_TO_BATCHES_MAX_CHUNK_SIZE", 1024
+)
 
 # We offload some transformations to polars for performance.
 def get_sort_transform(context: DataContext) -> Callable:
@@ -166,6 +178,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
+        self._batch_max_chunk_size = min(
+            ARROW_BATCHES_MAX_CHUNK_SIZE,
+            max(
+                ARROW_BATCHES_MIN_CHUNK_SIZE,
+                int(self._table.num_rows * ARROW_BATCHES_MAX_CHUNK_SIZE_PERCENT / 100),
+            ),
+        )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
@@ -390,7 +409,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            for batch in table.to_batches():
+            for batch in table.to_batches(max_chunksize=self._batch_max_chunk_size):
                 yield from batch.to_pylist()
         else:
             for i in range(self.num_rows()):
