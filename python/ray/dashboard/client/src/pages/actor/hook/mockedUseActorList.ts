@@ -22,6 +22,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     placementGroupId: "123",
     reprName: ",",
     callSite: "",
+    labelSelector: {},
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -44,6 +45,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     placementGroupId: "123",
     reprName: ",",
     callSite: "",
+    labelSelector: {},
   },
   ACTOR_3: {
     actorId: "ACTOR_3",
@@ -66,6 +68,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     placementGroupId: "123",
     reprName: ",",
     callSite: "",
+    labelSelector: {},
   },
   ACTOR_4: {
     actorId: "ACTOR_4",
@@ -88,6 +91,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     placementGroupId: "123",
     reprName: ",",
     callSite: "",
+    labelSelector: {},
   },
   ACTOR_5: {
     actorId: "ACTOR_5",
@@ -110,6 +114,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     placementGroupId: "123",
     reprName: ",",
     callSite: "",
+    labelSelector: {},
   },
 };
 

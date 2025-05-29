@@ -245,6 +245,10 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   if (task_spec.GetMessage().call_site().size() > 0) {
     task_info->set_call_site(task_spec.GetMessage().call_site());
   }
+  if (task_spec.GetMessage().label_selector().size() > 0) {
+    task_info->mutable_label_selector()->insert(task_spec.GetMessage().label_selector().begin(),
+                                                task_spec.GetMessage().label_selector().end());
+  }
 }
 
 // Fill task_info for the export API with task specification from task_spec
@@ -299,6 +303,10 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
+  }
+  if (task_spec.GetMessage().label_selector().size() > 0) {
+    task_info->mutable_label_selector()->insert(task_spec.GetMessage().label_selector().begin(),
+                                                task_spec.GetMessage().label_selector().end());
   }
 }
 
