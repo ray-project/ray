@@ -219,6 +219,7 @@ def test_node_object_metrics(ray_start_cluster):
     ray.get(actor.ready.remote())
     # o is owned by actor (node_2)
     # o is stored in object store of node_0
+    # XXX: FIX.
     o = ray.put(1, _owner=actor)  # noqa: F841
     wait_for_condition(
         lambda: get_owner_info(node_ids) == ([(4, 1), (3, 0), (1, 0)], [2, 1, 1])

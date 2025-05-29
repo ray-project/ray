@@ -3385,6 +3385,7 @@ cdef class CoreWorker:
             self, serialized_object,
             ObjectRef object_ref=None,
             c_bool pin_object=True,
+            # XXX!
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,

@@ -773,7 +773,6 @@ class Worker:
         self,
         value: Any,
         object_ref: Optional["ray.ObjectRef"] = None,
-        owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
     ):
         """Put value in the local object store with object reference `object_ref`.
@@ -789,7 +788,6 @@ class Worker:
             value: The value to put in the object store.
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
-            owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
@@ -843,7 +841,6 @@ class Worker:
                 serialized_value,
                 object_ref=object_ref,
                 pin_object=pin_object,
-                owner_address=owner_address,
                 _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
@@ -2881,7 +2878,6 @@ def get(
 def put(
     value: Any,
     *,
-    _owner: Optional["ray.actor.ActorHandle"] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2895,12 +2891,6 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner [Experimental]: The actor that should own this object. This
-            allows creating objects with lifetimes decoupled from that of the
-            creating process. The owner actor must be passed a reference to the
-            object prior to the object creator exiting, otherwise the reference
-            will still be lost. *Note that this argument is an experimental API
-            and should be avoided if possible.*
 
     Returns:
         The object ref assigned to this value.
@@ -2908,26 +2898,9 @@ def put(
     worker = global_worker
     worker.check_connected()
 
-    if _owner is None:
-        serialize_owner_address = None
-    elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure `ray._private.state.state.global_state_accessor` is not None
-        ray._private.state.state._check_connected()
-        serialize_owner_address = (
-            ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.global_state_accessor.get_actor_info(
-                    _owner._actor_id
-                )
-            )
-        )
-        if not serialize_owner_address:
-            raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-    else:
-        raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
-
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(value)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
