@@ -1454,10 +1454,6 @@ python/ray/data/preprocessor.py
 python/ray/data/preprocessors/chain.py
     DOC103: Method `Chain.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*preprocessors: Preprocessor]. Arguments in the docstring but not in the function signature: [preprocessors: ].
 --------------------
-python/ray/data/preprocessors/concatenator.py
-    DOC104: Method `Concatenator.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `Concatenator.__init__`: Argument names match, but type hints in these args do not match: columns, output_column_name, dtype, raise_if_missing
---------------------
 python/ray/data/preprocessors/normalizer.py
     DOC107: Method `Normalizer.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------

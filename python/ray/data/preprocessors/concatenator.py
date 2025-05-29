@@ -67,10 +67,10 @@ class Concatenator(Preprocessor):
         1  [3.0, 4.0, 0.2]
 
     Args:
-        output_column_name: The desired name for the new column.
-            Defaults to ``"concat_out"``.
         columns: A list of columns to concatenate. The provided order of the columns
              will be retained during concatenation.
+        output_column_name: The desired name for the new column.
+            Defaults to ``"concat_out"``.
         dtype: The ``dtype`` to convert the output tensors to. If unspecified,
             the ``dtype`` is determined by standard coercion rules.
         raise_if_missing: If ``True``, an error is raised if any
