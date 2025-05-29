@@ -65,7 +65,7 @@ class OpenTelemetryMetricRecorder {
   bool IsMetricRegistered(const std::string &name);
 
   // Set the value of a metric given the tags and the metric value.
-  bool SetMetricValue(const std::string &name,
+  void SetMetricValue(const std::string &name,
                       absl::flat_hash_map<std::string, std::string> &&tags,
                       double value);
 
