@@ -106,8 +106,8 @@ class GrpcClient {
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
-             grpc::ChannelArguments channel_arguments = CreateDefaultChannelArguments(),
-             bool use_tls = false)
+             bool use_tls = false,
+             grpc::ChannelArguments channel_arguments = CreateDefaultChannelArguments())
       : client_call_manager_(call_manager),
         channel_(BuildChannel(address, port, std::move(channel_arguments))),
         stub_(GrpcService::NewStub(channel_)),
