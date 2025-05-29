@@ -295,9 +295,11 @@ cdef class GlobalStateAccessor:
         if not status.ok():
             raise RuntimeError(status.message())
         c_node_info.ParseFromString(cnode_info_str)
+        c_labels = PythonGetNodeLabels(c_node_info)
         return {
             "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
             "node_id": c_node_info.node_id().hex(),
+            "labels": {key.decode(): value.decode() for key, value in c_labels},
         }
