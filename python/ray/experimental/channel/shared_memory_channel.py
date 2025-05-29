@@ -49,7 +49,7 @@ def _create_channel_ref(
 
     try:
         object_ref = worker.put_object(
-            value, owner_address=None, _is_experimental_channel=True
+            value, _is_experimental_channel=True
         )
     except ray.exceptions.ObjectStoreFullError:
         logger.info(

@@ -481,7 +481,6 @@ class Worker:
         val,
         *,
         client_ref_id: bytes = None,
-        _owner: Optional[ClientActorHandle] = None,
     ):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
@@ -492,7 +491,7 @@ class Worker:
                 "call 'put' on it (or return it)."
             )
         data = dumps_from_client(val, self._client_id)
-        return self._put_pickled(data, client_ref_id, _owner)
+        return self._put_pickled(data, client_ref_id)
 
     def _put_pickled(
         self,
