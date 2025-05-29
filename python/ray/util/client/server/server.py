@@ -510,9 +510,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self, request: ray_client_pb2.PutRequest, context=None
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
-        return self._put_object(
-            request.data, request.client_ref_id, "", context
-        )
+        return self._put_object(request.data, request.client_ref_id, "", context)
 
     def _put_object(
         self,

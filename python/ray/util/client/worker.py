@@ -495,7 +495,9 @@ class Worker:
         return self._put_pickled(data, client_ref_id, _owner)
 
     def _put_pickled(
-        self, data, client_ref_id: bytes,
+        self,
+        data,
+        client_ref_id: bytes,
     ):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
