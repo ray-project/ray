@@ -14,6 +14,7 @@
 [Pp]erformant
 [Pp]rofiler
 [Ss]ubclassing
+admin
 Alibaba
 Alpaca
 Anyscale
@@ -43,6 +44,7 @@ deserialize
 dev
 dev to prod
 DPO
+EKS
 Flink
 GGUF
 GKE
@@ -52,11 +54,13 @@ hostfile
 HTTP
 KServe
 KTO
+Kubernetes
 Kueue
 LMs
 LSH
 Megatron
 MLflow
+MLOps
 namespace
 NER
 Nsight
@@ -71,6 +75,7 @@ QPS
 retrigger
 RISECamp
 rollouts
+serverless
 SFT
 ShareGPT
 teardown
@@ -88,3 +93,5 @@ URI(s)?
 [Dd]etokenizer?s?
 [Dd]etokenization
 VS Code
+VSCode
+vscode
