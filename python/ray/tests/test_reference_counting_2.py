@@ -11,6 +11,7 @@ import pickle
 import signal
 import sys
 import time
+from typing import Union
 
 import numpy as np
 import pytest
@@ -45,7 +46,12 @@ def one_cpu_100MiB_shared():
 
 
 def _fill_object_store_and_get(
-    obj, succeed=True, object_MiB=20, num_objects=5, timeout_s=10
+    obj: Union[ray.ObjectRef, bytes],
+    *,
+    succeed: bool = True,
+    object_MiB: float = 20,
+    num_objects: int = 5,
+    timeout_s: float = 10.0,
 ):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
