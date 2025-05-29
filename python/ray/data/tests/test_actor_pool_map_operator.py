@@ -24,6 +24,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
+from ray.util.state import list_actors
 
 
 @ray.remote
@@ -99,9 +100,9 @@ class TestActorPool(unittest.TestCase):
 
     def _wait_for_actor_dead(self, actor_id: str):
         def _check_actor_dead():
-            nonlocal actor_id
-            actor_info = ray.state.actors(actor_id)
-            return actor_info["State"] == "DEAD"
+            actors = list_actors(filters=[("actor_id", "=", actor_id)])
+            assert len(actors) == 1
+            return actors[0].state == "DEAD"
 
         wait_for_condition(_check_actor_dead)
 

@@ -23,6 +23,7 @@ from ray._private.test_utils import (
 from ray.job_config import JobConfig, LoggingConfig
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.util.state import list_jobs
 
 
 def execute_driver(commands: List[str], input: bytes = None):
@@ -308,15 +309,14 @@ ray.get(f.remote())
     commands = [sys.executable, str(fp), "--flag"]
     print(execute_driver(commands))
 
-    jobs = ray.state.jobs()
+    jobs = list_jobs()
     assert len(jobs) == 2
-    jobs = list(jobs)
-    jobs.sort(key=lambda j: j["JobID"])
+    jobs.sort(key=lambda j: j.job_id)
 
     # The first job is the test job.
 
     driver_job = jobs[1]
-    assert driver_job["Entrypoint"] == list2cmdline(commands)
+    assert driver_job.entrypoint == list2cmdline(commands)
 
     # Make sure the Dashboard endpoint works
     r = client._do_request(
@@ -337,22 +337,19 @@ ray.get(f.remote())
     client.submit_job(entrypoint=list2cmdline(commands))
 
     def verify():
-        jobs = ray.state.jobs()
+        jobs = list_jobs()
         # Test, first job, agent, submission job
         assert len(jobs) == 4
         jobs = list(jobs)
-        jobs.sort(key=lambda j: j["JobID"])
+        jobs.sort(key=lambda j: j.job_id)
 
         # The first job is the test job.
 
         submission_job = jobs[3]
-        assert submission_job["Entrypoint"] == list2cmdline(commands)
+        assert submission_job.entrypoint == list2cmdline(commands)
         return True
 
     wait_for_condition(verify)
-
-    # Test client
-    # TODO(sang): Client entrypoint not supported yet.
 
 
 def test_task_spec_root_detached_actor_id(shutdown_only):

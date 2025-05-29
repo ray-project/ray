@@ -137,7 +137,8 @@ def assert_no_user_info_in_logs(user_info: str, file_whitelist: List[str] = None
     if file_whitelist is None:
         file_whitelist = []
 
-    log_dir = os.path.join(ray.worker._global_node.get_session_dir_path(), "logs")
+    node = ray._private.worker.global_worker.node
+    log_dir = os.path.join(node.get_session_dir_path(), "logs")
 
     for root, dirs, files in os.walk(log_dir):
         for file in files:

@@ -314,6 +314,7 @@ class JobHead(SubprocessModule):
 
         if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
             node_id = choice(list(self._agents))
+            logger.info(f"PICKED {node_id} from {list(self._agents)}")
             return self._agents[node_id]
         else:
             # Randomly select one from among all agents, it is possible that

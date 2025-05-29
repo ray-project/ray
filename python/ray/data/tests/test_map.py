@@ -32,6 +32,7 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
+from ray.util.state import list_actors
 
 
 def test_specifying_num_cpus_and_num_gpus_logs_warning(
@@ -102,14 +103,9 @@ def test_basic_actors(shutdown_only):
 
     # Make sure all actors are dead after dataset execution finishes.
     def _all_actors_dead():
-        actor_table = ray.state.actors()
-        actors = {
-            _id: actor_info
-            for _id, actor_info in actor_table.items()
-            if actor_info["ActorClassName"] == _MapWorker.__name__
-        }
+        actors = list_actors(filters=("class_name", "=", _MapWorker.__name__))
         assert len(actors) > 0
-        return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
+        return all(a.state == "DEAD" for a in actors)
 
     wait_for_condition(_all_actors_dead)
 
