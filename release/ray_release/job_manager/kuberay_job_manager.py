@@ -8,11 +8,30 @@ from ray_release.exception import (
     JobStartupTimeout,
     JobStartupFailed,
 )
+from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
+import os
 
 KUBERAY_SERVICE_SECRET_KEY_SECRET_NAME = "kuberay_service_secret_key"
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
 DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
 KUBERAY_PROJECT_ID = "dhyey-dev"
+# the directory for runners to dump files to (on buildkite runner instances).
+# Write to this directory. run_release_tests.sh will ensure that the content
+# shows up under buildkite job's "Artifacts" UI tab.
+_DEFAULT_ARTIFACTS_DIR = DEFAULT_ARTIFACTS_DIR
+
+# the artifact file name put under s3 bucket root.
+# AnyscalejobWrapper will upload user generated artifact to this path
+# and AnyscaleJobRunner will then download from there.
+_USER_GENERATED_ARTIFACT = "user_generated_artifact"
+
+# the path where result json will be written to on both head node
+# as well as the relative path where result json will be uploaded to on s3.
+_RESULT_OUTPUT_JSON = "/tmp/release_test_out.json"
+
+# the path where output json will be written to on both head node
+# as well as the relative path where metrics json will be uploaded to on s3.
+_METRICS_OUTPUT_JSON = "/tmp/metrics_test_out.json"
 
 job_status_to_return_code = {
     "SUCCEEDED": 0,
@@ -31,6 +50,23 @@ class KuberayJobManager:
         self._run_job(job_name, image, cmd_to_run, env_vars, working_dir, pip, compute_config)
         return self._wait_job(timeout)
 
+    @property
+    def command_env(self):
+        return {
+            "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
+            "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
+            "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
+        }
+
+    def get_full_command_env(self, env: Optional[Dict] = None):
+        full_env = self.command_env.copy()
+
+        if env:
+            full_env.update(env)
+
+        return full_env
+
     def _run_job(self, job_name: str, image: str, cmd_to_run: str, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> None:
         logger.info(
             f"Executing {cmd_to_run} with {env_vars} via RayJob CRD"
@@ -42,7 +78,7 @@ class KuberayJobManager:
             "rayImage": image,
             "computeConfig": compute_config,
             "runtimeEnv": {
-                "env_vars": env_vars,
+                "env_vars": self.get_full_command_env(env_vars),
                 "pip": pip or [],
                 "working_dir": working_dir
             }
