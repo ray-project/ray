@@ -127,3 +127,10 @@ steps:
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
     depends_on:
       - forge
+
+  - label: ":tapioca: Generate indexes"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
+    depends_on:
+      - forge

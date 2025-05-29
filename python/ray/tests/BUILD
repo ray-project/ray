@@ -66,6 +66,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
@@ -85,6 +86,7 @@ py_test_module_list(
         "test_job.py",
         "test_kill_subprocesses.py",
         "test_memstat.py",
+        "test_storage.py",
     ],
     tags = [
         "exclusive",
@@ -483,6 +485,7 @@ py_test_module_list(
         "test_unhandled_error.py",
         "test_wait.py",
         "test_widgets.py",
+        "test_worker_graceful_shutdown.py",
     ],
     tags = [
         "exclusive",
@@ -521,6 +524,23 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_gpu_objects.py",
+    ],
+    tags = [
+        "exclusive",
+        "gpu_objects",
         "no_windows",
         "team:core",
     ],
@@ -740,7 +760,6 @@ py_test_module_list(
         "test_placement_group.py",
         "test_scheduling_performance.py",
         "test_state_api_2.py",
-        "test_storage.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
     ],
@@ -773,7 +792,6 @@ py_test_module_list(
         "test_runtime_env_working_dir_remote_uri.py",
         "test_state_api.py",
         "test_task_events_2.py",
-        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
