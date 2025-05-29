@@ -169,7 +169,10 @@ def test_add_default_ray_node_labels(shutdown_only):
     os.environ["RAY_NODE_REGION"] = "us-central2"
     os.environ["RAY_NODE_ZONE"] = "us-central2-b"
 
-    ray.init()
+    # set env var for AcceleratorManager to detect
+    os.environ["TPU_ACCELERATOR_TYPE"] = "v4-16"
+
+    ray.init(resources={"TPU": 4})
     node_info = ray.nodes()[0]
     labels = node_info["Labels"]
 
@@ -177,9 +180,7 @@ def test_add_default_ray_node_labels(shutdown_only):
     assert labels.get("ray.io/node-group") == "worker-group-1"
     assert labels.get("ray.io/availability-region") == "us-central2"
     assert labels.get("ray.io/availability-zone") == "us-central2-b"
-    assert (
-        labels.get("ray.io/accelerator-type") is None
-    )  # node is not scheduled on an accelerator
+    assert labels.get("ray.io/accelerator-type") == "TPU-V4"
 
     # Unset env vars
     for k in [
@@ -187,6 +188,7 @@ def test_add_default_ray_node_labels(shutdown_only):
         "RAY_NODE_TYPE_NAME",
         "RAY_NODE_ZONE",
         "RAY_NODE_REGION",
+        "TPU_ACCELERATOR_TYPE",
     ]:
         del os.environ[k]
 
