@@ -82,15 +82,15 @@ class PlacementGroupSpecBuilder {
       const PlacementGroupID &placement_group_id,
       std::string name,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const std::vector<std::unordered_map<std::string, std::string>>
-          &bundle_label_selector,
       const rpc::PlacementStrategy strategy,
       const bool is_detached,
       double max_cpu_fraction_per_node,
       NodeID soft_target_node_id,
       const JobID &creator_job_id,
       const ActorID &creator_actor_id,
-      bool is_creator_detached_actor) {
+      bool is_creator_detached_actor,
+      const std::vector<std::unordered_map<std::string, std::string>>
+          &bundle_label_selector = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
