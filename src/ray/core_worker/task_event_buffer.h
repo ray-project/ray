@@ -27,6 +27,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/event_aggregator_exporter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
@@ -526,6 +527,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
+  /// Test only functions.
+  EventAggregatorExporter *GetEventAggregatorExporter() {
+    return event_aggregator_exporter_.get();
+  }
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
 
@@ -549,6 +555,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Client to the event aggregator used to push ray events to it.
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
+
+  /// Client to the event aggregator used to push ray events to it.
+  // TODO(myan): think about whether we should have one event_aggregator_exporter per
+  // core_worker or per node
+  std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;

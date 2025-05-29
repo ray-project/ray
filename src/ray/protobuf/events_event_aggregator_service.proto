@@ -26,7 +26,7 @@ message TaskEventsMetadata {
   repeated TaskAttempt dropped_task_attempts = 2;
 }
 
-message RayEventsData {
+message RayEventData {
   // Events to be added to the event aggregator.
   repeated RayEvent events = 1;
   // Metadata about the events.
@@ -35,7 +35,7 @@ message RayEventsData {
 
 message AddEventsRequest {
   // Event data to be added to the event aggregator.
-  RayEventsData events_data = 1;
+  RayEventData events_data = 1;
 }
 
 message AddEventsStatus {

@@ -599,6 +599,7 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateTaskEventDataToSe
     absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   auto data = std::make_unique<rpc::TaskEventData>();
+  
   for (auto &[_task_attempt, task_event] : agg_task_events) {
     auto events_by_task = data->add_events_by_task();
     *events_by_task = std::move(task_event);
