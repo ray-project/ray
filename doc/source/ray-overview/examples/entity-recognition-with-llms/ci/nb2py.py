@@ -7,14 +7,24 @@ def convert_notebook(input_path: str, output_path: str) -> None:
     """
     Read a Jupyter notebook and write a Python script, converting all %%bash
     cells and IPython "!" commands into subprocess.run calls that raise on error.
+    Cells that load or autoreload extensions are ignored.
     """
     nb = nbformat.read(input_path, as_version=4)
     with open(output_path, "w") as out:
         for cell in nb.cells:
+            # Only process code cells
             if cell.cell_type != "code":
                 continue
 
             lines = cell.source.splitlines()
+            # Skip cells that load or autoreload extensions
+            if any(
+                l.strip().startswith("%load_ext autoreload") or
+                l.strip().startswith("%autoreload all")
+                for l in lines
+            ):
+                continue
+
             # Detect a %%bash cell
             if lines and lines[0].strip().startswith("%%bash"):
                 bash_script = "\n".join(lines[1:]).rstrip()
