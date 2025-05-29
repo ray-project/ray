@@ -33,7 +33,11 @@ void PushManager::StartPush(const NodeID &dest_id,
   if (it == dest_map.end()) {
     chunks_remaining_ += num_chunks;
     dest_map[obj_id] = push_requests_with_chunks_to_send_.emplace(
-        push_requests_with_chunks_to_send_.end(), num_chunks, std::move(send_chunk_fn));
+        push_requests_with_chunks_to_send_.end(),
+        dest_id,
+        obj_id,
+        num_chunks,
+        std::move(send_chunk_fn));
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
@@ -42,7 +46,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   ScheduleRemainingPushes();
 }
 
-void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
+void PushManager::OnChunkComplete() {
   chunks_in_flight_ -= 1;
   chunks_remaining_ -= 1;
   ScheduleRemainingPushes();
@@ -69,13 +73,15 @@ void PushManager::ScheduleRemainingPushes() {
       push_state.SendOneChunk();
       chunks_in_flight_ += 1;
       if (push_state.num_chunks_to_send == 0) {
-        auto dest_iter = push_state_map_.find(push_state.node_id);
-        RAY_CHECK(dest_iter != push_state_map_.end());
-        auto &dest_map = dest_iter->second;
-        RAY_CHECK(dest_map.erase(push_state.object_id) > 0);
-        iter = push_requests_with_chunks_to_send_.erase(iter);
+        auto push_state_map_iter = push_state_map_.find(push_state.node_id);
+        RAY_CHECK(push_state_map_iter != push_state_map_.end());
+        auto &dest_map = push_state_map_iter->second;
+        auto dest_map_iter = dest_map.find(push_state.object_id);
+        RAY_CHECK(dest_map_iter != dest_map.end());
+        iter = push_requests_with_chunks_to_send_.erase(dest_map_iter->second);
+        dest_map.erase(dest_map_iter);
         if (dest_map.empty()) {
-          push_state_map_.erase(dest_iter);
+          push_state_map_.erase(push_state_map_iter);
         }
       } else {
         keep_looping = true;
@@ -86,11 +92,11 @@ void PushManager::ScheduleRemainingPushes() {
 }
 
 void PushManager::HandleNodeRemoved(const NodeID &node_id) {
-  auto dest_iter = push_state_map_.find(node_id);
-  if (dest_iter == push_state_map_.end()) {
+  auto push_state_map_iter = push_state_map_.find(node_id);
+  if (push_state_map_iter == push_state_map_.end()) {
     return;
   }
-  for (auto &[obj_id, push_state_iter] : dest_iter->second) {
+  for (auto &[_, push_state_iter] : push_state_map_iter->second) {
     push_requests_with_chunks_to_send_.erase(push_state_iter);
   }
   push_state_map_.erase(node_id);

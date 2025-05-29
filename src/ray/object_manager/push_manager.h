@@ -52,7 +52,7 @@ class PushManager {
 
   /// Called every time a chunk completes to trigger additional sends.
   /// TODO(ekl) maybe we should cancel the entire push on error.
-  void OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id);
+  void OnChunkComplete();
 
   /// Cancel all pushes that have not yet been sent to the removed node.
   void HandleNodeRemoved(const NodeID &node_id);
@@ -80,6 +80,9 @@ class PushManager {
   FRIEND_TEST(TestPushManager, TestPushState);
   /// Tracks the state of an active object push to another node.
   struct PushState {
+    NodeID node_id;
+    ObjectID object_id;
+
     /// total number of chunks of this object.
     int64_t num_chunks;
     /// The function to send chunks with.
@@ -89,11 +92,13 @@ class PushManager {
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
-    NodeID node_id;
-    ObjectID object_id;
-
-    PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
-        : num_chunks(num_chunks),
+    PushState(NodeID node_id,
+              ObjectID object_id,
+              int64_t num_chunks,
+              std::function<void(int64_t)> chunk_send_fn)
+        : node_id(node_id),
+          object_id(object_id),
+          num_chunks(num_chunks),
           chunk_send_fn(std::move(chunk_send_fn)),
           num_chunks_to_send(num_chunks) {}
 
