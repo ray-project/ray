@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 import weakref
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
@@ -10,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Generic,
     Iterator,
     List,
     Optional,
@@ -20,6 +22,8 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
+import pyarrow as pa
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
@@ -29,8 +33,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    import pandas
-    import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -48,10 +50,10 @@ AggType = TypeVar("AggType")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`
 # ``ArrowBlockAccessor``.
-Block = Union["pyarrow.Table", "pandas.DataFrame"]
+Block = Union["pa.Table", "pd.DataFrame"]
 
 # Represents a single column of the ``Block``
-BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
+BlockColumn = Union["pa.ChunkedArray", "pa.Array", "pd.Series"]
 
 
 logger = logging.getLogger(__name__)
@@ -65,7 +67,7 @@ class BlockType(Enum):
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+DataBatch = Union["pa.Table", "pd.DataFrame", Dict[str, np.ndarray]]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
@@ -98,6 +100,22 @@ BlockPartitionMetadata = List["BlockMetadata"]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
 DEFAULT_BATCH_FORMAT = "numpy"
+
+
+def _pd_schema_to_pa(pd_schema) -> "pa.lib.Schema":
+    from ray.data._internal.arrow_block import ArrowBlockAccessor
+    from ray.data._internal.pandas_block import PandasBlockAccessor
+
+    empty_pd_block = pd.DataFrame(
+        {
+            name: pd.Series(dtype=dtype)
+            for name, dtype in zip(pd_schema.names, pd_schema.types)
+        }
+    )
+    # NOTE: There is a pa.Schema.from_pandas, but using Accessor to be consistent
+    empty_pa_block = PandasBlockAccessor.for_block(empty_pd_block).to_arrow()
+    schema = ArrowBlockAccessor.for_block(empty_pa_block).schema()
+    return schema
 
 
 def _apply_batch_format(given_batch_format: Optional[str]) -> str:
@@ -202,7 +220,7 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
 @DeveloperAPI
-class SchemaRegistry:
+class _DedupeObjCache(Generic[T], ABC):
     """
     Collision-safe, weak-ref based deduplication cache.
 
@@ -215,15 +233,14 @@ class SchemaRegistry:
     lock = threading.Lock()
 
     @classmethod
-    def dedup(cls, obj: Optional[Union[type, "pyarrow.lib.Schema"]]):
+    def dedup(cls, obj: T):
         """Get a deduplicated version of obj (or insert it if new)."""
+        assert isinstance(T, object), "DedupeObjCache only works with objects"
+
         if obj is None:
             return obj
 
-        from ray.data._internal.pandas_block import PandasBlockSchema
-
-        if isinstance(obj, PandasBlockSchema):
-            obj = _schema_from_pandas_block(obj)
+        obj = cls.to_hashable_obj(obj)
         h = hash(obj)
 
         with cls.lock:
@@ -241,6 +258,12 @@ class SchemaRegistry:
             return obj
 
     @classmethod
+    @abstractmethod
+    def to_hashable_obj(obj: T) -> Any:
+        """convert obj to hashable object"""
+        pass
+
+    @classmethod
     def _remove_callback(cls, h):
         def remove(ref):
             with cls.lock:
@@ -253,12 +276,37 @@ class SchemaRegistry:
 
 
 @DeveloperAPI
+class SchemaRegistry(_DedupeObjCache[Optional[Union[type, "pa.lib.Schema"]]]):
+    @classmethod
+    def to_hashable_obj(cls, schema) -> "pa.lib.Schema":
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            schema = _pd_schema_to_pa(schema)
+            # We remove metadata since it may be unhashable
+            schema = schema.remove_metadata()
+
+        def sanitize_schema():
+            fields = []
+            for field in schema:
+                type_has_hash = getattr(type(field.type), "__hash__", None) is not None
+                if not type_has_hash:
+                    # Replace with a hashable fallback type like pa.string()
+                    fields.append(pa.field(field.name, pa.string()))
+                else:
+                    fields.append(field)
+            return pa.schema(fields)
+
+        return sanitize_schema()
+
+
+@DeveloperAPI
 @dataclass
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
     #: The pyarrow schema or types of the block elements, or None.
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    schema: Optional[Union[type, "pa.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
@@ -281,7 +329,7 @@ class BlockAccessor:
     """Provides accessor methods for a specific block.
 
     Ideally, we wouldn't need a separate accessor classes for blocks. However,
-    this is needed if we want to support storing ``pyarrow.Table`` directly
+    this is needed if we want to support storing ``pa.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
     """
 
@@ -334,7 +382,7 @@ class BlockAccessor:
         """Randomly shuffle this block."""
         raise NotImplementedError
 
-    def to_pandas(self) -> "pandas.DataFrame":
+    def to_pandas(self) -> "pd.DataFrame":
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
@@ -348,7 +396,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def to_arrow(self) -> "pyarrow.Table":
+    def to_arrow(self) -> "pa.Table":
         """Convert this block into an Arrow table."""
         raise NotImplementedError
 
@@ -389,7 +437,7 @@ class BlockAccessor:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self) -> Union[type, "pa.lib.Schema"]:
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
@@ -470,14 +518,12 @@ class BlockAccessor:
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
-        import pandas
-        import pyarrow
 
-        if isinstance(block, pyarrow.Table):
+        if isinstance(block, pa.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
-        elif isinstance(block, pandas.DataFrame):
+        elif isinstance(block, pd.DataFrame):
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
@@ -674,7 +720,7 @@ class BlockColumnAccessor:
         """Converts underlying column to Numpy"""
         raise NotImplementedError()
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _as_arrow_compatible(self) -> Union[List[Any], "pa.Array"]:
         """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
@@ -682,9 +728,6 @@ class BlockColumnAccessor:
     def for_column(col: BlockColumn) -> "BlockColumnAccessor":
         """Create a column accessor for the given column"""
         _check_pyarrow_version()
-
-        import pandas as pd
-        import pyarrow as pa
 
         if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
             from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
@@ -696,7 +739,7 @@ class BlockColumnAccessor:
             return PandasBlockColumnAccessor(col)
         else:
             raise TypeError(
-                f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
+                f"Expected either a pd.Series or pa.Array (ChunkedArray) "
                 f"(got {type(col)})"
             )
 
@@ -765,29 +808,3 @@ def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
     ).astype(int)
 
     return boundaries
-
-
-def _pandas_dtype_to_arrow(dtype):
-    import pyarrow
-
-    """Convert numpy/pandas dtype to pyarrow type."""
-    if np.issubdtype(dtype, np.integer):
-        return pyarrow.int64()
-    elif np.issubdtype(dtype, np.floating):
-        return pyarrow.float64()
-    elif np.issubdtype(dtype, np.bool_):
-        return pyarrow.bool_()
-    elif np.issubdtype(dtype, np.datetime64):
-        return pyarrow.timestamp("ns")
-    else:
-        return pyarrow.string()  # fallback for object types
-
-
-def _schema_from_pandas_block(pandas_schema):
-    import pyarrow
-
-    fields = [
-        pyarrow.field(name, _pandas_dtype_to_arrow(dtype))
-        for name, dtype in zip(pandas_schema.names, pandas_schema.types)
-    ]
-    return pyarrow.schema(fields)
