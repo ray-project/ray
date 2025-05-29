@@ -250,7 +250,7 @@ class JobSupervisor:
         if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
             os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
         ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
+            "auto", ray._private.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
         return {
@@ -335,10 +335,9 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
+        node = ray._private.worker.global_worker.node
         driver_agent_http_address = (
-            "http://"
-            f"{ray.worker.global_worker.node.node_ip_address}:"
-            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
+            f"http://{node.node_ip_address}:{node.dashboard_agent_listen_port}"
         )
         driver_node_id = ray.get_runtime_context().get_node_id()
 

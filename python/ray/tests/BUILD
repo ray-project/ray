@@ -467,6 +467,7 @@ py_test_module_list(
         "test_node_death.py",
         "test_numba.py",
         "test_object_spilling_no_asan.py",
+        "test_open_telemetry_metric_recorder.py",
         "test_placement_group_metrics.py",
         "test_protobuf_compatibility.py",
         "test_queue.py",
@@ -482,6 +483,7 @@ py_test_module_list(
         "test_unhandled_error.py",
         "test_wait.py",
         "test_widgets.py",
+        "test_worker_graceful_shutdown.py",
     ],
     tags = [
         "exclusive",
@@ -500,7 +502,7 @@ py_test_module_list(
         "test_channel_serialization.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
