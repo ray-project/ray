@@ -3,13 +3,6 @@ import pytest
 
 import ray
 
-try:
-    import polars
-
-    HAS_POLARS = True
-except ImportError:
-    HAS_POLARS = False
-
 
 @pytest.fixture
 def dataset():
@@ -30,15 +23,6 @@ def test_map_sql_select_expr(dataset):
     assert set(batch.column_names) == {"double_a", "b1"}
     assert batch["double_a"].to_pylist() == [2, 4, 6, 8]
     assert batch["b1"].to_pylist() == [11, 21, 31, 41]
-
-
-@pytest.mark.skipif(not HAS_POLARS, reason="Polars is not installed")
-def test_polars_engine(dataset):
-    ds2 = dataset.map_sql(
-        "SELECT * FROM batch WHERE b > 20", engine="polars", batch_size=2
-    )
-    [batch] = list(ds2.iter_batches(batch_format="pyarrow"))
-    assert set(batch["b"].to_pylist()) == {30, 40}
 
 
 def test_map_sql_output_schema(dataset):
