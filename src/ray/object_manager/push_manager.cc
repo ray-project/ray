@@ -73,11 +73,13 @@ void PushManager::ScheduleRemainingPushes() {
         RAY_CHECK(dest_iter != push_state_map_.end());
         auto &dest_map = dest_iter->second;
         RAY_CHECK(dest_map.erase(push_state.object_id) > 0);
+        iter = push_requests_with_chunks_to_send_.erase(iter);
         if (dest_map.empty()) {
           push_state_map_.erase(dest_iter);
         }
       } else {
         keep_looping = true;
+        iter++;
       }
     }
   }
