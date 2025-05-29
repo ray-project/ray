@@ -4383,11 +4383,11 @@
     byod:
       type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # <working_dir>/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
     timeout: 3600
-    script: PYTHONPATH=. python dist_xgboost/train.py  # <working_dir>/
+    script: PYTHONPATH=. python dist_xgboost/train.py  # relative to working_dir
 
   variations:
     - __suffix__: aws  # uses default specs above
