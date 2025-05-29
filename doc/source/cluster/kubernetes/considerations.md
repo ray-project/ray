@@ -9,7 +9,7 @@ Ray is a core part of ML platforms and offers foundational capabilities for para
 1. *Observability* How do you proactively and retroactively view and understand the system
 1. *Governance* How do you ensure security and track costs of a platform.
 
-The effort to implement and operate these capabilities in production is signficant
+The effort to implement and operate these capabilities in production is signficant.
 
 ## Choosing a Ray Operator 
 
