@@ -943,6 +943,8 @@
       env: kuberay
       run:
         timeout: 3600
+      cluster:
+        cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
