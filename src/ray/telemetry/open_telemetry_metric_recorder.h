@@ -70,7 +70,7 @@ class OpenTelemetryMetricRecorder {
   bool IsMetricRegistered(const std::string &name);
 
   // Set the value of a metric given the tags and the metric value.
-  bool SetMetricValue(const std::string &name,
+  void SetMetricValue(const std::string &name,
                       absl::flat_hash_map<std::string, std::string> &&tags,
                       double value);
 
@@ -121,6 +121,18 @@ class OpenTelemetryMetricRecorder {
   std::atomic<bool> is_shutdown_{false};
   // The name of the meter used for this recorder.
   const std::string meter_name_ = "ray";
+
+  void SetObservableMetricValue(const std::string &name,
+                                absl::flat_hash_map<std::string, std::string> &&tags,
+                                double value);
+
+  void SetSynchronousMetricValue(const std::string &name,
+                                 absl::flat_hash_map<std::string, std::string> &&tags,
+                                 double value);
+
+  bool IsObservableMetric(const std::string &name) const {
+    return observations_by_name_.contains(name);
+  }
 
   void SetObservableMetricValue(const std::string &name,
                                 absl::flat_hash_map<std::string, std::string> &&tags,
