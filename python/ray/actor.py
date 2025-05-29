@@ -352,7 +352,10 @@ class ActorMethod:
             actor = self._actor_hard_ref or self._actor_ref()
 
             if actor is None:
-                raise RuntimeError("Lost reference to actor")
+                # See https://github.com/ray-project/ray/issues/6265 for more details.
+                raise RuntimeError(
+                    "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
+                )
 
             return actor._actor_method_call(
                 self._method_name,
@@ -1244,6 +1247,7 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
+            label_selector=actor_options.get("label_selector"),
         )
 
         if _actor_launch_hook:

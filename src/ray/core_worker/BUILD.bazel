@@ -576,5 +576,6 @@ ray_cc_library(
     deps = [
         "//src/ray/util:logging",
         "@boost//:asio",
+        "@boost//:thread",
     ],
 )

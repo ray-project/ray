@@ -218,14 +218,15 @@ class DeploymentStatusInfo:
         trigger: DeploymentStatusInternalTrigger,
         message: str = "",
     ) -> "DeploymentStatusInfo":
-        """Handles a transition from one state to next state.
+        """Handles a transition from the current state to the next state.
 
         Args:
-            trigger: A (internal) trigger that determines the state
+            trigger: An internal trigger that determines the state
                 transition.
             message: The message to set in status info.
 
-        Returns: New instance of DeploymentStatusInfo representing the
+        Returns:
+            New instance of DeploymentStatusInfo representing the
             next state to transition to.
         """
 

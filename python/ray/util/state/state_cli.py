@@ -803,7 +803,7 @@ def _get_head_node_ip(address: Optional[str] = None):
         address: ray cluster address, e.g. "auto", "localhost:6379"
 
     Raises:
-        click.UsageError if node ip could not be resolved
+        click.UsageError: if node ip could not be resolved
     """
     try:
         address = services.canonicalize_bootstrap_address_or_die(address)
@@ -1105,7 +1105,7 @@ def log_actor(
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-        MissingParameter if inputs are missing.
+        MissingParameter: if inputs are missing.
     """  # noqa: E501
 
     if pid is None and id is None:
@@ -1178,7 +1178,7 @@ def log_worker(
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-        MissingParameter if inputs are missing.
+        MissingParameter: if inputs are missing.
     """  # noqa: E501
 
     _print_log(
@@ -1241,7 +1241,7 @@ def log_job(
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-        MissingParameter if inputs are missing.
+        MissingParameter: if inputs are missing.
     """  # noqa: E501
 
     _print_log(
@@ -1312,7 +1312,7 @@ def log_task(
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-        MissingParameter if inputs are missing.
+        MissingParameter: if inputs are missing.
     """  # noqa: E501
 
     _print_log(

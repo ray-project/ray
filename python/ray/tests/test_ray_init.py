@@ -1,15 +1,14 @@
+import json
 import os
 import sys
 import unittest.mock
 import signal
 import subprocess
+import tempfile
+from pathlib import Path
 
 import grpc
 import pytest
-import tempfile
-import json
-
-from pathlib import Path
 
 import ray
 import ray._private.services
@@ -19,7 +18,7 @@ from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import wait_for_condition, enable_external_redis
+from ray._private.test_utils import wait_for_condition, external_redis_test_enabled
 from ray._private import ray_constants
 from ray.runtime_env.runtime_env import RuntimeEnv
 
@@ -247,7 +246,7 @@ def test_new_ray_instance_new_session_dir(shutdown_only):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     ray.shutdown()
     ray.init()
-    if enable_external_redis():
+    if external_redis_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -262,7 +261,7 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
     cluster.add_node()
     ray.init(address=cluster.address)
-    if enable_external_redis():
+    if external_redis_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -361,8 +360,10 @@ def runtime_env_working_dir():
 
 @pytest.fixture
 def py_module_whl():
-    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
-        yield tmp_file.name
+    f = tempfile.NamedTemporaryFile(suffix=".whl", delete=False)
+    f.close()
+    yield f.name
+    os.unlink(f.name)
 
 
 def test_ray_init_with_runtime_env_as_dict(
@@ -396,11 +397,4 @@ def test_ray_init_with_runtime_env_as_object(
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
