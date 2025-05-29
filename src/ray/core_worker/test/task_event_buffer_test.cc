@@ -31,6 +31,7 @@
 #include "absl/types/optional.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/event_aggregator_exporter.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
