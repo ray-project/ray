@@ -4443,7 +4443,7 @@
   python: "3.12"
   group: ray-examples
   team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e_multimodal_ai_workloads  # use // to access from repo's root
+  working_dir: //doc/source/ray-overview/examples/e2e-multimodal-ai-workloads  # use // to access from repo's root
 
   cluster:
     byod:
