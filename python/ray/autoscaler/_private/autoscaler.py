@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 import yaml
 
 import ray
-import ray._private.ray_constants as ray_constants
+import python.ray._common.utils as ray_constants
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,

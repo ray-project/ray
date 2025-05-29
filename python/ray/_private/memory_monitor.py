@@ -5,6 +5,7 @@ import sys
 import time
 
 # Import ray before psutil will make sure we use psutil's bundled version
+from python.ray._common.utils import get_system_memory
 import ray  # noqa F401
 
 import psutil  # noqa E402
@@ -138,7 +139,7 @@ class MemoryMonitor:
         )
 
     def get_memory_usage(self):
-        from ray._private.utils import get_system_memory, get_used_memory
+        from ray._private.utils import get_used_memory
 
         total_gb = get_system_memory() / (1024**3)
         used_gb = get_used_memory() / (1024**3)

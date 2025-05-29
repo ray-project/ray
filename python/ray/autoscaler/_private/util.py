@@ -12,7 +12,7 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-import ray._private.ray_constants as ray_constants
+import python.ray._common.utils as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
