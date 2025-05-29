@@ -6,7 +6,7 @@ from ray._common.utils import get_or_create_event_loop
 import asyncio
 import time
 
-from test_pow_2_replica_scheduler import (
+from ray.serve.tests.unit.test_pow_2_replica_scheduler import (
     FakeRunningReplica,
 )  # Reuse the FakeRunningReplica from the Pow2 test
 

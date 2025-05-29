@@ -2,7 +2,7 @@ applications:
 - args:
     llm_configs:
         - model_loading_config:
-            model_id: Qwen/Qwen2.5-0.5B-Instruct
+            model_id: qwen-0.5b
             model_source: Qwen/Qwen2.5-0.5B-Instruct
           accelerator_type: L4
           engine_kwargs:
