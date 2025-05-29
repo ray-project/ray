@@ -2,18 +2,18 @@ import asyncio
 import functools
 import logging
 import os
-from datetime import datetime
-from pathlib import Path
 import shutil
 import socket
 import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Optional, Tuple
-
-import psutil
 
 from ray.dashboard.modules.reporter.profile_manager import (
     _format_failed_profiler_command,
 )
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
