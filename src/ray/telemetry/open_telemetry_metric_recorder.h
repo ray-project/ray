@@ -62,7 +62,7 @@ class OpenTelemetryMetricRecorder {
   bool IsMetricRegistered(const std::string &name);
 
   // Set the value of a metric given the tags and the metric value.
-  bool SetMetricValue(const std::string &name,
+  void SetMetricValue(const std::string &name,
                       absl::flat_hash_map<std::string, std::string> &&tags,
                       double value);
 
@@ -111,6 +111,18 @@ class OpenTelemetryMetricRecorder {
   // Flag to indicate if the recorder is shutting down. This is used to make sure that
   // the recorder will only shutdown once.
   std::atomic<bool> is_shutdown_{false};
+
+  void SetObservableMetricValue(const std::string &name,
+                                absl::flat_hash_map<std::string, std::string> &&tags,
+                                double value);
+
+  void SetSynchronousMetricValue(const std::string &name,
+                                 absl::flat_hash_map<std::string, std::string> &&tags,
+                                 double value);
+
+  bool IsObservableMetric(const std::string &name) const {
+    return observations_by_name_.contains(name);
+  }
 
   void SetObservableMetricValue(const std::string &name,
                                 absl::flat_hash_map<std::string, std::string> &&tags,
