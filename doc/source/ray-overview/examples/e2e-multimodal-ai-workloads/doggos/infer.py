@@ -21,9 +21,9 @@ class TorchPredictor:
         predicted_probabilities = self.model.predict_probabilities(collate_fn(batch))
         batch["probabilities"] = [
             {
-                self.preprocessor.label_to_class[i]: prob 
+                self.preprocessor.label_to_class[i]: prob
                 for i, prob in enumerate(probabilities)
-            } 
+            }
             for probabilities in predicted_probabilities
         ]
         return batch

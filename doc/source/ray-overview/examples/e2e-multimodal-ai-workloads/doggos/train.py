@@ -76,9 +76,9 @@ def train_loop_per_worker(config):
 
     # Model
     model = ClassificationModel(
-        embedding_dim=embedding_dim, 
-        hidden_dim=hidden_dim, 
-        dropout_p=dropout_p, 
+        embedding_dim=embedding_dim,
+        hidden_dim=hidden_dim,
+        dropout_p=dropout_p,
         num_classes=num_classes,
     )
     model = ray.train.torch.prepare_model(model)
@@ -104,8 +104,8 @@ def train_loop_per_worker(config):
         with tempfile.TemporaryDirectory() as dp:
             model.module.save(dp=dp)
             metrics = dict(
-                lr=optimizer.param_groups[0]["lr"], 
-                train_loss=train_loss, 
+                lr=optimizer.param_groups[0]["lr"],
+                train_loss=train_loss,
                 val_loss=val_loss,
             )
             with open(os.path.join(dp, "class_to_label.json"), "w") as fp:
