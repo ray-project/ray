@@ -500,17 +500,9 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   // No data to send.
   if (status_events_.empty() && dropped_task_attempts_unreported_.empty()) {
     return;
-  }
 
   // Get data loss info.
   size_t num_dropped_task_attempts_to_send = 0;
-  auto num_batch_size =
-      RayConfig::instance().task_events_dropped_task_attempt_batch_size();
-  // Iterate and erase task attempt dropped being tracked in buffer.
-  while ((num_batch_size < 0 ||
-          num_dropped_task_attempts_to_send < static_cast<size_t>(num_batch_size)) &&
-         !dropped_task_attempts_unreported_.empty()) {
-    // If there's more dropped task status events we are tracking, and we have not
     // reached the batch size limit, we take the first one.
     auto itr = dropped_task_attempts_unreported_.begin();
     dropped_task_attempts_to_send->insert(*itr);
