@@ -187,11 +187,11 @@ class AggregatorAgent(
                         f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=self._event_batch
                     )
                     response.raise_for_status()
-                    self._event_batch.clear()
                     with self._lock:
                         self._events_published_since_last_metrics_update += len(
                             self._event_batch
                         )
+                    self._event_batch.clear()
                 except Exception as e:
                     logger.error(
                         "Failed to send events to external service. Error: %s",
