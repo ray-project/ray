@@ -19,3 +19,7 @@ auth:
     ssh_private_key: ~/.ssh/id_rsa
     # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
+
+# Custom commands that will be run on worker nodes after common setup.
+head_setup_commands:
+  - pip install -U ray[azure]
