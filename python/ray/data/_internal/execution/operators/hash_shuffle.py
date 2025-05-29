@@ -1104,6 +1104,4 @@ class HashShuffleAggregator:
 
         # TODO break down blocks to target size
         yield result
-        yield BlockAccessor.for_block(result).get_metadata(
-            store_schema_in_local_registry=False
-        )
+        yield BlockAccessor.for_block(result).get_metadata()

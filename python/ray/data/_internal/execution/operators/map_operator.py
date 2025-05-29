@@ -54,7 +54,6 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockStats,
-    SchemaRegistry,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -316,7 +315,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-
             self._add_bundled_input(bundled_input)
 
     def _get_runtime_ray_remote_args(
@@ -553,9 +551,7 @@ def _map_task(
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
-            m_out = BlockAccessor.for_block(b_out).get_metadata(
-                store_schema_in_local_registry=False
-            )
+            m_out = BlockAccessor.for_block(b_out).get_metadata()
             m_out.exec_stats = stats.build()
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx

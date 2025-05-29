@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data.block import BlockMetadata, SchemaRegistry, Block
-from ray.types import ObjectRef
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
@@ -21,7 +19,9 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 

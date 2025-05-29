@@ -277,9 +277,7 @@ def _zip_one_block(
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
-    return result, br.get_metadata(
-        exec_stats=stats.build(), store_schema_in_local_registry=False
-    )
+    return result, br.get_metadata(exec_stats=stats.build())
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

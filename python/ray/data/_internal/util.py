@@ -721,8 +721,8 @@ def unify_block_metadata_schema(
     # valid schemas from all such blocks.
     schemas_to_unify = []
     for m in metadata:
-        if m.get_schema() is not None and (m.num_rows is None or m.num_rows > 0):
-            schemas_to_unify.append(m.get_schema())
+        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            schemas_to_unify.append(m.schema)
     if schemas_to_unify:
         # Check valid pyarrow installation before attempting schema unification
         try:

@@ -2,6 +2,7 @@ import collections
 import logging
 import threading
 import time
+import weakref
 from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
@@ -18,10 +19,8 @@ from typing import (
     Union,
 )
 
-import weakref
 import numpy as np
-import uuid
-from typing import Generic, TypeVar
+
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
@@ -202,45 +201,49 @@ class BlockStats:
 _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
-class SchemaRef:
-    def __init__(self):
-        self._id = uuid.uuid4()
-
-    def __hash__(self):
-        return self._id.__hash__()
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}({self._id})"
-
-
 class SchemaRegistry:
-    """Maintain a record of current schemas"""
+    """
+    Collision-safe, weak-ref based deduplication cache.
 
-    ref_to_schema = weakref.WeakKeyDictionary()
-    schema_to_ref = weakref.WeakKeyDictionary()
+    • Objects must implement __hash__ + __eq__.
+    • Treat them as immutable *after* they are cached.
+    """
+
+    # hash(obj) -> list[weakref.ref(obj)]
+    cache: dict[int, list[weakref.ref]] = collections.defaultdict(list)
     lock = threading.Lock()
 
     @classmethod
-    def add_schema(
-        cls, schema: Optional[Union[type, "pyarrow.lib.Schema"]]
-    ) -> SchemaRef:
-        """Add schema to registry. Don't create a new one if already exists. Returns a ref"""
-        # FIXME pyarrow version 17+ hashable is supported
+    def dedup(cls, obj):
+        """Get a deduplicated version of obj (or insert it if new)."""
+        if obj is None:
+            return obj
+        h = hash(obj)
+
         with cls.lock:
-            if schema not in cls.schema_to_ref:
-                ref = SchemaRef()
-                cls.schema_to_ref[schema] = ref
-                cls.ref_to_schema[ref] = schema
-            ref = cls.schema_to_ref[schema]
-            return ref
+            entries = cls.cache.get(h, [])
+            # Check for equality matches
+            for ref in entries:
+                cached_obj = ref()
+                if cached_obj is not None and cached_obj == obj:
+                    return cached_obj
+
+            # Not found: store new weak reference
+            ref = weakref.ref(obj, cls._remove_callback(h))
+            entries.append(ref)
+            cls.cache[h] = entries
+            return obj
 
     @classmethod
-    def get_schema(cls, ref: SchemaRef) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
-        """Retrive schema using ref"""
-        with cls.lock:
-            if ref in cls.ref_to_schema:
-                return cls.ref_to_schema[ref]
-            return None
+    def _remove_callback(cls, h):
+        def remove(ref):
+            with cls.lock:
+                if h in cls.cache:
+                    cls.cache[h] = [r for r in cls.cache[h] if r is not ref]
+                    if not cls.cache[h]:
+                        del cls.cache[h]
+
+        return remove
 
 
 @DeveloperAPI
@@ -254,15 +257,6 @@ class BlockMetadata(BlockStats):
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
 
-    #: Whether to store schema in local registry. NOTE: Set this
-    #: to false if you change the underlying block's schema, that
-    #: way, when it's returned to the driver, we can update the
-    #: registry with a the new schema.
-    store_schema_in_local_registry: bool = True
-
-    #: Reference to the schema
-    _schema_ref: Optional[SchemaRef] = None
-
     def to_stats(self):
         return BlockStats(
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
@@ -274,26 +268,7 @@ class BlockMetadata(BlockStats):
         if self.input_files is None:
             self.input_files = []
 
-        if self.schema is not None and self.store_schema_in_local_registry:
-            self._schema_ref = SchemaRegistry.add_schema(self.schema)
-            self.clear_schema()
-
-    def __setstate__(self, state):
-        """Deserialize"""
-        # print("deserializing ....")
-        self.__dict__.update(state)
-        if self.schema is not None and not self.store_schema_in_local_registry:
-            # When deserializing, we automatically add a new schema. The old references
-            # will refer to the old block
-            SchemaRegistry.add_schema(self.schema)
-
-    def clear_schema(self):
-        self.schema = None
-
-    def get_schema(self):
-        if self.schema is not None:
-            return self.schema
-        return SchemaRegistry.get_schema(self._schema_ref)
+        self.schema = SchemaRegistry.dedup(self.schema)
 
 
 @DeveloperAPI
@@ -417,7 +392,6 @@ class BlockAccessor:
         self,
         input_files: Optional[List[str]] = None,
         exec_stats: Optional[BlockExecStats] = None,
-        store_schema_in_local_registry: bool = True,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
@@ -426,7 +400,6 @@ class BlockAccessor:
             schema=self.schema(),
             input_files=input_files,
             exec_stats=exec_stats,
-            store_schema_in_local_registry=store_schema_in_local_registry,
         )
 
     def zip(self, other: "Block") -> "Block":

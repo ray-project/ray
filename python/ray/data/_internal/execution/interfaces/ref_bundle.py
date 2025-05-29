@@ -1,6 +1,8 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+
+import pyarrow
 
 import ray
 from .common import NodeIdStr
@@ -58,6 +60,51 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+
+    def __getstate__(self) -> Dict[str, Any]:
+        unique_schemas_to_ids = {}
+        last_id = 0
+        for meta in self.metadata:
+            if meta.schema is not None and meta.schema not in unique_schemas_to_ids:
+                unique_schemas_to_ids[meta.schema] = last_id
+                last_id += 1
+        schema_ids = []
+        for meta in self.metadata:
+            if meta.schema is not None:
+                schema_ids.append(unique_schemas_to_ids[meta.schema])
+                meta.schema = None
+            else:
+                # issues serializing None, so using -1
+                schema_ids.append(-1)
+
+        state = self.__dict__.copy()
+        additional_meta = {
+            "unique_schemas_to_ids": unique_schemas_to_ids,
+            "schema_ids": schema_ids,
+        }
+        state.update(additional_meta)
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]):
+        assert "unique_schemas_to_ids" in state
+        unique_schemas_to_ids: Dict[
+            Optional[Union[type, "pyarrow.lib.Schema"]], int
+        ] = state.pop("unique_schemas_to_ids")
+
+        assert "schema_ids" in state
+        schema_ids = state.pop("schema_ids")
+
+        self.__dict__.update(state)
+        assert len(schema_ids) == len(self.metadata)
+
+        ids_to_unique_schema: List[Any] = [None] * len(unique_schemas_to_ids)
+        for k, v in unique_schemas_to_ids.items():
+            if v >= 0:
+                ids_to_unique_schema[v] = k
+
+        for schema_id, meta in zip(schema_ids, self.metadata):
+            if schema_id >= 0:
+                meta.schema = ids_to_unique_schema[schema_id]
 
     def __setattr__(self, key, value):
         if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
