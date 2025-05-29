@@ -20,8 +20,12 @@ class EmbeddingGenerator(object):
 
     def __call__(self, batch, device="cpu"):
         # Load and preprocess images
-        images = [Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]]
-        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(device)
+        images = [
+            Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]
+        ]
+        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(
+            device
+        )
 
         # Generate embeddings
         self.model.to(device)
@@ -39,7 +43,9 @@ def get_top_matches(query_embedding, embeddings_ds, class_filters=[], n=4):
     # Compute cosine similarities in batches
     def compute_similarities(batch):
         embeddings = np.stack(batch["embedding"])
-        similarities = 1 - cdist([query_embedding], embeddings, metric="cosine").flatten()
+        similarities = (
+            1 - cdist([query_embedding], embeddings, metric="cosine").flatten()
+        )
         return {
             "class": batch["class"],
             "path": batch["path"],

@@ -19,8 +19,8 @@ def convert_notebook(input_path: str, output_path: str) -> None:
             lines = cell.source.splitlines()
             # Skip cells that load or autoreload extensions
             if any(
-                l.strip().startswith("%load_ext autoreload") or
-                l.strip().startswith("%autoreload all")
+                l.strip().startswith("%load_ext autoreload")
+                or l.strip().startswith("%autoreload all")
                 for l in lines
             ):
                 continue

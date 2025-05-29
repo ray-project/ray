@@ -63,12 +63,16 @@ class ClassPredictor:
 )
 class EmbeddingSimilarity:
     def __init__(self, embeddings_path):
-        self.embedding_generator = EmbeddingGenerator(model_id="openai/clip-vit-base-patch32")
+        self.embedding_generator = EmbeddingGenerator(
+            model_id="openai/clip-vit-base-patch32"
+        )
         self.embeddings_ds = ray.data.read_parquet(embeddings_path)  # use vector DB
 
     def get_top_matches(self, url, probabilities, k):
         # Top k class predictions
-        sorted_probabilities = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+        sorted_probabilities = sorted(
+            probabilities.items(), key=lambda x: x[1], reverse=True
+        )
         top_k = [item[0] for item in sorted_probabilities[0:k]]
 
         # Generate embedding
