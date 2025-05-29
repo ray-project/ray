@@ -44,7 +44,9 @@ def one_cpu_100MiB_shared():
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5, timeout_s=10):
+def _fill_object_store_and_get(
+    obj, succeed=True, object_MiB=20, num_objects=5, timeout_s=10
+):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
@@ -58,7 +60,9 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5, 
         )
     else:
         wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj),
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
+                obj
+            ),
             timeout=timeout_s,
         )
 
