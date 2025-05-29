@@ -194,7 +194,7 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         worker_group_status: WorkerGroupPollStatus,
-    ) -> TrainControllerState:
+    ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
 

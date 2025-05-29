@@ -484,6 +484,7 @@ py_test_module_list(
         "test_unhandled_error.py",
         "test_wait.py",
         "test_widgets.py",
+        "test_worker_graceful_shutdown.py",
     ],
     tags = [
         "exclusive",
