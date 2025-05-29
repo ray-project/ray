@@ -10,7 +10,17 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
 from functools import lru_cache, partial
-from typing import Any, Coroutine, DefaultDict, Dict, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Coroutine,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -28,12 +38,14 @@ from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
+from ray.serve._private.request_router import PendingRequest, RequestRouter
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.utils import (
     generate_request_id,
     resolve_deployment_response,
@@ -341,6 +353,11 @@ class Router(ABC):
         pass
 
 
+async def create_event() -> asyncio.Event:
+    """Helper to create an asyncio event in the current event loop."""
+    return asyncio.Event()
+
+
 class AsyncioRouter:
     def __init__(
         self,
@@ -350,25 +367,47 @@ class AsyncioRouter:
         self_actor_id: str,
         handle_source: DeploymentHandleSource,
         event_loop: asyncio.BaseEventLoop,
-        replica_scheduler: Optional[ReplicaScheduler],
         enable_strict_max_ongoing_requests: bool,
+        node_id: str,
+        availability_zone: Optional[str],
+        prefer_local_node_routing: bool,
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
+        request_router_class: Optional[Callable] = None,
+        request_router: Optional[RequestRouter] = None,
+        _request_router_initialized_event: Optional[asyncio.Event] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
-        The scheduling behavior is delegated to a ReplicaScheduler; this is a thin
+        The routing behavior is delegated to a RequestRouter; this is a thin
         wrapper that adds metrics and logging.
         """
-
-        self._event_loop = event_loop
+        self._controller_handle = controller_handle
         self.deployment_id = deployment_id
+        self._self_actor_id = self_actor_id
+        self._handle_source = handle_source
+        self._event_loop = event_loop
+        self._request_router_class = request_router_class
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
+        self._node_id = node_id
+        self._availability_zone = availability_zone
+        self._prefer_local_node_routing = prefer_local_node_routing
         # By default, deployment is available unless we receive news
         # otherwise through a long poll broadcast from the controller.
         self._deployment_available = True
 
-        self._replica_scheduler: ReplicaScheduler = replica_scheduler
+        # The request router will be lazy loaded to decouple form the initialization.
+        self._request_router: Optional[RequestRouter] = request_router
+
+        if _request_router_initialized_event:
+            self._request_router_initialized = _request_router_initialized_event
+        else:
+            future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)
+            self._request_router_initialized = future.result()
+
+        if self._request_router:
+            self._request_router_initialized.set()
         self._resolve_request_arg_func = resolve_request_arg_func
+        self._running_replicas: Optional[List[RunningReplicaInfo]] = None
 
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
@@ -434,6 +473,41 @@ class AsyncioRouter:
         )
         shared.register(self)
 
+    @property
+    def request_router(self) -> Optional[RequestRouter]:
+        """Get and lazy loading request router.
+
+        If the request_router_class not provided, and the request router is not
+        yet initialized, then it will return None. Otherwise, if request router
+        is not yet initialized, it will be initialized and returned. Also,
+        setting `self._request_router_initialized` to signal that the request
+        router is initialized.
+        """
+        if not self._request_router and self._request_router_class:
+            request_router = self._request_router_class(
+                deployment_id=self.deployment_id,
+                handle_source=self._handle_source,
+                self_node_id=self._node_id,
+                self_actor_id=self._self_actor_id,
+                self_actor_handle=ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
+                # Streaming ObjectRefGenerators are not supported in Ray Client
+                use_replica_queue_len_cache=self._enable_strict_max_ongoing_requests,
+                create_replica_wrapper_func=lambda r: RunningReplica(r),
+                prefer_local_node_routing=self._prefer_local_node_routing,
+                prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+                self_availability_zone=self._availability_zone,
+            )
+
+            # Populate the running replicas if they are already available.
+            if self._running_replicas is not None:
+                request_router.update_running_replicas(self._running_replicas)
+
+            self._request_router = request_router
+            self._request_router_initialized.set()
+        return self._request_router
+
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated
 
@@ -441,16 +515,23 @@ class AsyncioRouter:
         self._deployment_available = deployment_target_info.is_available
 
         running_replicas = deployment_target_info.running_replicas
-        self._replica_scheduler.update_running_replicas(running_replicas)
+        if self.request_router:
+            self.request_router.update_running_replicas(running_replicas)
+        else:
+            # In this case, the request router hasn't been initialized yet.
+            # Store the running replicas so that we can update the request
+            # router once it is initialized.
+            self._running_replicas = running_replicas
         self._metrics_manager.update_running_replicas(running_replicas)
 
         if running_replicas:
             self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
+        self._request_router_class = deployment_config.get_request_router_class()
         self._metrics_manager.update_deployment_config(
             deployment_config,
-            curr_num_replicas=len(self._replica_scheduler.curr_replicas),
+            curr_num_replicas=len(self.request_router.curr_replicas),
         )
 
     async def _resolve_request_arguments(
@@ -504,8 +585,9 @@ class AsyncioRouter:
         if isinstance(result, ActorDiedError):
             # Replica has died but controller hasn't notified the router yet.
             # Don't consider this replica for requests in the future, and retry
-            # scheduling request.
-            self._replica_scheduler.on_replica_actor_died(replica_id)
+            # routing request.
+            if self.request_router:
+                self.request_router.on_replica_actor_died(replica_id)
             logger.warning(
                 f"{replica_id} will not be considered for future "
                 "requests because it has died."
@@ -515,13 +597,14 @@ class AsyncioRouter:
             # ActorUnavailableError will be raised until GCS recovers. For the
             # time being, invalidate the cache entry so that we don't try to
             # send requests to this replica without actively probing, and retry
-            # scheduling request.
-            self._replica_scheduler.on_replica_actor_unavailable(replica_id)
+            # routing request.
+            if self.request_router:
+                self.request_router.on_replica_actor_unavailable(replica_id)
             logger.warning(
                 f"Request failed because {replica_id} is temporarily unavailable."
             )
 
-    async def schedule_and_send_request(
+    async def route_and_send_request(
         self, pr: PendingRequest
     ) -> Tuple[ReplicaResult, ReplicaID]:
         """Choose a replica for the request and send it.
@@ -529,7 +612,10 @@ class AsyncioRouter:
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
-        r = await self._replica_scheduler.choose_replica_for_request(pr)
+        # Wait for the router to be initialized before sending the request.
+        await self._request_router_initialized.wait()
+
+        r = await self.request_router.choose_replica_for_request(pr)
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
@@ -542,7 +628,7 @@ class AsyncioRouter:
             result = None
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
-                self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
+                self.request_router.on_new_queue_len_info(r.replica_id, queue_info)
                 if queue_info.accepted:
                     return result, r.replica_id
             except asyncio.CancelledError:
@@ -556,8 +642,8 @@ class AsyncioRouter:
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
                 # Don't consider this replica for requests in the future, and retry
-                # scheduling request.
-                self._replica_scheduler.on_replica_actor_died(r.replica_id)
+                # routing request.
+                self.request_router.on_replica_actor_died(r.replica_id)
                 logger.warning(
                     f"{r.replica_id} will not be considered for future "
                     "requests because it has died."
@@ -567,17 +653,15 @@ class AsyncioRouter:
                 # ActorUnavailableError will be raised until GCS recovers. For the
                 # time being, invalidate the cache entry so that we don't try to
                 # send requests to this replica without actively probing, and retry
-                # scheduling request.
-                self._replica_scheduler.on_replica_actor_unavailable(r.replica_id)
+                # routing request.
+                self.request_router.on_replica_actor_unavailable(r.replica_id)
                 logger.warning(f"{r.replica_id} is temporarily unavailable.")
 
-            # If the replica rejects the request, retry the scheduling process. The
+            # If the replica rejects the request, retry the routing process. The
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            r = await self._replica_scheduler.choose_replica_for_request(
-                pr, is_retry=True
-            )
+            r = await self.request_router.choose_replica_for_request(pr, is_retry=True)
 
     async def assign_request(
         self,
@@ -601,11 +685,14 @@ class AsyncioRouter:
             )
         )
 
+        # Wait for the router to be initialized before sending the request.
+        await self._request_router_initialized.wait()
+
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
             # push handle metric to controller to allow for fast cold start time.
             if self._metrics_manager.should_send_scaled_to_zero_optimized_push(
-                curr_num_replicas=len(self._replica_scheduler.curr_replicas)
+                curr_num_replicas=len(self.request_router.curr_replicas)
             ):
                 self._metrics_manager.push_autoscaling_metrics_to_controller()
 
@@ -614,7 +701,7 @@ class AsyncioRouter:
                 request_args, request_kwargs = await self._resolve_request_arguments(
                     request_meta, request_args, request_kwargs
                 )
-                replica_result, replica_id = await self.schedule_and_send_request(
+                replica_result, replica_id = await self.route_and_send_request(
                     PendingRequest(
                         args=list(request_args),
                         kwargs=request_kwargs,
@@ -699,7 +786,7 @@ class SingletonThreadRouter(Router):
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
-        """Schedules assign_request call on the internal asyncio loop.
+        """Routes assign_request call on the internal asyncio loop.
 
         This method uses `run_coroutine_threadsafe` to execute the actual request
         assignment logic (`_asyncio_router.assign_request`) on the dedicated
@@ -740,7 +827,7 @@ class SingletonThreadRouter(Router):
                 request_meta, *request_args, **request_kwargs
             )
         )
-        # Schedule the actual request assignment coroutine on the asyncio loop thread.
+        # Route the actual request assignment coroutine on the asyncio loop thread.
         concurrent_future = run_coroutine_or_future_threadsafe(
             task,
             loop=self._asyncio_loop,

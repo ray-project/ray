@@ -555,6 +555,9 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   cli->KillActor(request, [actor_id](auto &status, auto &&) {
     RAY_LOG(DEBUG) << "Killing actor " << actor_id
                    << " with return status: " << status.ToString();
+    if (!status.ok() && !status.IsInvalid()) {
+      RAY_LOG(ERROR) << "Failed to kill actor " << actor_id << ", status: " << status;
+    }
   });
   return true;
 }

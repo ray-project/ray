@@ -142,10 +142,11 @@ class ActorInfoAccessor {
                                     const StatusCallback &callback,
                                     int64_t timeout_ms = -1);
 
-  virtual Status AsyncRestartActor(const ActorID &actor_id,
-                                   uint64_t num_restarts,
-                                   const StatusCallback &callback,
-                                   int64_t timeout_ms = -1);
+  virtual Status AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      const StatusCallback &callback,
+      int64_t timeout_ms = -1);
 
   /// Register actor to GCS synchronously.
   ///
