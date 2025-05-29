@@ -1221,7 +1221,10 @@ def parse_arguments():
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument(
-        "--dataset-link", type=str, default="", help="Link to the dataset (will be downloaded every time)."
+        "--dataset-link",
+        type=str,
+        default="",
+        help="Link to the dataset (will be downloaded every time).",
     )
     parser.add_argument(
         "--model",

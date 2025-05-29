@@ -105,7 +105,7 @@
     - Also, I redirect the stdout to `logs/{strategy}_stdout.log` and `logs/{strategy}_stderr.log`, so if you have logging statements in your code, you can look for them there. These can be large files, so delete them when pushing to Git.
     - By default, `benchmark.py` doesn't write the results anywhere. I modify it to take in `output-file` as a parameter, and write the results there. Then, `sweep_strategies.py` will generate an `output-file` path, call `benchmark.py` with it, read the written results, and compile them in a single CSV line to `serve_sharegpt_sweep_results.csv`.
     - For example, here's the output of a single benchmark run:
-        
+
         | Field                         | Value                             |
         |------------------------------|-----------------------------------|
         | **The first half are just the benchmark parameters:**
