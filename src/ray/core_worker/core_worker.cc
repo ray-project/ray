@@ -335,6 +335,7 @@ CoreWorker::CoreWorker(
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
