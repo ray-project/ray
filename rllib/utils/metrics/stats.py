@@ -522,7 +522,7 @@ class Stats:
                 # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
                 # TODO (sven) : explain why all this
 
-                if self._reduce_per_index_on_parallel_merge:
+                if self.reduce_per_index_on_aggregate:
                     n_values = 1
                 else:
                     n_values = len(tmp_values)
