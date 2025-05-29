@@ -2875,10 +2875,7 @@ def get(
 
 @PublicAPI
 @client_mode_hook
-def put(
-    value: Any,
-    *,
-) -> "ray.ObjectRef":
+def put(value: Any) -> "ray.ObjectRef":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
