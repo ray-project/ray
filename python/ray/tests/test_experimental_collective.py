@@ -1,4 +1,5 @@
 import pytest
+import sys
 import torch
 
 import ray
@@ -86,7 +87,7 @@ def test_api_exceptions(ray_start_regular_shared):
             actors + [actors[0]], "torch_gloo"
         )
 
-    group = ray.experimental.collective.create_collective_group(
+    ray.experimental.collective.create_collective_group(
         actors, backend="torch_gloo"
     )
 

@@ -1,14 +1,11 @@
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, List
 from dataclasses import dataclass
 
 import ray
-from ray.experimental.util.types import ReduceOp
-from ray.util.annotations import DeveloperAPI
 from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
-    import torch
+    pass
 
 
 @dataclass
