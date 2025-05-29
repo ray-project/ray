@@ -24,9 +24,11 @@ worker_node_types:
       resources:
         limits:
           cpu: "16"
+          gpu: "1"
           memory: "64Gi"
         requests:
           cpu: "16"
+          gpu: "1"
           memory: "64Gi"
       min_workers: 0
       max_workers: 2

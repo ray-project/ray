@@ -941,6 +941,8 @@
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
+      run:
+        timeout: 3600
 
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
