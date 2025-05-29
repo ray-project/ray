@@ -192,7 +192,14 @@ def test_validate_node_label_syntax(labels_dict, expected_error, expected_messag
         ("ray!.io/accelerator-type", "Invalid label key prefix"),
         ("a" * 64, "Invalid label key name"),
     ],
-    ids=["valid1", "valid2", "invalid-prefix", "invalid-suffix", "invalid-noteq", "too-long"],
+    ids=[
+        "valid1",
+        "valid2",
+        "invalid-prefix",
+        "invalid-suffix",
+        "invalid-noteq",
+        "too-long",
+    ],
 )
 def test_validate_label_key(key, expected_error):
     error_msg = validate_label_key(key)
@@ -239,7 +246,20 @@ def test_validate_label_value(value, should_raise, expected_message):
         ("!!!in(H100, TPU)", "Invalid label selector value"),
         ("a" * 64, "Invalid label selector value"),
     ],
-    ids=["spot", "no-gpu", "in", "not-in", "valid", "invalid-prefix", "invalid-suffix", "invalid-in", "unfinished-in", "invalid-noteq", "triple-noteq", "too-long"],
+    ids=[
+        "spot",
+        "no-gpu",
+        "in",
+        "not-in",
+        "valid",
+        "invalid-prefix",
+        "invalid-suffix",
+        "invalid-in",
+        "unfinished-in",
+        "invalid-noteq",
+        "triple-noteq",
+        "too-long",
+    ],
 )
 def test_validate_label_selector_value(selector, expected_error):
     error_msg = validate_label_selector_value(selector)
