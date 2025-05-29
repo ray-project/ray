@@ -355,7 +355,9 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
-In KubeRay v1.4.0, [install.sh](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) automatically imports the Ray dashboard JSON files from [config/grafana](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana.
+In KubeRay v1.4.0, [install.sh](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) provides a flag to automatically imports the Ray dashboard JSON files from [config/grafana](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana.
+
+You can automatically load Ray dashboard JSON with command `install.sh --auto-load-dashboard true`.
 
 If you want to use JSON files from a different Ray version, you can manually import them using the following instructions.
 
