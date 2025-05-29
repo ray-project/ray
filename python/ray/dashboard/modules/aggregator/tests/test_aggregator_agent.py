@@ -93,7 +93,7 @@ def test_aggregator_agent_receive_publish_events_normally(
 
     reply = stub.AddEvents(request)
     assert reply.status.status_code == 0
-    assert reply.status.status_message == "received"
+    assert reply.status.status_message == "all events received"
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
@@ -154,11 +154,11 @@ def test_aggregator_agent_receive_event_full(
 
     reply = stub.AddEvents(request)
     assert reply.status.status_code == 0
-    assert reply.status.status_message == "received"
+    assert reply.status.status_message == "all events received"
 
     reply = stub.AddEvents(request)
     assert reply.status.status_code == 5
-    assert reply.status.status_message == "event buffer full, drop event"
+    assert reply.status.status_message == "event 1 dropped because event buffer full"
 
 
 def test_aggregator_agent_receive_dropped_at_core_worker(
@@ -204,7 +204,7 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
 
     reply = stub.AddEvents(request)
     assert reply.status.status_code == 0
-    assert reply.status.status_message == "received"
+    assert reply.status.status_message == "all events received"
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
@@ -249,13 +249,73 @@ def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpse
     )
     reply = stub.AddEvents(request)
     assert reply.status.status_code == 0
-    assert reply.status.status_message == "received"
+    assert reply.status.status_message == "all events received"
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
     assert len(req_json) == 2
     assert req_json[0]["message"] == "event1"
     assert req_json[1]["message"] == "event2"
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_receive_multiple_events_failures(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = _get_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    now = time.time_ns()
+    seconds, nanos = divmod(now, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="event1",
+                ),
+                RayEvent(
+                    event_id=b"2",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="event2",
+                ),
+                RayEvent(
+                    event_id=b"3",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="event3",
+                ),
+            ],
+        )
+    )
+    reply = stub.AddEvents(request)
+    assert reply.status.status_code == 5
+    assert (
+        reply.status.status_message
+        == "event 2 dropped because event buffer full, event 3 dropped because event buffer full"
+    )
 
 
 def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserver):
@@ -274,7 +334,7 @@ def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserve
     )
     reply = stub.AddEvents(request)
     assert reply.status.status_code == 0
-    assert reply.status.status_message == "received"
+    assert reply.status.status_message == "all events received"
 
 
 if __name__ == "__main__":

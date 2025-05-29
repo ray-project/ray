@@ -129,6 +129,9 @@ class AggregatorAgent(
             self._events_dropped_at_core_worker_since_last_metrics_update += len(
                 events_data.task_events_metadata.dropped_task_attempts
             )
+        # The status code is defined in `src/ray/common/status.h`
+        status_code = 0
+        status_messages = []
         for event in events_data.events:
             try:
                 self._event_buffer.put(event, block=False)
@@ -137,13 +140,11 @@ class AggregatorAgent(
             except queue.Full:
                 with self._lock:
                     self._events_dropped_at_event_buffer_since_last_metrics_update += 1
-                # The status code is defined in `src/ray/common/status.h`
-                status_code_io_error = 5
-                status = events_event_aggregator_service_pb2.AddEventStatus(
-                    status_code=status_code_io_error,
-                    status_message="event buffer full, drop event",
+                if status_code == 0:
+                    status_code = 5
+                status_messages.append(
+                    f"event {event.event_id.decode()} dropped because event buffer full"
                 )
-                return events_event_aggregator_service_pb2.AddEventReply(status=status)
             except Exception as e:
                 logger.error(
                     "Failed to add event to buffer. Error: %s",
@@ -151,18 +152,16 @@ class AggregatorAgent(
                 )
                 with self._lock:
                     self._events_dropped_at_event_buffer_since_last_metrics_update += 1
-                # The status code is defined in `src/ray/common/status.h`
-                status_code_unknown_error = 9
-                status = events_event_aggregator_service_pb2.AddEventStatus(
-                    status_code=status_code_unknown_error,
-                    status_message=f"failed to add event to buffer, error: {e}",
+                status_code = 9
+                status_messages.append(
+                    f"event {event.event_id.decode()} failed to add to buffer with error {e}"
                 )
-                return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
-        # The status code is defined in `src/ray/common/status.h`
-        status_code_ok = 0
+        status_message = (
+            ", ".join(status_messages) if status_messages else "all events received"
+        )
         status = events_event_aggregator_service_pb2.AddEventStatus(
-            status_code=status_code_ok, status_message="received"
+            status_code=status_code, status_message=status_message
         )
         return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
