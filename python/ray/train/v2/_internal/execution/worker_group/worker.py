@@ -1,16 +1,21 @@
+import logging
 import os
 import queue
 import socket
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
-from ray.types import ObjectRef
+import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
+from ray.train.v2._internal.constants import (
+    DEFAULT_ENABLE_WORKER_LOGGING,
+    ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
+)
 from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
@@ -28,8 +33,12 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
 from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
+from ray.train.v2._internal.util import ObjectRefWrapper
+from ray.types import ObjectRef
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,7 @@ class Worker:
     metadata: ActorMetadata
     resources: Dict[str, float]
     distributed_context: Optional[DistributedContext] = None
+    log_file_path: Optional[str] = None
 
     @cached_property
     def _repr(self) -> str:
@@ -83,6 +93,7 @@ class Worker:
             f"{indent}actor={repr(self.actor)},",
             f"{indent}metadata={metadata_repr},",
             f"{indent}distributed_context={context_repr},",
+            f"{indent}log_file_path={repr(self.log_file_path)},",
             ")",
         ]
         return "\n".join(repr_lines)
@@ -109,12 +120,18 @@ class RayTrainWorker:
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> T:
         return fn(*fn_args, **fn_kwargs)
 
-    def run_train_fn(self, train_fn: Callable[[], Any]):
+    def run_train_fn(self, train_fn_ref: ObjectRefWrapper[Callable[[], None]]):
         """Run the training function in a separate thread.
 
         This function should return immediately, freeing up the main actor thread
         to perform other tasks such as polling the status.
         """
+        try:
+            train_fn = train_fn_ref.get()
+        except Exception as e:
+            logger.error(f"Error deserializing the training function: {e}")
+            raise
+
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(train_fn)
 
@@ -194,7 +211,10 @@ class RayTrainWorker:
             checkpoint=checkpoint,
         )
         # Configure the train and root logger for the worker processes.
-        configure_worker_logger(context)
+        if ray_constants.env_bool(
+            ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR, DEFAULT_ENABLE_WORKER_LOGGING
+        ):
+            configure_worker_logger(context)
         patch_print_function()
         # Set the train context global variable for the worker.
         set_train_context(context)

@@ -19,10 +19,14 @@
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
+#include <deque>
+#include <list>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -156,14 +160,17 @@ class WorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  /// Get registerd worker process by id or nullptr if not found.
+  /// Checks if any registered worker is available for scheduling.
+  virtual bool IsWorkerAvailableForScheduling() const = 0;
+
+  /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const WorkerID &worker_id) const = 0;
 
-  /// Get registerd driver process by id or nullptr if not found.
+  /// Get registered driver process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const WorkerID &worker_id) const = 0;
 
@@ -251,6 +258,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
+  /// \param enable_resource_isolation If true, core worker enables resource isolation by
+  /// adding itself into appropriate cgroup.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID &node_id,
              std::string node_address,
@@ -265,10 +274,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             std::function<absl::Time()> get_time);
+             std::function<absl::Time()> get_time,
+             bool enable_resource_isolation);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool() override;
+  ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
   void Start();
@@ -436,7 +446,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
-  /// We aim to prestart 1 worker per CPU, up to the the backlog size.
+  /// We aim to prestart 1 worker per CPU, up to the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
   void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
@@ -455,8 +465,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
+
+  bool IsWorkerAvailableForScheduling() const override;
 
   /// Get all the registered drivers.
   ///
@@ -464,7 +476,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// that are still registered.
   ///
   /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
   /// Returns debug string for class.
@@ -555,7 +567,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  /// Gloabl startup token variable. Incremented once assigned
+  /// Global startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
   StartupToken worker_startup_token_counter_;
@@ -786,7 +798,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
 
-  // If this worker can serve the task.
+  /// Returns if the worker can be used to satisfy the request.
+  ///
+  /// \param[in] worker The worker.
+  /// \param[in] pop_worker_request The pop worker request.
+  /// \return WorkerUnfitForTaskReason::NONE if the worker can be used, else a
+  ///         status indicating why it cannot.
   WorkerUnfitForTaskReason WorkerFitsForTask(
       const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
 
@@ -853,6 +870,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  // If true, core worker enables resource isolation by adding itself into appropriate
+  // cgroup after it is created.
+  bool enable_resource_isolation_ = false;
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

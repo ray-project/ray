@@ -28,8 +28,12 @@ from pydantic import (
     model_validator,
 )
 
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudMirrorConfig,
+    is_remote_path,
+)
 from ray.llm._internal.utils import try_import
-
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -40,6 +44,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
@@ -49,7 +54,6 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
-from ray.llm._internal.serve.configs.base import BaseModelExtended
 
 transformers = try_import("transformers")
 
@@ -59,47 +63,6 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 logger = get_logger(__name__)
-
-
-class ExtraFiles(BaseModelExtended):
-    bucket_uri: str
-    destination_path: str
-
-
-class CloudMirrorConfig(BaseModelExtended):
-    """Unified mirror config for cloud storage (S3 or GCS).
-
-    Args:
-        bucket_uri: URI of the bucket (s3:// or gs://)
-        extra_files: Additional files to download
-    """
-
-    bucket_uri: Optional[str] = None
-    extra_files: List[ExtraFiles] = Field(default_factory=list)
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def check_uri_format(cls, value):
-        if value is None:
-            return value
-
-        if not (value.startswith("s3://") or value.startswith("gs://")):
-            raise ValueError(
-                f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
-            )
-        return value
-
-    @property
-    def storage_type(self) -> str:
-        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
-        if self.bucket_uri is None:
-            return None
-        elif self.bucket_uri.startswith("s3://"):
-            return "s3"
-        elif self.bucket_uri.startswith("gs://"):
-            return "gcs"
-        return None
 
 
 class ServeMultiplexConfig(BaseModelExtended):
@@ -124,7 +87,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLM = "VLLM"
+    vLLM = "vLLM"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -163,7 +126,7 @@ class LoraConfig(BaseModelExtended):
         if value is None:
             return value
 
-        assert value.startswith("s3://") or value.startswith("gs://"), (
+        assert is_remote_path(value), (
             "Only AWS S3 and Google Cloud Storage are supported. The "
             'dynamic_lora_loading_path must start with "s3://" or "gs://". '
             f'Got "{value}" instead.'
@@ -179,8 +142,8 @@ class ModelLoadingConfig(BaseModelExtended):
         default=None,
         description=(
             "Where to obtain the model weights from. "
-            "Should be a HuggingFace model ID, S3 mirror config, or GCS "
-            "mirror config. When omitted, defaults to the model_id as a "
+            "Should be a HuggingFace model ID, S3 mirror config, GCS mirror config, "
+            "or a local path. When omitted, defaults to the model_id as a "
             "HuggingFace model ID."
         ),
     )
@@ -192,6 +155,9 @@ class ModelLoadingConfig(BaseModelExtended):
             "supported for now."
         ),
     )
+
+
+EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 
 
 class LLMConfig(BaseModelExtended):
@@ -214,7 +180,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     llm_engine: str = Field(
-        default=LLMEngine.VLLM.value,
+        default=LLMEngine.vLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -228,7 +194,15 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: str = Field(
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
+    )
+
+    accelerator_type: Optional[str] = Field(
+        default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
@@ -250,10 +224,30 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
+    experimental_configs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Experimental configurations for Ray Serve LLM. This is a "
+        "dictionary of key-value pairs. Current supported keys are:\n"
+        "- `stream_batching_interval_ms`: Ray Serve LLM batches streaming "
+        "requests together. This config decides how long to wait for the "
+        "batch before processing the requests. Defaults to "
+        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
+        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "Serve will take the max amount all the replicas. Default would be 2 "
+        "router replicas per model replica.\n",
+    )
+
+    log_engine_metrics: Optional[bool] = Field(
+        False,
+        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine.",
+    )
+
     _supports_vision: bool = PrivateAttr(False)
+    _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
         default_factory=HuggingFacePromptFormat
     )
+    _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -264,11 +258,29 @@ class LLMConfig(BaseModelExtended):
         hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
+    def _set_model_architecture(
+        self,
+        model_id_or_path: Optional[str] = None,
+        model_architecture: Optional[str] = None,
+    ) -> None:
+        """Called in llm node initializer together with other transformers calls. It
+        loads the model config from huggingface and sets the model_architecture
+        attribute based on whether the config has `architectures`.
+        """
+        if model_id_or_path:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            if hasattr(hf_config, "architectures"):
+                self._model_architecture = hf_config.architectures[0]
+
+        if model_architecture:
+            self._model_architecture = model_architecture
+
     def apply_checkpoint_info(
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
+        self._set_model_architecture(model_id_or_path)
         self._prompt_format.set_processor(
             model_id_or_path,
             trust_remote_code=trust_remote_code,
@@ -277,6 +289,10 @@ class LLMConfig(BaseModelExtended):
     @property
     def supports_vision(self) -> bool:
         return self._supports_vision
+
+    @property
+    def model_architecture(self) -> str:
+        return self._model_architecture
 
     @property
     def prompt_format(self) -> HuggingFacePromptFormat:
@@ -301,7 +317,10 @@ class LLMConfig(BaseModelExtended):
         return self.engine_kwargs.get("max_model_len")
 
     @field_validator("accelerator_type")
-    def validate_accelerator_type(cls, value: str):
+    def validate_accelerator_type(cls, value: Optional[str]):
+        if value is None:
+            return value
+
         # Ensure A10 is converted to A10G.
         if value == "A10":
             value = "A10G"
@@ -331,13 +350,6 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
-    def ray_accelerator_type(self) -> str:
-        """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
-
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:
@@ -348,21 +360,32 @@ class LLMConfig(BaseModelExtended):
             )
         return multiplex_config
 
-    def get_engine_config(self):
+    def get_engine_config(self) -> EngineConfigType:
         """Returns the engine config for the given LLM config.
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
-        if self.llm_engine == LLMEngine.VLLM:
+        # Note (genesu): This is important that we cache the engine config as the
+        # `hf_model_id` attribute on the engine config will be set based on whether
+        #  the model is downloaded from a remote storage and will be set to the
+        #  local path of the model. This is important for vLLM not going to Hugging
+        #  Face to download the model again after it's already downloaded during node
+        #  initialization step.
+        if self._engine_config:
+            return self._engine_config
+
+        if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
 
-            return VLLMEngineConfig.from_llm_config(self)
+            self._engine_config = VLLMEngineConfig.from_llm_config(self)
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
             raise ValueError(f"Unsupported engine: {self.llm_engine}")
+
+        return self._engine_config
 
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config
@@ -410,14 +433,13 @@ class LLMConfig(BaseModelExtended):
 
         return deployment_config
 
-    def _get_deployment_name(self, name_prefix: str) -> str:
-        unsanitized_deployment_name = name_prefix + self.model_id
-        return unsanitized_deployment_name.replace("/", "--").replace(".", "_")
+    def _get_deployment_name(self) -> str:
+        return self.model_id.replace("/", "--").replace(".", "_")
 
     def get_serve_options(
         self,
         *,
-        name_prefix: str,
+        name_prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get the Serve options for the given LLM config.
 
@@ -429,21 +451,19 @@ class LLMConfig(BaseModelExtended):
                 :skipif: True
 
                 from ray import serve
-                from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
-                from ray.serve.llm.deployments import VLLMDeployment
-
+                from ray.serve.llm import LLMConfig, LLMServer
 
                 llm_config = LLMConfig(
-                    model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                    model_loading_config=dict(model_id="test_model"),
                     accelerator_type="L4",
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
-                serve.run(vllm_app)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve.run(llm_app)
 
-        Keyword Args:
-            name_prefix: The prefix to use for the deployment name.
+        Args:
+            name_prefix: Optional prefix to be used for the deployment name.
 
         Returns:
             The dictionary to use in .options() when creating the deployment.
@@ -467,7 +487,11 @@ class LLMConfig(BaseModelExtended):
         deployment_config["ray_actor_options"] = ray_actor_options
 
         # Set the name of the deployment config to map to the model ID.
-        deployment_config["name"] = self._get_deployment_name(name_prefix)
+        if "name" not in deployment_config:
+            deployment_config["name"] = self._get_deployment_name()
+        if name_prefix:
+            deployment_config["name"] = name_prefix + deployment_config["name"]
+
         return deployment_config
 
 
@@ -619,37 +643,6 @@ class FinishReason(str, Enum):
         return cls.STOP
 
 
-class LoraMirrorConfig(BaseModelExtended):
-    lora_model_id: str
-    bucket_uri: str
-    max_total_tokens: Optional[int]
-    sync_args: Optional[List[str]] = None
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def validate_bucket_uri(cls, value: str):
-        # TODO(tchordia): remove this. this is a short term fix.
-        # We should fix this on the LLM-forge side
-        if not value.startswith("s3://") and not value.startswith("gs://"):
-            value = "s3://" + value
-        return value
-
-    @property
-    def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
-            if self.bucket_uri.startswith(prefix):
-                return self.bucket_uri[len(prefix) :]
-        return self.bucket_uri
-
-    @property
-    def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
-
-    @property
-    def bucket_path(self) -> str:
-        return "/".join(self._bucket_name_and_path.split("/")[1:])
-
-
 class DiskMultiplexConfig(BaseModelExtended):
     model_id: str
     max_total_tokens: Optional[int]
@@ -725,7 +718,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
         timestamp: The timestamp of the response.
         finish_reason: The reason the generation finished.
         error: The error, if any.
-
+        metadata: The metadata for internal usage.
     """
 
     generated_text: Optional[str] = None
@@ -739,6 +732,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
     timestamp: Optional[float] = Field(default_factory=time.time)
     finish_reason: Optional[str] = None
     error: Optional[ErrorResponse] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -831,6 +825,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
             timestamp=responses[-1].timestamp,
             finish_reason=responses[-1].finish_reason,
             error=error,
+            metadata=responses[-1].metadata,
         )
 
     @property
@@ -895,7 +890,8 @@ def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
 
 
 class SamplingParams(BaseModelExtended):
-    """
+    """Parameters for controlling text generation sampling.
+
     Args:
         max_tokens: The maximum number of tokens to generate. Defaults to inf.
         temperature: What sampling temperature to use.
@@ -920,7 +916,6 @@ class SamplingParams(BaseModelExtended):
             the completion.
         response_format: Format to return the final response in. Can be for ex:
             response_format={"type": "json", "schema": "{...}"}
-
     """
 
     _ignored_fields: Set[str] = set()
@@ -940,7 +935,7 @@ class SamplingParams(BaseModelExtended):
     best_of: int = 1
     response_format: Optional[ResponseFormatType] = None
 
-    def model_dump(self, **kwargs):
+    def model_dump(self, **kwargs) -> Dict[str, Any]:
         if kwargs.get("exclude", None) is None:
             kwargs["exclude"] = self._ignored_fields
         return super().model_dump(**kwargs)
@@ -958,22 +953,34 @@ class SamplingParams(BaseModelExtended):
                 len(unique_val), MAX_NUM_STOPPING_SEQUENCES
             ).raise_exception()
 
-        return unique_val
+        return list(unique_val)
+
+    @field_validator("stop_tokens", mode="before")
+    @classmethod
+    def validate_stop_tokens(cls, values):
+        if not values:
+            return values
+        return sorted(set(values))
 
     @classmethod
-    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
-        # Extract parameters object from prompt
+    def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
         generate_kwargs = prompt.parameters or {}
         if not isinstance(generate_kwargs, dict):
             generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
 
-        generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
-        generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
+        return generate_kwargs
 
+    @classmethod
+    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
+        # Extract parameters object from prompt
+        generate_kwargs = cls._get_model_validate_kwargs(prompt)
         return cls.model_validate(generate_kwargs)
 
 
 class GenerationRequest(BaseModelExtended):
     prompt: Union[str, List[int], List[str]]
+    prompt_token_ids: Optional[List[int]] = None
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
+    stream: bool = False
+    metadata: Optional[Dict[str, Any]] = None

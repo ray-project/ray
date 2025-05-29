@@ -14,8 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
+#include <algorithm>
 #include <boost/regex.hpp>
+#include <limits>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -267,6 +272,8 @@ void GcsActor::WriteActorExportEvent() const {
   export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
   export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
   export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
+  export_actor_data_ptr->mutable_labels()->insert(task_spec_.get()->labels().begin(),
+                                                  task_spec_.get()->labels().end());
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }
@@ -410,11 +417,13 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   ++counts_[CountType::REGISTER_ACTOR_REQUEST];
 }
 
-void GcsActorManager::HandleRestartActor(rpc::RestartActorRequest request,
-                                         rpc::RestartActorReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+void GcsActorManager::HandleRestartActorForLineageReconstruction(
+    rpc::RestartActorForLineageReconstructionRequest request,
+    rpc::RestartActorForLineageReconstructionReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   auto actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "HandleRestartActor";
+  RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+      << "HandleRestartActorForLineageReconstruction";
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
     GCS_RPC_SEND_REPLY(
@@ -427,23 +436,45 @@ void GcsActorManager::HandleRestartActor(rpc::RestartActorRequest request,
     RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Restarted actor";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  auto pending_restart_iter = actor_to_restart_callbacks_.find(actor_id);
-  if (pending_restart_iter != actor_to_restart_callbacks_.end()) {
+  auto pending_restart_iter =
+      actor_to_restart_for_lineage_reconstruction_callbacks_.find(actor_id);
+  if (pending_restart_iter !=
+      actor_to_restart_for_lineage_reconstruction_callbacks_.end()) {
+    // This happens when the RestartActorForLineageReconstruction rpc is received and
+    // being handled and then the connection is lost and the caller resends the same
+    // request.
     pending_restart_iter->second.emplace_back(std::move(success_callback));
     return;
   }
 
   auto actor = iter->second;
-  if (request.num_restarts() <= actor->GetActorTableData().num_restarts()) {
-    // This is a stale message.
+  if (request.num_restarts_due_to_lineage_reconstruction() <=
+      actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()) {
+    // This is a stale message. This can happen when the
+    // RestartActorForLineageReconstruction rpc is replied but the reply is lost, and the
+    // caller resends the same request.
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Ignore stale actor restart request. Current "
+           "num_restarts_due_to_lineage_reconstruction: "
+        << actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()
+        << ", target num_restarts_due_to_lineage_reconstruction: "
+        << request.num_restarts_due_to_lineage_reconstruction();
     success_callback(actor);
     return;
   }
-  RAY_CHECK_EQ(request.num_restarts(), actor->GetActorTableData().num_restarts() + 1);
-  RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  RAY_CHECK_EQ(
+      request.num_restarts_due_to_lineage_reconstruction(),
+      actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction() + 1)
+      << "Current num_restarts_due_to_lineage_reconstruction: "
+      << actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction()
+      << ", target num_restarts_due_to_lineage_reconstruction: "
+      << request.num_restarts_due_to_lineage_reconstruction();
+  RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::DEAD)
+      << rpc::ActorTableData::ActorState_Name(actor->GetState());
   RAY_CHECK(IsActorRestartable(actor->GetActorTableData()));
 
-  actor_to_restart_callbacks_[actor_id].emplace_back(std::move(success_callback));
+  actor_to_restart_for_lineage_reconstruction_callbacks_[actor_id].emplace_back(
+      std::move(success_callback));
   actor->GetMutableActorTableData()->set_num_restarts_due_to_lineage_reconstruction(
       actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction() + 1);
   RestartActor(
@@ -462,10 +493,12 @@ void GcsActorManager::HandleRestartActor(rpc::RestartActorRequest request,
           // should overwrite the actor state to DEAD to avoid race condition.
           return;
         }
-        auto iter = actor_to_restart_callbacks_.find(actor->GetActorID());
-        RAY_CHECK(iter != actor_to_restart_callbacks_.end() && !iter->second.empty());
+        auto iter = actor_to_restart_for_lineage_reconstruction_callbacks_.find(
+            actor->GetActorID());
+        RAY_CHECK(iter != actor_to_restart_for_lineage_reconstruction_callbacks_.end() &&
+                  !iter->second.empty());
         auto callbacks = std::move(iter->second);
-        actor_to_restart_callbacks_.erase(iter);
+        actor_to_restart_for_lineage_reconstruction_callbacks_.erase(iter);
         for (auto &callback : callbacks) {
           callback(actor);
         }
@@ -689,18 +722,28 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
                                             rpc::KillActorViaGcsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   const auto &actor_id = ActorID::FromBinary(request.actor_id());
-  bool force_kill = request.force_kill();
-  bool no_restart = request.no_restart();
-  if (no_restart) {
-    DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
-  } else {
-    KillActor(actor_id, force_kill);
-  }
+  auto it = registered_actors_.find(actor_id);
+  if (it != registered_actors_.end()) {
+    bool force_kill = request.force_kill();
+    bool no_restart = request.no_restart();
+    if (no_restart) {
+      DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
+    } else {
+      KillActor(actor_id, force_kill);
+    }
 
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
-      << "Finished killing actor, force_kill = " << force_kill
-      << ", no_restart = " << no_restart;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Finished killing actor, force_kill = " << force_kill
+        << ", no_restart = " << no_restart;
+  } else {
+    GCS_RPC_SEND_REPLY(send_reply_callback,
+                       reply,
+                       Status::NotFound(absl::StrFormat(
+                           "Could not find actor with ID %s.", actor_id.Hex())));
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Could not find actor with ID " << actor_id.Hex();
+  }
   ++counts_[CountType::KILL_ACTOR_REQUEST];
 }
 
@@ -1028,7 +1071,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
   actor_to_register_callbacks_.erase(actor_id);
-  actor_to_restart_callbacks_.erase(actor_id);
+  actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO).WithField(actor_id) << "Tried to destroy actor that does not exist";
@@ -1279,7 +1322,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(node_id) << "Node failed, reconstructing actors.";
+  RAY_LOG(INFO).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
@@ -1737,9 +1780,14 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
           .WithField(actor->GetWorkerID())
           .WithField(actor->GetNodeID())
       << "Send request to kill actor to worker at node";
-  actor_client->KillActor(request, [](auto &status, auto &&) {
-    RAY_LOG(DEBUG) << "Killing status: " << status.ToString();
-  });
+  actor_client->KillActor(
+      request, [actor_id = actor->GetActorID()](auto &status, auto &&) {
+        RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
+                       << ", actor_id: " << actor_id;
+        if (!status.ok() && !status.IsInvalid()) {
+          RAY_LOG(ERROR) << "Failed to kill actor " << actor_id << ", status: " << status;
+        }
+      });
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
@@ -1901,7 +1949,8 @@ std::string GcsActorManager::DebugString() const {
          << "\n- Created actors count: " << created_actors_.size()
          << "\n- owners_: " << owners_.size()
          << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
-         << "\n- actor_to_restart_callbacks_: " << actor_to_restart_callbacks_.size()
+         << "\n- actor_to_restart_for_lineage_reconstruction_callbacks_: "
+         << actor_to_restart_for_lineage_reconstruction_callbacks_.size()
          << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
          << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
   return stream.str();

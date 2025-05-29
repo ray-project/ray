@@ -11,7 +11,7 @@ from ray.llm._internal.batch.processor.vllm_engine_proc import (
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
     config = vLLMEngineProcessorConfig(
-        model=model_opt_125m,
+        model_source=model_opt_125m,
         engine_kwargs=dict(
             max_model_len=8192,
         ),
@@ -47,15 +47,19 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         },
         "task_type": "generate",
         "max_pending_requests": 111,
+        "dynamic_lora_loading_path": None,
+        "max_concurrent_batches": 8,
+        "batch_size": 64,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
     assert "env_vars" in runtime_env
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 4,
-        "max_concurrency": 4,
+        "max_concurrency": 8,
         "accelerator_type": gpu_type,
         "num_gpus": 1,
     }
@@ -86,7 +90,7 @@ def test_generation_model(gpu_type, model_opt_125m):
     """
 
     processor_config = vLLMEngineProcessorConfig(
-        model=model_opt_125m,
+        model_source=model_opt_125m,
         engine_kwargs=dict(
             enable_prefix_caching=False,
             enable_chunked_prefill=True,
@@ -133,7 +137,7 @@ def test_generation_model(gpu_type, model_opt_125m):
 
 def test_embedding_model(gpu_type, model_opt_125m):
     processor_config = vLLMEngineProcessorConfig(
-        model=model_opt_125m,
+        model_source=model_opt_125m,
         task_type="embed",
         engine_kwargs=dict(
             enable_prefix_caching=False,
@@ -175,20 +179,22 @@ def test_embedding_model(gpu_type, model_opt_125m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model(gpu_type, model_llava_354m):
+def test_vision_model(gpu_type, model_smolvlm_256m):
     processor_config = vLLMEngineProcessorConfig(
-        model=model_llava_354m,
+        model_source=model_smolvlm_256m,
         task_type="generate",
         engine_kwargs=dict(
             # Skip CUDA graph capturing to reduce startup time.
             enforce_eager=True,
+            # CI uses T4 GPU which does not support bfloat16.
+            dtype="half",
         ),
         # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        # runtime_env=dict(
-        #     env_vars=dict(
-        #         VLLM_USE_V1="1",
-        #     ),
-        # ),
+        runtime_env=dict(
+            env_vars=dict(
+                VLLM_USE_V1="0",
+            ),
+        ),
         apply_chat_template=True,
         has_image=True,
         tokenize=False,

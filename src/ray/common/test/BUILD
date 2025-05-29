@@ -50,7 +50,7 @@ ray_cc_test(
     ],
     deps = [
         "//:grpc_common_lib",
-        "//:ray_mock",
+        "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
         "@com_google_googletest//:gtest",
     ],
@@ -236,6 +236,19 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/protobuf:common_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "label_selector_test",
+    size = "small",
+    srcs = [
+        "label_selector_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
         "@com_google_googletest//:gtest_main",
     ],
 )

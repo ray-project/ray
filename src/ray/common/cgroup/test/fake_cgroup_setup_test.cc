@@ -19,6 +19,8 @@
 #include <thread>
 #include <vector>
 
+#include "ray/common/test/testing.h"
+
 namespace ray {
 
 namespace {
@@ -27,22 +29,22 @@ namespace {
 TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
   {
     FakeCgroupSetup fake_cgroup_setup{"node-id"};
-    auto system_handler = fake_cgroup_setup.AddSystemProcess(0);
-    auto application_handler1 =
-        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
-            .pid = 1,
-            .max_memory = 10,
-        });
-    auto application_handler2 =
-        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
-            .pid = 2,
-            .max_memory = 10,  // Same max memory with the first application.
-        });
-    auto application_handler3 =
-        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
-            .pid = 3,
-            .max_memory = 5,  // Different max memory with previous applications.
-        });
+    RAY_ASSERT_OK(fake_cgroup_setup.AddSystemProcess(0));
+
+    AppProcCgroupMetadata meta1;
+    meta1.pid = 1;
+    meta1.max_memory = 10;
+    auto application_handler1 = fake_cgroup_setup.ApplyCgroupContext(meta1);
+
+    AppProcCgroupMetadata meta2;
+    meta2.pid = 2;
+    meta2.max_memory = 10;
+    auto application_handler2 = fake_cgroup_setup.ApplyCgroupContext(meta2);
+
+    AppProcCgroupMetadata meta3;
+    meta3.pid = 2;
+    meta3.max_memory = 5;  // Different max memory with previous applications.
+    auto application_handler3 = fake_cgroup_setup.ApplyCgroupContext(meta3);
   }
   // Make sure fake cgroup setup destructs with no problem.
 
@@ -52,13 +54,13 @@ TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
     FakeCgroupSetup fake_cgroup_setup{"node-id"};
     std::vector<std::thread> thds;
     thds.reserve(kThdNum);
-    auto system_handler = fake_cgroup_setup.AddSystemProcess(0);
+    RAY_ASSERT_OK(fake_cgroup_setup.AddSystemProcess(0));
     for (int idx = 0; idx < kThdNum; ++idx) {
       thds.emplace_back([pid = idx, &fake_cgroup_setup]() {
-        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
-            .pid = pid,
-            .max_memory = 10,
-        });
+        AppProcCgroupMetadata meta;
+        meta.pid = pid;
+        meta.max_memory = 10;
+        fake_cgroup_setup.ApplyCgroupContext(meta);
       });
     }
     for (auto &cur_thd : thds) {

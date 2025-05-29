@@ -1,14 +1,15 @@
-from abc import ABC, abstractmethod
-import logging
 import json
-from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
-from ray._private.ray_logging.constants import (
-    LogKey,
-    LOGRECORD_STANDARD_ATTRS,
-    LOGGER_FLATTEN_KEYS,
-)
-from ray._private.ray_constants import LOGGER_FORMAT
+import logging
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List
+
+from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
+from ray._private.ray_constants import LOGGER_FORMAT
+from ray._private.ray_logging.constants import (
+    LOGGER_FLATTEN_KEYS,
+    LOGRECORD_STANDARD_ATTRS,
+    LogKey,
+)
 
 
 def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value: Any):
@@ -40,6 +41,10 @@ class AbstractFormatter(logging.Formatter, ABC):
         self, additional_log_standard_attrs: List[str]
     ) -> None:
         self._additional_log_standard_attrs = additional_log_standard_attrs
+
+    @property
+    def additional_log_standard_attrs(self) -> List[str]:
+        return self._additional_log_standard_attrs
 
     def generate_record_format_attrs(
         self,

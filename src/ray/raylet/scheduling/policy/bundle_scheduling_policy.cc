@@ -306,11 +306,12 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   }
 
   // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
-  for (size_t index = 0; index < result_nodes.size(); index++) {
+  for (size_t res_node_idx = 0; res_node_idx < result_nodes.size(); res_node_idx++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
-    if (!result_nodes[index].IsNil()) {
+    if (!result_nodes[res_node_idx].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
+          result_nodes[res_node_idx],
+          (*sorted_resource_request_list[res_node_idx]).GetResourceSet()));
     }
   }
 
@@ -361,10 +362,10 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
       selected_nodes.emplace(best_node);
     } else {
       // Scheduling from selected nodes.
-      auto best_node = GetBestNode(*resource_request,
-                                   selected_nodes,
-                                   options,
-                                   available_cpus_before_bundle_scheduling);
+      best_node = GetBestNode(*resource_request,
+                              selected_nodes,
+                              options,
+                              available_cpus_before_bundle_scheduling);
       if (!best_node.first.IsNil()) {
         result_nodes.emplace_back(best_node.first);
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(

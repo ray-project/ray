@@ -55,7 +55,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         and len(seq_lens) > 0
     ):
         if torch and torch.is_tensor(seq_lens):
-            return seq_lens.sum().item()
+            return int(seq_lens.sum().item())
         else:
             return int(sum(seq_lens))
 
@@ -1664,7 +1664,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
             s.max_seq_len is None or max_seq_len is None
         ) and s.max_seq_len != max_seq_len:
             raise ValueError(
-                "Samples must consistently either provide or omit " "`max_seq_len`!"
+                "Samples must consistently either provide or omit `max_seq_len`!"
             )
         elif zero_padded and s.max_seq_len != max_seq_len:
             raise ValueError(

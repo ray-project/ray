@@ -13,17 +13,17 @@ How does Ray Data compare to other solutions for offline inference?
 
 .. dropdown:: Online inference solutions: Bento ML, Sagemaker Batch Transform
 
-    Solutions like `Bento ML <https://www.bentoml.com/>`_, `Sagemaker Batch Transform <https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html>`_, or :ref:`Ray Serve <rayserve>` provide APIs to make it easy to write performant inference code and can abstract away infrastructure complexities. But they are designed for online inference rather than offline batch inference, which are two different problems with different sets of requirements. These solutions introduce additional complexity like HTTP, and cannot effectively handle large datasets leading inference service providers like `Bento ML to integrating with Apache Spark <https://modelserving.com/blog/unifying-real-time-and-batch-inference-with-bentoml-and-spark>`_ for offline inference.
+    Solutions like `Bento ML <https://www.bentoml.com/>`_, `Sagemaker Batch Transform <https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html>`_, or :ref:`Ray Serve <rayserve>` provide APIs to make it easy to write performant inference code and can abstract away infrastructure complexities. But they are designed for online inference rather than offline batch inference, which are two different problems with different sets of requirements. These solutions introduce additional complexity like HTTP, and cannot effectively handle large datasets leading inference service providers like `Bento ML to integrating with Apache Spark <https://www.youtube.com/watch?v=HcT0lZ4U1EM>`_ for offline inference.
 
     Ray Data is built for offline batch jobs, without all the extra complexities of starting servers or sending HTTP requests.
 
     For a more detailed performance comparison between Ray Data and Sagemaker Batch Transform, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 
-.. dropdown:: Distributed Data Processing Frameworks: Apache Spark
+.. dropdown:: Distributed Data Processing Frameworks: Apache Spark and Daft
 
-    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
+    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_ and `Daft <https://www.getdaft.io>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
 
-    Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic ETL pipelines like Spark.
+    However, Ray Data doesn't have a SQL interface unlike Spark and Daft.
 
     For a more detailed performance comparison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 

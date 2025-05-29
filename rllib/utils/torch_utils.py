@@ -38,7 +38,7 @@ if torch:
     TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
 else:
     TORCH_COMPILE_REQUIRED_VERSION = ValueError(
-        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+        "torch is not installed. TORCH_COMPILE_REQUIRED_VERSION is not defined."
     )
 
 

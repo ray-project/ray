@@ -5,7 +5,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -161,6 +160,20 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         """
         elements = [self.visit(elt) for elt in node.elts]
         return pa.array(elements)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ds.Expression:
+        """Handle case where comparator is UnaryOP (e.g., a == -1).
+        AST for this expression will be Compare(left=Name(id='a'), ops=[Eq()],
+        comparators=[UnaryOp(op=USub(), operand=Constant(value=1))])
+
+        Args:
+            node: The constant value."""
+
+        op = node.op
+        if isinstance(op, ast.USub):
+            return pc.scalar(-node.operand.value)
+        else:
+            raise ValueError(f"Unsupported unary operator: {op}")
 
     # TODO (srinathk) Note that visit_Constant does not return pa.dataset.Expression
     # because to support function in() which takes in a List, the elements in the List

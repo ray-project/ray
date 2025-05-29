@@ -10,14 +10,15 @@
 #
 #   ;  # Semicolon to separate rules
 
-
 python/ray/air/
-@ ml train tune data linux_wheels macos_wheels
+@ ml train tune data linux_wheels
 ;
 
 python/ray/llm/
+doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
+python/requirements_compiled_*.txt
 @ llm
 ;
 
@@ -28,19 +29,19 @@ ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
 ci/docker/data9.build.wanda.yaml
 ci/docker/datal.build.wanda.yaml
-@ data ml train linux_wheels macos_wheels
+@ data ml train linux_wheels
 ;
 
 python/ray/workflow/
-@ workflow linux_wheels macos_wheels
+@ workflow
 ;
 
 python/ray/tune/
-@ ml train tune linux_wheels macos_wheels
+@ ml train tune linux_wheels
 ;
 
 python/ray/train/
-@ ml train linux_wheels macos_wheels
+@ ml train linux_wheels
 ;
 
 .buildkite/ml.rayci.yml
@@ -59,17 +60,17 @@ rllib/
 python/ray/rllib/
 ray_ci/rllib.tests.yml
 .buildkite/rllib.rayci.yml
-@ rllib rllib_gpu rllib_directly linux_wheels macos_wheels
+@ rllib rllib_gpu rllib_directly
 ;
 
 python/ray/serve/
 .buildkite/serve.rayci.yml
 ci/docker/serve.build.Dockerfile
-@ serve linux_wheels macos_wheels java
+@ serve linux_wheels java
 ;
 
 python/ray/dashboard/
-@ dashboard linux_wheels macos_wheels
+@ dashboard linux_wheels python
 ;
 
 python/setup.py
@@ -83,13 +84,23 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ ml tune train serve workflow data
-@ python dashboard linux_wheels macos_wheels java
-@ accelerated_dag
+@ python compiled_graphs
+;
+
+python/ray/util/client/
+@ python ray_client
+;
+
+python/ray/util/dask/
+@ python dask
+;
+
+python/ray/util/spark/
+@ python spark_on_ray
 ;
 
 python/
-@ ml tune train serve workflow data
+@ ml tune train data
 # Python changes might impact cross language stack in Java.
 # Java also depends on Python CLI to manage processes.
 @ python dashboard linux_wheels macos_wheels java
@@ -97,10 +108,6 @@ python/
 
 .buildkite/core.rayci.yml
 @ python core_cpp
-;
-
-.buildkite/serverless.rayci.yml
-@ python
 ;
 
 java/
@@ -116,6 +123,11 @@ cpp/
 docker/
 .buildkite/pipeline.build_cpp.yml
 @ docker linux_wheels
+;
+
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
 ;
 
 .readthedocs.yaml
@@ -136,7 +148,8 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
-# Release test unit tests are ALWAYS RUN, so pass
+release/requirements_buildkite.*
+@ tools
 ;
 
 release/*.md
@@ -158,6 +171,10 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
+ci/fossa/
+ci/docker/fossa.Dockerfile
+ci/docker/fossa.wanda.yaml
+bazel/tests/
 @ tools
 ;
 
@@ -177,6 +194,7 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
+.buildkite/release-automation/
 @ tools
 ;
 
@@ -192,6 +210,7 @@ ci/docker/ray.cuda.base.wanda.yaml
 ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
+build-docker.sh
 @ docker linux_wheels tools
 ;
 
@@ -201,11 +220,27 @@ ci/ci.sh
 ;
 
 src/
-@ ml tune train serve core_cpp cpp
+@ core_cpp cpp
 @ java python linux_wheels macos_wheels
-@ dashboard release_tests accelerated_dag
+@ dashboard release_tests
+;
+
+src/ray/core_worker/experimental*.h
+src/ray/core_worker/experimental*.cc
+@ compiled_graphs
 ;
 
 .github/
+README.rst
+SECURITY.md
+CONTRIBUTING.rst
+LICENSE
+pylintrc
+semgrep.yml
+setup_hooks.sh
+.pre-commit-config.yaml
+.isort.cfg
+.prettierrc.toml
+.fossa.yml
 # pass
 ;

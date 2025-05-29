@@ -54,18 +54,6 @@ reload_env() {
   fi
 }
 
-_need_wheels() {
-  local result="false"
-  case "${OSTYPE}" in
-    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
-  esac
-  echo "${result}"
-}
-
-NEED_WHEELS="$(_need_wheels)"
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -85,7 +73,7 @@ compile_pip_dependencies() {
     cd "${WORKSPACE_DIR}"
 
     echo "Target file: $TARGET"
-    pip install pip-tools
+    pip install "pip-tools==7.4.1" "wheel==0.45.1"
 
     # Required packages to lookup e.g. dragonfly-opt
     HAS_TORCH=0
@@ -132,143 +120,6 @@ compile_pip_dependencies() {
   )
 }
 
-test_core() {
-  local args=(
-    "//:*" "//src/..."
-  )
-  case "${OSTYPE}" in
-    msys)
-      args+=(
-        -//src/ray/util/tests:event_test
-        -//:gcs_server_rpc_test
-        -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
-        -//:gcs_health_check_manager_test
-        -//:gcs_client_reconnection_test
-      )
-      ;;
-  esac
-
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-  bazel test --config=ci --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" -- "${args[@]}"
-}
-
-# For running Serve tests on Windows.
-test_serve() {
-  if [ "${OSTYPE}" = msys ]; then
-    args+=(
-      python/ray/serve/...
-      -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve/tests:test_gradio
-      -python/ray/serve/tests:test_fastapi
-    )
-  fi
-  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
-    install_ray
-
-    # Shard the args.
-    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
-    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
-
-    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-    bazel test --config=ci \
-      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- "${TEST_SELECTION[@]}"
-  fi
-}
-
-# For running Python tests on Windows (excluding Serve).
-test_python() {
-  if [ "${OSTYPE}" = msys ]; then
-    args+=(
-      python/ray/tests/...
-      -python/ray/tests:test_actor_advanced  # crashes in shutdown
-      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
-      -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_cli
-      -python/ray/tests:test_client_init # timeout
-      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/tests:test_global_gc
-      -python/ray/tests:test_job
-      -python/ray/tests:test_memstat
-      -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
-      -python/ray/tests:test_resource_demand_scheduler
-      -python/ray/tests:test_stress  # timeout
-      -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_tracing  # tracing not enabled on windows
-      -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
-      -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
-      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
-      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
-      -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
-    )
-  fi
-  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
-    install_ray
-
-    # Shard the args.
-    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
-    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
-
-    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-    bazel test --config=ci \
-      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- "${TEST_SELECTION[@]}"
-  fi
-}
-
-# For running Python tests on Windows (excluding Serve).
-test_train_windows() {
-  if [ "${OSTYPE}" = msys ]; then
-    args+=(
-      python/ray/train:test_windows
-    )
-  fi
-  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
-    install_ray
-
-    # Shard the args.
-    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
-    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
-
-    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-    bazel test --config=ci \
-      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- "${TEST_SELECTION[@]}"
-  fi
-}
-
-# For running large Python tests on Linux and MacOS.
-test_large() {
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
-      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
-      -- python/ray/tests/...
-}
-
 test_cpp() {
   # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
@@ -290,10 +141,10 @@ test_cpp() {
   fi
 }
 
-test_wheels() {
+test_macos_wheels() {
   local TEST_WHEEL_RESULT=0
 
-  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
+  "${WORKSPACE_DIR}"/ci/build/test-macos-wheels.sh || TEST_WHEEL_RESULT=$?
 
   if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
@@ -361,29 +212,19 @@ check_sphinx_links() {
 }
 
 _bazel_build_before_install() {
-  local target
-  if [ "${OSTYPE}" = msys ]; then
-    target="//:ray_pkg"
-  else
-    # Just build Python on other platforms.
-    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
-    target="//:ray_pkg"
-  fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
-    bazel build "${target}"
-  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
-    # bazel build --config asan "${target}"
-    echo "Not needed"
-  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel build --config debug "${target}"
+  if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
+    bazel build //:ray_pkg
+  elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
+    echo "No need to build anything before install"
+  elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
+    bazel build --config debug //:ray_pkg
   else
     echo "Invalid config given"
     exit 1
   fi
 }
-
 
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
@@ -549,59 +390,10 @@ init() {
 }
 
 build() {
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels_and_jars
-    return
-  fi
-
   # Build and install ray into the system.
   # For building the wheel, see build_wheels_and_jars.
   _bazel_build_before_install
   install_ray
-}
-
-run_minimal_test() {
-  EXPECTED_PYTHON_VERSION="$1"
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "--test_env=EXPECTED_PYTHON_VERSION=$EXPECTED_PYTHON_VERSION" "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_minimal_install
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_2
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_2
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_3
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_3
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_4
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_4
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_5
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_5
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_output
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_runtime_env_ray_minimal
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_utils
-
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_serve_ray_minimal
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/dashboard/test_dashboard
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_usage_stats
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_usage_stats
-}
-
-test_minimal() {
-  ./ci/env/install-minimal.sh "$1"
-  echo "Installed minimal dependencies."
-  ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py --expected-python-version "$1"
-  run_minimal_test "$1"
-}
-
-
-test_latest_core_dependencies() {
-  ./ci/env/install-minimal.sh "$1"
-  echo "Installed minimal dependencies."
-  ./ci/env/env_info.sh
-  ./ci/env/install-core-prerelease-dependencies.sh
-  echo "Installed Core prerelease dependencies."
-  ./ci/env/env_info.sh
-  run_minimal_test "$1"
 }
 
 _main() {

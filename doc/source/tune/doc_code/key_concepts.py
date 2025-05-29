@@ -1,11 +1,11 @@
 # flake8: noqa
 
 # __function_api_start__
-from ray import train
+from ray import tune
 
 
 def objective(x, a, b):  # Define an objective function.
-    return a * (x**0.5) + b
+    return a * (x**2) + b
 
 
 def trainable(config):  # Pass a "config" dictionary into your trainable.

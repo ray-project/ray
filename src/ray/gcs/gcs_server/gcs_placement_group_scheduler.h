@@ -13,6 +13,12 @@
 // limitations under the License.
 #pragma once
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -30,7 +36,6 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
 class GcsPlacementGroup;
@@ -375,7 +380,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
   /// Send bundles COMMIT request to a node. This means the placement group creation
@@ -386,7 +391,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback
   void CommitResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.
@@ -399,7 +404,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param retry_cnt The number of times the cancel request is retried.
   void CancelResourceReserve(
       const std::shared_ptr<const BundleSpecification> &bundle_spec,
-      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
       int current_retry_cnt);
 

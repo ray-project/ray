@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -61,9 +67,9 @@ class TaskEventsGcPolicyInterface {
 
 class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
  public:
-  size_t MaxPriority() const { return 3; }
+  size_t MaxPriority() const override { return 3; }
 
-  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const {
+  size_t GetTaskListPriority(const rpc::TaskEvents &task_events) const override {
     if (IsTaskFinished(task_events)) {
       return 0;
     }

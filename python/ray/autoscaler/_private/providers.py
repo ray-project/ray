@@ -62,9 +62,9 @@ def _import_azure(provider_config):
 
 
 def _import_vsphere(provider_config):
-    from ray.autoscaler._private.vsphere.node_provider import VsphereNodeProvider
+    from ray.autoscaler._private.vsphere.node_provider import VsphereWcpNodeProvider
 
-    return VsphereNodeProvider
+    return VsphereWcpNodeProvider
 
 
 def _import_local(provider_config):
@@ -204,11 +204,11 @@ _PROVIDER_PRETTY_NAMES = {
     "aws": "AWS",
     "gcp": "GCP",
     "azure": "Azure",
-    "kubernetes": "Kubernetes",
     "kuberay": "KubeRay",
     "aliyun": "Aliyun",
     "external": "External",
     "vsphere": "vSphere",
+    "spark": "Spark",
 }
 
 _DEFAULT_CONFIGS = {

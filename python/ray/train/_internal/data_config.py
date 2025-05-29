@@ -20,6 +20,7 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
+        enable_shard_locality: bool = True,
     ):
         """Construct a DataConfig.
 
@@ -30,6 +31,9 @@ class DataConfig:
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
                 base your options off of `DataConfig.default_ingest_options()`.
+            enable_shard_locality: If true, when sharding the datasets across Train
+                workers, locality will be considered to minimize cross-node data transfer.
+                This is on by default.
         """
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
@@ -43,6 +47,7 @@ class DataConfig:
         self._execution_options: ExecutionOptions = (
             execution_options or DataConfig.default_ingest_options()
         )
+        self._enable_shard_locality = enable_shard_locality
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
@@ -82,14 +87,16 @@ class DataConfig:
         """
         output = [{} for _ in range(world_size)]
 
+        for dataset_name, dataset in datasets.items():
+            if dataset.name is None:
+                dataset.set_name(dataset_name)
+
         if self._datasets_to_split == "all":
             datasets_to_split = set(datasets.keys())
         else:
             datasets_to_split = set(self._datasets_to_split)
 
-        locality_hints = (
-            worker_node_ids if self._execution_options.locality_with_output else None
-        )
+        locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
             execution_options = copy.deepcopy(self._execution_options)
 

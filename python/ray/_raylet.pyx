@@ -36,9 +36,8 @@ from typing import (
 )
 
 import contextvars
-import concurrent
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import Future as ConcurrentFuture
+import concurrent.futures
+import collections
 
 from libc.stdint cimport (
     int32_t,
@@ -61,6 +60,7 @@ from ray.includes.optional cimport (
     make_optional,
 )
 
+from libcpp.functional cimport function
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -68,6 +68,11 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
+from cpython.pystate cimport (
+    PyGILState_Ensure,
+    PyGILState_Release,
+    PyGILState_STATE,
+)
 
 from ray.includes.common cimport (
     CBuffer,
@@ -136,6 +141,7 @@ from ray.includes.common cimport (
     kWorkerSetupHookKeyName,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
+    kGcsPidKey,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -160,8 +166,8 @@ from ray.includes.libcoreworker cimport (
 )
 from ray.includes.stream_redirection cimport (
     CStreamRedirectionOptions,
-    RedirectStdout,
-    RedirectStderr,
+    RedirectStdoutOncePerProcess,
+    RedirectStderrOncePerProcess,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -218,6 +224,7 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 
 cimport cpython
@@ -246,7 +253,7 @@ GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
-# The currently executing task, if any. These are used to synchronize task
+# The currently running task, if any. These are used to synchronize task
 # interruption for ray.cancel.
 current_task_id = None
 current_task_id_lock = threading.Lock()
@@ -269,22 +276,6 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
-
-
-class DynamicObjectRefGenerator:
-    def __init__(self, refs):
-        # TODO(swang): As an optimization, can also store the generator
-        # ObjectID so that we don't need to keep individual ref counts for the
-        # inner ObjectRefs.
-        self._refs = refs
-
-    def __iter__(self):
-        while self._refs:
-            yield self._refs.pop(0)
-
-    def __len__(self):
-        return len(self._refs)
-
 
 class ObjectRefGenerator:
     """A generator to obtain object references
@@ -761,6 +752,23 @@ cdef int prepare_labels(
 
     return 0
 
+cdef int prepare_label_selector(
+        dict label_selector_dict,
+        unordered_map[c_string, c_string] *label_selector) except -1:
+
+    if label_selector_dict is None:
+        return 0
+
+    for key, value in label_selector_dict.items():
+        if not isinstance(key, str):
+            raise ValueError(f"Label selector key must be string, but got {type(key)}")
+        if not isinstance(value, str):
+            raise ValueError(f"Label selector value must be string, but got {type(value)}")
+        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+
+    return 0
+
+
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
@@ -884,6 +892,7 @@ cdef prepare_args_internal(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
+    serialization_context = worker.get_serialization_context()
     for arg in args:
         from ray.experimental.compiled_dag_ref import CompiledDAGRef
         if isinstance(arg, CompiledDAGRef):
@@ -901,8 +910,7 @@ cdef prepare_args_internal(
 
         else:
             try:
-                serialized_arg = worker.get_serialization_context(
-                ).serialize(arg)
+                serialized_arg = serialization_context.serialize(arg)
             except TypeError as e:
                 sio = io.StringIO()
                 ray.util.inspect_serializability(arg, print_file=sio)
@@ -1100,7 +1108,7 @@ cdef store_task_errors(
 
 
 cdef class StreamingGeneratorExecutionContext:
-    """The context to execute streaming generator function.
+    """The context to run a streaming generator function.
 
     Make sure you always call `initialize` API before
     accessing any fields.
@@ -1881,6 +1889,7 @@ cdef void execute_task(
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
+                task_exception_instance = None
                 try:
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
@@ -1981,10 +1990,14 @@ cdef void execute_task(
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
-                    raise e
+                    task_exception_instance = e
                 finally:
                     # Record the end of the task log.
                     worker.record_task_log_end(task_id, attempt_number)
+                    if task_exception_instance is not None:
+                        raise task_exception_instance
+                    if core_worker.get_current_actor_should_exit():
+                        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -2049,7 +2062,7 @@ cdef void execute_task(
                             should_retry_exceptions)
 
                     task_exception = False
-                    dynamic_refs = []
+                    dynamic_refs = collections.deque()
                     for idx in range(dynamic_returns.size()):
                         dynamic_refs.append(ObjectRef(
                             dynamic_returns[0][idx].first.Binary(),
@@ -2245,6 +2258,29 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
+
+cdef void pygilstate_release(PyGILState_STATE gstate) nogil:
+    with gil:
+        PyGILState_Release(gstate)
+
+cdef function[void()] initialize_pygilstate_for_thread() nogil:
+    """
+    This function initializes a C++ thread to make it be considered as a
+    Python thread from the Python interpreter's perspective, regardless of whether
+    it is executing Python code or not. This function must be called in a thread
+    before executing any Ray tasks on that thread.
+
+    Returns:
+        A function that calls `PyGILState_Release` to release the GIL state.
+        This function should be called in a thread before the thread exits.
+
+    Reference: https://docs.python.org/3/c-api/init.html#non-python-created-threads
+    """
+    cdef function[void()] callback
+    with gil:
+        gstate = PyGILState_Ensure()
+        callback = bind(pygilstate_release, ref(gstate))
+    return callback
 
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
@@ -2514,26 +2550,25 @@ cdef void delete_spilled_objects_handler(
                 job_id=None)
 
 
-cdef void cancel_async_task(
-        const CTaskID &c_task_id,
-        const CRayFunction &ray_function,
-        const c_string c_name_of_concurrency_group_to_execute) nogil:
-    with gil:
-        function_descriptor = CFunctionDescriptorToPython(
-            ray_function.GetFunctionDescriptor())
-        name_of_concurrency_group_to_execute = \
-            c_name_of_concurrency_group_to_execute.decode("ascii")
-        task_id = TaskID(c_task_id.Binary())
+cdef c_bool cancel_async_actor_task(const CTaskID &c_task_id) nogil:
+    """Attempt to cancel a task running in this asyncio actor.
 
+    Returns True if the task was currently running and was cancelled, else False.
+
+    Note that the underlying asyncio task may not actually have been cancelled: it
+    could already have completed or else might not gracefully handle cancellation.
+    The return value only indicates that the task was found and cancelled.
+    """
+    with gil:
+        task_id = TaskID(c_task_id.Binary())
         worker = ray._private.worker.global_worker
-        eventloop, _ = worker.core_worker.get_event_loop(
-            function_descriptor, name_of_concurrency_group_to_execute)
-        future = worker.core_worker.get_queued_future(task_id)
-        if future is not None:
-            future.cancel()
-        # else, the task is already finished. If the task
-        # wasn't finished (task is queued on a client or server side),
-        # this method shouldn't have been called.
+        fut = worker.core_worker.get_future_for_running_task(task_id)
+        if fut is None:
+            # Either the task hasn't started executing yet or already finished.
+            return False
+
+        fut.cancel()
+        return True
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -2665,7 +2700,7 @@ cdef class StreamRedirector:
         opt.rotation_max_file_count = rotation_max_file_count
         opt.tee_to_stdout = tee_to_stdout
         opt.tee_to_stderr = tee_to_stderr
-        RedirectStdout(opt)
+        RedirectStdoutOncePerProcess(opt)
 
     @staticmethod
     def redirect_stderr(const c_string &file_path, uint64_t rotation_max_size, uint64_t rotation_max_file_count, c_bool tee_to_stdout, c_bool tee_to_stderr):
@@ -2675,7 +2710,7 @@ cdef class StreamRedirector:
         opt.rotation_max_file_count = rotation_max_file_count
         opt.tee_to_stdout = tee_to_stdout
         opt.tee_to_stderr = tee_to_stderr
-        RedirectStderr(opt)
+        RedirectStderrOncePerProcess(opt)
 
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
@@ -2686,56 +2721,17 @@ cdef class EmptyProfileEvent:
         pass
 
 
-def _auto_reconnect(f):
-    @wraps(f)
-    def wrapper(self, *args, **kwargs):
-        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
-            with ray._private.utils._CALLED_FREQ_LOCK:
-                ray._private.utils._CALLED_FREQ[f.__name__] += 1
-        remaining_retry = self._nums_reconnect_retry
-        while True:
-            try:
-                return f(self, *args, **kwargs)
-            except RpcError as e:
-                if e.rpc_code in [
-                    GRPC_STATUS_CODE_UNAVAILABLE,
-                    GRPC_STATUS_CODE_UNKNOWN,
-                ]:
-                    if remaining_retry <= 0:
-                        logger.error(
-                            "Failed to connect to GCS. Please check"
-                            " `gcs_server.out` for more details."
-                        )
-                        raise
-                    logger.debug(
-                        f"Failed to send request to gcs, reconnecting. Error {e}"
-                    )
-                    try:
-                        self._connect()
-                    except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
-                    time.sleep(1)
-                    remaining_retry -= 1
-                    continue
-                raise
-
-    return wrapper
-
-
 cdef class GcsClient:
     """
-    Client to the GCS server. Only contains synchronous methods. For async methods,
-    see GcsAioClient.
+    Client to the GCS server.
 
     This is a thin wrapper around InnerGcsClient with only call frequency collection.
     """
 
     cdef InnerGcsClient inner
 
-    def __cinit__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
-                  cluster_id: str = None):
+    def __cinit__(self, address: str,
+                  cluster_id: Optional[str] = None):
         # For timeout (DEADLINE_EXCEEDED): retries once with timeout_ms.
         #
         # For other RpcError (UNAVAILABLE, UNKNOWN): retries indefinitely until it
@@ -2749,56 +2745,6 @@ cdef class GcsClient:
             with ray._private.utils._CALLED_FREQ_LOCK:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
-
-cdef class GcsPublisher:
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
-    cdef:
-        shared_ptr[CPythonGcsPublisher] inner
-
-    def __cinit__(self, address):
-        self.inner.reset(new CPythonGcsPublisher(address))
-        check_status(self.inner.get().Connect())
-
-    def publish_error(self, key_id: bytes, error_type: str, message: str,
-                      job_id=None, num_retries=None):
-        cdef:
-            CErrorTableData error_info
-            int64_t c_num_retries = num_retries if num_retries else -1
-            c_string c_key_id = key_id
-
-        if job_id is None:
-            job_id = ray.JobID.nil()
-        assert isinstance(job_id, ray.JobID)
-        error_info.set_job_id(job_id.binary())
-        error_info.set_type(error_type)
-        error_info.set_error_message(message)
-        error_info.set_timestamp(time.time())
-
-        with nogil:
-            check_status(
-                self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
-
-    def publish_logs(self, log_json: dict):
-        cdef:
-            CLogBatch log_batch
-            c_string c_job_id
-
-        job_id = log_json.get("job")
-        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
-        log_batch.set_pid(
-            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
-        log_batch.set_job_id(job_id.encode() if job_id else b"")
-        log_batch.set_is_error(bool(log_json.get("is_err")))
-        for line in log_json.get("lines", []):
-            log_batch.add_lines(line)
-        actor_name = log_json.get("actor_name")
-        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
-        task_name = log_json.get("task_name")
-        log_batch.set_task_name(task_name.encode() if task_name else b"")
-
-        c_job_id = job_id.encode() if job_id else b""
-        with nogil:
-            check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
 
 
 cdef class _GcsSubscriber:
@@ -2983,7 +2929,7 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3015,6 +2961,7 @@ cdef class CoreWorker:
         options.node_manager_port = node_manager_port
         options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
+        options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect
@@ -3022,7 +2969,7 @@ cdef class CoreWorker:
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
-        options.cancel_async_task = cancel_async_task
+        options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
@@ -3037,6 +2984,7 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
+        options.enable_resource_isolation = enable_resource_isolation
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -3725,10 +3673,12 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
+                    label_selector,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3754,6 +3704,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
+            prepare_label_selector(label_selector, &c_label_selector)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3767,6 +3718,7 @@ cdef class CoreWorker:
                 serialized_runtime_env_info,
                 enable_task_events,
                 c_labels,
+                c_label_selector,
                 )
 
             current_c_task_id = current_task.native()
@@ -3815,6 +3767,7 @@ cdef class CoreWorker:
                      scheduling_strategy,
                      c_bool enable_task_events,
                      labels,
+                     label_selector,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3828,6 +3781,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3841,6 +3795,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
+            prepare_label_selector(label_selector, &c_label_selector)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3870,7 +3825,8 @@ cdef class CoreWorker:
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        c_label_selector),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3984,6 +3940,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
+            unordered_map[c_string, c_string] c_label_selector
             c_string call_site
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
@@ -4017,7 +3974,8 @@ cdef class CoreWorker:
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
                         enable_task_events,
-                        c_labels),
+                        c_labels,
+                        c_label_selector),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4502,15 +4460,15 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_event_loop_executor(self) -> ThreadPoolExecutor:
+    def get_event_loop_executor(self) -> concurrent.futures.ThreadPoolExecutor:
         if self.event_loop_executor is None:
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
-            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
+            self.event_loop_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         return self.event_loop_executor
 
-    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
+    def reset_event_loop_executor(self, executor: concurrent.futures.ThreadPoolExecutor):
         self.event_loop_executor = executor
 
     def get_event_loop(self, function_descriptor, specified_cgname):
@@ -4646,6 +4604,14 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
+    def set_current_actor_should_exit(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .SetCurrentActorShouldExit())
+
+    def get_current_actor_should_exit(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .GetCurrentActorShouldExit())
+
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
@@ -4655,8 +4621,11 @@ cdef class CoreWorker:
         return ActorID(CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                        .GetRootDetachedActorID().Binary())
 
-    def get_queued_future(self, task_id: Optional[TaskID]) -> ConcurrentFuture:
-        """Get a asyncio.Future that's queued in the event loop."""
+    def get_future_for_running_task(self, task_id: Optional[TaskID]) -> Optional[concurrent.futures.Future]:
+        """Get the future corresponding to a running task (or None).
+
+        The underyling asyncio task might be queued, running, or completed.
+        """
         with self._task_id_to_future_lock:
             return self._task_id_to_future.get(task_id)
 

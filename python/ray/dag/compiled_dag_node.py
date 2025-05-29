@@ -7,7 +7,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
-    FrozenSet,
     List,
     Tuple,
     Union,
@@ -30,6 +29,7 @@ from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import (
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
+    RAY_CGRAPH_ENABLE_TORCH_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
@@ -212,6 +212,9 @@ def do_exec_tasks(
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            assert (
+                not RAY_CGRAPH_ENABLE_TORCH_PROFILING
+            ), "NVTX and torch profiling cannot be enabled at the same time."
             try:
                 import nvtx
             except ImportError:
@@ -221,6 +224,26 @@ def do_exec_tasks(
                 )
             nvtx_profile = nvtx.Profile()
             nvtx_profile.enable()
+
+        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+            assert (
+                not RAY_CGRAPH_ENABLE_NVTX_PROFILING
+            ), "NVTX and torch profiling cannot be enabled at the same time."
+
+            import torch
+
+            torch_profile = torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                with_stack=True,
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                    "compiled_graph_torch_profiles"
+                ),
+            )
+            torch_profile.start()
+            logger.info("Torch profiling started")
 
         done = False
         while True:
@@ -235,6 +258,10 @@ def do_exec_tasks(
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
             nvtx_profile.disable()
+
+        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+            torch_profile.stop()
+            logger.info("Torch profiling stopped")
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -296,6 +323,9 @@ def do_profile_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    # CUDA events should be destroyed before other CUDA resources.
+    for task in tasks:
+        task.destroy_cuda_event()
     for task in tasks:
         task.cancel()
 
@@ -537,6 +567,14 @@ class ExecutableTask:
         self.input_reader.close()
         self.output_writer.close()
 
+    def destroy_cuda_event(self):
+        """
+        If this executable task has created a GPU future that is not yet waited on,
+        that future is in the channel context cache. Remove the future from the cache
+        and destroy its CUDA event.
+        """
+        GPUFuture.remove_gpu_future(self.task_idx)
+
     def prepare(self, overlap_gpu_communication: bool = False):
         """
         Prepare the task for execution. The `exec_operation` function can only
@@ -596,7 +634,7 @@ class ExecutableTask:
         assert self._intermediate_future is None
 
         if wrap_in_gpu_future:
-            future = GPUFuture(val)
+            future = GPUFuture(val, self.task_idx)
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future
@@ -902,7 +940,7 @@ class CompiledDAG:
         # These communicators are created by Compiled Graph, rather than passed in.
         # Communicators are only created when self._create_default_communicator is True.
         self._actors_to_created_communicator_id: Dict[
-            FrozenSet["ray.actor.ActorHandle"], str
+            Tuple["ray.actor.ActorHandle"], str
         ] = {}
 
         # Set of actors involved in P2P communication using an unresolved communicator.
@@ -966,8 +1004,6 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
-        # Set of actors present in the DAG.
-        self.actor_refs = set()
         self.actor_to_tasks: Dict[
             "ray.actor.ActorHandle", List["CompiledTask"]
         ] = defaultdict(list)
@@ -1176,7 +1212,9 @@ class CompiledDAG:
                 if isinstance(dag_node.type_hint, AutoTransportType):
                     # Currently driver on GPU is not supported, so we always
                     # use shared memory to transfer tensors.
-                    dag_node.type_hint = TorchTensorType()
+                    dag_node.type_hint = TorchTensorType(
+                        device=dag_node.type_hint.device
+                    )
 
             if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
@@ -1290,7 +1328,8 @@ class CompiledDAG:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
                 )
-            actors = frozenset(collective_op.actor_handles)
+            # using tuple to preserve the order of actors for collective operations
+            actors = tuple(collective_op.actor_handles)
             if actors in self._actors_to_created_communicator_id:
                 communicator_id = self._actors_to_created_communicator_id[actors]
             else:
@@ -1625,7 +1664,6 @@ class CompiledDAG:
                     task.output_node_idxs.append(self.dag_node_to_idx[downstream_node])
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
-                self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1895,7 +1933,7 @@ class CompiledDAG:
                 ]
             }
         """
-        from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
+        from ray.dag.collective_node import CollectiveOutputNode
 
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
@@ -1903,12 +1941,6 @@ class CompiledDAG:
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
         ] = defaultdict(list)
-        collective_op_to_nodes: Dict[
-            _CollectiveOperation, Set[_DAGOperationGraphNode]
-        ] = defaultdict(set)
-        collective_op_to_idxs: Dict[
-            _CollectiveOperation, Tuple[int, _DAGNodeOperationType]
-        ] = defaultdict(set)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for exec_task_idx, exec_task in enumerate(executable_tasks):
@@ -1918,12 +1950,13 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl = dag_node.type_hint.requires_nccl()
-                upstream_requires_nccl = False
+                requires_nccl_read = False
                 for upstream_node in dag_node._upstream_nodes:
                     if upstream_node.type_hint.requires_nccl():
-                        upstream_requires_nccl = True
+                        requires_nccl_read = True
                         break
+                requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
+                requires_nccl_write = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1931,7 +1964,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    upstream_requires_nccl,
+                    requires_nccl_read,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1939,7 +1972,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    isinstance(dag_node, CollectiveOutputNode),
+                    requires_nccl_compute,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1947,23 +1980,12 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl,
+                    requires_nccl_write,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
                     [read_node, compute_node, write_node]
                 )
-                if isinstance(dag_node, CollectiveOutputNode):
-                    collective_op_to_nodes[dag_node.collective_op].add(compute_node)
-                    collective_op_to_idxs[dag_node.collective_op].add(
-                        (task_idx, _DAGNodeOperationType.COMPUTE)
-                    )
-
-        # Set collective nodes for all the NCCL collective operation nodes.
-        for collective_op, nodes in collective_op_to_nodes.items():
-            idxs = collective_op_to_idxs[collective_op]
-            for node in nodes:
-                node.collective_idxs = idxs
 
         return actor_to_operation_nodes
 
@@ -2116,6 +2138,13 @@ class CompiledDAG:
                     except Exception:
                         pass
 
+                if kill_actors:
+                    # In the previous loop, we allow the actor tasks to exit first.
+                    # Now, we force kill the actors if not yet.
+                    for actor in outer.worker_task_refs:
+                        logger.info(f"Killing actor: {actor}")
+                        ray.kill(actor)
+
             def teardown(self, kill_actors: bool = False):
                 with self._in_teardown_lock:
                     if self._teardown_done:
@@ -2129,7 +2158,7 @@ class CompiledDAG:
                     outer._dag_submitter.close()
                     outer._dag_output_fetcher.close()
 
-                    for actor in outer.actor_refs:
+                    for actor in outer.actor_to_executable_tasks.keys():
                         logger.info(f"Cancelling compiled worker on actor: {actor}")
                     # Cancel all actor loops in parallel.
                     cancel_refs = [
